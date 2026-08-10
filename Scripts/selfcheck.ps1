@@ -108,6 +108,25 @@ if (Test-Path -LiteralPath $infoFile -PathType Leaf) {
     }
 }
 
+$workflowFile = Join-Path $projectRoot ".github/workflows/ci.yml"
+if (Test-Path -LiteralPath $workflowFile -PathType Leaf) {
+    $workflowText = Get-Content -LiteralPath $workflowFile -Raw -Encoding UTF8
+    if ($workflowText -match "(?m)^\s*uses\s*:") {
+        Add-Failure "CI 引用了未经本工程审查的外部 GitHub Action"
+    }
+    $requiredWorkflowValues = @(
+        "bash Scripts/test-xcode.sh",
+        "CODE_SIGNING_ALLOWED=NO",
+        "CODE_SIGNING_REQUIRED=NO",
+        "PhotoCleanupMVE-unsigned.ipa"
+    )
+    foreach ($value in $requiredWorkflowValues) {
+        if (-not $workflowText.Contains($value)) {
+            Add-Failure "CI 配置缺少：$value"
+        }
+    }
+}
+
 $pngFile = Join-Path $projectRoot "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/RECENTLY_DELETED_PLACEHOLDER.png"
 if (Test-Path -LiteralPath $pngFile -PathType Leaf) {
     $bytes = [System.IO.File]::ReadAllBytes($pngFile)

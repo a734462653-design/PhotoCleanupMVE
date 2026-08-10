@@ -7,17 +7,21 @@ enum PhotoDeletionOutcome {
 }
 
 struct PhotoDeletionService {
-    func delete(snapshot: SubmissionSnapshot) async -> PhotoDeletionOutcome {
+    func startDeletion(
+        snapshot: SubmissionSnapshot,
+        completion: @escaping (PhotoDeletionOutcome) -> Void
+    ) {
         let submitted = Set(snapshot.assetIDs)
         let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard authorization == .authorized || authorization == .limited else {
-            return .failure(
+            completion(.failure(
                 preflightFailure(
                     snapshot: snapshot,
                     category: .insufficientPermission,
                     message: "照片库权限不足"
                 )
-            )
+            ))
+            return
         }
 
         let fetch = PHAsset.fetchAssets(
@@ -29,52 +33,59 @@ struct PhotoDeletionService {
             assets.append(asset)
         }
         guard Set(assets.map(\.localIdentifier)) == submitted else {
-            return .failure(
+            completion(.failure(
                 preflightFailure(
                     snapshot: snapshot,
                     category: .assetNotDeletable,
                     message: "提交集合中存在无法取得的资产"
                 )
-            )
+            ))
+            return
         }
 
-        return await withCheckedContinuation { continuation in
-            PHPhotoLibrary.shared().performChanges {
-                PHAssetChangeRequest.deleteAssets(assets as NSArray)
-            } completionHandler: { succeeded, rawError in
-                let receivedAt = Date()
-                guard !succeeded else {
-                    continuation.resume(returning: .success(receivedAt: receivedAt))
-                    return
-                }
-
-                let error = rawError as NSError?
-                let category: S4FailureCategory
-                if error?.domain == PHPhotosErrorDomain,
-                   error?.code == PHPhotosError.Code.userCancelled.rawValue {
-                    category = .userCancelled
-                } else {
-                    category = .unknown
-                }
-                let rawMessage = rawError?.localizedDescription
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let message = rawMessage.flatMap { $0.isEmpty ? nil : $0 }
-                let callback = S4FailureCallback(
-                    submissionID: snapshot.submissionID,
-                    successfulAssetIDs: [],
-                    failedAssetIDs: submitted,
-                    unprocessedAssetIDs: [],
-                    reason: S4FailureReason(
-                        category: category,
-                        message: message ?? "系统未返回失败说明",
-                        systemDomain: error?.domain,
-                        systemCode: error?.code
-                    ),
-                    receivedAt: receivedAt
-                )
-                continuation.resume(returning: .failure(callback))
+        PHPhotoLibrary.shared().performChanges {
+            PHAssetChangeRequest.deleteAssets(assets as NSArray)
+        } completionHandler: { succeeded, rawError in
+            let receivedAt = Date()
+            guard !succeeded else {
+                completion(.success(receivedAt: receivedAt))
+                return
             }
+
+            let callback = self.systemFailureCallback(
+                snapshot: snapshot,
+                error: rawError as NSError?,
+                receivedAt: receivedAt
+            )
+            completion(.failure(callback))
         }
+    }
+
+    func systemFailureCallback(
+        snapshot: SubmissionSnapshot,
+        error: NSError?,
+        receivedAt: Date
+    ) -> S4FailureCallback {
+        let submitted = Set(snapshot.assetIDs)
+        let userCancelled = error?.domain == PHPhotosErrorDomain
+            && error?.code == PHPhotosError.Code.userCancelled.rawValue
+        let category: S4FailureCategory = userCancelled ? .userCancelled : .unknown
+        let rawMessage = error?.localizedDescription
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = rawMessage.flatMap { $0.isEmpty ? nil : $0 }
+        return S4FailureCallback(
+            submissionID: snapshot.submissionID,
+            successfulAssetIDs: [],
+            failedAssetIDs: userCancelled ? [] : submitted,
+            unprocessedAssetIDs: userCancelled ? submitted : [],
+            reason: S4FailureReason(
+                category: category,
+                message: message ?? "系统未返回失败说明",
+                systemDomain: error?.domain,
+                systemCode: error?.code
+            ),
+            receivedAt: receivedAt
+        )
     }
 
     private func preflightFailure(

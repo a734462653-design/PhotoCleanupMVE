@@ -93,16 +93,17 @@ final class CleanupCoordinator: ObservableObject {
                     claimAndPersist: claimS4
                 )
                 s4Machine = next
-                route = .execution
                 message = nil
-                startS4TimerIfNeeded()
-                Task { [weak self] in
-                    guard let self else {
-                        return
+                deletionService.startDeletion(snapshot: snapshot) { [weak self] outcome in
+                    Task { @MainActor [weak self] in
+                        self?.receiveDeletionOutcome(
+                            outcome,
+                            submissionID: snapshot.submissionID
+                        )
                     }
-                    let outcome = await deletionService.delete(snapshot: snapshot)
-                    receiveDeletionOutcome(outcome, submissionID: snapshot.submissionID)
                 }
+                route = .execution
+                startS4TimerIfNeeded()
             } catch {
                 s3Machine = S3StateMachine(
                     assets: machine.assets,

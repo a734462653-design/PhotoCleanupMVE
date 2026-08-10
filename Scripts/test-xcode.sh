@@ -49,8 +49,6 @@ xcodebuild \
     -scheme "$scheme_name" \
     -configuration Debug \
     -destination "platform=iOS Simulator,id=$destination_id" \
-    -derivedDataPath "$temporary_dir/DerivedData" \
-    CODE_SIGNING_ALLOWED=NO \
-    CODE_SIGNING_REQUIRED=NO
+    -derivedDataPath "$temporary_dir/DerivedData"
 
 echo "XCTest 已全部通过。"

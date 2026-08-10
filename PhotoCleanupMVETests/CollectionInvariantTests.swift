@@ -1,3 +1,5 @@
+import Foundation
+import Photos
 import XCTest
 @testable import PhotoCleanupMVE
 
@@ -193,6 +195,48 @@ final class CollectionInvariantTests: XCTestCase {
         ) { error in
             XCTAssertEqual(error as? S5StateMachineError, .invalidFailureHandoff)
         }
+    }
+
+    func testPhotoKitUserCancellationClassifiesWholeSetAsUnprocessed() {
+        let error = NSError(
+            domain: PHPhotosErrorDomain,
+            code: PHPhotosError.Code.userCancelled.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: "用户取消"]
+        )
+
+        let callback = PhotoDeletionService().systemFailureCallback(
+            snapshot: makeSnapshot(),
+            error: error,
+            receivedAt: fixedDate
+        )
+
+        XCTAssertTrue(callback.successfulAssetIDs.isEmpty)
+        XCTAssertTrue(callback.failedAssetIDs.isEmpty)
+        XCTAssertEqual(callback.unprocessedAssetIDs, Set(makeSnapshot().assetIDs))
+        XCTAssertEqual(callback.reason.category, .userCancelled)
+        XCTAssertEqual(callback.reason.systemDomain, PHPhotosErrorDomain)
+        XCTAssertEqual(callback.reason.systemCode, PHPhotosError.Code.userCancelled.rawValue)
+    }
+
+    func testPhotoKitBatchFailureClassifiesWholeSetAsFailed() {
+        let error = NSError(
+            domain: "测试系统域",
+            code: 99,
+            userInfo: [NSLocalizedDescriptionKey: "整批失败"]
+        )
+
+        let callback = PhotoDeletionService().systemFailureCallback(
+            snapshot: makeSnapshot(),
+            error: error,
+            receivedAt: fixedDate
+        )
+
+        XCTAssertTrue(callback.successfulAssetIDs.isEmpty)
+        XCTAssertEqual(callback.failedAssetIDs, Set(makeSnapshot().assetIDs))
+        XCTAssertTrue(callback.unprocessedAssetIDs.isEmpty)
+        XCTAssertEqual(callback.reason.category, .unknown)
+        XCTAssertEqual(callback.reason.systemDomain, "测试系统域")
+        XCTAssertEqual(callback.reason.systemCode, 99)
     }
 
     private func makeSnapshot() -> SubmissionSnapshot {

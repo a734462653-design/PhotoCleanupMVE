@@ -17,6 +17,10 @@ struct S3View: View {
                         Text(stateTitle(machine.state))
                         Text("待删除 \(machine.assetCount) 张")
                         Text(volumeText(machine))
+                        if machine.state == .ready {
+                            Text("请最终确认以下照片将被移入系统「最近删除」")
+                            Text("单次最多提交 200 张")
+                        }
                         if machine.state == .scanning {
                             ProgressView()
                         }
@@ -89,7 +93,7 @@ struct S3View: View {
         case .ready where machine.unavailableCount == 0:
             return "照片体积 \(known)"
         case .ready:
-            return "照片体积至少 \(known)；另有 \(machine.unavailableCount) 项体积不可用"
+            return "照片体积 ≥ \(known)；另有 \(machine.unavailableCount) 项体积不可用"
         case .overLimit:
             return "减至 200 张以内后显示或计算体积"
         case .empty:

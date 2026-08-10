@@ -1,6 +1,6 @@
 import Foundation
 
-enum S4FailureCategory: String, Codable, CaseIterable, Sendable {
+enum S4FailureCategory: String, Codable, CaseIterable, Equatable, Sendable {
     case insufficientPermission
     case assetNotDeletable
     case userCancelled

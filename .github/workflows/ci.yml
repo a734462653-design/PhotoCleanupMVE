@@ -25,10 +25,10 @@ jobs:
           set -euo pipefail
           git init .
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
-          authorization="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64)"
+          authorization="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\r\n')"
           git -c http.extraheader="AUTHORIZATION: basic $authorization" \
             fetch --no-tags --depth=1 origin "$GITHUB_SHA"
-          unset authorization
+          unset authorization GITHUB_TOKEN
           git checkout --detach FETCH_HEAD
 
       - name: 显示 Xcode 环境
@@ -58,9 +58,17 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
-          app_path="$(find BuildArtifacts/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'PhotoCleanupMVE.app' -print -quit)"
-          if [ -z "$app_path" ]; then
+          app_path="BuildArtifacts/DerivedData/Build/Products/Release-iphoneos/PhotoCleanupMVE.app"
+          if [ ! -d "$app_path" ]; then
             echo "错误：未找到构建后的 PhotoCleanupMVE.app。" >&2
+            exit 1
+          fi
+          if /usr/bin/codesign -d "$app_path" >/dev/null 2>&1; then
+            echo "错误：Release 应用意外带有代码签名。" >&2
+            exit 1
+          fi
+          if [ -e "$app_path/_CodeSignature" ] || [ -e "$app_path/embedded.mobileprovision" ]; then
+            echo "错误：Release 应用意外包含签名目录或描述文件。" >&2
             exit 1
           fi
 
@@ -74,6 +82,7 @@ jobs:
           )
 
           test -s BuildArtifacts/PhotoCleanupMVE-unsigned.ipa
+          /usr/bin/unzip -tq BuildArtifacts/PhotoCleanupMVE-unsigned.ipa
           ipa_size="$(stat -f '%z' BuildArtifacts/PhotoCleanupMVE-unsigned.ipa)"
           ipa_sha256="$(shasum -a 256 BuildArtifacts/PhotoCleanupMVE-unsigned.ipa | awk '{print $1}')"
           {

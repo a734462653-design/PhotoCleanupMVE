@@ -30,6 +30,7 @@ struct S5View: View {
                 Text(volumeText(context.snapshot))
                 Text(boundaryText)
                 placeholderImage
+                Text("设备可用空间仍在等待你的系统操作")
                 Button("我已清空最近删除") {}
                     .disabled(true)
                 Button("离开") {
@@ -56,6 +57,7 @@ struct S5View: View {
                 Text(unknownReasonText(context.reason))
                 Text(volumeText(context.snapshot))
                 Text("该数值只描述原提交集合的体积，不代表处理结果或设备可用空间变化")
+                Text("请人工核对照片原位置与系统「最近删除」")
                 Text(boundaryText)
                 placeholderImage
                 Button("完成") {

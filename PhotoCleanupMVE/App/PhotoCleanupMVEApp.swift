@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 @main
@@ -22,7 +23,9 @@ struct PhotoCleanupMVEApp: App {
                 }
             }
             .onAppear {
-                coordinator.start()
+                if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+                    coordinator.start()
+                }
             }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {

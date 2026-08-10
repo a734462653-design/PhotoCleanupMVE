@@ -51,6 +51,6 @@ Assets.xcassets 中的 RECENTLY_DELETED_PLACEHOLDER.imageset 是 1 × 1 纯黑�
 4. 将未签名应用放入 Payload 并压缩成 PhotoCleanupMVE-unsigned.ipa。
 5. 校验 IPA 非空，并把字节数与 SHA-256 写入工作流日志和步骤摘要。
 
-工作流不签名、不安装，也不访问任何 Apple 账号。
+模拟器 XCTest 由 Xcode 使用运行测试所需的本地临时签名并启动测试宿主，不需要 Apple 账号、开发证书或描述文件，也不会安装到真机。Release 真机 SDK 产物显式禁用签名，并额外验证应用不含代码签名、签名目录或描述文件。
 
 工作流不引用外部 GitHub Action。检出步骤只用运行器自带的 Git，从当前 GitHub 工程仓库按本次提交哈希取回源码；没有制品上传步骤，未签名 IPA 只在该次运行器内生成并以大小及摘要作为 CI 证据。
