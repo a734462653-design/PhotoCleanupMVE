@@ -1,0 +1,85 @@
+name: iOS 构建与自验
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-package:
+    name: 构建、XCTest 与未签名产物
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: 检出源码
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          authorization="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64)"
+          git -c http.extraheader="AUTHORIZATION: basic $authorization" \
+            fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          unset authorization
+          git checkout --detach FETCH_HEAD
+
+      - name: 显示 Xcode 环境
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available
+
+      - name: 运行结构自验
+        shell: pwsh
+        run: ./Scripts/selfcheck.ps1
+
+      - name: 运行 XCTest
+        run: bash Scripts/test-xcode.sh
+
+      - name: 构建未签名应用
+        run: |
+          set -euo pipefail
+          mkdir -p BuildArtifacts
+          xcodebuild \
+            build \
+            -project PhotoCleanupMVE.xcodeproj \
+            -scheme PhotoCleanupMVE \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath BuildArtifacts/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+          app_path="$(find BuildArtifacts/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'PhotoCleanupMVE.app' -print -quit)"
+          if [ -z "$app_path" ]; then
+            echo "错误：未找到构建后的 PhotoCleanupMVE.app。" >&2
+            exit 1
+          fi
+
+          package_root="$(mktemp -d -t PhotoCleanupMVE-package.XXXXXX)"
+          mkdir -p "$package_root/Payload"
+          ditto "$app_path" "$package_root/Payload/PhotoCleanupMVE.app"
+          ditto "$app_path" "BuildArtifacts/PhotoCleanupMVE-unsigned.app"
+          (
+            cd "$package_root"
+            /usr/bin/zip -qry "$GITHUB_WORKSPACE/BuildArtifacts/PhotoCleanupMVE-unsigned.ipa" Payload
+          )
+
+          test -s BuildArtifacts/PhotoCleanupMVE-unsigned.ipa
+          ipa_size="$(stat -f '%z' BuildArtifacts/PhotoCleanupMVE-unsigned.ipa)"
+          ipa_sha256="$(shasum -a 256 BuildArtifacts/PhotoCleanupMVE-unsigned.ipa | awk '{print $1}')"
+          {
+            echo "### 未签名 IPA"
+            echo "- 文件：PhotoCleanupMVE-unsigned.ipa"
+            echo "- 字节数：$ipa_size"
+            echo "- SHA-256：$ipa_sha256"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "未签名 IPA 已生成：$ipa_size 字节，SHA-256=$ipa_sha256"

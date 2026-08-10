@@ -1,0 +1,56 @@
+#!/bin/bash
+
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+project_root="$(cd "$script_dir/.." && pwd)"
+project_path="$project_root/PhotoCleanupMVE.xcodeproj"
+scheme_name="PhotoCleanupMVE"
+
+if ! command -v xcodebuild >/dev/null 2>&1; then
+    echo "错误：当前环境没有 xcodebuild，必须在安装 Xcode 的 macOS 上执行。" >&2
+    exit 1
+fi
+
+temporary_dir="$(mktemp -d -t PhotoCleanupMVE-tests.XXXXXX)"
+cleanup() {
+    rm -rf "$temporary_dir"
+}
+trap cleanup EXIT
+
+destinations="$(
+    xcodebuild \
+        -project "$project_path" \
+        -scheme "$scheme_name" \
+        -showdestinations
+)"
+
+destination_id="$(
+    printf "%s\n" "$destinations" |
+        awk -F'id:' '/platform:iOS Simulator/ && /name:iPhone/ {
+            split($2, fields, ",")
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", fields[1])
+            print fields[1]
+            exit
+        }'
+)"
+
+if [ -z "$destination_id" ]; then
+    echo "错误：没有可用的 iPhone 模拟器。" >&2
+    printf "%s\n" "$destinations" >&2
+    exit 1
+fi
+
+echo "使用 iPhone 模拟器：$destination_id"
+
+xcodebuild \
+    test \
+    -project "$project_path" \
+    -scheme "$scheme_name" \
+    -configuration Debug \
+    -destination "platform=iOS Simulator,id=$destination_id" \
+    -derivedDataPath "$temporary_dir/DerivedData" \
+    CODE_SIGNING_ALLOWED=NO \
+    CODE_SIGNING_REQUIRED=NO
+
+echo "XCTest 已全部通过。"

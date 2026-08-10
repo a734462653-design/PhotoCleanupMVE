@@ -1,0 +1,592 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* PBXBuildFile 区段开始 */
+		200000000000000000000001 /* PhotoCleanupMVEApp.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000001 /* PhotoCleanupMVEApp.swift */; };
+		200000000000000000000002 /* CleanupCoordinator.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* CleanupCoordinator.swift */; };
+		200000000000000000000003 /* AssetModels.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* AssetModels.swift */; };
+		200000000000000000000004 /* S3StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000004 /* S3StateMachine.swift */; };
+		200000000000000000000005 /* S4StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000005 /* S4StateMachine.swift */; };
+		200000000000000000000006 /* S5StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000006 /* S5StateMachine.swift */; };
+		200000000000000000000007 /* SessionPersistence.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000007 /* SessionPersistence.swift */; };
+		200000000000000000000008 /* PhotoLibraryService.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* PhotoLibraryService.swift */; };
+		200000000000000000000009 /* AssetSizeScanner.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* AssetSizeScanner.swift */; };
+		20000000000000000000000A /* PhotoDeletionService.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000A /* PhotoDeletionService.swift */; };
+		20000000000000000000000B /* S3View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000B /* S3View.swift */; };
+		20000000000000000000000C /* S4View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000C /* S4View.swift */; };
+		20000000000000000000000D /* S5View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000D /* S5View.swift */; };
+		20000000000000000000000E /* ThumbnailView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000E /* ThumbnailView.swift */; };
+		20000000000000000000000F /* Assets.xcassets（资源） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000F /* Assets.xcassets */; };
+		200000000000000000000010 /* S3StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000013 /* S3StateMachineTests.swift */; };
+		200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000014 /* SnapshotInvariantTests.swift */; };
+		200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000015 /* VolumeFormattingTests.swift */; };
+		200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000016 /* S4StateMachineTests.swift */; };
+		200000000000000000000014 /* S5StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000017 /* S5StateMachineTests.swift */; };
+		200000000000000000000015 /* CollectionInvariantTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000018 /* CollectionInvariantTests.swift */; };
+/* PBXBuildFile 区段结束 */
+
+/* PBXContainerItemProxy 区段开始 */
+		600000000000000000000001 /* 测试目标代理 */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 700000000000000000000001 /* 工程对象 */;
+			proxyType = 1;
+			remoteGlobalIDString = 700000000000000000000002;
+			remoteInfo = PhotoCleanupMVE;
+		};
+/* PBXContainerItemProxy 区段结束 */
+
+/* PBXFileReference 区段开始 */
+		100000000000000000000001 /* PhotoCleanupMVEApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCleanupMVEApp.swift; sourceTree = "<group>"; };
+		100000000000000000000002 /* CleanupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupCoordinator.swift; sourceTree = "<group>"; };
+		100000000000000000000003 /* AssetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetModels.swift; sourceTree = "<group>"; };
+		100000000000000000000004 /* S3StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S3StateMachine.swift; sourceTree = "<group>"; };
+		100000000000000000000005 /* S4StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S4StateMachine.swift; sourceTree = "<group>"; };
+		100000000000000000000006 /* S5StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S5StateMachine.swift; sourceTree = "<group>"; };
+		100000000000000000000007 /* SessionPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPersistence.swift; sourceTree = "<group>"; };
+		100000000000000000000008 /* PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryService.swift; sourceTree = "<group>"; };
+		100000000000000000000009 /* AssetSizeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetSizeScanner.swift; sourceTree = "<group>"; };
+		10000000000000000000000A /* PhotoDeletionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDeletionService.swift; sourceTree = "<group>"; };
+		10000000000000000000000B /* S3View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S3View.swift; sourceTree = "<group>"; };
+		10000000000000000000000C /* S4View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S4View.swift; sourceTree = "<group>"; };
+		10000000000000000000000D /* S5View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S5View.swift; sourceTree = "<group>"; };
+		10000000000000000000000E /* ThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailView.swift; sourceTree = "<group>"; };
+		10000000000000000000000F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		100000000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		100000000000000000000011 /* PhotoCleanupMVE.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhotoCleanupMVE.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000012 /* PhotoCleanupMVETests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhotoCleanupMVETests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000013 /* S3StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S3StateMachineTests.swift; sourceTree = "<group>"; };
+		100000000000000000000014 /* SnapshotInvariantTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotInvariantTests.swift; sourceTree = "<group>"; };
+		100000000000000000000015 /* VolumeFormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeFormattingTests.swift; sourceTree = "<group>"; };
+		100000000000000000000016 /* S4StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S4StateMachineTests.swift; sourceTree = "<group>"; };
+		100000000000000000000017 /* S5StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S5StateMachineTests.swift; sourceTree = "<group>"; };
+		100000000000000000000018 /* CollectionInvariantTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionInvariantTests.swift; sourceTree = "<group>"; };
+/* PBXFileReference 区段结束 */
+
+/* PBXFrameworksBuildPhase 区段开始 */
+		400000000000000000000002 /* 应用框架阶段 */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		400000000000000000000005 /* 测试框架阶段 */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* PBXFrameworksBuildPhase 区段结束 */
+
+/* PBXGroup 区段开始 */
+		300000000000000000000000 /* 根组 */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000001 /* PhotoCleanupMVE */,
+				300000000000000000000009 /* PhotoCleanupMVETests */,
+				30000000000000000000000A /* 产品 */,
+			);
+			sourceTree = "<group>";
+		};
+		300000000000000000000001 /* PhotoCleanupMVE */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000002 /* App */,
+				300000000000000000000003 /* Core */,
+				300000000000000000000004 /* Services */,
+				300000000000000000000005 /* Features */,
+				10000000000000000000000F /* Assets.xcassets */,
+				100000000000000000000010 /* Info.plist */,
+			);
+			path = PhotoCleanupMVE;
+			sourceTree = "<group>";
+		};
+		300000000000000000000002 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000001 /* PhotoCleanupMVEApp.swift */,
+				100000000000000000000002 /* CleanupCoordinator.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		300000000000000000000003 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000003 /* AssetModels.swift */,
+				100000000000000000000004 /* S3StateMachine.swift */,
+				100000000000000000000005 /* S4StateMachine.swift */,
+				100000000000000000000006 /* S5StateMachine.swift */,
+				100000000000000000000007 /* SessionPersistence.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		300000000000000000000004 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000008 /* PhotoLibraryService.swift */,
+				100000000000000000000009 /* AssetSizeScanner.swift */,
+				10000000000000000000000A /* PhotoDeletionService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		300000000000000000000005 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000006 /* S3 */,
+				300000000000000000000007 /* S4 */,
+				300000000000000000000008 /* S5 */,
+				30000000000000000000000B /* Shared */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		300000000000000000000006 /* S3 */ = {
+			isa = PBXGroup;
+			children = (
+				10000000000000000000000B /* S3View.swift */,
+			);
+			path = S3;
+			sourceTree = "<group>";
+		};
+		300000000000000000000007 /* S4 */ = {
+			isa = PBXGroup;
+			children = (
+				10000000000000000000000C /* S4View.swift */,
+			);
+			path = S4;
+			sourceTree = "<group>";
+		};
+		300000000000000000000008 /* S5 */ = {
+			isa = PBXGroup;
+			children = (
+				10000000000000000000000D /* S5View.swift */,
+			);
+			path = S5;
+			sourceTree = "<group>";
+		};
+		30000000000000000000000B /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				10000000000000000000000E /* ThumbnailView.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		300000000000000000000009 /* PhotoCleanupMVETests */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000013 /* S3StateMachineTests.swift */,
+				100000000000000000000014 /* SnapshotInvariantTests.swift */,
+				100000000000000000000015 /* VolumeFormattingTests.swift */,
+				100000000000000000000016 /* S4StateMachineTests.swift */,
+				100000000000000000000017 /* S5StateMachineTests.swift */,
+				100000000000000000000018 /* CollectionInvariantTests.swift */,
+			);
+			path = PhotoCleanupMVETests;
+			sourceTree = "<group>";
+		};
+		30000000000000000000000A /* 产品 */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000011 /* PhotoCleanupMVE.app */,
+				100000000000000000000012 /* PhotoCleanupMVETests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* PBXGroup 区段结束 */
+
+/* PBXNativeTarget 区段开始 */
+		700000000000000000000002 /* PhotoCleanupMVE */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 510000000000000000000002 /* PhotoCleanupMVE 构建配置 */;
+			buildPhases = (
+				400000000000000000000001 /* 应用源码阶段 */,
+				400000000000000000000002 /* 应用框架阶段 */,
+				400000000000000000000003 /* 应用资源阶段 */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PhotoCleanupMVE;
+			productName = PhotoCleanupMVE;
+			productReference = 100000000000000000000011 /* PhotoCleanupMVE.app */;
+			productType = "com.apple.product-type.application";
+		};
+		700000000000000000000003 /* PhotoCleanupMVETests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 510000000000000000000003 /* PhotoCleanupMVETests 构建配置 */;
+			buildPhases = (
+				400000000000000000000004 /* 测试源码阶段 */,
+				400000000000000000000005 /* 测试框架阶段 */,
+				400000000000000000000006 /* 测试资源阶段 */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				600000000000000000000002 /* 依赖 PhotoCleanupMVE */,
+			);
+			name = PhotoCleanupMVETests;
+			productName = PhotoCleanupMVETests;
+			productReference = 100000000000000000000012 /* PhotoCleanupMVETests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* PBXNativeTarget 区段结束 */
+
+/* PBXProject 区段开始 */
+		700000000000000000000001 /* 工程对象 */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					700000000000000000000002 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					700000000000000000000003 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = 700000000000000000000002;
+					};
+				};
+			};
+			buildConfigurationList = 510000000000000000000001 /* 工程构建配置 */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = "zh-Hans";
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				"zh-Hans",
+				en,
+				Base,
+			);
+			mainGroup = 300000000000000000000000 /* 根组 */;
+			productRefGroup = 30000000000000000000000A /* 产品 */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				700000000000000000000002 /* PhotoCleanupMVE */,
+				700000000000000000000003 /* PhotoCleanupMVETests */,
+			);
+		};
+/* PBXProject 区段结束 */
+
+/* PBXResourcesBuildPhase 区段开始 */
+		400000000000000000000003 /* 应用资源阶段 */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				20000000000000000000000F /* Assets.xcassets（资源） */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		400000000000000000000006 /* 测试资源阶段 */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* PBXResourcesBuildPhase 区段结束 */
+
+/* PBXSourcesBuildPhase 区段开始 */
+		400000000000000000000001 /* 应用源码阶段 */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				200000000000000000000001 /* PhotoCleanupMVEApp.swift（源码） */,
+				200000000000000000000002 /* CleanupCoordinator.swift（源码） */,
+				200000000000000000000003 /* AssetModels.swift（源码） */,
+				200000000000000000000004 /* S3StateMachine.swift（源码） */,
+				200000000000000000000005 /* S4StateMachine.swift（源码） */,
+				200000000000000000000006 /* S5StateMachine.swift（源码） */,
+				200000000000000000000007 /* SessionPersistence.swift（源码） */,
+				200000000000000000000008 /* PhotoLibraryService.swift（源码） */,
+				200000000000000000000009 /* AssetSizeScanner.swift（源码） */,
+				20000000000000000000000A /* PhotoDeletionService.swift（源码） */,
+				20000000000000000000000B /* S3View.swift（源码） */,
+				20000000000000000000000C /* S4View.swift（源码） */,
+				20000000000000000000000D /* S5View.swift（源码） */,
+				20000000000000000000000E /* ThumbnailView.swift（源码） */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		400000000000000000000004 /* 测试源码阶段 */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				200000000000000000000010 /* S3StateMachineTests.swift（测试源码） */,
+				200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */,
+				200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */,
+				200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */,
+				200000000000000000000014 /* S5StateMachineTests.swift（测试源码） */,
+				200000000000000000000015 /* CollectionInvariantTests.swift（测试源码） */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* PBXSourcesBuildPhase 区段结束 */
+
+/* PBXTargetDependency 区段开始 */
+		600000000000000000000002 /* 依赖 PhotoCleanupMVE */ = {
+			isa = PBXTargetDependency;
+			target = 700000000000000000000002 /* PhotoCleanupMVE */;
+			targetProxy = 600000000000000000000001 /* 测试目标代理 */;
+		};
+/* PBXTargetDependency 区段结束 */
+
+/* XCBuildConfiguration 区段开始 */
+		500000000000000000000001 /* 工程调试配置 */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		500000000000000000000002 /* 工程发布配置 */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		500000000000000000000003 /* 应用调试配置 */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PhotoCleanupMVE/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.iphonephotomanagement.PhotoCleanupMVE;
+				PRODUCT_MODULE_NAME = PhotoCleanupMVE;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		500000000000000000000004 /* 应用发布配置 */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PhotoCleanupMVE/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.iphonephotomanagement.PhotoCleanupMVE;
+				PRODUCT_MODULE_NAME = PhotoCleanupMVE;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		500000000000000000000005 /* 测试调试配置 */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.iphonephotomanagement.PhotoCleanupMVETests;
+				PRODUCT_MODULE_NAME = PhotoCleanupMVETests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PhotoCleanupMVE.app/PhotoCleanupMVE";
+			};
+			name = Debug;
+		};
+		500000000000000000000006 /* 测试发布配置 */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.iphonephotomanagement.PhotoCleanupMVETests;
+				PRODUCT_MODULE_NAME = PhotoCleanupMVETests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PhotoCleanupMVE.app/PhotoCleanupMVE";
+			};
+			name = Release;
+		};
+/* XCBuildConfiguration 区段结束 */
+
+/* XCConfigurationList 区段开始 */
+		510000000000000000000001 /* 工程构建配置 */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				500000000000000000000001 /* 工程调试配置 */,
+				500000000000000000000002 /* 工程发布配置 */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		510000000000000000000002 /* PhotoCleanupMVE 构建配置 */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				500000000000000000000003 /* 应用调试配置 */,
+				500000000000000000000004 /* 应用发布配置 */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		510000000000000000000003 /* PhotoCleanupMVETests 构建配置 */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				500000000000000000000005 /* 测试调试配置 */,
+				500000000000000000000006 /* 测试发布配置 */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* XCConfigurationList 区段结束 */
+	};
+	rootObject = 700000000000000000000001 /* 工程对象 */;
+}
