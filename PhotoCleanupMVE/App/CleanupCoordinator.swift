@@ -33,12 +33,12 @@ final class CleanupCoordinator: ObservableObject {
     private var didStart = false
 
     init(
-        photoLibrary: PhotoLibraryService = PhotoLibraryService(),
+        photoLibrary: PhotoLibraryService? = nil,
         sizeScanner: AssetSizeScanner = AssetSizeScanner(),
         deletionService: PhotoDeletionService = PhotoDeletionService(),
         persistence: SessionPersistence = SessionPersistence()
     ) {
-        self.photoLibrary = photoLibrary
+        self.photoLibrary = photoLibrary ?? PhotoLibraryService()
         self.sizeScanner = sizeScanner
         self.deletionService = deletionService
         self.persistence = persistence
