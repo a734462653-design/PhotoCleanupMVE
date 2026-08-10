@@ -41,6 +41,7 @@ $requiredFiles = @(
     "PhotoCleanupMVETests/CollectionInvariantTests.swift",
     "Scripts/test-xcode.sh",
     "Reports/SELF-VERIFICATION.md",
+    "Reports/CHANGE-LOG-007R.md",
     "Reports/UNDECIDED-ITEMS.md",
     "Reports/PROJECT-TREE.md",
     ".github/workflows/ci.yml",
@@ -111,14 +112,34 @@ if (Test-Path -LiteralPath $infoFile -PathType Leaf) {
 $workflowFile = Join-Path $projectRoot ".github/workflows/ci.yml"
 if (Test-Path -LiteralPath $workflowFile -PathType Leaf) {
     $workflowText = Get-Content -LiteralPath $workflowFile -Raw -Encoding UTF8
-    if ($workflowText -match "(?m)^\s*uses\s*:") {
-        Add-Failure "CI 引用了未经本工程审查的外部 GitHub Action"
+
+    $approvedActionReferences = @(
+        "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+    )
+    $actionUseMatches = [regex]::Matches($workflowText, "(?m)^\s*uses\s*:\s*([^\s#]+)")
+    if ($actionUseMatches.Count -ne 1) {
+        Add-Failure "CI 外部 GitHub Action 引用数量不是 1"
+    }
+    foreach ($actionUseMatch in $actionUseMatches) {
+        $actionReference = $actionUseMatch.Groups[1].Value
+        if ($approvedActionReferences -notcontains $actionReference) {
+            Add-Failure "CI 引用了未经本工程审查或未锁定完整提交哈希的外部 GitHub Action：$actionReference"
+        }
     }
     $requiredWorkflowValues = @(
         "bash Scripts/test-xcode.sh",
         "CODE_SIGNING_ALLOWED=NO",
         "CODE_SIGNING_REQUIRED=NO",
-        "PhotoCleanupMVE-unsigned.ipa"
+        "PhotoCleanupMVE-unsigned.ipa",
+        "id: package",
+        "git rev-parse --short=12 HEAD",
+        'name: ${{ steps.package.outputs.artifact_name }}',
+        "path: BuildArtifacts/PhotoCleanupMVE-unsigned.ipa",
+        "if-no-files-found: error",
+        "compression-level: 0",
+        "overwrite: false",
+        "include-hidden-files: false",
+        "archive: true"
     )
     foreach ($value in $requiredWorkflowValues) {
         if (-not $workflowText.Contains($value)) {

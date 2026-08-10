@@ -44,6 +44,7 @@ jobs:
         run: bash Scripts/test-xcode.sh
 
       - name: 构建未签名应用
+        id: package
         run: |
           set -euo pipefail
           mkdir -p BuildArtifacts
@@ -81,10 +82,17 @@ jobs:
             /usr/bin/zip -qry "$GITHUB_WORKSPACE/BuildArtifacts/PhotoCleanupMVE-unsigned.ipa" Payload
           )
 
+          if [ ! -f BuildArtifacts/PhotoCleanupMVE-unsigned.ipa ] || \
+             [ -L BuildArtifacts/PhotoCleanupMVE-unsigned.ipa ]; then
+            echo "错误：IPA 不是预期的普通文件。" >&2
+            exit 1
+          fi
           test -s BuildArtifacts/PhotoCleanupMVE-unsigned.ipa
           /usr/bin/unzip -tq BuildArtifacts/PhotoCleanupMVE-unsigned.ipa
           ipa_size="$(stat -f '%z' BuildArtifacts/PhotoCleanupMVE-unsigned.ipa)"
           ipa_sha256="$(shasum -a 256 BuildArtifacts/PhotoCleanupMVE-unsigned.ipa | awk '{print $1}')"
+          short_sha="$(git rev-parse --short=12 HEAD)"
+          printf 'artifact_name=PhotoCleanupMVE-unsigned-%s\n' "$short_sha" >> "$GITHUB_OUTPUT"
           {
             echo "### 未签名 IPA"
             echo "- 文件：PhotoCleanupMVE-unsigned.ipa"
@@ -92,3 +100,15 @@ jobs:
             echo "- SHA-256：$ipa_sha256"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "未签名 IPA 已生成：$ipa_size 字节，SHA-256=$ipa_sha256"
+
+      - name: 上传可下载的未签名 IPA
+        id: upload_unsigned_ipa
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.package.outputs.artifact_name }}
+          path: BuildArtifacts/PhotoCleanupMVE-unsigned.ipa
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+          archive: true
