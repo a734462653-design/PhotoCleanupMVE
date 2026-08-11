@@ -13,20 +13,23 @@ struct S3View: View {
                         }
                     }
 
-                    Section("状态") {
+                    Section(L10n.text("s3.section.status")) {
                         Text(stateTitle(machine.state))
-                        Text("待删除 \(machine.assetCount) 张")
+                        Text(L10n.text(
+                            "s3.asset.pending_count",
+                            replacing: ["count": String(machine.assetCount)]
+                        ))
                         Text(volumeText(machine))
                         if machine.state == .ready {
-                            Text("请最终确认以下照片将被移入系统「最近删除」")
-                            Text("单次最多提交 200 张")
+                            Text(L10n.text("s3.confirmation.recently_deleted_notice"))
+                            Text(L10n.text("s3.submission.limit_notice"))
                         }
                         if machine.state == .scanning {
                             ProgressView()
                         }
                     }
 
-                    Section("待删除资产") {
+                    Section(L10n.text("s3.section.pending_assets")) {
                         ForEach(machine.assets, id: \.identifier) { asset in
                             HStack {
                                 ThumbnailView(assetIdentifier: asset.identifier)
@@ -34,11 +37,14 @@ struct S3View: View {
                                     Text(asset.identifier)
                                         .lineLimit(2)
                                     if asset.isFavorite {
-                                        Label("已收藏", systemImage: "heart.fill")
+                                        Label(
+                                            L10n.text("s3.asset.favorite"),
+                                            systemImage: "heart.fill"
+                                        )
                                     }
                                 }
                                 Spacer()
-                                Button("移除") {
+                                Button(L10n.text("s3.action.remove")) {
                                     coordinator.removeAsset(asset.identifier)
                                 }
                                 .disabled(machine.frozenSnapshot != nil)
@@ -46,26 +52,26 @@ struct S3View: View {
                         }
                     }
 
-                    Section("操作") {
+                    Section(L10n.text("s3.section.actions")) {
                         if machine.state == .overLimit {
-                            Text("单次最多提交 200 张，请分批处理")
+                            Text(L10n.text("s3.submission.over_limit_notice"))
                         }
-                        Button("全部取消", role: .destructive) {
+                        Button(L10n.text("s3.action.cancel_all"), role: .destructive) {
                             coordinator.cancelAllAssets()
                         }
                         .disabled(machine.assetCount == 0 || machine.frozenSnapshot != nil)
 
-                        Button("提交删除", role: .destructive) {
+                        Button(L10n.text("s3.action.submit_deletion"), role: .destructive) {
                             coordinator.submitDeletion()
                         }
                         .disabled(!machine.canSubmit)
 
-                        Button("返回") {
+                        Button(L10n.text("s3.action.back")) {
                             coordinator.leaveConfirmation()
                         }
                     }
                 }
-                .navigationTitle("确认删除")
+                .navigationTitle(L10n.text("s3.navigation.title"))
             } else {
                 ProgressView()
             }
@@ -75,13 +81,13 @@ struct S3View: View {
     private func stateTitle(_ state: S3State) -> String {
         switch state {
         case .scanning:
-            return "正在计算照片体积"
+            return L10n.text("s3.state.scanning")
         case .ready:
-            return "可以提交删除"
+            return L10n.text("s3.state.ready")
         case .overLimit:
-            return "待删除数量超过上限"
+            return L10n.text("s3.state.over_limit")
         case .empty:
-            return "没有待删除照片"
+            return L10n.text("s3.state.empty")
         }
     }
 
@@ -89,15 +95,30 @@ struct S3View: View {
         let known = DecimalVolumeFormatter.string(forByteCount: machine.knownTotalBytes)
         switch machine.state {
         case .scanning:
-            return "正在计算；当前已知 \(known)，不可用 \(machine.unavailableCount) 项（未完成）"
+            return L10n.text(
+                "s3.volume.scanning",
+                replacing: [
+                    "known": known,
+                    "count": String(machine.unavailableCount)
+                ]
+            )
         case .ready where machine.unavailableCount == 0:
-            return "照片体积 \(known)"
+            return L10n.text(
+                "s3.volume.exact",
+                replacing: ["known": known]
+            )
         case .ready:
-            return "照片体积 ≥ \(known)；另有 \(machine.unavailableCount) 项体积不可用"
+            return L10n.text(
+                "s3.volume.lower_bound",
+                replacing: [
+                    "known": known,
+                    "count": String(machine.unavailableCount)
+                ]
+            )
         case .overLimit:
-            return "减至 200 张以内后显示或计算体积"
+            return L10n.text("s3.volume.over_limit")
         case .empty:
-            return "没有可计算的照片体积"
+            return L10n.text("s3.volume.empty")
         }
     }
 }

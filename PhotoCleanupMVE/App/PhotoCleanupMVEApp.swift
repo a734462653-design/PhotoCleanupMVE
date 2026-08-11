@@ -11,7 +11,7 @@ struct PhotoCleanupMVEApp: App {
             Group {
                 switch coordinator.route {
                 case .loading:
-                    ProgressView("正在读取测试资产")
+                    ProgressView(L10n.text("app.loading.test_assets"))
                 case .confirmation:
                     S3View(coordinator: coordinator)
                 case .execution:
@@ -19,7 +19,7 @@ struct PhotoCleanupMVEApp: App {
                 case .completion:
                     S5View(coordinator: coordinator)
                 case .finished:
-                    Text("本次清理会话已结束")
+                    Text(L10n.text("app.session.finished"))
                 }
             }
             .onAppear {

@@ -3,7 +3,7 @@ import SwiftUI
 struct S5View: View {
     @ObservedObject var coordinator: CleanupCoordinator
 
-    private let boundaryText = "照片已移入系统「最近删除」，仍由系统保留。App 无法读取或清空该位置。请打开系统「照片」，进入「实用工具」中的「最近删除」，由你完成清空，然后返回本页。"
+    private let boundaryText = L10n.text("s5.recently_deleted.boundary_notice")
 
     var body: some View {
         NavigationStack {
@@ -17,7 +17,7 @@ struct S5View: View {
                     content(machine.state)
                 }
             }
-            .navigationTitle("清理结果")
+            .navigationTitle(L10n.text("s5.navigation.title"))
         }
     }
 
@@ -25,42 +25,57 @@ struct S5View: View {
     private func content(_ state: S5State) -> some View {
         switch state {
         case let .movedToRecentlyDeleted(context):
-            Section("已移入最近删除") {
-                Text("处理结果：成功 \(context.successfulAssetIDs.count) 张，失败 0 张，未处理 0 张")
+            Section(L10n.text("s5.section.moved_to_recently_deleted")) {
+                Text(L10n.text(
+                    "s5.summary.success_result",
+                    replacing: [
+                        "success": String(context.successfulAssetIDs.count)
+                    ]
+                ))
                 Text(volumeText(context.snapshot))
                 Text(boundaryText)
                 placeholderImage
-                Text("设备可用空间仍在等待你的系统操作")
-                Button("我已清空最近删除") {}
+                Text(L10n.text("s5.status.device_space_waiting"))
+                Button(L10n.text("s5.action.confirm_recently_deleted_cleared")) {}
                     .disabled(true)
-                Button("离开") {
+                Button(L10n.text("s5.action.leave")) {
                     coordinator.leaveCompletion()
                 }
             }
 
         case let .failed(context):
-            Section("本次删除未完成") {
-                Text("处理结果：成功 \(context.callback.successfulAssetIDs.count) 张，失败 \(context.callback.failedAssetIDs.count) 张，未处理 \(context.callback.unprocessedAssetIDs.count) 张")
+            Section(L10n.text("s5.section.deletion_incomplete")) {
+                Text(L10n.text(
+                    "s5.summary.failure_result",
+                    replacing: [
+                        "success": String(context.callback.successfulAssetIDs.count),
+                        "failure": String(context.callback.failedAssetIDs.count),
+                        "unprocessed": String(context.callback.unprocessedAssetIDs.count)
+                    ]
+                ))
                 Text(context.callback.reason.message)
                 Text(volumeText(context.snapshot))
-                Text("该数值只描述原提交集合的体积，不代表处理结果或设备可用空间变化")
-                Text("已保留原提交集合，可返回确认页再次尝试")
-                Button("返回确认页") {
+                Text(L10n.text("s5.volume.original_submission_disclaimer"))
+                Text(L10n.text("s5.failure.retry_notice"))
+                Button(L10n.text("s5.action.return_to_confirmation")) {
                     coordinator.returnFromFailureToConfirmation()
                 }
             }
 
         case let .unknown(context):
-            Section("本次删除结果未知") {
-                Text("本次提交 \(context.snapshot.assetCount) 张")
-                Text("处理结果未知")
+            Section(L10n.text("s5.section.deletion_result_unknown")) {
+                Text(L10n.text(
+                    "submission.asset_count",
+                    replacing: ["count": String(context.snapshot.assetCount)]
+                ))
+                Text(L10n.text("s5.status.result_unknown"))
                 Text(unknownReasonText(context.reason))
                 Text(volumeText(context.snapshot))
-                Text("该数值只描述原提交集合的体积，不代表处理结果或设备可用空间变化")
-                Text("请人工核对照片原位置与系统「最近删除」")
+                Text(L10n.text("s5.volume.original_submission_disclaimer"))
+                Text(L10n.text("s5.unknown.manual_verification_notice"))
                 Text(boundaryText)
                 placeholderImage
-                Button("完成") {
+                Button(L10n.text("s5.action.finish")) {
                     coordinator.leaveCompletion()
                 }
             }
@@ -73,7 +88,7 @@ struct S5View: View {
                 .resizable()
                 .scaledToFit()
                 .frame(maxHeight: 180)
-            Text("系统标注截图占位图，不属于正式交付素材")
+            Text(L10n.text("s5.placeholder.disclaimer"))
         }
     }
 
@@ -83,18 +98,27 @@ struct S5View: View {
         )
         switch snapshot.volumeDisplayMode {
         case .exact:
-            return "本次清理的照片共 \(value)"
+            return L10n.text(
+                "s5.volume.exact",
+                replacing: ["value": value]
+            )
         case .lowerBound:
-            return "本次清理的照片共至少 \(value)；另有 \(snapshot.unavailableCount) 项体积不可用"
+            return L10n.text(
+                "s5.volume.lower_bound",
+                replacing: [
+                    "value": value,
+                    "count": String(snapshot.unavailableCount)
+                ]
+            )
         }
     }
 
     private func unknownReasonText(_ reason: S4UnknownReason) -> String {
         switch reason {
         case .activeWaitTimedOut:
-            return "等待系统回调超时"
+            return L10n.text("submission.unknown_reason.callback_timeout")
         case .processTerminatedBeforeTerminalResult:
-            return "应用在取得终态前被系统终止"
+            return L10n.text("submission.unknown_reason.process_terminated")
         }
     }
 }

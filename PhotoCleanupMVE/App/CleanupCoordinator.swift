@@ -109,11 +109,14 @@ final class CleanupCoordinator: ObservableObject {
                     assets: machine.assets,
                     cachedConclusions: machine.conclusionCache
                 )
-                message = "无法持久化提交快照：\(error.localizedDescription)"
+                message = L10n.text(
+                    "coordinator.error.persist_submission_snapshot",
+                    replacing: ["error": error.localizedDescription]
+                )
             }
 
         case .rejected:
-            message = "当前状态不能提交删除"
+            message = L10n.text("coordinator.error.invalid_submission_state")
         }
     }
 
@@ -168,7 +171,10 @@ final class CleanupCoordinator: ObservableObject {
             message = nil
             beginPendingScans()
         } catch {
-            message = "无法返回确认页：\(error.localizedDescription)"
+            message = L10n.text(
+                "coordinator.error.return_to_confirmation",
+                replacing: ["error": error.localizedDescription]
+            )
         }
     }
 
@@ -184,7 +190,10 @@ final class CleanupCoordinator: ObservableObject {
             }
             finishSession()
         } catch {
-            message = "无法结束清理会话：\(error.localizedDescription)"
+            message = L10n.text(
+                "coordinator.error.end_session",
+                replacing: ["error": error.localizedDescription]
+            )
         }
     }
 
@@ -239,13 +248,13 @@ final class CleanupCoordinator: ObservableObject {
             message = nil
         case .denied, .restricted:
             assets = []
-            message = "照片库权限不可用"
+            message = L10n.text("coordinator.authorization.unavailable")
         case .notDetermined:
             assets = []
-            message = "照片库授权尚未完成"
+            message = L10n.text("coordinator.authorization.not_completed")
         @unknown default:
             assets = []
-            message = "无法识别照片库授权状态"
+            message = L10n.text("coordinator.authorization.unknown")
         }
 
         loadedAssets = Dictionary(
@@ -339,7 +348,10 @@ final class CleanupCoordinator: ObservableObject {
                 enterCompletion(from: handoff)
             }
         } catch {
-            message = "无法保存执行状态：\(error.localizedDescription)"
+            message = L10n.text(
+                "coordinator.error.persist_execution_state",
+                replacing: ["error": error.localizedDescription]
+            )
         }
     }
 
@@ -368,7 +380,10 @@ final class CleanupCoordinator: ObservableObject {
             message = nil
             return true
         } catch {
-            message = "无法交接完成页：\(error.localizedDescription)"
+            message = L10n.text(
+                "coordinator.error.enter_completion",
+                replacing: ["error": error.localizedDescription]
+            )
             return false
         }
     }
@@ -421,7 +436,10 @@ final class CleanupCoordinator: ObservableObject {
             _ = try machine.handle(event, persist: persistS5)
             s5Machine = machine
         } catch {
-            message = "无法保存完成页状态：\(error.localizedDescription)"
+            message = L10n.text(
+                "coordinator.error.persist_completion_state",
+                replacing: ["error": error.localizedDescription]
+            )
         }
     }
 
@@ -429,7 +447,10 @@ final class CleanupCoordinator: ObservableObject {
         do {
             try persistence.clear()
         } catch {
-            message = "无法清理会话记录：\(error.localizedDescription)"
+            message = L10n.text(
+                "coordinator.error.clear_session_record",
+                replacing: ["error": error.localizedDescription]
+            )
             return
         }
         s4TimerTask?.cancel()
@@ -530,7 +551,7 @@ final class CleanupCoordinator: ObservableObject {
             return true
         } catch {
             try? persistence.clear()
-            message = "会话记录无法恢复，已重新载入测试资产"
+            message = L10n.text("coordinator.error.restore_session")
             return false
         }
     }

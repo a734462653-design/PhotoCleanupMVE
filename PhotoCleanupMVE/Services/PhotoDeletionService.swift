@@ -18,7 +18,7 @@ struct PhotoDeletionService {
                 preflightFailure(
                     snapshot: snapshot,
                     category: .insufficientPermission,
-                    message: "照片库权限不足"
+                    message: L10n.text("deletion.failure.insufficient_permission")
                 )
             ))
             return
@@ -37,7 +37,7 @@ struct PhotoDeletionService {
                 preflightFailure(
                     snapshot: snapshot,
                     category: .assetNotDeletable,
-                    message: "提交集合中存在无法取得的资产"
+                    message: L10n.text("deletion.failure.asset_unavailable")
                 )
             ))
             return
@@ -80,7 +80,7 @@ struct PhotoDeletionService {
             unprocessedAssetIDs: userCancelled ? submitted : [],
             reason: S4FailureReason(
                 category: category,
-                message: message ?? "系统未返回失败说明",
+                message: message ?? L10n.text("deletion.failure.missing_system_reason"),
                 systemDomain: error?.domain,
                 systemCode: error?.code
             ),

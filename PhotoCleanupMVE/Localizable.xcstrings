@@ -1,0 +1,809 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "strings" : {
+    "app.loading.test_assets" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取测试资产"
+          }
+        }
+      }
+    },
+    "app.session.finished" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次清理会话已结束"
+          }
+        }
+      }
+    },
+    "coordinator.authorization.not_completed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片库授权尚未完成"
+          }
+        }
+      }
+    },
+    "coordinator.authorization.unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片库权限不可用"
+          }
+        }
+      }
+    },
+    "coordinator.authorization.unknown" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法识别照片库授权状态"
+          }
+        }
+      }
+    },
+    "coordinator.error.clear_session_record" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法清理会话记录：{error}"
+          }
+        }
+      }
+    },
+    "coordinator.error.end_session" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法结束清理会话：{error}"
+          }
+        }
+      }
+    },
+    "coordinator.error.enter_completion" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法交接完成页：{error}"
+          }
+        }
+      }
+    },
+    "coordinator.error.invalid_submission_state" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前状态不能提交删除"
+          }
+        }
+      }
+    },
+    "coordinator.error.persist_completion_state" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存完成页状态：{error}"
+          }
+        }
+      }
+    },
+    "coordinator.error.persist_execution_state" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存执行状态：{error}"
+          }
+        }
+      }
+    },
+    "coordinator.error.persist_submission_snapshot" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法持久化提交快照：{error}"
+          }
+        }
+      }
+    },
+    "coordinator.error.restore_session" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会话记录无法恢复，已重新载入测试资产"
+          }
+        }
+      }
+    },
+    "coordinator.error.return_to_confirmation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法返回确认页：{error}"
+          }
+        }
+      }
+    },
+    "deletion.failure.asset_unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提交集合中存在无法取得的资产"
+          }
+        }
+      }
+    },
+    "deletion.failure.insufficient_permission" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片库权限不足"
+          }
+        }
+      }
+    },
+    "deletion.failure.missing_system_reason" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统未返回失败说明"
+          }
+        }
+      }
+    },
+    "s3.action.back" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回"
+          }
+        }
+      }
+    },
+    "s3.action.cancel_all" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部取消"
+          }
+        }
+      }
+    },
+    "s3.action.remove" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除"
+          }
+        }
+      }
+    },
+    "s3.action.submit_deletion" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提交删除"
+          }
+        }
+      }
+    },
+    "s3.asset.favorite" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已收藏"
+          }
+        }
+      }
+    },
+    "s3.asset.pending_count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待删除 {count} 张"
+          }
+        }
+      }
+    },
+    "s3.confirmation.recently_deleted_notice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请最终确认以下照片将被移入系统「最近删除」"
+          }
+        }
+      }
+    },
+    "s3.navigation.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认删除"
+          }
+        }
+      }
+    },
+    "s3.section.actions" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作"
+          }
+        }
+      }
+    },
+    "s3.section.pending_assets" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待删除资产"
+          }
+        }
+      }
+    },
+    "s3.section.status" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态"
+          }
+        }
+      }
+    },
+    "s3.state.empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有待删除照片"
+          }
+        }
+      }
+    },
+    "s3.state.over_limit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待删除数量超过上限"
+          }
+        }
+      }
+    },
+    "s3.state.ready" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可以提交删除"
+          }
+        }
+      }
+    },
+    "s3.state.scanning" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在计算照片体积"
+          }
+        }
+      }
+    },
+    "s3.submission.limit_notice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单次最多提交 200 张"
+          }
+        }
+      }
+    },
+    "s3.submission.over_limit_notice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单次最多提交 200 张，请分批处理"
+          }
+        }
+      }
+    },
+    "s3.volume.empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可计算的照片体积"
+          }
+        }
+      }
+    },
+    "s3.volume.exact" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片体积 {known}"
+          }
+        }
+      }
+    },
+    "s3.volume.lower_bound" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片体积 ≥ {known}；另有 {count} 项体积不可用"
+          }
+        }
+      }
+    },
+    "s3.volume.over_limit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "减至 200 张以内后显示或计算体积"
+          }
+        }
+      }
+    },
+    "s3.volume.scanning" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在计算；当前已知 {known}，不可用 {count} 项（未完成）"
+          }
+        }
+      }
+    },
+    "s4.navigation.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "执行删除"
+          }
+        }
+      }
+    },
+    "s4.section.all_succeeded" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全批成功"
+          }
+        }
+      }
+    },
+    "s4.section.batch_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整批失败"
+          }
+        }
+      }
+    },
+    "s4.section.confirming_result" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在确认删除结果"
+          }
+        }
+      }
+    },
+    "s4.section.result_unknown" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结果未知"
+          }
+        }
+      }
+    },
+    "s4.section.submitted" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除请求已提交"
+          }
+        }
+      }
+    },
+    "s4.status.waiting_for_system_result" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待系统返回结果"
+          }
+        }
+      }
+    },
+    "s4.status.waiting_for_system_result_active" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待系统返回结果"
+          }
+        }
+      }
+    },
+    "s4.summary.failure_count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败 {count} 张"
+          }
+        }
+      }
+    },
+    "s4.summary.submitted_count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提交 {count} 张"
+          }
+        }
+      }
+    },
+    "s4.summary.success_count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成功 {count} 张"
+          }
+        }
+      }
+    },
+    "s4.summary.unprocessed_count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未处理 {count} 张"
+          }
+        }
+      }
+    },
+    "s5.action.confirm_recently_deleted_cleared" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我已清空最近删除"
+          }
+        }
+      }
+    },
+    "s5.action.finish" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成"
+          }
+        }
+      }
+    },
+    "s5.action.leave" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离开"
+          }
+        }
+      }
+    },
+    "s5.action.return_to_confirmation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回确认页"
+          }
+        }
+      }
+    },
+    "s5.failure.retry_notice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保留原提交集合，可返回确认页再次尝试"
+          }
+        }
+      }
+    },
+    "s5.navigation.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清理结果"
+          }
+        }
+      }
+    },
+    "s5.placeholder.disclaimer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统标注截图占位图，不属于正式交付素材"
+          }
+        }
+      }
+    },
+    "s5.recently_deleted.boundary_notice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片已移入系统「最近删除」，仍由系统保留。App 无法读取或清空该位置。请打开系统「照片」，进入「实用工具」中的「最近删除」，由你完成清空，然后返回本页。"
+          }
+        }
+      }
+    },
+    "s5.section.deletion_incomplete" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次删除未完成"
+          }
+        }
+      }
+    },
+    "s5.section.deletion_result_unknown" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次删除结果未知"
+          }
+        }
+      }
+    },
+    "s5.section.moved_to_recently_deleted" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已移入最近删除"
+          }
+        }
+      }
+    },
+    "s5.status.device_space_waiting" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备可用空间仍在等待你的系统操作"
+          }
+        }
+      }
+    },
+    "s5.status.result_unknown" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理结果未知"
+          }
+        }
+      }
+    },
+    "s5.summary.failure_result" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理结果：成功 {success} 张，失败 {failure} 张，未处理 {unprocessed} 张"
+          }
+        }
+      }
+    },
+    "s5.summary.success_result" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理结果：成功 {success} 张，失败 0 张，未处理 0 张"
+          }
+        }
+      }
+    },
+    "s5.unknown.manual_verification_notice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请人工核对照片原位置与系统「最近删除」"
+          }
+        }
+      }
+    },
+    "s5.volume.exact" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次清理的照片共 {value}"
+          }
+        }
+      }
+    },
+    "s5.volume.lower_bound" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次清理的照片共至少 {value}；另有 {count} 项体积不可用"
+          }
+        }
+      }
+    },
+    "s5.volume.original_submission_disclaimer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该数值只描述原提交集合的体积，不代表处理结果或设备可用空间变化"
+          }
+        }
+      }
+    },
+    "submission.asset_count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次提交 {count} 张"
+          }
+        }
+      }
+    },
+    "submission.unknown_reason.callback_timeout" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待系统回调超时"
+          }
+        }
+      }
+    },
+    "submission.unknown_reason.process_terminated" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用在取得终态前被系统终止"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

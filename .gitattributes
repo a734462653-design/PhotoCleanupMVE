@@ -6,5 +6,6 @@
 *.pbxproj text eol=lf
 *.xcscheme text eol=lf
 *.json text eol=lf
+*.xcstrings text eol=lf
 *.md text eol=lf
 *.ps1 text eol=lf

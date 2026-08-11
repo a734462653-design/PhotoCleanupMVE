@@ -19,8 +19,10 @@ $requiredFiles = @(
     "PhotoCleanupMVE/Assets.xcassets/Contents.json",
     "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/Contents.json",
     "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/RECENTLY_DELETED_PLACEHOLDER.png",
+    "PhotoCleanupMVE/Localizable.xcstrings",
     "PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift",
     "PhotoCleanupMVE/App/CleanupCoordinator.swift",
+    "PhotoCleanupMVE/Core/L10n.swift",
     "PhotoCleanupMVE/Core/AssetModels.swift",
     "PhotoCleanupMVE/Core/S3StateMachine.swift",
     "PhotoCleanupMVE/Core/S4StateMachine.swift",
@@ -40,6 +42,8 @@ $requiredFiles = @(
     "PhotoCleanupMVETests/S5StateMachineTests.swift",
     "PhotoCleanupMVETests/CollectionInvariantTests.swift",
     "Scripts/test-xcode.sh",
+    "Scripts/scan-hardcoded-user-visible-strings.ps1",
+    "Reports/IC-20260811-002-SELF-VERIFICATION.md",
     "Reports/SELF-VERIFICATION.md",
     "Reports/CHANGE-LOG-007R.md",
     "Reports/UNDECIDED-ITEMS.md",
@@ -85,6 +89,8 @@ if (Test-Path -LiteralPath $projectFile -PathType Leaf) {
         "S4View.swift",
         "S5View.swift",
         "ThumbnailView.swift",
+        "L10n.swift",
+        "Localizable.xcstrings",
         "S3StateMachineTests.swift",
         "SnapshotInvariantTests.swift",
         "VolumeFormattingTests.swift",
@@ -165,6 +171,34 @@ if (Test-Path -LiteralPath $pngFile -PathType Leaf) {
     }
 }
 
+$placeholderContentsFile = Join-Path $projectRoot "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/Contents.json"
+if (Test-Path -LiteralPath $placeholderContentsFile -PathType Leaf) {
+    try {
+        $placeholderContents = Get-Content -LiteralPath $placeholderContentsFile -Raw -Encoding UTF8 |
+            ConvertFrom-Json
+        $placeholderLocales = @(
+            $placeholderContents.images |
+                ForEach-Object { $_.locale } |
+                Sort-Object -Unique
+        )
+        $placeholderFilenames = @(
+            $placeholderContents.images |
+                Where-Object { $_.PSObject.Properties.Name -contains "filename" } |
+                ForEach-Object { $_.filename }
+        )
+        if ($placeholderLocales.Count -ne 1 -or $placeholderLocales[0] -ne "zh-Hans") {
+            Add-Failure "PLACEHOLDER 图片语言条目必须且只能是 zh-Hans"
+        }
+        if ($placeholderFilenames.Count -ne 1 -or
+            $placeholderFilenames[0] -ne "RECENTLY_DELETED_PLACEHOLDER.png") {
+            Add-Failure "PLACEHOLDER 必须只填一份现有 zh-Hans PNG"
+        }
+    }
+    catch {
+        Add-Failure "PLACEHOLDER Contents.json 无法解析：$($_.Exception.Message)"
+    }
+}
+
 $swiftDirectories = @(
     (Join-Path $projectRoot "PhotoCleanupMVE/App"),
     (Join-Path $projectRoot "PhotoCleanupMVE/Core"),
@@ -237,8 +271,8 @@ if (Test-Path -LiteralPath $testDirectory -PathType Container) {
     $testFiles = Get-ChildItem -LiteralPath $testDirectory -Filter "*.swift" -File
     if ($testFiles.Count -gt 0) {
         $testCases = Select-String -LiteralPath $testFiles.FullName -Pattern "^\s*func\s+test"
-        if ($testCases.Count -lt 51) {
-            Add-Failure "XCTest 测试函数仅 $($testCases.Count) 个，少于 51 个可达迁移单元格"
+        if ($testCases.Count -ne 136) {
+            Add-Failure "XCTest 测试函数应为 136 个，实际为 $($testCases.Count) 个"
         }
 
         $s3Cells = Select-String -LiteralPath (Join-Path $testDirectory "S3StateMachineTests.swift") -Pattern "testCell([0-9]{2})" -AllMatches
@@ -261,6 +295,14 @@ if (Test-Path -LiteralPath $testDirectory -PathType Container) {
     }
 }
 
+$hardcodedStringScanner = Join-Path $projectRoot "Scripts/scan-hardcoded-user-visible-strings.ps1"
+if (Test-Path -LiteralPath $hardcodedStringScanner -PathType Leaf) {
+    & $hardcodedStringScanner
+    if ($LASTEXITCODE -ne 0) {
+        Add-Failure "用户可见硬编码字符串扫描未通过"
+    }
+}
+
 if ($failures.Count -gt 0) {
     Write-Host "结构自验失败，共 $($failures.Count) 项：" -ForegroundColor Red
     foreach ($failure in $failures) {
@@ -269,4 +311,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host "结构自验通过：文件、工程配置、PNG 签名、禁联网门禁及测试数量均符合要求。" -ForegroundColor Green
+Write-Host "结构自验通过：文件、工程配置、String Catalog、PNG、禁联网门禁、硬编码扫描及 136 项测试数量均符合要求。" -ForegroundColor Green

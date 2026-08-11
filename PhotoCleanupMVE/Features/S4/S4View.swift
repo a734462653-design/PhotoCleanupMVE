@@ -15,7 +15,7 @@ struct S4View: View {
                     content(machine)
                 }
             }
-            .navigationTitle("执行删除")
+            .navigationTitle(L10n.text("s4.navigation.title"))
         }
     }
 
@@ -23,43 +23,66 @@ struct S4View: View {
     private func content(_ machine: S4StateMachine) -> some View {
         switch machine.state {
         case .submitted:
-            Section("删除请求已提交") {
+            Section(L10n.text("s4.section.submitted")) {
                 ProgressView()
-                Text("本次提交 \(machine.snapshot.assetCount) 张")
-                Text("正在等待系统返回结果")
+                Text(submissionCountText(machine.snapshot.assetCount))
+                Text(L10n.text("s4.status.waiting_for_system_result_active"))
             }
         case .resumedInteraction:
-            Section("正在确认删除结果") {
+            Section(L10n.text("s4.section.confirming_result")) {
                 ProgressView()
-                Text("本次提交 \(machine.snapshot.assetCount) 张")
-                Text("等待系统返回结果")
+                Text(submissionCountText(machine.snapshot.assetCount))
+                Text(L10n.text("s4.status.waiting_for_system_result"))
             }
         case let .allSucceeded(result):
-            Section("全批成功") {
-                Text("提交 \(machine.snapshot.assetCount) 张")
-                Text("成功 \(result.successfulAssetIDs.count) 张")
+            Section(L10n.text("s4.section.all_succeeded")) {
+                Text(L10n.text(
+                    "s4.summary.submitted_count",
+                    replacing: ["count": String(machine.snapshot.assetCount)]
+                ))
+                Text(successCountText(result.successfulAssetIDs.count))
             }
         case let .batchFailed(callback):
-            Section("整批失败") {
-                Text("成功 \(callback.successfulAssetIDs.count) 张")
-                Text("失败 \(callback.failedAssetIDs.count) 张")
-                Text("未处理 \(callback.unprocessedAssetIDs.count) 张")
+            Section(L10n.text("s4.section.batch_failed")) {
+                Text(successCountText(callback.successfulAssetIDs.count))
+                Text(L10n.text(
+                    "s4.summary.failure_count",
+                    replacing: ["count": String(callback.failedAssetIDs.count)]
+                ))
+                Text(L10n.text(
+                    "s4.summary.unprocessed_count",
+                    replacing: ["count": String(callback.unprocessedAssetIDs.count)]
+                ))
                 Text(callback.reason.message)
             }
         case let .resultUnknown(reason):
-            Section("结果未知") {
-                Text("本次提交 \(machine.snapshot.assetCount) 张")
+            Section(L10n.text("s4.section.result_unknown")) {
+                Text(submissionCountText(machine.snapshot.assetCount))
                 Text(unknownReasonText(reason))
             }
         }
     }
 
+    private func submissionCountText(_ count: Int) -> String {
+        L10n.text(
+            "submission.asset_count",
+            replacing: ["count": String(count)]
+        )
+    }
+
+    private func successCountText(_ count: Int) -> String {
+        L10n.text(
+            "s4.summary.success_count",
+            replacing: ["count": String(count)]
+        )
+    }
+
     private func unknownReasonText(_ reason: S4UnknownReason) -> String {
         switch reason {
         case .activeWaitTimedOut:
-            return "等待系统回调超时"
+            return L10n.text("submission.unknown_reason.callback_timeout")
         case .processTerminatedBeforeTerminalResult:
-            return "应用在取得终态前被系统终止"
+            return L10n.text("submission.unknown_reason.process_terminated")
         }
     }
 }
