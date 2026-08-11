@@ -163,7 +163,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Scripts\scan-hardcoded
 | 硬编码扫描 | 通过；用户可见残留 0 |
 | 测试源码与断言 | 相对基线逐文件 Git blob 一致 |
 | XCTest 静态方法数 | 136；分布为 15、32、38、25、20、6 |
-| macOS Xcode 编译与 XCTest | 待本任务提交推送后由 GitHub Actions 执行 |
-| CI 链接 | 待最终提交产生后回填 |
+| 验证提交 | `9ac4764606fdbb8c1d0ca52928af611aa93100e8` |
+| macOS 环境 | Xcode 16.4；iPhone 16 模拟器；iOS 18.5 |
+| XCTest 实跑 | 通过；136 项，0 失败，0 unexpected；日志出现 `TEST SUCCEEDED` |
+| Release 真机 SDK 构建 | 通过；日志出现 `BUILD SUCCEEDED` |
+| CI 运行 | [iOS 构建与自验 #6](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31457808371)，状态成功，耗时 3 分 29 秒 |
+| CI 任务 | [构建、XCTest 与未签名产物](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31457808371/job/93675131847) |
 
-当前 Windows 环境没有 Xcode，不能把静态检查冒充实际编译或 XCTest。最终的编译成功、136 项 0 失败 0 unexpected 必须以新提交的 macOS CI 日志为准。
+CI #6 同时成功执行结构自验、String Catalog 编译、资产目录编译、模拟器 XCTest、Release 无签名构建与未签名 IPA 上传。上述 136 项测试与构建结论均来自新提交的 macOS CI 日志，不以 Windows 静态计数代替。
