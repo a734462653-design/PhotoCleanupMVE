@@ -9,7 +9,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $testRoot = Join-Path $projectRoot "PhotoCleanupMVETests"
 $matrixPath = Join-Path $projectRoot "Reports/TRACEABILITY-S3-S5.md"
 $projectPath = Join-Path $projectRoot "PhotoCleanupMVE.xcodeproj/project.pbxproj"
-$baseline = "5a76d734a9783e303ff44646928a687155946708"
+$baseline = "cb19f63b4338f8d004337926d8cf71f6ddbacbe3"
 $failures = [System.Collections.Generic.List[string]]::new()
 $checkCount = 0
 
