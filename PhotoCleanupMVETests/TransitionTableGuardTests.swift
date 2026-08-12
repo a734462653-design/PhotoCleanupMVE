@@ -42,7 +42,9 @@ final class TransitionTableGuardTests: XCTestCase {
 
             switch cell.specification {
             case "SPEC-S3-S4-20260812.v6.md":
-                if cell.sourceState.hasPrefix("S3-") || cell.sourceState == "页面外" {
+                if cell.sourceState == "S3-2 外部源" {
+                    try assertS4Unreachable(cell)
+                } else if cell.sourceState.hasPrefix("S3-") || cell.sourceState == "页面外" {
                     try assertS3Unreachable(cell)
                 } else {
                     try assertS4Unreachable(cell)
