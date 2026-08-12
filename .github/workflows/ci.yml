@@ -27,7 +27,7 @@ jobs:
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
           authorization="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\r\n')"
           git -c http.extraheader="AUTHORIZATION: basic $authorization" \
-            fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+            fetch --no-tags --depth=50 origin "$GITHUB_SHA"
           unset authorization GITHUB_TOKEN
           git checkout --detach FETCH_HEAD
 
