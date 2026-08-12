@@ -2,7 +2,7 @@
 
 ## 一、当前结论
 
-删除服务可注入接缝、三条专项 XCTest 与结构自验脚本已经落位。本地专项自验通过，共执行 54 项检查；macOS CI 编译、XCTest、未签名 IPA 证据将在提交后回填。
+本卡实现、自验与 CI 均已完成。Windows 本地专项自验通过，共执行 54 项检查；macOS CI #16 成功，179 项 XCTest 全部通过，0 失败、0 unexpected；未签名 Release 构建及 IPA 上传成功。
 
 ## 二、实现范围
 
@@ -36,12 +36,16 @@
 - SPEC 文件：未改动。
 - `Reports/TRACEABILITY-S3-S5.md`：未改动，SHA-256 仍为 `54B409B912A259CBE0028F35E70001CF2263A6A9E2799A1E75F34124055E7C50`。
 - S3/S5 状态机、String Catalog、UI：未改动。
-- 阻塞清单：本地结构自验阶段无；待 XCTest 与 CI 完成后最终确认。
+- 阻塞清单：无。
 
 ## 六、提交与 CI 证据
 
-- 受验提交：待提交。
-- 最终 CI：待触发。
-- XCTest：待 CI 回填。
-- 未签名 IPA：待 CI 回填。
-- 报告回填提交：待 CI 成功后以仅报告提交完成；届时将明确注明报告自身为末次提交。
+- 受验实现提交：`01ebf8263d20a58340aedd78be98cadd06d30eb0`。
+- 最终 CI：`iOS 构建与自验 #16`，运行 ID `31620135992`，总耗时 10 分 28 秒，状态成功。运行链接：[引入删除服务冻结接缝 #16](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31620135992)；任务链接：[构建、XCTest 与未签名产物](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31620135992/job/94192607526)。
+- XCTest：共执行 179 项，0 失败、0 unexpected；日志终态为 `TEST SUCCEEDED`，XCTest 步骤耗时 9 分 46 秒。
+- 未签名 IPA：`PhotoCleanupMVE-unsigned.ipa`，242548 字节，文件 SHA-256 为 `c5db923c70e0b876585129ec9d3520ddfa3d850ba60f0a26649a8c0515e8b224`。
+- 可下载产物：`PhotoCleanupMVE-unsigned-01ebf8263d20`，产物 ID `9151209182`，GitHub 归档摘要为 `26aed38bbbef7121a0281e0421b197193fb95a10297f4315762d795110ecf276`；[产物链接](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31620135992/artifacts/9151209182)。
+
+## 七、末次提交说明
+
+本报告回填提交自身为仓库末次提交，并使用 `[skip ci]`，因此不会产生晚于 #16 的报告专用 CI。Git 提交对象无法在自身内容中嵌入自身哈希；末次提交完整哈希以任务最终回传及仓库 `HEAD` 为准。最终受验产品与测试代码仍为上节记录的 `01ebf8263d20a58340aedd78be98cadd06d30eb0`，CI #16 对该提交完成了全部验收。
