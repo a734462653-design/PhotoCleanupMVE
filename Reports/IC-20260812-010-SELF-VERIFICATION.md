@@ -2,7 +2,7 @@
 
 ## 结论
 
-实现与测试已同步到指定的 S3–S4 v6 / S5 v5 基线。本地专项静态自验与用户可见硬编码扫描已通过；XCTest、未签名 IPA 与 CI 链接将在实现提交触发的 macOS CI 完成后回填。
+实现与测试已同步到指定的 S3–S4 v6 / S5 v5 基线。本地专项静态自验、用户可见硬编码扫描、GitHub Actions 构建与 XCTest 均已通过，并已产出未签名 IPA。
 
 ## 输入与范围
 
@@ -60,11 +60,9 @@
 & ./Scripts/verify-IC-20260812-010.ps1
 ```
 
-待最终复跑后回填：
-
 - 专项静态自验：通过，退出码 0。
 - 硬编码扫描：通过，用户可见硬编码残留 0，目录缺失 key 0、未引用 key 0。
-- XCTest：待 CI 回填。
-- CI：待回填。
-- 未签名 IPA：待回填。
-- 实现提交：待回填。
+- XCTest：149 项，0 失败、0 unexpected；日志包含 `TEST SUCCEEDED`。
+- CI：[iOS 构建与自验 #8](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31572927478)，结论 Success，总时长 3 分 27 秒。
+- 未签名 IPA：[PhotoCleanupMVE-unsigned-508f3b0c997a](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31572927478/artifacts/9132103564)；文件名 `PhotoCleanupMVE-unsigned.ipa`，字节数 240239，文件 SHA-256 为 `19CC8F3300274C214A5152508FFEB41AA21C49F96D96DAFC694FDCE3B21A78D7`。
+- 实现提交：`508F3B0C997A05E5A2FF62F4F8FA43848C0EC53E`。
