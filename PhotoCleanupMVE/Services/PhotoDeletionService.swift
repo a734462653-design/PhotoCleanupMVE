@@ -6,7 +6,26 @@ enum PhotoDeletionOutcome {
     case failure(S4FailureCallback)
 }
 
-struct PhotoDeletionService {
+protocol PhotoDeletionServicing: Sendable {
+    func startDeletion(
+        snapshot: SubmissionSnapshot,
+        completion: @escaping (PhotoDeletionOutcome) -> Void
+    )
+
+    func systemFailureCallback(
+        snapshot: SubmissionSnapshot,
+        error: NSError?,
+        receivedAt: Date
+    ) -> S4FailureCallback
+}
+
+enum DeletionServiceDependency {
+    static func production() -> any PhotoDeletionServicing {
+        PhotoDeletionService()
+    }
+}
+
+struct PhotoDeletionService: PhotoDeletionServicing {
     func startDeletion(
         snapshot: SubmissionSnapshot,
         completion: @escaping (PhotoDeletionOutcome) -> Void

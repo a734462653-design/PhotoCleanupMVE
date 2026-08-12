@@ -530,6 +530,84 @@ final class S4StateMachineTests: XCTestCase {
         XCTAssertEqual(persisted.phase, .submissionSucceeded)
     }
 
+    func testC34_020DeletionStartsOnlyAfterSnapshotFreeze() throws {
+        let submissionSource = S3StateMachine(
+            assets: [
+                AssetDescriptor(identifier: "资产-A", isFavorite: false),
+                AssetDescriptor(identifier: "资产-B", isFavorite: true)
+            ],
+            cachedConclusions: [
+                "资产-A": .knownBytes(1_000),
+                "资产-B": .knownBytes(2_000)
+            ],
+            submissionIDGenerator: { "提交-冻结顺序" },
+            clock: { self.fixedDate }
+        )
+        let deletionService = SpyDeletionService()
+        var didPersistS4 = false
+        var frozenSnapshotObservedAtCall: SubmissionSnapshot?
+        deletionService.onStartDeletion = { _ in
+            frozenSnapshotObservedAtCall = submissionSource.frozenSnapshot
+        }
+
+        guard let machine = try S4StateMachine.start(
+            from: submissionSource,
+            deletionService: deletionService,
+            claimAndPersist: { _ in
+                didPersistS4 = true
+                return true
+            }
+        ) else {
+            return XCTFail("完整的 S3-2 集合应形成可删除的 S4 状态机")
+        }
+
+        XCTAssertTrue(didPersistS4)
+        XCTAssertTrue(machine.startDeletion { _ in })
+        XCTAssertEqual(frozenSnapshotObservedAtCall, machine.snapshot)
+        XCTAssertEqual(submissionSource.frozenSnapshot, machine.snapshot)
+        XCTAssertEqual(deletionService.startDeletionCallCount, 1)
+        XCTAssertEqual(deletionService.callOrder, [.startDeletion])
+        XCTAssertEqual(deletionService.receivedSnapshots, [machine.snapshot])
+    }
+
+    func testC34_047UnfrozenSnapshotCannotReachDeletionService() throws {
+        let deletionService = SpyDeletionService()
+        let machine = try S4StateMachine.start(
+            snapshot: makeSnapshot(),
+            claimAndPersist: acceptInitialPersistence
+        )
+
+        XCTAssertFalse(machine.startDeletion { _ in })
+        XCTAssertEqual(deletionService.callCount, 0)
+        XCTAssertTrue(deletionService.callOrder.isEmpty)
+        XCTAssertTrue(deletionService.receivedSnapshots.isEmpty)
+    }
+
+    func testC34_104FreezeFailureDoesNotCallDeletionService() throws {
+        let submissionSource = S3StateMachine(
+            assets: [AssetDescriptor(identifier: "仍在扫描", isFavorite: false)]
+        )
+        let deletionService = SpyDeletionService()
+        var claimCallCount = 0
+
+        let machine = try S4StateMachine.start(
+            from: submissionSource,
+            deletionService: deletionService,
+            claimAndPersist: { _ in
+                claimCallCount += 1
+                return true
+            }
+        )
+
+        XCTAssertNil(machine)
+        XCTAssertEqual(submissionSource.state, .scanning)
+        XCTAssertNil(submissionSource.frozenSnapshot)
+        XCTAssertEqual(claimCallCount, 0)
+        XCTAssertEqual(deletionService.startDeletionCallCount, 0)
+        XCTAssertTrue(deletionService.callOrder.isEmpty)
+        XCTAssertTrue(deletionService.receivedSnapshots.isEmpty)
+    }
+
     private func makeSnapshot() -> SubmissionSnapshot {
         SubmissionSnapshot(
             submissionID: "提交-001",
@@ -631,5 +709,61 @@ final class S4StateMachineTests: XCTestCase {
     private func acceptInitialPersistence(_ state: S4PersistentState) throws -> Bool {
         _ = state
         return true
+    }
+}
+
+// 删除服务测试替身只记录交互，不触发系统照片库。
+private final class SpyDeletionService: PhotoDeletionServicing, @unchecked Sendable {
+    enum Call: Equatable {
+        case startDeletion
+        case systemFailureCallback
+    }
+
+    private(set) var callOrder: [Call] = []
+    private(set) var receivedSnapshots: [SubmissionSnapshot] = []
+    var onStartDeletion: ((SubmissionSnapshot) -> Void)?
+
+    var callCount: Int {
+        callOrder.count
+    }
+
+    var startDeletionCallCount: Int {
+        callOrder.filter { $0 == .startDeletion }.count
+    }
+
+    var systemFailureCallbackCallCount: Int {
+        callOrder.filter { $0 == .systemFailureCallback }.count
+    }
+
+    func startDeletion(
+        snapshot: SubmissionSnapshot,
+        completion: @escaping (PhotoDeletionOutcome) -> Void
+    ) {
+        callOrder.append(.startDeletion)
+        receivedSnapshots.append(snapshot)
+        onStartDeletion?(snapshot)
+        _ = completion
+    }
+
+    func systemFailureCallback(
+        snapshot: SubmissionSnapshot,
+        error: NSError?,
+        receivedAt: Date
+    ) -> S4FailureCallback {
+        callOrder.append(.systemFailureCallback)
+        receivedSnapshots.append(snapshot)
+        return S4FailureCallback(
+            submissionID: snapshot.submissionID,
+            successfulAssetIDs: [],
+            failedAssetIDs: [],
+            unprocessedAssetIDs: Set(snapshot.assetIDs),
+            reason: S4FailureReason(
+                category: .unknown,
+                message: "测试替身未执行系统删除",
+                systemDomain: error?.domain,
+                systemCode: error?.code
+            ),
+            receivedAt: receivedAt
+        )
     }
 }

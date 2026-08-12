@@ -155,6 +155,15 @@ struct S4StateMachine: Sendable {
     static let timeoutLimitSeconds: TimeInterval = 60
 
     private(set) var persistentState: S4PersistentState
+    private let deletionService: (any PhotoDeletionServicing)?
+
+    private init(
+        persistentState: S4PersistentState,
+        deletionService: (any PhotoDeletionServicing)? = nil
+    ) {
+        self.persistentState = persistentState
+        self.deletionService = deletionService
+    }
 
     var snapshot: SubmissionSnapshot {
         persistentState.snapshot
@@ -241,6 +250,38 @@ struct S4StateMachine: Sendable {
             throw S4StateMachineError.duplicateSubmission
         }
         return S4StateMachine(persistentState: initialState)
+    }
+
+    static func start(
+        from submissionSource: S3StateMachine,
+        deletionService: any PhotoDeletionServicing,
+        claimAndPersist: (S4PersistentState) throws -> Bool
+    ) throws -> S4StateMachine? {
+        guard case let .frozen(snapshot) = submissionSource.freezeSubmissionSnapshot() else {
+            return nil
+        }
+        let machine = try start(
+            snapshot: snapshot,
+            claimAndPersist: claimAndPersist
+        )
+        return S4StateMachine(
+            persistentState: machine.persistentState,
+            deletionService: deletionService
+        )
+    }
+
+    @discardableResult
+    func startDeletion(
+        completion: @escaping (PhotoDeletionOutcome) -> Void
+    ) -> Bool {
+        guard let deletionService else {
+            return false
+        }
+        deletionService.startDeletion(
+            snapshot: snapshot,
+            completion: completion
+        )
+        return true
     }
 
     mutating func handle(

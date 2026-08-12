@@ -22,7 +22,7 @@ final class CleanupCoordinator: ObservableObject {
 
     private let photoLibrary: PhotoLibraryService
     private let sizeScanner: AssetSizeScanner
-    private let deletionService: PhotoDeletionService
+    private let deletionService: any PhotoDeletionServicing
     private let freeDiskSpaceReader: FreeDiskSpaceReader
     private let persistence: SessionPersistence
 
@@ -36,7 +36,7 @@ final class CleanupCoordinator: ObservableObject {
     init(
         photoLibrary: PhotoLibraryService? = nil,
         sizeScanner: AssetSizeScanner = AssetSizeScanner(),
-        deletionService: PhotoDeletionService = PhotoDeletionService(),
+        deletionService: any PhotoDeletionServicing = DeletionServiceDependency.production(),
         freeDiskSpaceReader: FreeDiskSpaceReader = FreeDiskSpaceReader(),
         persistence: SessionPersistence = SessionPersistence()
     ) {
@@ -88,38 +88,37 @@ final class CleanupCoordinator: ObservableObject {
             return
         }
         objectWillChange.send()
-        switch machine.freezeSubmissionSnapshot() {
-        case let .frozen(snapshot):
-            do {
-                let next = try S4StateMachine.start(
-                    snapshot: snapshot,
-                    claimAndPersist: claimS4
-                )
-                s4Machine = next
-                message = nil
-                deletionService.startDeletion(snapshot: snapshot) { [weak self] outcome in
-                    Task { @MainActor [weak self] in
-                        self?.receiveDeletionOutcome(
-                            outcome,
-                            submissionID: snapshot.submissionID
-                        )
-                    }
-                }
-                route = .execution
-                startS4TimerIfNeeded()
-            } catch {
-                s3Machine = S3StateMachine(
-                    assets: machine.assets,
-                    cachedConclusions: machine.conclusionCache
-                )
-                message = L10n.text(
-                    "coordinator.error.persist_submission_snapshot",
-                    replacing: ["error": error.localizedDescription]
-                )
+        do {
+            guard let next = try S4StateMachine.start(
+                from: machine,
+                deletionService: deletionService,
+                claimAndPersist: claimS4
+            ) else {
+                message = L10n.text("coordinator.error.invalid_submission_state")
+                return
             }
-
-        case .rejected:
-            message = L10n.text("coordinator.error.invalid_submission_state")
+            s4Machine = next
+            message = nil
+            let snapshot = next.snapshot
+            next.startDeletion { [weak self] outcome in
+                Task { @MainActor [weak self] in
+                    self?.receiveDeletionOutcome(
+                        outcome,
+                        submissionID: snapshot.submissionID
+                    )
+                }
+            }
+            route = .execution
+            startS4TimerIfNeeded()
+        } catch {
+            s3Machine = S3StateMachine(
+                assets: machine.assets,
+                cachedConclusions: machine.conclusionCache
+            )
+            message = L10n.text(
+                "coordinator.error.persist_submission_snapshot",
+                replacing: ["error": error.localizedDescription]
+            )
         }
     }
 

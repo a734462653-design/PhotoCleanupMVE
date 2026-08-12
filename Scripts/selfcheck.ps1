@@ -302,8 +302,8 @@ if (Test-Path -LiteralPath $testDirectory -PathType Container) {
     $testFiles = Get-ChildItem -LiteralPath $testDirectory -Filter "*.swift" -File
     if ($testFiles.Count -gt 0) {
         $testCases = Select-String -LiteralPath $testFiles.FullName -Pattern "^\s*func\s+test"
-        if ($testCases.Count -ne 176) {
-            Add-Failure "XCTest 测试函数应为 176 个，实际为 $($testCases.Count) 个"
+        if ($testCases.Count -ne 179) {
+            Add-Failure "XCTest 测试函数应为 179 个，实际为 $($testCases.Count) 个"
         }
 
         $s3Cells = Select-String -LiteralPath (Join-Path $testDirectory "S3StateMachineTests.swift") -Pattern "testCell([0-9]{2})" -AllMatches
@@ -357,4 +357,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host "结构自验通过：文件、工程配置、String Catalog、PNG、禁联网门禁、硬编码扫描及 176 项测试数量均符合要求。" -ForegroundColor Green
+Write-Host "结构自验通过：文件、工程配置、String Catalog、PNG、禁联网门禁、硬编码扫描及 179 项测试数量均符合要求。" -ForegroundColor Green
