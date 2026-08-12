@@ -12,7 +12,7 @@ enum CleanupRoute: Equatable {
 
 @MainActor
 final class CleanupCoordinator: ObservableObject {
-    static let debugAssetLimit = 20
+    static let debugAssetLimit = 300
 
     @Published private(set) var route: CleanupRoute = .loading
     @Published private(set) var s3Machine: S3StateMachine?

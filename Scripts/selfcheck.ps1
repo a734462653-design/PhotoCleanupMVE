@@ -261,9 +261,17 @@ if ($swiftFiles.Count -gt 0) {
         }
     }
 
-    $debugEntry = Select-String -LiteralPath $swiftFiles.FullName -Pattern "static\s+let\s+debugAssetLimit\s*=\s*20"
-    if (-not $debugEntry) {
-        Add-Failure "调试入口常量缺失或默认值不是 20"
+    $debugEntries = @(
+        Select-String -LiteralPath $swiftFiles.FullName -Pattern "static\s+let\s+debugAssetLimit\s*=\s*\d+"
+    )
+    if ($debugEntries.Count -ne 1) {
+        Add-Failure "调试入口常量定义数必须为 1，实际为 $($debugEntries.Count)"
+    }
+    $debugEntryUses = @(
+        Select-String -LiteralPath $swiftFiles.FullName -Pattern "limit:\s*Self\.debugAssetLimit"
+    )
+    if ($debugEntryUses.Count -ne 1) {
+        Add-Failure "调试入口取样调用必须且只能引用常量 1 次，实际为 $($debugEntryUses.Count)"
     }
 
     $removedS3Patterns = @(
