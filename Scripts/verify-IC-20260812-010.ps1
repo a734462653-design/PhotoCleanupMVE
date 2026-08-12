@@ -187,8 +187,8 @@ foreach ($testName in $requiredS5CancellationTests) {
 }
 
 $testCases = @(Select-String -LiteralPath $testSwiftFiles.FullName -Pattern "^\s*func\s+test")
-if ($testCases.Count -ne 149) {
-    Add-Failure "XCTest 静态计数应为 149，实际为 $($testCases.Count)"
+if ($testCases.Count -ne 176) {
+    Add-Failure "XCTest 静态计数应为 176，实际为 $($testCases.Count)"
 }
 
 $workspaceRoot = Split-Path -Parent $projectRoot
@@ -217,4 +217,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host "专项自验通过：S3 三状态、S4 四值交接、S5-C、L3 两次单读、按钮启用及 149 项测试静态覆盖均符合本卡要求。" -ForegroundColor Green
+Write-Host "专项自验通过：S3 三状态、S4 四值交接、S5-C、L3 两次单读、按钮启用及 176 项测试静态覆盖均符合本卡要求。" -ForegroundColor Green

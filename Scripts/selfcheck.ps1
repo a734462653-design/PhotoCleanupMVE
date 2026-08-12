@@ -42,6 +42,8 @@ $requiredFiles = @(
     "PhotoCleanupMVETests/S4StateMachineTests.swift",
     "PhotoCleanupMVETests/S5StateMachineTests.swift",
     "PhotoCleanupMVETests/CollectionInvariantTests.swift",
+    "PhotoCleanupMVETests/TransitionTableGuardTests.swift",
+    "PhotoCleanupMVETests/CoverageGapTests.swift",
     "Scripts/test-xcode.sh",
     "Scripts/scan-hardcoded-user-visible-strings.ps1",
     "Scripts/verify-IC-20260812-010.ps1",
@@ -100,7 +102,9 @@ if (Test-Path -LiteralPath $projectFile -PathType Leaf) {
         "VolumeFormattingTests.swift",
         "S4StateMachineTests.swift",
         "S5StateMachineTests.swift",
-        "CollectionInvariantTests.swift"
+        "CollectionInvariantTests.swift",
+        "TransitionTableGuardTests.swift",
+        "CoverageGapTests.swift"
     )
     foreach ($sourceName in $sourceNames) {
         if (-not $projectText.Contains($sourceName)) {
@@ -290,8 +294,8 @@ if (Test-Path -LiteralPath $testDirectory -PathType Container) {
     $testFiles = Get-ChildItem -LiteralPath $testDirectory -Filter "*.swift" -File
     if ($testFiles.Count -gt 0) {
         $testCases = Select-String -LiteralPath $testFiles.FullName -Pattern "^\s*func\s+test"
-        if ($testCases.Count -ne 149) {
-            Add-Failure "XCTest 测试函数应为 149 个，实际为 $($testCases.Count) 个"
+        if ($testCases.Count -ne 176) {
+            Add-Failure "XCTest 测试函数应为 176 个，实际为 $($testCases.Count) 个"
         }
 
         $s3Cells = Select-String -LiteralPath (Join-Path $testDirectory "S3StateMachineTests.swift") -Pattern "testCell([0-9]{2})" -AllMatches
@@ -345,4 +349,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host "结构自验通过：文件、工程配置、String Catalog、PNG、禁联网门禁、硬编码扫描及 149 项测试数量均符合要求。" -ForegroundColor Green
+Write-Host "结构自验通过：文件、工程配置、String Catalog、PNG、禁联网门禁、硬编码扫描及 176 项测试数量均符合要求。" -ForegroundColor Green

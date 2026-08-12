@@ -31,6 +31,9 @@
 		200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000016 /* S4StateMachineTests.swift */; };
 		200000000000000000000014 /* S5StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000017 /* S5StateMachineTests.swift */; };
 		200000000000000000000015 /* CollectionInvariantTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000018 /* CollectionInvariantTests.swift */; };
+		200000000000000000000019 /* TransitionTableGuardTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001C /* TransitionTableGuardTests.swift */; };
+		20000000000000000000001A /* CoverageGapTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001D /* CoverageGapTests.swift */; };
+		20000000000000000000001B /* TRACEABILITY-S3-S5.md（测试资源） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001E /* TRACEABILITY-S3-S5.md */; };
 /* PBXBuildFile 区段结束 */
 
 /* PBXContainerItemProxy 区段开始 */
@@ -71,6 +74,9 @@
 		100000000000000000000019 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
 		10000000000000000000001A /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		10000000000000000000001B /* FreeDiskSpaceReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreeDiskSpaceReader.swift; sourceTree = "<group>"; };
+		10000000000000000000001C /* TransitionTableGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitionTableGuardTests.swift; sourceTree = "<group>"; };
+		10000000000000000000001D /* CoverageGapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageGapTests.swift; sourceTree = "<group>"; };
+		10000000000000000000001E /* TRACEABILITY-S3-S5.md */ = {isa = PBXFileReference; lastKnownFileType = text; name = "TRACEABILITY-S3-S5.md"; path = "../Reports/TRACEABILITY-S3-S5.md"; sourceTree = "<group>"; };
 /* PBXFileReference 区段结束 */
 
 /* PBXFrameworksBuildPhase 区段开始 */
@@ -199,6 +205,9 @@
 				100000000000000000000016 /* S4StateMachineTests.swift */,
 				100000000000000000000017 /* S5StateMachineTests.swift */,
 				100000000000000000000018 /* CollectionInvariantTests.swift */,
+				10000000000000000000001C /* TransitionTableGuardTests.swift */,
+				10000000000000000000001D /* CoverageGapTests.swift */,
+				10000000000000000000001E /* TRACEABILITY-S3-S5.md */,
 			);
 			path = PhotoCleanupMVETests;
 			sourceTree = "<group>";
@@ -303,6 +312,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				20000000000000000000001B /* TRACEABILITY-S3-S5.md（测试资源） */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -342,6 +352,8 @@
 				200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */,
 				200000000000000000000014 /* S5StateMachineTests.swift（测试源码） */,
 				200000000000000000000015 /* CollectionInvariantTests.swift（测试源码） */,
+				200000000000000000000019 /* TransitionTableGuardTests.swift（测试源码） */,
+				20000000000000000000001A /* CoverageGapTests.swift（测试源码） */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
