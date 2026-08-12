@@ -23,6 +23,7 @@ final class CleanupCoordinator: ObservableObject {
     private let photoLibrary: PhotoLibraryService
     private let sizeScanner: AssetSizeScanner
     private let deletionService: PhotoDeletionService
+    private let freeDiskSpaceReader: FreeDiskSpaceReader
     private let persistence: SessionPersistence
 
     private var loadedAssets: [String: PHAsset] = [:]
@@ -36,11 +37,13 @@ final class CleanupCoordinator: ObservableObject {
         photoLibrary: PhotoLibraryService? = nil,
         sizeScanner: AssetSizeScanner = AssetSizeScanner(),
         deletionService: PhotoDeletionService = PhotoDeletionService(),
+        freeDiskSpaceReader: FreeDiskSpaceReader = FreeDiskSpaceReader(),
         persistence: SessionPersistence = SessionPersistence()
     ) {
         self.photoLibrary = photoLibrary ?? PhotoLibraryService()
         self.sizeScanner = sizeScanner
         self.deletionService = deletionService
+        self.freeDiskSpaceReader = freeDiskSpaceReader
         self.persistence = persistence
     }
 
@@ -120,13 +123,21 @@ final class CleanupCoordinator: ObservableObject {
         }
     }
 
-    func returnFromFailureToConfirmation() {
-        guard var machine = s5Machine,
-              case let .failed(context) = machine.state else {
+    func returnToConfirmation() {
+        guard var machine = s5Machine else {
+            return
+        }
+        let snapshot: SubmissionSnapshot
+        switch machine.state {
+        case let .cancelled(context):
+            snapshot = context.snapshot
+        case let .failed(context):
+            snapshot = context.snapshot
+        case .movedToRecentlyDeleted, .unknown:
             return
         }
         let cached = s3Machine?.conclusionCache
-        let cacheExists = context.snapshot.assetIDs.allSatisfy { identifier in
+        let cacheExists = snapshot.assetIDs.allSatisfy { identifier in
             guard let conclusion = cached?[identifier] else {
                 return false
             }
@@ -147,7 +158,7 @@ final class CleanupCoordinator: ObservableObject {
             let descriptors = assetIDs.map { identifier in
                 AssetDescriptor(
                     identifier: identifier,
-                    isFavorite: context.snapshot.favoriteAssetIDs.contains(identifier)
+                    isFavorite: snapshot.favoriteAssetIDs.contains(identifier)
                 )
             }
             loadedAssets = photoLibrary.assetsByIdentifier(assetIDs)
@@ -173,6 +184,26 @@ final class CleanupCoordinator: ObservableObject {
         } catch {
             message = L10n.text(
                 "coordinator.error.return_to_confirmation",
+                replacing: ["error": error.localizedDescription]
+            )
+        }
+    }
+
+    func confirmRecentlyDeletedCleared() {
+        guard var machine = s5Machine else {
+            return
+        }
+        do {
+            _ = try machine.handle(
+                .confirmRecentlyDeletedCleared(declaredAt: Date()),
+                persist: persistS5,
+                readFreeDiskStrictGB: freeDiskSpaceReader.freeDiskStrictGB
+            )
+            s5Machine = machine
+            message = nil
+        } catch {
+            message = L10n.text(
+                "coordinator.error.persist_completion_state",
                 replacing: ["error": error.localizedDescription]
             )
         }
@@ -373,7 +404,8 @@ final class CleanupCoordinator: ObservableObject {
                         sessionDescriptors.removeValue(forKey: identifier)
                     }
                     s3Machine = nil
-                }
+                },
+                readFreeDiskStrictGB: freeDiskSpaceReader.freeDiskStrictGB
             )
             s5Machine = next
             route = .completion
@@ -488,7 +520,8 @@ final class CleanupCoordinator: ObservableObject {
                         state: .submitted,
                         activeElapsedSeconds: persisted.activeElapsedSeconds,
                         isApplicationActive: false,
-                        timeoutIsRunning: false
+                        timeoutIsRunning: false,
+                        downstreamTargetState: nil
                     ),
                     persist: persistS4
                 )
@@ -497,7 +530,10 @@ final class CleanupCoordinator: ObservableObject {
                 applyS4Event(.applicationBecameActive)
 
             case .submissionSucceeded:
-                guard let receivedAt = persisted.successReceivedAt else {
+                guard let receivedAt = persisted.successReceivedAt,
+                      let target = persisted.downstreamTargetState.flatMap(
+                        S4DownstreamTargetState.init(rawValue:)
+                      ) else {
                     throw RestoreError.invalidRecord
                 }
                 guard enterCompletion(
@@ -507,34 +543,52 @@ final class CleanupCoordinator: ObservableObject {
                             submissionID: snapshot.submissionID,
                             successfulAssetIDs: Set(snapshot.assetIDs),
                             receivedAt: receivedAt
-                        )
+                        ),
+                        downstreamTargetState: target
                     )
                 ) else {
                     throw RestoreError.invalidRecord
                 }
 
             case .submissionFailed:
-                guard let callback = persisted.failure?.callback else {
+                guard let callback = persisted.failure?.callback,
+                      let target = persisted.downstreamTargetState.flatMap(
+                        S4DownstreamTargetState.init(rawValue:)
+                      ) else {
                     throw RestoreError.invalidRecord
                 }
                 guard enterCompletion(
-                    from: .failure(snapshot: snapshot, callback: callback)
+                    from: .failure(
+                        snapshot: snapshot,
+                        callback: callback,
+                        downstreamTargetState: target
+                    )
                 ) else {
                     throw RestoreError.invalidRecord
                 }
 
             case .submissionUnknown:
                 guard let rawReason = persisted.unknownReason,
-                      let reason = S4UnknownReason(rawValue: rawReason) else {
+                      let reason = S4UnknownReason(rawValue: rawReason),
+                      let target = persisted.downstreamTargetState.flatMap(
+                        S4DownstreamTargetState.init(rawValue:)
+                      ) else {
                     throw RestoreError.invalidRecord
                 }
                 guard enterCompletion(
-                    from: .unknown(snapshot: snapshot, reason: reason)
+                    from: .unknown(
+                        snapshot: snapshot,
+                        reason: reason,
+                        downstreamTargetState: target
+                    )
                 ) else {
                     throw RestoreError.invalidRecord
                 }
 
-            case .completionSuccess, .completionFailure, .completionUnknown:
+            case .completionSuccess,
+                 .completionCancelled,
+                 .completionFailure,
+                 .completionUnknown:
                 let state = try restoredCompletionState(
                     from: persisted,
                     snapshot: snapshot
@@ -542,7 +596,11 @@ final class CleanupCoordinator: ObservableObject {
                 s5Machine = try S5StateMachine.restore(
                     persistentState: S5PersistentState(
                         state: state,
-                        isApplicationActive: true
+                        isApplicationActive: true,
+                        l3BaselineReading: persisted.l3BaselineReading,
+                        l3CompletionReading: persisted.l3CompletionReading,
+                        l3DeltaGB: persisted.l3DeltaGB,
+                        recentlyDeletedClearedAt: persisted.recentlyDeletedClearedAt
                     ),
                     persist: persistS5
                 )
@@ -560,31 +618,48 @@ final class CleanupCoordinator: ObservableObject {
         from persisted: PersistedSession,
         snapshot: SubmissionSnapshot
     ) throws -> S5State {
-        switch persisted.phase {
-        case .completionSuccess:
+        guard let target = persisted.downstreamTargetState.flatMap(
+            S4DownstreamTargetState.init(rawValue:)
+        ) else {
+            throw RestoreError.invalidRecord
+        }
+
+        switch target {
+        case .movedToRecentlyDeleted:
+            guard persisted.phase == .completionSuccess else {
+                throw RestoreError.invalidRecord
+            }
             return .movedToRecentlyDeleted(
                 S5SuccessContext(
                     snapshot: snapshot,
                     successfulAssetIDs: Set(snapshot.assetIDs)
                 )
             )
-        case .completionFailure:
-            guard let callback = persisted.failure?.callback else {
+        case .cancelled:
+            guard persisted.phase == .completionCancelled,
+                  let callback = persisted.failure?.callback else {
+                throw RestoreError.invalidRecord
+            }
+            return .cancelled(
+                S5CancellationContext(snapshot: snapshot, callback: callback)
+            )
+        case .failed:
+            guard persisted.phase == .completionFailure,
+                  let callback = persisted.failure?.callback else {
                 throw RestoreError.invalidRecord
             }
             return .failed(
                 S5FailureContext(snapshot: snapshot, callback: callback)
             )
-        case .completionUnknown:
-            guard let rawReason = persisted.unknownReason,
+        case .unknown:
+            guard persisted.phase == .completionUnknown,
+                  let rawReason = persisted.unknownReason,
                   let reason = S4UnknownReason(rawValue: rawReason) else {
                 throw RestoreError.invalidRecord
             }
             return .unknown(
                 S5UnknownContext(snapshot: snapshot, reason: reason)
             )
-        default:
-            throw RestoreError.invalidRecord
         }
     }
 }

@@ -1,10 +1,25 @@
 import Foundation
+import Photos
 
 enum S4FailureCategory: String, Codable, CaseIterable, Equatable, Sendable {
     case insufficientPermission
     case assetNotDeletable
     case userCancelled
     case unknown
+
+    static func classify(systemDomain: String?, systemCode: Int?) -> S4FailureCategory {
+        if systemDomain == PHPhotosErrorDomain, systemCode == 3072 {
+            return .userCancelled
+        }
+        return .unknown
+    }
+}
+
+enum S4DownstreamTargetState: String, Codable, CaseIterable, Equatable, Sendable {
+    case movedToRecentlyDeleted = "S5-T0"
+    case failed = "S5-F"
+    case cancelled = "S5-C"
+    case unknown = "S5-U"
 }
 
 struct S4FailureReason: Equatable, Codable, Sendable {
@@ -56,9 +71,30 @@ enum S4State: Equatable, Sendable {
 }
 
 enum S4Handoff: Equatable, Sendable {
-    case success(snapshot: SubmissionSnapshot, result: S4SuccessResult)
-    case failure(snapshot: SubmissionSnapshot, callback: S4FailureCallback)
-    case unknown(snapshot: SubmissionSnapshot, reason: S4UnknownReason)
+    case success(
+        snapshot: SubmissionSnapshot,
+        result: S4SuccessResult,
+        downstreamTargetState: S4DownstreamTargetState
+    )
+    case failure(
+        snapshot: SubmissionSnapshot,
+        callback: S4FailureCallback,
+        downstreamTargetState: S4DownstreamTargetState
+    )
+    case unknown(
+        snapshot: SubmissionSnapshot,
+        reason: S4UnknownReason,
+        downstreamTargetState: S4DownstreamTargetState
+    )
+
+    var downstreamTargetState: S4DownstreamTargetState {
+        switch self {
+        case let .success(_, _, target),
+             let .failure(_, _, target),
+             let .unknown(_, _, target):
+            return target
+        }
+    }
 }
 
 enum S4TransitionEffect: Equatable, Sendable {
@@ -111,6 +147,8 @@ struct S4PersistentState: Equatable, Sendable {
     var activeElapsedSeconds: TimeInterval
     var isApplicationActive: Bool
     var timeoutIsRunning: Bool
+    // 交接字段「下游目标状态」在终态形成时写入，恢复时只读该值继续交接。
+    var downstreamTargetState: S4DownstreamTargetState? = nil
 }
 
 struct S4StateMachine: Sendable {
@@ -151,15 +189,24 @@ struct S4StateMachine: Sendable {
 
         let validator = S4StateMachine(persistentState: persistentState)
         switch persistentState.state {
-        case .submitted, .resumedInteraction, .resultUnknown:
-            break
+        case .submitted, .resumedInteraction:
+            guard persistentState.downstreamTargetState == nil else {
+                throw S4StateMachineError.invalidPersistentState
+            }
+        case .resultUnknown:
+            guard persistentState.downstreamTargetState == .unknown else {
+                throw S4StateMachineError.invalidPersistentState
+            }
         case let .allSucceeded(result):
             guard result.submissionID == persistentState.snapshot.submissionID,
-                  result.successfulAssetIDs == Set(persistentState.snapshot.assetIDs) else {
+                  result.successfulAssetIDs == Set(persistentState.snapshot.assetIDs),
+                  persistentState.downstreamTargetState == .movedToRecentlyDeleted else {
                 throw S4StateMachineError.invalidPersistentState
             }
         case let .batchFailed(callback):
-            guard validator.validate(callback) == nil else {
+            guard validator.validate(callback) == nil,
+                  persistentState.downstreamTargetState == .cancelled
+                    || persistentState.downstreamTargetState == .failed else {
                 throw S4StateMachineError.invalidPersistentState
             }
         }
@@ -169,6 +216,7 @@ struct S4StateMachine: Sendable {
         proposal.timeoutIsRunning = false
         if !proposal.state.isTerminal {
             proposal.state = .resultUnknown(.processTerminatedBeforeTerminalResult)
+            proposal.downstreamTargetState = .unknown
         }
         try persist(proposal)
         return S4StateMachine(persistentState: proposal)
@@ -225,7 +273,7 @@ struct S4StateMachine: Sendable {
                 proposal.timeoutIsRunning = false
                 return try commit(
                     proposal,
-                    effect: .handoff(makeHandoff(for: proposal.state)),
+                    effect: .handoff(makeHandoff(for: proposal)),
                     persist: persist
                 )
             }
@@ -246,8 +294,9 @@ struct S4StateMachine: Sendable {
             var proposal = persistentState
             proposal.state = .allSucceeded(result)
             proposal.timeoutIsRunning = false
+            proposal.downstreamTargetState = .movedToRecentlyDeleted
             let effect: S4TransitionEffect = proposal.isApplicationActive
-                ? .handoff(.success(snapshot: snapshot, result: result))
+                ? .handoff(makeHandoff(for: proposal))
                 : .none
             return try commit(proposal, effect: effect, persist: persist)
 
@@ -262,8 +311,11 @@ struct S4StateMachine: Sendable {
             var proposal = persistentState
             proposal.state = .batchFailed(callback)
             proposal.timeoutIsRunning = false
+            proposal.downstreamTargetState = Self.downstreamTarget(
+                for: callback.reason.category
+            )
             let effect: S4TransitionEffect = proposal.isApplicationActive
-                ? .handoff(.failure(snapshot: snapshot, callback: callback))
+                ? .handoff(makeHandoff(for: proposal))
                 : .none
             return try commit(proposal, effect: effect, persist: persist)
 
@@ -291,8 +343,9 @@ struct S4StateMachine: Sendable {
             let reason = S4UnknownReason.activeWaitTimedOut
             proposal.state = .resultUnknown(reason)
             proposal.timeoutIsRunning = false
+            proposal.downstreamTargetState = .unknown
             let effect: S4TransitionEffect = proposal.isApplicationActive
-                ? .handoff(.unknown(snapshot: snapshot, reason: reason))
+                ? .handoff(makeHandoff(for: proposal))
                 : .none
             return try commit(proposal, effect: effect, persist: persist)
 
@@ -302,6 +355,7 @@ struct S4StateMachine: Sendable {
             proposal.timeoutIsRunning = false
             if !proposal.state.isTerminal {
                 proposal.state = .resultUnknown(.processTerminatedBeforeTerminalResult)
+                proposal.downstreamTargetState = .unknown
             }
             return try commit(proposal, effect: .none, persist: persist)
         }
@@ -310,7 +364,7 @@ struct S4StateMachine: Sendable {
     private static func isValid(_ snapshot: SubmissionSnapshot) -> Bool {
         let identifiers = Set(snapshot.assetIDs)
         guard !snapshot.submissionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              (1...200).contains(snapshot.assetCount),
+              snapshot.assetCount >= 1,
               snapshot.assetCount == snapshot.assetIDs.count,
               identifiers.count == snapshot.assetIDs.count,
               snapshot.knownTotalBytes >= 0,
@@ -378,14 +432,41 @@ struct S4StateMachine: Sendable {
         )
     }
 
-    private func makeHandoff(for state: S4State) -> S4Handoff {
-        switch state {
+    private static func downstreamTarget(
+        for category: S4FailureCategory
+    ) -> S4DownstreamTargetState {
+        switch category {
+        case .userCancelled:
+            return .cancelled
+        case .insufficientPermission, .assetNotDeletable, .unknown:
+            return .failed
+        }
+    }
+
+    private func makeHandoff(for state: S4PersistentState) -> S4Handoff {
+        guard let target = state.downstreamTargetState else {
+            preconditionFailure("终态交接前必须写入下游目标状态")
+        }
+
+        switch state.state {
         case let .allSucceeded(result):
-            return .success(snapshot: snapshot, result: result)
+            return .success(
+                snapshot: snapshot,
+                result: result,
+                downstreamTargetState: target
+            )
         case let .batchFailed(callback):
-            return .failure(snapshot: snapshot, callback: callback)
+            return .failure(
+                snapshot: snapshot,
+                callback: callback,
+                downstreamTargetState: target
+            )
         case let .resultUnknown(reason):
-            return .unknown(snapshot: snapshot, reason: reason)
+            return .unknown(
+                snapshot: snapshot,
+                reason: reason,
+                downstreamTargetState: target
+            )
         case .submitted, .resumedInteraction:
             preconditionFailure("非终态不能交接")
         }

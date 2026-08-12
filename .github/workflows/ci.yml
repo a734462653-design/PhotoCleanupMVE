@@ -38,7 +38,7 @@ jobs:
 
       - name: 运行结构自验
         shell: pwsh
-        run: ./Scripts/selfcheck.ps1
+        run: ./Scripts/verify-IC-20260812-010.ps1
 
       - name: 运行 XCTest
         run: bash Scripts/test-xcode.sh

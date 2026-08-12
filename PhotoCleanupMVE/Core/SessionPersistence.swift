@@ -1,11 +1,12 @@
 import Foundation
 
-enum PersistedSessionPhase: String, Codable {
+enum PersistedSessionPhase: String, Codable, Equatable {
     case submissionWaiting
     case submissionSucceeded
     case submissionFailed
     case submissionUnknown
     case completionSuccess
+    case completionCancelled
     case completionFailure
     case completionUnknown
 }
@@ -45,7 +46,7 @@ struct PersistedSnapshot: Codable {
         }
         guard assetCount == assetIDs.count,
               Set(assetIDs).count == assetIDs.count,
-              (1...200).contains(assetCount),
+              assetCount >= 1,
               knownTotalBytes >= 0,
               (0...assetCount).contains(unavailableCount),
               Set(favoriteAssetIDs).isSubset(of: Set(assetIDs)),
@@ -116,6 +117,11 @@ struct PersistedSession: Codable {
     let successReceivedAt: Date?
     let failure: PersistedFailure?
     let unknownReason: String?
+    let downstreamTargetState: String?
+    let l3BaselineReading: S5DiskReading?
+    let l3CompletionReading: S5DiskReading?
+    let l3DeltaGB: Double?
+    let recentlyDeletedClearedAt: Date?
 
     init(s4 state: S4PersistentState) {
         let phase: PersistedSessionPhase
@@ -150,6 +156,11 @@ struct PersistedSession: Codable {
         self.successReceivedAt = successReceivedAt
         self.failure = failure
         self.unknownReason = unknownReason
+        downstreamTargetState = state.downstreamTargetState?.rawValue
+        l3BaselineReading = nil
+        l3CompletionReading = nil
+        l3DeltaGB = nil
+        recentlyDeletedClearedAt = nil
     }
 
     init(s5 state: S5PersistentState) {
@@ -160,6 +171,10 @@ struct PersistedSession: Codable {
         case .movedToRecentlyDeleted:
             phase = .completionSuccess
             failure = nil
+            unknownReason = nil
+        case let .cancelled(context):
+            phase = .completionCancelled
+            failure = PersistedFailure(context.callback)
             unknownReason = nil
         case let .failed(context):
             phase = .completionFailure
@@ -176,6 +191,11 @@ struct PersistedSession: Codable {
         successReceivedAt = nil
         self.failure = failure
         self.unknownReason = unknownReason
+        downstreamTargetState = state.state.downstreamTargetState.rawValue
+        l3BaselineReading = state.l3BaselineReading
+        l3CompletionReading = state.l3CompletionReading
+        l3DeltaGB = state.l3DeltaGB
+        recentlyDeletedClearedAt = state.recentlyDeletedClearedAt
     }
 }
 

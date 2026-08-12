@@ -152,7 +152,11 @@ final class CollectionInvariantTests: XCTestCase {
             unprocessed: ["资产-C"]
         )
         let machine = try S5StateMachine.enter(
-            from: .failure(snapshot: makeSnapshot(), callback: callback),
+            from: .failure(
+                snapshot: makeSnapshot(),
+                callback: callback,
+                downstreamTargetState: .failed
+            ),
             persist: ignoreS5Persistence,
             invalidateOldLists: { _ in }
         )
@@ -167,7 +171,11 @@ final class CollectionInvariantTests: XCTestCase {
 
     func testUnknownEntryDoesNotConstructClassificationSets() throws {
         let machine = try S5StateMachine.enter(
-            from: .unknown(snapshot: makeSnapshot(), reason: .activeWaitTimedOut),
+            from: .unknown(
+                snapshot: makeSnapshot(),
+                reason: .activeWaitTimedOut,
+                downstreamTargetState: .unknown
+            ),
             persist: ignoreS5Persistence,
             invalidateOldLists: { _ in }
         )
@@ -188,7 +196,11 @@ final class CollectionInvariantTests: XCTestCase {
 
         XCTAssertThrowsError(
             try S5StateMachine.enter(
-                from: .failure(snapshot: makeSnapshot(), callback: callback),
+                from: .failure(
+                    snapshot: makeSnapshot(),
+                    callback: callback,
+                    downstreamTargetState: .failed
+                ),
                 persist: ignoreS5Persistence,
                 invalidateOldLists: { _ in }
             )
@@ -216,6 +228,30 @@ final class CollectionInvariantTests: XCTestCase {
         XCTAssertEqual(callback.reason.category, .userCancelled)
         XCTAssertEqual(callback.reason.systemDomain, PHPhotosErrorDomain)
         XCTAssertEqual(callback.reason.systemCode, PHPhotosError.Code.userCancelled.rawValue)
+    }
+
+    func testS4UserCancellationClassifierRequiresExactDomainAndCode() {
+        XCTAssertEqual(
+            S4FailureCategory.classify(
+                systemDomain: PHPhotosErrorDomain,
+                systemCode: 3072
+            ),
+            .userCancelled
+        )
+        XCTAssertEqual(
+            S4FailureCategory.classify(
+                systemDomain: "其他系统域",
+                systemCode: 3072
+            ),
+            .unknown
+        )
+        XCTAssertEqual(
+            S4FailureCategory.classify(
+                systemDomain: PHPhotosErrorDomain,
+                systemCode: 3073
+            ),
+            .unknown
+        )
     }
 
     func testPhotoKitBatchFailureClassifiesWholeSetAsFailed() {

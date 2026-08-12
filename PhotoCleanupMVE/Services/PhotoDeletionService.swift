@@ -67,9 +67,11 @@ struct PhotoDeletionService {
         receivedAt: Date
     ) -> S4FailureCallback {
         let submitted = Set(snapshot.assetIDs)
-        let userCancelled = error?.domain == PHPhotosErrorDomain
-            && error?.code == PHPhotosError.Code.userCancelled.rawValue
-        let category: S4FailureCategory = userCancelled ? .userCancelled : .unknown
+        let category = S4FailureCategory.classify(
+            systemDomain: error?.domain,
+            systemCode: error?.code
+        )
+        let userCancelled = category == .userCancelled
         let rawMessage = error?.localizedDescription
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let message = rawMessage.flatMap { $0.isEmpty ? nil : $0 }

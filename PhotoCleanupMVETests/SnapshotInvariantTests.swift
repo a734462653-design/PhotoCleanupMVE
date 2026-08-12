@@ -23,24 +23,16 @@ final class SnapshotInvariantTests: XCTestCase {
         XCTAssertTrue(machine.assets[0].isFavorite)
     }
 
-    func testOverLimitKeepsEveryDeduplicatedAssetInsteadOfTruncatingAt200() {
-        let machine = S3StateMachine(assets: makeAssets(count: 205))
-
-        XCTAssertEqual(machine.state, .overLimit)
-        XCTAssertEqual(machine.assetCount, 205)
-        XCTAssertEqual(machine.assetIDs.last, "asset-204")
-        XCTAssertTrue(machine.pendingScanAssetIDs.isEmpty)
-    }
-
-    func testSubmissionLimitUsesDeduplicatedAssetCount() {
-        var input = makeAssets(count: 200)
+    func testLargeSelectionQueuesEveryDeduplicatedAssetWithoutTruncation() {
+        var input = makeAssets(count: 205)
         input.append(asset("asset-0"))
 
         let machine = S3StateMachine(assets: input)
 
-        XCTAssertEqual(machine.assetCount, 200)
+        XCTAssertEqual(machine.assetCount, 205)
         XCTAssertEqual(machine.state, .scanning)
-        XCTAssertEqual(machine.pendingScanAssetIDs.count, 200)
+        XCTAssertEqual(machine.pendingScanAssetIDs, machine.assetIDs)
+        XCTAssertEqual(machine.assetIDs.last, "asset-204")
     }
 
     func testKnownBytesAndUnavailableCountAreRecomputedFromCurrentD() {
@@ -239,29 +231,20 @@ final class SnapshotInvariantTests: XCTestCase {
         XCTAssertEqual(machine.frozenSnapshot, first)
     }
 
-    func testExactly200CompletedAssetsCanBeFrozenWithoutTruncation() {
-        let input = makeAssets(count: 200)
+    func testLargeCompletedSelectionCanBeFrozenWithoutTruncation() {
+        let input = makeAssets(count: 205)
         let conclusions = Dictionary(
             uniqueKeysWithValues: input.map { ($0.identifier, AssetScanConclusion.knownBytes(1)) }
         )
         let machine = readyMachine(assets: input, conclusions: conclusions)
 
         guard case let .frozen(snapshot) = machine.freezeSubmissionSnapshot() else {
-            return XCTFail("200 项应允许冻结")
+            return XCTFail("大集合应允许冻结")
         }
 
-        XCTAssertEqual(snapshot.assetCount, 200)
+        XCTAssertEqual(snapshot.assetCount, 205)
         XCTAssertEqual(snapshot.assetIDs, input.map(\.identifier))
-        XCTAssertEqual(snapshot.knownTotalBytes, 200)
-    }
-
-    func testReductionOnlyRemovesAndPreservesOriginalDOrder() {
-        let machine = S3StateMachine(assets: makeAssets(count: 201))
-
-        XCTAssertTrue(machine.reduceSelectionTo(assetIDs: ["asset-150", "asset-2", "asset-2"]))
-
-        XCTAssertEqual(machine.assetIDs, ["asset-2", "asset-150"])
-        XCTAssertEqual(machine.state, .scanning)
+        XCTAssertEqual(snapshot.knownTotalBytes, 205)
     }
 
     private func readyMachine(

@@ -31,6 +31,7 @@ $requiredFiles = @(
     "PhotoCleanupMVE/Services/PhotoLibraryService.swift",
     "PhotoCleanupMVE/Services/AssetSizeScanner.swift",
     "PhotoCleanupMVE/Services/PhotoDeletionService.swift",
+    "PhotoCleanupMVE/Services/FreeDiskSpaceReader.swift",
     "PhotoCleanupMVE/Features/S3/S3View.swift",
     "PhotoCleanupMVE/Features/S4/S4View.swift",
     "PhotoCleanupMVE/Features/S5/S5View.swift",
@@ -43,6 +44,8 @@ $requiredFiles = @(
     "PhotoCleanupMVETests/CollectionInvariantTests.swift",
     "Scripts/test-xcode.sh",
     "Scripts/scan-hardcoded-user-visible-strings.ps1",
+    "Scripts/verify-IC-20260812-010.ps1",
+    "Reports/IC-20260812-010-SELF-VERIFICATION.md",
     "Reports/IC-20260811-002-SELF-VERIFICATION.md",
     "Reports/SELF-VERIFICATION.md",
     "Reports/CHANGE-LOG-007R.md",
@@ -85,6 +88,7 @@ if (Test-Path -LiteralPath $projectFile -PathType Leaf) {
         "PhotoLibraryService.swift",
         "AssetSizeScanner.swift",
         "PhotoDeletionService.swift",
+        "FreeDiskSpaceReader.swift",
         "S3View.swift",
         "S4View.swift",
         "S5View.swift",
@@ -240,18 +244,16 @@ if ($swiftFiles.Count -gt 0) {
     $forbiddenS5Patterns = @(
         "S5-T2",
         "S5-T3",
-        "freeDiskStrictGB",
         "L3窗口上限",
         "L3采样间隔",
         "L3稳定判据",
         "L3启动阈值",
-        "L3基线读数",
         "L3基线时机"
     )
     foreach ($pattern in $forbiddenS5Patterns) {
         $hits = Select-String -LiteralPath $swiftFiles.FullName -SimpleMatch -Pattern $pattern
         if ($hits) {
-            Add-Failure "产品源码出现本卡禁止的 S5 轮询实现标记：$($hits[0].Path):$($hits[0].LineNumber)"
+            Add-Failure "产品源码出现禁止的 S5 轮询实现标记：$($hits[0].Path):$($hits[0].LineNumber)"
         }
     }
 
@@ -260,9 +262,26 @@ if ($swiftFiles.Count -gt 0) {
         Add-Failure "调试入口常量缺失或默认值不是 20"
     }
 
-    $submissionLimit = Select-String -LiteralPath $swiftFiles.FullName -Pattern "static\s+let\s+submissionLimit\s*=\s*200"
-    if (-not $submissionLimit) {
-        Add-Failure "S3 单次提交上限缺失或不是 200"
+    $removedS3Patterns = @(
+        ("submission" + "Limit"),
+        ("over" + "Limit"),
+        ("S3-" + "3")
+    )
+    foreach ($pattern in $removedS3Patterns) {
+        $hits = Select-String -LiteralPath $swiftFiles.FullName -SimpleMatch -Pattern $pattern
+        if ($hits) {
+            Add-Failure "S3 已删除的数量上限实现仍有残留：$($hits[0].Path):$($hits[0].LineNumber)"
+        }
+    }
+
+    $l3GateMarker = Select-String -LiteralPath $swiftFiles.FullName -Pattern "blockedByUndecidedThreshold\s*=\s*true"
+    if (-not $l3GateMarker) {
+        Add-Failure "缺少 L3 展示分支被未定规格阻断的显式标记"
+    }
+
+    $l3NumericGate = Select-String -LiteralPath $swiftFiles.FullName -Pattern "(?i)(?:l3DisplayThreshold|L3显示门槛)\s*(?:=|:)\s*[-+]?[0-9]"
+    if ($l3NumericGate) {
+        Add-Failure "L3 显示门槛被写入数值：$($l3NumericGate[0].Path):$($l3NumericGate[0].LineNumber)"
     }
 }
 
@@ -271,14 +290,15 @@ if (Test-Path -LiteralPath $testDirectory -PathType Container) {
     $testFiles = Get-ChildItem -LiteralPath $testDirectory -Filter "*.swift" -File
     if ($testFiles.Count -gt 0) {
         $testCases = Select-String -LiteralPath $testFiles.FullName -Pattern "^\s*func\s+test"
-        if ($testCases.Count -ne 136) {
-            Add-Failure "XCTest 测试函数应为 136 个，实际为 $($testCases.Count) 个"
+        if ($testCases.Count -ne 149) {
+            Add-Failure "XCTest 测试函数应为 149 个，实际为 $($testCases.Count) 个"
         }
 
         $s3Cells = Select-String -LiteralPath (Join-Path $testDirectory "S3StateMachineTests.swift") -Pattern "testCell([0-9]{2})" -AllMatches
         $s3CellNumbers = @($s3Cells.Matches | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-        if ($s3CellNumbers.Count -ne 14) {
-            Add-Failure "S3 可达单元格映射为 $($s3CellNumbers.Count)/14"
+        $expectedS3CellNumbers = @("01", "02", "03", "04", "05", "07", "08", "11", "12", "14")
+        if (($s3CellNumbers -join ",") -ne ($expectedS3CellNumbers -join ",")) {
+            Add-Failure "S3 可达单元格映射不符合三状态基线：$($s3CellNumbers -join ', ')"
         }
 
         $s4Cells = Select-String -LiteralPath (Join-Path $testDirectory "S4StateMachineTests.swift") -Pattern "testReachable([0-9]{2})" -AllMatches
@@ -290,7 +310,21 @@ if (Test-Path -LiteralPath $testDirectory -PathType Container) {
         $s5Cells = Select-String -LiteralPath (Join-Path $testDirectory "S5StateMachineTests.swift") -Pattern "testCell([0-9]{2})" -AllMatches
         $s5CellNumbers = @($s5Cells.Matches | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
         if ($s5CellNumbers.Count -ne 15) {
-            Add-Failure "S5 限定三状态可达单元格映射为 $($s5CellNumbers.Count)/15"
+            Add-Failure "S5 原有可达单元格映射为 $($s5CellNumbers.Count)/15"
+        }
+
+        $s5TestText = Get-Content -LiteralPath (Join-Path $testDirectory "S5StateMachineTests.swift") -Raw -Encoding UTF8
+        $requiredCancellationTests = @(
+            "testCancellationDoesNotReadFreeDiskStrictGB",
+            "testCancellationDoesNotShowL3",
+            "testCancellationDoesNotShowSystemErrorDomainOrCode",
+            "testCancellationDoesNotShowRecentlyDeletedConfirmationAction",
+            "testCancellationVisibleCopyAvoidsFailureAndIncompleteWording"
+        )
+        foreach ($testName in $requiredCancellationTests) {
+            if (-not $s5TestText.Contains($testName)) {
+                Add-Failure "S5-C 禁用项缺少测试：$testName"
+            }
         }
     }
 }
@@ -311,4 +345,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host "结构自验通过：文件、工程配置、String Catalog、PNG、禁联网门禁、硬编码扫描及 136 项测试数量均符合要求。" -ForegroundColor Green
+Write-Host "结构自验通过：文件、工程配置、String Catalog、PNG、禁联网门禁、硬编码扫描及 149 项测试数量均符合要求。" -ForegroundColor Green

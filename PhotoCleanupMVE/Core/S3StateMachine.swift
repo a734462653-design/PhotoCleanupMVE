@@ -3,7 +3,6 @@ import Foundation
 enum S3State: String, Equatable, Sendable {
     case scanning = "S3-1"
     case ready = "S3-2"
-    case overLimit = "S3-3"
     case empty = "S3-4"
 }
 
@@ -34,8 +33,6 @@ enum DecimalVolumeFormatter {
 }
 
 final class S3StateMachine {
-    static let submissionLimit = 200
-
     private(set) var assets: [AssetDescriptor]
     private(set) var conclusionCache: [String: AssetScanConclusion]
     private(set) var pendingScanAssetIDs: [String] = []
@@ -176,24 +173,6 @@ final class S3StateMachine {
         return true
     }
 
-    @discardableResult
-    func reduceSelectionTo(assetIDs retainedAssetIDs: [String]) -> Bool {
-        guard frozenSnapshot == nil, state == .overLimit else {
-            return false
-        }
-
-        let retainedSet = Set(retainedAssetIDs)
-        let currentSet = Set(assetIDs)
-        guard retainedSet.isSubset(of: currentSet),
-              retainedSet.count <= Self.submissionLimit else {
-            return false
-        }
-
-        assets = assets.filter { retainedSet.contains($0.identifier) }
-        normalizeStateAndEnqueueIfNeeded()
-        return true
-    }
-
     func freezeSubmissionSnapshot() -> S3SnapshotFreezeResult {
         guard frozenSnapshot == nil else {
             return .rejected(.alreadyFrozen)
@@ -201,8 +180,7 @@ final class S3StateMachine {
 
         normalizeStateAndEnqueueIfNeeded()
 
-        guard (1...Self.submissionLimit).contains(assetCount),
-              isScanComplete else {
+        guard !assets.isEmpty, isScanComplete else {
             return .rejected(.invalidState(state))
         }
 
@@ -237,11 +215,6 @@ final class S3StateMachine {
     private func normalizeStateAndEnqueueIfNeeded() {
         guard !assets.isEmpty else {
             state = .empty
-            return
-        }
-
-        guard assets.count <= Self.submissionLimit else {
-            state = .overLimit
             return
         }
 

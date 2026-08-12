@@ -320,17 +320,6 @@
         }
       }
     },
-    "s3.state.over_limit" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "待删除数量超过上限"
-          }
-        }
-      }
-    },
     "s3.state.ready" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -349,28 +338,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在计算照片体积"
-          }
-        }
-      }
-    },
-    "s3.submission.limit_notice" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "单次最多提交 200 张"
-          }
-        }
-      }
-    },
-    "s3.submission.over_limit_notice" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "单次最多提交 200 张，请分批处理"
           }
         }
       }
@@ -404,17 +371,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "照片体积 ≥ {known}；另有 {count} 项体积不可用"
-          }
-        }
-      }
-    },
-    "s3.volume.over_limit" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "减至 200 张以内后显示或计算体积"
           }
         }
       }
@@ -650,6 +606,17 @@
         }
       }
     },
+    "s5.section.deletion_cancelled" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消删除"
+          }
+        }
+      }
+    },
     "s5.section.deletion_incomplete" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -683,6 +650,17 @@
         }
       }
     },
+    "s5.status.assets_intact" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片都还在"
+          }
+        }
+      }
+    },
     "s5.status.device_space_waiting" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -701,6 +679,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "处理结果未知"
+          }
+        }
+      }
+    },
+    "s5.summary.cancelled_result" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次提交 {count} 张，全部未处理"
           }
         }
       }

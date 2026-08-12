@@ -14,7 +14,7 @@ struct S5View: View {
                     }
                 }
                 if let machine = coordinator.s5Machine {
-                    content(machine.state)
+                    content(machine)
                 }
             }
             .navigationTitle(L10n.text("s5.navigation.title"))
@@ -22,8 +22,8 @@ struct S5View: View {
     }
 
     @ViewBuilder
-    private func content(_ state: S5State) -> some View {
-        switch state {
+    private func content(_ machine: S5StateMachine) -> some View {
+        switch machine.state {
         case let .movedToRecentlyDeleted(context):
             Section(L10n.text("s5.section.moved_to_recently_deleted")) {
                 Text(L10n.text(
@@ -35,11 +35,28 @@ struct S5View: View {
                 Text(volumeText(context.snapshot))
                 Text(boundaryText)
                 placeholderImage
-                Text(L10n.text("s5.status.device_space_waiting"))
-                Button(L10n.text("s5.action.confirm_recently_deleted_cleared")) {}
-                    .disabled(true)
+                if machine.isRecentlyDeletedConfirmationEnabled {
+                    Text(L10n.text("s5.status.device_space_waiting"))
+                    Button(L10n.text("s5.action.confirm_recently_deleted_cleared")) {
+                        coordinator.confirmRecentlyDeletedCleared()
+                    }
+                }
                 Button(L10n.text("s5.action.leave")) {
                     coordinator.leaveCompletion()
+                }
+            }
+
+        case let .cancelled(context):
+            Section(L10n.text("s5.section.deletion_cancelled")) {
+                Text(L10n.text("s5.status.assets_intact"))
+                Text(L10n.text(
+                    "s5.summary.cancelled_result",
+                    replacing: ["count": String(context.snapshot.assetCount)]
+                ))
+                Text(volumeText(context.snapshot))
+                Text(L10n.text("s5.volume.original_submission_disclaimer"))
+                Button(L10n.text("s5.action.return_to_confirmation")) {
+                    coordinator.returnToConfirmation()
                 }
             }
 
@@ -58,7 +75,7 @@ struct S5View: View {
                 Text(L10n.text("s5.volume.original_submission_disclaimer"))
                 Text(L10n.text("s5.failure.retry_notice"))
                 Button(L10n.text("s5.action.return_to_confirmation")) {
-                    coordinator.returnFromFailureToConfirmation()
+                    coordinator.returnToConfirmation()
                 }
             }
 

@@ -46,7 +46,7 @@ struct SubmissionSnapshot: Equatable, Sendable {
         favoriteAssetIDs: Set<String>,
         frozenAt: Date
     ) {
-        precondition((1...200).contains(assetIDs.count), "资产数量必须位于 1 至 200")
+        precondition(!assetIDs.isEmpty, "资产标识集合不得为空")
         precondition(Set(assetIDs).count == assetIDs.count, "资产标识必须唯一")
         precondition(assetCount == assetIDs.count, "资产数量必须等于资产标识数量")
         precondition(knownTotalBytes >= 0, "已知总字节数不得为负")

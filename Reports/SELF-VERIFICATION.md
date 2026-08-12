@@ -16,36 +16,32 @@
 | 工程文件引用审计 | 通过 | 20 个 Swift 文件均只进入应属目标；工程对象无重复或悬空引用 |
 | Bundle ID 隔离 | 通过 | 产品为 `com.iphonephotomanagement.PhotoCleanupMVE`，不等于探针标识 |
 | 调试入口 | 通过 | 源码常量为 20，启动后直接以 PhotoKit 返回的前 N 个图片资产建立 D，不实现 S1、S2 |
-| S3 上限 | 通过 | 源码常量为 200；超限保留完整 D 且不入扫描队列 |
-| 禁止能力静态门禁 | 通过 | 产品 Swift 源码未发现联网、账号、收藏修改、隐藏、归相册、S5 轮询或磁盘空间读取实现 |
-| 可达单元格静态映射 | 通过 | S3 14/14、S4 22/22、限定 S5 15/15 |
-| XCTest 方法数量 | 136 | 最低门槛为 51；其中 64 个具体迁移路径测试覆盖 51 个不同单元格 |
+| S3 数量规则 | 已被新基线替代 | 当前结论见 `IC-20260812-010-SELF-VERIFICATION.md` |
+| 禁止能力静态门禁 | 已被新基线替代 | 当前结论见 `IC-20260812-010-SELF-VERIFICATION.md` |
+| 可达单元格静态映射 | 已被新基线替代 | 当前结论见 `IC-20260812-010-SELF-VERIFICATION.md` |
+| XCTest 方法数量 | 已被新基线替代 | 当前结论见 `IC-20260812-010-SELF-VERIFICATION.md` |
 | macOS 编译 | 通过 | CI #4 使用 Xcode 16.4；模拟器测试构建与 Release iPhoneOS 构建均成功，日志出现 `BUILD SUCCEEDED` |
-| XCTest 执行 | 通过 | CI #4 共执行 136 项，0 失败、0 unexpected；日志出现 `TEST SUCCEEDED` |
+| XCTest 执行 | 历史结果 | CI #4 的旧基线结果；当前结果见新基线报告 |
 | 未签名 IPA | 通过 | CI #4 生成 210,393 字节的未签名 IPA，验证无代码签名、签名目录或描述文件，并上传为可下载制品 |
 
 下表中的状态同时基于测试方法与断言映射审计，以及 CI #4 的实际 XCTest 结果。
 
-## 3. S3 可达单元格：14/14
+## 3. S3 可达单元格（旧基线记录中已移除的路径不再列出）
 
 | 单元格 | 事件与起始状态 | 测试方法 | 状态 |
 |---:|---|---|---|
-| 01 | 页面外进入，覆盖空集、超限、未完成、缓存完成四条守卫 | `testCell01EnterFromOutsideWithEmptySetRoutesToS3_4`；`testCell01EnterFromOutsideOverLimitRoutesToS3_3WithoutQueueing`；`testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted`；`testCell01EnterFromOutsideWithCompletedCacheRoutesToS3_2WithoutRescan` | 通过（CI #4） |
+| 01 | 页面外进入，覆盖空集、未完成、缓存完成三条守卫 | `testCell01EnterFromOutsideWithEmptySetRoutesToS3_4`；`testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted`；`testCell01EnterFromOutsideWithCompletedCacheRoutesToS3_2WithoutRescan` | 历史结果 |
 | 02 | S3-1 扫描完成 → S3-2 | `testCell02ScanCompletionFromS3_1RoutesToS3_2` | 通过（CI #4） |
 | 03 | S3-1 扫描中移除，覆盖空集、就绪、仍扫描 | `testCell03RemoveDuringScanLastItemRoutesToS3_4`；`testCell03RemoveDuringScanLastIncompleteItemRoutesToS3_2`；`testCell03RemoveDuringScanWhileIncompleteItemRemainsStaysInS3_1` | 通过（CI #4） |
 | 04 | S3-1 移除单项，直接覆盖空集、就绪、仍扫描三条守卫 | `testCell04RemoveOneFromS3_1LastItemRoutesToS3_4`；`testCell04RemoveOneFromS3_1LastIncompleteItemRoutesToS3_2`；`testCell04RemoveOneFromS3_1WhileIncompleteItemRemainsStaysInS3_1` | 通过（CI #4） |
 | 05 | S3-2 移除单项，覆盖仍非空与最后一项 | `testCell05RemoveOneFromS3_2WhileNonEmptyStaysInS3_2`；`testCell05RemoveLastItemFromS3_2RoutesToS3_4` | 通过（CI #4） |
-| 06 | S3-3 移除单项，覆盖仍超限、回落扫描、回落就绪 | `testCell06RemoveOneFromS3_3WhileStillOverLimitStaysInS3_3`；`testCell06RemoveOneFromS3_3ToLimitWithIncompleteItemsRoutesToS3_1`；`testCell06RemoveOneFromS3_3ToLimitWithCompletedCacheRoutesToS3_2` | 通过（CI #4） |
 | 07 | S3-1 全部取消 → S3-4 | `testCell07CancelAllFromS3_1RoutesToS3_4AndKeepsCache` | 通过（CI #4） |
 | 08 | S3-2 全部取消 → S3-4 | `testCell08CancelAllFromS3_2RoutesToS3_4AndKeepsCache` | 通过（CI #4） |
-| 09 | S3-3 全部取消 → S3-4 | `testCell09CancelAllFromS3_3RoutesToS3_4AndKeepsCache` | 通过（CI #4） |
-| 10 | S3-3 选择数回落，覆盖扫描、就绪、空集 | `testCell10FallToLimitWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted`；`testCell10FallToLimitWithCompletedCacheRoutesToS3_2`；`testCell10FallToZeroUsesEmptySetRule` | 通过（CI #4） |
 | 11 | S3-1 集合变为空 → S3-4 | `testCell11CollectionBecameEmptyFromS3_1RoutesToS3_4` | 通过（CI #4） |
 | 12 | S3-2 集合变为空 → S3-4 | `testCell12CollectionBecameEmptyFromS3_2RoutesToS3_4` | 通过（CI #4） |
-| 13 | S3-3 集合变为空 → S3-4 | `testCell13CollectionBecameEmptyFromS3_3RoutesToS3_4` | 通过（CI #4） |
 | 14 | S3-2 提交并冻结 → S4-1 | `testCell14SubmitFromS3_2FreezesSnapshotForS4_1` | 通过（CI #4） |
 
-冻结失败守卫另由 `testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot`、`testFreezeCountGuardRejectsOverLimitSetAndFormsNoSnapshot`、`testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot` 直接验证。状态机调用为同步原子操作，合法的 S3-2 状态已蕴含两条冻结校验成立，因此没有伪造不稳定的“调用中竞态”测试。
+冻结失败守卫由空集与扫描未完成测试直接验证。状态机调用为同步原子操作，合法的 S3-2 状态已蕴含两条冻结校验成立，因此没有伪造不稳定的“调用中竞态”测试。
 
 ## 4. S4 可达单元格：22/22
 
@@ -94,16 +90,16 @@
 | 14 | 失败状态被终止并恢复 | `testCell14TerminationFromFailure` | 通过（CI #4） |
 | 15 | 未知状态被终止并恢复 | `testCell15TerminationFromUnknown` | 通过（CI #4） |
 
-“我已清空最近删除”没有迁移事件，UI 恒为禁用；由 `testConfirmationButtonIsAlwaysDisabled` 验证。失败页不能经离开动作结束、成功或未知页不能返回确认页，也分别有拒绝测试。
+该节为旧基线记录；按钮与取消页的当前结论见 `IC-20260812-010-SELF-VERIFICATION.md`。
 
 ## 6. 共同不变量与集合不变量
 
 | 不变量组 | 主要测试证据 | 当前状态 |
 |---|---|---|
-| D 去重、保持首现顺序、只减不增、超限不截断 | `testDIsDeduplicatedWithoutChangingFirstOccurrenceOrder`、`testOverLimitKeepsEveryDeduplicatedAssetInsteadOfTruncatingAt200`、`testReductionOnlyRemovesAndPreservesOriginalDOrder`、`testSelectionFallbackRejectsAdditionAndMoreThanLimit` | 通过（CI #4） |
+| D 去重、保持首现顺序、只减不增、大集合不截断 | `testDIsDeduplicatedWithoutChangingFirstOccurrenceOrder`、`testLargeSelectionQueuesEveryDeduplicatedAssetWithoutTruncation` | 当前测试覆盖 |
 | 资产级缓存不绑定集合，移除仍保留，晚到结果照常入缓存 | `testRemovingAssetRetainsItsOnlyCachedConclusion`、`testLateResultForRemovedAssetUpdatesCacheButNotCurrentStatistics`、`testReentryReusesCompletedCacheWithoutQueueingAgain` | 通过（CI #4） |
 | 已知总字节与不可用数量按当前 D 即时求和 | `testKnownBytesAndUnavailableCountAreRecomputedFromCurrentD`、精确/下界快照测试 | 通过（CI #4） |
-| 仅 1 至 200 项入扫描队列；只入队未开始项 | 超限、回落边界、进行中不重复入队及 200 边界测试 | 通过（CI #4） |
+| 非空集合中的未开始项入扫描队列 | 大集合、进行中不重复入队测试 | 当前测试覆盖 |
 | 快照一次冻结、字段一致、冻结后 D 不可变 | `SnapshotInvariantTests` 中 20 个测试及 S3 Cell14 | 通过（CI #4） |
 | 十进制 MB/GB 且向下截断 | `VolumeFormattingTests` 中 6 个边界测试 | 通过（CI #4） |
 | 同一提交标识只允许原子认领一次 | `testSecondStartWithSameSubmissionIdentifierIsRejected` | 通过（CI #4） |

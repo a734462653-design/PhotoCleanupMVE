@@ -22,7 +22,6 @@ struct S3View: View {
                         Text(volumeText(machine))
                         if machine.state == .ready {
                             Text(L10n.text("s3.confirmation.recently_deleted_notice"))
-                            Text(L10n.text("s3.submission.limit_notice"))
                         }
                         if machine.state == .scanning {
                             ProgressView()
@@ -53,9 +52,6 @@ struct S3View: View {
                     }
 
                     Section(L10n.text("s3.section.actions")) {
-                        if machine.state == .overLimit {
-                            Text(L10n.text("s3.submission.over_limit_notice"))
-                        }
                         Button(L10n.text("s3.action.cancel_all"), role: .destructive) {
                             coordinator.cancelAllAssets()
                         }
@@ -84,8 +80,6 @@ struct S3View: View {
             return L10n.text("s3.state.scanning")
         case .ready:
             return L10n.text("s3.state.ready")
-        case .overLimit:
-            return L10n.text("s3.state.over_limit")
         case .empty:
             return L10n.text("s3.state.empty")
         }
@@ -115,8 +109,6 @@ struct S3View: View {
                     "count": String(machine.unavailableCount)
                 ]
             )
-        case .overLimit:
-            return L10n.text("s3.volume.over_limit")
         case .empty:
             return L10n.text("s3.volume.empty")
         }

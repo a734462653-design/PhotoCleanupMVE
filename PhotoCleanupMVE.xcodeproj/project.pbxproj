@@ -24,6 +24,7 @@
 		20000000000000000000000F /* Assets.xcassets（资源） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000F /* Assets.xcassets */; };
 		200000000000000000000016 /* L10n.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000019 /* L10n.swift */; };
 		200000000000000000000017 /* Localizable.xcstrings（资源） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001A /* Localizable.xcstrings */; };
+		200000000000000000000018 /* FreeDiskSpaceReader.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001B /* FreeDiskSpaceReader.swift */; };
 		200000000000000000000010 /* S3StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000013 /* S3StateMachineTests.swift */; };
 		200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000014 /* SnapshotInvariantTests.swift */; };
 		200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000015 /* VolumeFormattingTests.swift */; };
@@ -69,6 +70,7 @@
 		100000000000000000000018 /* CollectionInvariantTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionInvariantTests.swift; sourceTree = "<group>"; };
 		100000000000000000000019 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
 		10000000000000000000001A /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		10000000000000000000001B /* FreeDiskSpaceReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreeDiskSpaceReader.swift; sourceTree = "<group>"; };
 /* PBXFileReference 区段结束 */
 
 /* PBXFrameworksBuildPhase 区段开始 */
@@ -140,6 +142,7 @@
 				100000000000000000000008 /* PhotoLibraryService.swift */,
 				100000000000000000000009 /* AssetSizeScanner.swift */,
 				10000000000000000000000A /* PhotoDeletionService.swift */,
+				10000000000000000000001B /* FreeDiskSpaceReader.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -320,6 +323,7 @@
 				200000000000000000000008 /* PhotoLibraryService.swift（源码） */,
 				200000000000000000000009 /* AssetSizeScanner.swift（源码） */,
 				20000000000000000000000A /* PhotoDeletionService.swift（源码） */,
+				200000000000000000000018 /* FreeDiskSpaceReader.swift（源码） */,
 				20000000000000000000000B /* S3View.swift（源码） */,
 				20000000000000000000000C /* S4View.swift（源码） */,
 				20000000000000000000000D /* S5View.swift（源码） */,

@@ -50,15 +50,11 @@
 | 待删除资产 | `s3.section.pending_assets` | 待删除资产 | 一致 |
 | 状态 | `s3.section.status` | 状态 | 一致 |
 | 没有待删除照片 | `s3.state.empty` | 没有待删除照片 | 一致 |
-| 待删除数量超过上限 | `s3.state.over_limit` | 待删除数量超过上限 | 一致 |
 | 可以提交删除 | `s3.state.ready` | 可以提交删除 | 一致 |
 | 正在计算照片体积 | `s3.state.scanning` | 正在计算照片体积 | 一致 |
-| 单次最多提交 200 张 | `s3.submission.limit_notice` | 单次最多提交 200 张 | 一致 |
-| 单次最多提交 200 张，请分批处理 | `s3.submission.over_limit_notice` | 单次最多提交 200 张，请分批处理 | 一致 |
 | 没有可计算的照片体积 | `s3.volume.empty` | 没有可计算的照片体积 | 一致 |
 | 照片体积 {known} | `s3.volume.exact` | 照片体积 {known} | 一致 |
 | 照片体积 ≥ {known}；另有 {count} 项体积不可用 | `s3.volume.lower_bound` | 照片体积 ≥ {known}；另有 {count} 项体积不可用 | 一致 |
-| 减至 200 张以内后显示或计算体积 | `s3.volume.over_limit` | 减至 200 张以内后显示或计算体积 | 一致 |
 | 正在计算；当前已知 {known}，不可用 {count} 项（未完成） | `s3.volume.scanning` | 正在计算；当前已知 {known}，不可用 {count} 项（未完成） | 一致 |
 
 ### 2.3 S4

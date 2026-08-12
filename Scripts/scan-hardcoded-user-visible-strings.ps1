@@ -83,7 +83,7 @@ $swiftFiles = @(
 )
 
 $diagnosticReasons = [ordered]@{
-    "资产数量必须位于 1 至 200" = "SubmissionSnapshot 开发时前置条件"
+    "资产标识集合不得为空" = "SubmissionSnapshot 开发时前置条件"
     "资产标识必须唯一" = "SubmissionSnapshot 开发时前置条件"
     "资产数量必须等于资产标识数量" = "SubmissionSnapshot 开发时前置条件"
     "已知总字节数不得为负" = "SubmissionSnapshot 开发时前置条件"
@@ -93,6 +93,7 @@ $diagnosticReasons = [ordered]@{
     "体积字节数不得为负" = "DecimalVolumeFormatter 开发时前置条件"
     "缓存中的已知字节数不得为负" = "S3StateMachine 开发时前置条件"
     "非终态不能交接" = "S4StateMachine 开发时断言"
+    "终态交接前必须写入下游目标状态" = "S4StateMachine 开发时断言"
     "扫描服务只能返回终态结论" = "CleanupCoordinator 开发时断言"
 }
 

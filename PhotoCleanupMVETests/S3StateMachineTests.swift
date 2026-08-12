@@ -12,13 +12,13 @@ final class S3StateMachineTests: XCTestCase {
         XCTAssertTrue(machine.pendingScanAssetIDs.isEmpty)
     }
 
-    func testCell01EnterFromOutsideOverLimitRoutesToS3_3WithoutQueueing() {
+    func testCell01EnterFromOutsideWithLargeSetRoutesToS3_1AndQueuesEveryAsset() {
         let machine = S3StateMachine(assets: makeAssets(count: 201))
 
-        XCTAssertEqual(machine.state, .overLimit)
+        XCTAssertEqual(machine.state, .scanning)
         XCTAssertEqual(machine.assetCount, 201)
-        XCTAssertTrue(machine.pendingScanAssetIDs.isEmpty)
-        XCTAssertEqual(machine.cachedConclusion(for: "asset-0"), .notStarted)
+        XCTAssertEqual(machine.pendingScanAssetIDs, machine.assetIDs)
+        XCTAssertEqual(machine.cachedConclusion(for: "asset-0"), .inProgress)
     }
 
     func testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted() {
@@ -175,42 +175,7 @@ final class S3StateMachineTests: XCTestCase {
         XCTAssertEqual(machine.cachedConclusion(for: "a"), .knownBytes(10))
     }
 
-    // 可达单元格 06：S3-3 移除单项。
-    func testCell06RemoveOneFromS3_3WhileStillOverLimitStaysInS3_3() {
-        let machine = S3StateMachine(assets: makeAssets(count: 202))
-
-        XCTAssertTrue(machine.removeAsset(identifier: "asset-0"))
-
-        XCTAssertEqual(machine.state, .overLimit)
-        XCTAssertEqual(machine.assetCount, 201)
-        XCTAssertTrue(machine.pendingScanAssetIDs.isEmpty)
-    }
-
-    func testCell06RemoveOneFromS3_3ToLimitWithIncompleteItemsRoutesToS3_1() {
-        let machine = S3StateMachine(assets: makeAssets(count: 201))
-
-        XCTAssertTrue(machine.removeAsset(identifier: "asset-200"))
-
-        XCTAssertEqual(machine.state, .scanning)
-        XCTAssertEqual(machine.assetCount, 200)
-        XCTAssertEqual(machine.pendingScanAssetIDs, machine.assetIDs)
-    }
-
-    func testCell06RemoveOneFromS3_3ToLimitWithCompletedCacheRoutesToS3_2() {
-        let input = makeAssets(count: 201)
-        let cache = Dictionary(
-            uniqueKeysWithValues: input.map { ($0.identifier, AssetScanConclusion.knownBytes(1)) }
-        )
-        let machine = S3StateMachine(assets: input, cachedConclusions: cache)
-
-        XCTAssertTrue(machine.removeAsset(identifier: "asset-200"))
-
-        XCTAssertEqual(machine.state, .ready)
-        XCTAssertEqual(machine.knownTotalBytes, 200)
-        XCTAssertTrue(machine.pendingScanAssetIDs.isEmpty)
-    }
-
-    // 可达单元格 07 至 09：三个非空状态均可全部取消。
+    // 可达单元格 07 至 08：两个非空状态均可全部取消。
     func testCell07CancelAllFromS3_1RoutesToS3_4AndKeepsCache() {
         let machine = S3StateMachine(assets: [asset("a")])
 
@@ -232,51 +197,7 @@ final class S3StateMachineTests: XCTestCase {
         XCTAssertEqual(machine.cachedConclusion(for: "a"), .knownBytes(10))
     }
 
-    func testCell09CancelAllFromS3_3RoutesToS3_4AndKeepsCache() {
-        let machine = S3StateMachine(assets: makeAssets(count: 201))
-
-        XCTAssertTrue(machine.cancelAll())
-
-        XCTAssertEqual(machine.state, .empty)
-        XCTAssertEqual(machine.cachedConclusion(for: "asset-0"), .notStarted)
-    }
-
-    // 可达单元格 10：S3-3 的选择数回落至上限内。
-    func testCell10FallToLimitWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted() {
-        let input = makeAssets(count: 201)
-        var cache = Dictionary(uniqueKeysWithValues: input.map { ($0.identifier, AssetScanConclusion.knownBytes(1)) })
-        cache["asset-0"] = .notStarted
-        cache["asset-1"] = .inProgress
-        let machine = S3StateMachine(assets: input, cachedConclusions: cache)
-
-        XCTAssertTrue(machine.reduceSelectionTo(assetIDs: Array(machine.assetIDs.prefix(200))))
-
-        XCTAssertEqual(machine.state, .scanning)
-        XCTAssertEqual(machine.pendingScanAssetIDs, ["asset-0"])
-        XCTAssertEqual(machine.cachedConclusion(for: "asset-1"), .inProgress)
-    }
-
-    func testCell10FallToLimitWithCompletedCacheRoutesToS3_2() {
-        let input = makeAssets(count: 201)
-        let cache = Dictionary(uniqueKeysWithValues: input.map { ($0.identifier, AssetScanConclusion.knownBytes(1)) })
-        let machine = S3StateMachine(assets: input, cachedConclusions: cache)
-
-        XCTAssertTrue(machine.reduceSelectionTo(assetIDs: Array(machine.assetIDs.prefix(200))))
-
-        XCTAssertEqual(machine.state, .ready)
-        XCTAssertEqual(machine.assetCount, 200)
-        XCTAssertTrue(machine.pendingScanAssetIDs.isEmpty)
-    }
-
-    func testCell10FallToZeroUsesEmptySetRule() {
-        let machine = S3StateMachine(assets: makeAssets(count: 201))
-
-        XCTAssertTrue(machine.reduceSelectionTo(assetIDs: []))
-
-        XCTAssertEqual(machine.state, .empty)
-    }
-
-    // 可达单元格 11 至 13：集合变为空事件。
+    // 可达单元格 11 至 12：集合变为空事件。
     func testCell11CollectionBecameEmptyFromS3_1RoutesToS3_4() {
         let machine = S3StateMachine(assets: [asset("a")])
 
@@ -296,15 +217,6 @@ final class S3StateMachineTests: XCTestCase {
 
         XCTAssertEqual(machine.state, .empty)
         XCTAssertEqual(machine.cachedConclusion(for: "a"), .unavailable)
-    }
-
-    func testCell13CollectionBecameEmptyFromS3_3RoutesToS3_4() {
-        let machine = S3StateMachine(assets: makeAssets(count: 201))
-
-        XCTAssertTrue(machine.collectionBecameEmpty())
-
-        XCTAssertEqual(machine.state, .empty)
-        XCTAssertEqual(machine.cachedConclusion(for: "asset-0"), .notStarted)
     }
 
     // 可达单元格 14：S3-2 点击提交。
@@ -343,17 +255,6 @@ final class S3StateMachineTests: XCTestCase {
         XCTAssertNil(machine.frozenSnapshot)
     }
 
-    func testFreezeCountGuardRejectsOverLimitSetAndFormsNoSnapshot() {
-        let machine = S3StateMachine(assets: makeAssets(count: 201))
-
-        XCTAssertEqual(
-            machine.freezeSubmissionSnapshot(),
-            .rejected(.invalidState(.overLimit))
-        )
-        XCTAssertNil(machine.frozenSnapshot)
-        XCTAssertTrue(machine.pendingScanAssetIDs.isEmpty)
-    }
-
     func testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot() {
         let machine = S3StateMachine(assets: [asset("a")])
 
@@ -371,16 +272,6 @@ final class S3StateMachineTests: XCTestCase {
         XCTAssertFalse(machine.cancelAll())
         XCTAssertFalse(machine.collectionBecameEmpty())
         XCTAssertEqual(machine.state, .empty)
-    }
-
-    func testSelectionFallbackRejectsAdditionAndMoreThanLimit() {
-        let machine = S3StateMachine(assets: makeAssets(count: 201))
-        let originalIDs = machine.assetIDs
-
-        XCTAssertFalse(machine.reduceSelectionTo(assetIDs: ["outside"]))
-        XCTAssertFalse(machine.reduceSelectionTo(assetIDs: originalIDs))
-        XCTAssertEqual(machine.assetIDs, originalIDs)
-        XCTAssertEqual(machine.state, .overLimit)
     }
 
     func testUnknownOrNegativeScanResultIsRejectedWithoutChangingCache() {

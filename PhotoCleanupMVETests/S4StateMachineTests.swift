@@ -104,11 +104,12 @@ final class S4StateMachineTests: XCTestCase {
         )
         let transition = try machine.handle(.applicationBecameActive, persist: ignorePersistence)
 
-        guard case let .handoff(.success(snapshot, result)) = transition.effect else {
+        guard case let .handoff(.success(snapshot, result, target)) = transition.effect else {
             return XCTFail("应交接成功结果")
         }
         XCTAssertEqual(snapshot, makeSnapshot())
         XCTAssertEqual(result.successfulAssetIDs, Set(makeSnapshot().assetIDs))
+        XCTAssertEqual(target, .movedToRecentlyDeleted)
     }
 
     // 可达单元格 10：失败终态恢复活动后交接失败结果。
@@ -118,11 +119,12 @@ final class S4StateMachineTests: XCTestCase {
         _ = try machine.handle(.failureCallback(makeFailureCallback()), persist: ignorePersistence)
         let transition = try machine.handle(.applicationBecameActive, persist: ignorePersistence)
 
-        guard case let .handoff(.failure(snapshot, callback)) = transition.effect else {
+        guard case let .handoff(.failure(snapshot, callback, target)) = transition.effect else {
             return XCTFail("应交接失败结果")
         }
         XCTAssertEqual(snapshot, makeSnapshot())
         XCTAssertEqual(callback, makeFailureCallback())
+        XCTAssertEqual(target, .failed)
     }
 
     // 可达单元格 11：未知终态恢复活动后交接未知结果。
@@ -131,11 +133,12 @@ final class S4StateMachineTests: XCTestCase {
         _ = try machine.handle(.processTerminated, persist: ignorePersistence)
         let transition = try machine.handle(.applicationBecameActive, persist: ignorePersistence)
 
-        guard case let .handoff(.unknown(snapshot, reason)) = transition.effect else {
+        guard case let .handoff(.unknown(snapshot, reason, target)) = transition.effect else {
             return XCTFail("应交接未知结果")
         }
         XCTAssertEqual(snapshot, makeSnapshot())
         XCTAssertEqual(reason, .processTerminatedBeforeTerminalResult)
+        XCTAssertEqual(target, .unknown)
     }
 
     // 可达单元格 12：已提交状态收到成功回调。
@@ -148,7 +151,8 @@ final class S4StateMachineTests: XCTestCase {
 
         assertSuccess(transition.toState)
         XCTAssertFalse(machine.timeoutIsRunning)
-        guard case .handoff(.success(_, _)) = transition.effect else {
+        XCTAssertEqual(machine.persistentState.downstreamTargetState, .movedToRecentlyDeleted)
+        guard case .handoff(.success(_, _, .movedToRecentlyDeleted)) = transition.effect else {
             return XCTFail("活动态收到回调后应立即交接")
         }
     }
@@ -175,7 +179,8 @@ final class S4StateMachineTests: XCTestCase {
 
         assertFailure(transition.toState)
         XCTAssertFalse(machine.timeoutIsRunning)
-        guard case .handoff(.failure(_, _)) = transition.effect else {
+        XCTAssertEqual(machine.persistentState.downstreamTargetState, .failed)
+        guard case .handoff(.failure(_, _, .failed)) = transition.effect else {
             return XCTFail("活动态收到回调后应立即交接")
         }
     }
@@ -203,6 +208,7 @@ final class S4StateMachineTests: XCTestCase {
         XCTAssertEqual(transition.toState, .resultUnknown(.activeWaitTimedOut))
         XCTAssertEqual(machine.activeElapsedSeconds, S4StateMachine.timeoutLimitSeconds)
         XCTAssertFalse(machine.timeoutIsRunning)
+        XCTAssertEqual(machine.persistentState.downstreamTargetState, .unknown)
     }
 
     // 可达单元格 17：已恢复交互状态累计满六十秒进入未知终态。
@@ -227,6 +233,7 @@ final class S4StateMachineTests: XCTestCase {
             .resultUnknown(.processTerminatedBeforeTerminalResult)
         )
         XCTAssertFalse(machine.isApplicationActive)
+        XCTAssertEqual(machine.persistentState.downstreamTargetState, .unknown)
     }
 
     // 可达单元格 19：已恢复交互期间被终止后进入未知终态。
@@ -458,6 +465,71 @@ final class S4StateMachineTests: XCTestCase {
         }
     }
 
+    func testDownstreamTargetStateValueDomainIsComplete() {
+        XCTAssertEqual(
+            Set(S4DownstreamTargetState.allCases.map(\.rawValue)),
+            Set(["S5-T0", "S5-F", "S5-C", "S5-U"])
+        )
+    }
+
+    func testUserCancellationWritesCancelledTargetBeforeHandoff() throws {
+        var machine = try makeMachine()
+        let callback = makeFailureCallback(
+            successful: [],
+            failed: [],
+            unprocessed: Set(makeSnapshot().assetIDs),
+            category: .userCancelled
+        )
+        var persistedTarget: S4DownstreamTargetState?
+
+        let transition = try machine.handle(.failureCallback(callback)) { state in
+            persistedTarget = state.downstreamTargetState
+        }
+
+        XCTAssertEqual(persistedTarget, .cancelled)
+        XCTAssertEqual(machine.persistentState.downstreamTargetState, .cancelled)
+        guard case .handoff(.failure(_, _, .cancelled)) = transition.effect else {
+            return XCTFail("用户取消应交接取消页")
+        }
+    }
+
+    func testOtherFailureCategoriesWriteFailureTarget() throws {
+        let categories: [S4FailureCategory] = [
+            .insufficientPermission,
+            .assetNotDeletable,
+            .unknown
+        ]
+
+        for category in categories {
+            var machine = try makeMachine()
+            let transition = try machine.handle(
+                .failureCallback(makeFailureCallback(category: category)),
+                persist: ignorePersistence
+            )
+
+            XCTAssertEqual(machine.persistentState.downstreamTargetState, .failed)
+            guard case .handoff(.failure(_, _, .failed)) = transition.effect else {
+                return XCTFail("非取消类别应交接失败页")
+            }
+        }
+    }
+
+    func testPersistedSessionCarriesDownstreamTargetState() throws {
+        var machine = try makeMachine()
+        _ = try machine.handle(
+            .successCallback(
+                submissionID: makeSnapshot().submissionID,
+                receivedAt: fixedDate
+            ),
+            persist: ignorePersistence
+        )
+
+        let persisted = PersistedSession(s4: machine.persistentState)
+
+        XCTAssertEqual(persisted.downstreamTargetState, "S5-T0")
+        XCTAssertEqual(persisted.phase, .submissionSucceeded)
+    }
+
     private func makeSnapshot() -> SubmissionSnapshot {
         SubmissionSnapshot(
             submissionID: "提交-001",
@@ -476,7 +548,8 @@ final class S4StateMachineTests: XCTestCase {
         successful: Set<String> = ["资产-A"],
         failed: Set<String> = ["资产-B"],
         unprocessed: Set<String> = ["资产-C"],
-        message: String = "系统未能完成整批请求"
+        message: String = "系统未能完成整批请求",
+        category: S4FailureCategory = .unknown
     ) -> S4FailureCallback {
         S4FailureCallback(
             submissionID: submissionID,
@@ -484,7 +557,7 @@ final class S4StateMachineTests: XCTestCase {
             failedAssetIDs: failed,
             unprocessedAssetIDs: unprocessed,
             reason: S4FailureReason(
-                category: .unknown,
+                category: category,
                 message: message,
                 systemDomain: "测试错误域",
                 systemCode: 7
