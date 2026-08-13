@@ -3,6 +3,11 @@ import XCTest
 @testable import PhotoCleanupMVE
 
 final class CoverageGapTests: XCTestCase {
+    private enum FixtureError: Error {
+        case snapshotWasNotFrozen
+        case handoffWasNotProduced
+    }
+
     private final class SubmissionRegistry {
         private var claimedSubmissionIDs = Set<String>()
 
@@ -617,6 +622,180 @@ final class CoverageGapTests: XCTestCase {
         guard case .unknown = machine.state else {
             return XCTFail("离开不得推断未知结果")
         }
+    }
+
+    func testC34_093GeneratedSubmissionIdentifiersAreUnique() {
+        let sampleCount = 256
+        var generatedIdentifiers = Set<String>()
+
+        for index in 0..<sampleCount {
+            let assetID = "唯一性资产-\(index)"
+            let machine = S3StateMachine(
+                assets: [AssetDescriptor(identifier: assetID, isFavorite: false)],
+                cachedConclusions: [assetID: .knownBytes(0)]
+            )
+
+            guard case let .frozen(snapshot) = machine.freezeSubmissionSnapshot() else {
+                return XCTFail("完整非空集合必须生成提交快照")
+            }
+            XCTAssertNotNil(UUID(uuidString: snapshot.submissionID))
+            XCTAssertTrue(generatedIdentifiers.insert(snapshot.submissionID).inserted)
+        }
+
+        XCTAssertEqual(generatedIdentifiers.count, sampleCount)
+    }
+
+    func testC34_093SubmissionIdentifierEndsWhenTargetS5Receives() throws {
+        let snapshots = try makeLifecycleSnapshotsReceivedByS5()
+
+        XCTAssertEqual(snapshots.received.submissionID, snapshots.frozen.submissionID)
+        XCTAssertEqual(snapshots.received.submissionID, "提交-生命周期")
+    }
+
+    func testC34_094AssetIdentifiersEndWhenTargetS5Receives() throws {
+        let snapshots = try makeLifecycleSnapshotsReceivedByS5()
+
+        XCTAssertEqual(snapshots.received.assetIDs, snapshots.frozen.assetIDs)
+        XCTAssertEqual(snapshots.received.assetIDs, ["生命周期资产-A", "生命周期资产-B"])
+    }
+
+    func testC34_095AssetCountEndsWhenTargetS5Receives() throws {
+        let snapshots = try makeLifecycleSnapshotsReceivedByS5()
+
+        XCTAssertEqual(snapshots.received.assetCount, snapshots.frozen.assetCount)
+        XCTAssertEqual(snapshots.received.assetCount, 2)
+    }
+
+    func testC34_096KnownTotalBytesEndsWhenTargetS5Receives() throws {
+        let snapshots = try makeLifecycleSnapshotsReceivedByS5()
+
+        XCTAssertEqual(snapshots.received.knownTotalBytes, snapshots.frozen.knownTotalBytes)
+        XCTAssertEqual(snapshots.received.knownTotalBytes, 4_321)
+    }
+
+    func testC34_097UnavailableCountEndsWhenTargetS5Receives() throws {
+        let snapshots = try makeLifecycleSnapshotsReceivedByS5()
+
+        XCTAssertEqual(snapshots.received.unavailableCount, snapshots.frozen.unavailableCount)
+        XCTAssertEqual(snapshots.received.unavailableCount, 1)
+    }
+
+    func testC34_098VolumeDisplayModeEndsWhenTargetS5Receives() throws {
+        let snapshots = try makeLifecycleSnapshotsReceivedByS5()
+
+        XCTAssertEqual(snapshots.received.volumeDisplayMode, snapshots.frozen.volumeDisplayMode)
+        XCTAssertEqual(snapshots.received.volumeDisplayMode, .lowerBound)
+    }
+
+    func testC34_099FavoriteAssetIdentifiersEndWhenTargetS5Receives() throws {
+        let snapshots = try makeLifecycleSnapshotsReceivedByS5()
+
+        XCTAssertEqual(snapshots.received.favoriteAssetIDs, snapshots.frozen.favoriteAssetIDs)
+        XCTAssertEqual(snapshots.received.favoriteAssetIDs, Set(["生命周期资产-A"]))
+    }
+
+    func testC34_100FrozenTimeEndsWhenTargetS5Receives() throws {
+        let snapshots = try makeLifecycleSnapshotsReceivedByS5()
+
+        XCTAssertEqual(snapshots.received.frozenAt, snapshots.frozen.frozenAt)
+        XCTAssertEqual(snapshots.received.frozenAt, fixedDate)
+    }
+
+    func testC34_101TwoFirstFreezeGuardsDefineCurrentCompletenessBoundary() {
+        let empty = S3StateMachine(assets: [])
+        XCTAssertEqual(
+            empty.freezeSubmissionSnapshot(),
+            .rejected(.invalidState(.empty))
+        )
+
+        let scanning = S3StateMachine(
+            assets: [AssetDescriptor(identifier: "扫描中资产", isFavorite: false)]
+        )
+        XCTAssertEqual(
+            scanning.freezeSubmissionSnapshot(),
+            .rejected(.invalidState(.scanning))
+        )
+
+        let completedCases: [([AssetDescriptor], [String: AssetScanConclusion])] = [
+            (
+                [AssetDescriptor(identifier: "已知资产", isFavorite: false)],
+                ["已知资产": .knownBytes(0)]
+            ),
+            (
+                [AssetDescriptor(identifier: "不可用资产", isFavorite: true)],
+                ["不可用资产": .unavailable]
+            ),
+            (
+                [
+                    AssetDescriptor(identifier: "混合资产-A", isFavorite: true),
+                    AssetDescriptor(identifier: "混合资产-B", isFavorite: false)
+                ],
+                ["混合资产-A": .knownBytes(1), "混合资产-B": .unavailable]
+            )
+        ]
+
+        for (assets, conclusions) in completedCases {
+            let machine = S3StateMachine(
+                assets: assets,
+                cachedConclusions: conclusions,
+                submissionIDGenerator: { "提交-守卫边界" },
+                clock: { self.fixedDate }
+            )
+            guard case .frozen = machine.freezeSubmissionSnapshot() else {
+                return XCTFail("非空且全部扫描完成的当前集合不得被第三类资格守卫拒绝")
+            }
+        }
+    }
+
+    private func makeLifecycleSnapshotsReceivedByS5() throws -> (
+        frozen: SubmissionSnapshot,
+        received: SubmissionSnapshot
+    ) {
+        let source = S3StateMachine(
+            assets: [
+                AssetDescriptor(identifier: "生命周期资产-A", isFavorite: true),
+                AssetDescriptor(identifier: "生命周期资产-B", isFavorite: false)
+            ],
+            cachedConclusions: [
+                "生命周期资产-A": .knownBytes(4_321),
+                "生命周期资产-B": .unavailable
+            ],
+            submissionIDGenerator: { "提交-生命周期" },
+            clock: { self.fixedDate }
+        )
+        guard case let .frozen(frozen) = source.freezeSubmissionSnapshot() else {
+            XCTFail("测试夹具必须形成冻结快照")
+            throw FixtureError.snapshotWasNotFrozen
+        }
+
+        var execution = try S4StateMachine.start(
+            snapshot: frozen,
+            claimAndPersist: { _ in true }
+        )
+        let terminal = try execution.handle(
+            .successCallback(
+                submissionID: frozen.submissionID,
+                receivedAt: fixedDate.addingTimeInterval(1)
+            ),
+            persist: ignoreS4Persistence
+        )
+        guard case let .handoff(handoff) = terminal.effect else {
+            XCTFail("S4 成功终态必须交接目标 S5")
+            throw FixtureError.handoffWasNotProduced
+        }
+
+        var receivedAtEntry: SubmissionSnapshot?
+        let target = try S5StateMachine.enter(
+            from: handoff,
+            persist: { receivedAtEntry = $0.state.snapshot },
+            invalidateOldLists: { _ in },
+            readFreeDiskStrictGB: { 10 }
+        )
+        let received = try XCTUnwrap(receivedAtEntry, "目标 S5 必须先接收并持久化快照")
+
+        XCTAssertEqual(target.state.downstreamTargetState, .movedToRecentlyDeleted)
+        XCTAssertEqual(target.state.snapshot, received)
+        return (frozen, received)
     }
 
     private func makeSnapshot(
