@@ -46,7 +46,7 @@
 |---|---|
 | 任务开始 HEAD | `5ed266c23cfc657c616fffa54426b904e2824b36` |
 | 产品源码 Git blob | 专项脚本逐文件比较任务基线、当前 HEAD 与工作树的 `PhotoCleanupMVE/` blob。 |
-| 输入 SPEC | `SPEC-S3-S4-20260812.v6.md`；SHA-256：`BF52BBE87692A253BDA9C2AC8B55712C76AB453E3AAF6C5D286BC15835E04C7D`。 |
+| 输入 SPEC | `SPEC-S3-S4-20260812.v6.md`；SHA-256：`BF52BBE87692A253BDA9C2AC8B55712C76AB453E3AAF6C5D286BC15835E04C7D`。本地直接验文件；CI 缺少仓库外输入时核对 IC-021 报告中的固定摘要证据链。 |
 | 追踪矩阵 | `Reports/TRACEABILITY-S3-S5.md`；任务基线 Git blob：`7774caca2f638f86a0b70e4f1e1168aa873544fa`。 |
 | XCUITest | 工程只允许 `application` 与 `bundle.unit-test` 两种 product type，共两个 target；共享方案不得出现 UI 测试引用。 |
 | 产品代码 | 未修改。 |

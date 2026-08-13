@@ -18,6 +18,7 @@ $工作流路径 = Join-Path $项目根 ".github/workflows/ci.yml"
 $追踪路径 = Join-Path $项目根 "Reports/TRACEABILITY-S3-S5.md"
 $报告路径 = Join-Path $项目根 "Reports/IC-20260812-024-SELF-VERIFICATION.md"
 $规格路径 = Join-Path $工作区 "SPEC-S3-S4-20260812.v6.md"
+$规格证据路径 = Join-Path $项目根 "Reports/IC-20260812-021-SELF-VERIFICATION.md"
 $基线提交 = "5ed266c23cfc657c616fffa54426b904e2824b36"
 $基线追踪Blob = "7774caca2f638f86a0b70e4f1e1168aa873544fa"
 $规格摘要 = "BF52BBE87692A253BDA9C2AC8B55712C76AB453E3AAF6C5D286BC15835E04C7D"
@@ -95,7 +96,7 @@ $必需文件 = @(
     $工作流路径,
     $追踪路径,
     $报告路径,
-    $规格路径,
+    $规格证据路径,
     (Join-Path $PSScriptRoot "selfcheck.ps1")
 )
 foreach ($路径 in $必需文件) {
@@ -175,8 +176,17 @@ $当前追踪Blob = @(调用Git @("rev-parse", "HEAD:Reports/TRACEABILITY-S3-S5.
 $工作树追踪Blob = @(调用Git @("hash-object", "--", "Reports/TRACEABILITY-S3-S5.md"))[0]
 检查 ($当前追踪Blob -ceq $基线追踪Blob) "当前 HEAD 的追踪矩阵 Git blob 已变化"
 检查 ($工作树追踪Blob -ceq $基线追踪Blob) "工作树的追踪矩阵 Git blob 已变化"
-$实际规格摘要 = (Get-FileHash -LiteralPath $规格路径 -Algorithm SHA256).Hash
-检查 ($实际规格摘要 -ceq $规格摘要) "输入 SPEC 摘要已变化"
+if (Test-Path -LiteralPath $规格路径 -PathType Leaf) {
+    $实际规格摘要 = (Get-FileHash -LiteralPath $规格路径 -Algorithm SHA256).Hash
+    检查 ($实际规格摘要 -ceq $规格摘要) "输入 SPEC 摘要已变化"
+}
+else {
+    $规格证据文本 = Get-Content -LiteralPath $规格证据路径 -Raw -Encoding UTF8
+    检查 (
+        $规格证据文本.Contains("SPEC-S3-S4-20260812.v6.md") -and
+        $规格证据文本.Contains($规格摘要)
+    ) "CI 缺少仓库外 SPEC，且 IC-021 报告没有固定摘要证据"
+}
 
 $项目文本 = Get-Content -LiteralPath $项目路径 -Raw -Encoding UTF8
 $方案文本 = Get-Content -LiteralPath $方案路径 -Raw -Encoding UTF8
