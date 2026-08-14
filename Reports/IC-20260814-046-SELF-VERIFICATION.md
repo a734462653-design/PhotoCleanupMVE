@@ -8,7 +8,7 @@
 - 输入 SHA256：`F2565629CE6E9BD1ABB7C6841C73460C3E7E8F252A21A70D6E01893B87189238`
 - 实际开发基线：`7fcbe9c37c66094c0c2e3c0d61315e4646fa5e3d`
 
-已实现 S1 四状态纯状态机、按月／按年／相册／未分类范围读取服务、S1 到 S2 六字段交接结构、未接路由的 SwiftUI 入口页及四状态独立预览，并新增 18 项编号 XCTest。`S1View` 只通过回调交出数据，没有引用 `CleanupCoordinator`、`CleanupRoute`、应用入口或任何现有导航。
+已实现 S1 四状态纯状态机、按月／按年／相册／未分类范围读取服务、S1 到 S2 六字段交接结构、未接路由的 SwiftUI 入口页及四状态独立预览，并新增 18 项编号 XCTest。`S1View` 只通过回调交出数据，没有引用 `CleanupCoordinator`、`CleanupRoute`、应用入口或任何现有导航。受验实现提交的 GitHub Actions 已全绿，包含全量 XCTest、Release 未签名构建与 IPA 产出。
 
 任务执行期间，另一张明确划分的卡 B（`IC-20260814-045`）先落地为 `7fcbe9c`，新增 5 项测试并修改本卡禁止触碰的路由相关文件。因此任务给定的 203 项是 043／044 上游基线，而本卡实际开发起点是 208 项。本报告把两者分别记录；本卡自身新增数始终为 18，最终静态总数为 226。
 
@@ -18,8 +18,8 @@
 | 实际开发起点 XCTest | 208 |
 | 本卡新增 XCTest | 18 |
 | 最终 XCTest 总数 | 226 |
-| 失败 | CI 结果待本次推送回填 |
-| unexpected | CI 结果待本次推送回填 |
+| 失败 | 0 |
+| unexpected | 0 |
 
 ## 二、实现与规格对应
 
@@ -175,14 +175,18 @@ CI 回填后在干净工作树执行：
 | Windows 通用 selfcheck | 通过。 |
 | String Catalog | 90 个目录条目、90 个产品源码引用，双向一致。 |
 | 用户可见硬编码残留 | 0。 |
-| 本卡专项静态自验 | 通过；提交前模式执行 189 项检查，0 项失败，退出码 0。 |
-| 全量 XCTest | CI 结果待本次推送回填。 |
-| 失败 | CI 结果待本次推送回填。 |
-| unexpected | CI 结果待本次推送回填。 |
-| Release 构建 | CI 结果待本次推送回填。 |
-| 未签名 IPA | CI 结果待本次推送回填。 |
-| 受验提交 | CI 结果待本次推送回填。 |
-| CI 运行 | CI 结果待本次推送回填。 |
-| CI 链接 | CI 结果待本次推送回填。 |
+| 本卡专项静态自验 | 通过；提交前模式执行 189 项检查，0 项失败；CI 前干净完成态模式执行 200 项检查，0 项失败；退出码均为 0。 |
+| 最终完成态专项自验 | 报告证据提交并推送后，在干净工作树执行最终模式。 |
+| 全量 XCTest | 全量 XCTest 通过；执行 226 项，0 failures（0 unexpected）；测试套件运行 4.954 秒，测试操作总耗时 566.206 秒；`** TEST SUCCEEDED **`。 |
+| 失败 | 0 |
+| unexpected | 0 |
+| Release 构建 | Release 构建通过；使用 `Release`、`iphoneos`、`CODE_SIGNING_ALLOWED=NO`、`CODE_SIGNING_REQUIRED=NO`，结果为 `** BUILD SUCCEEDED **`。 |
+| 未签名 IPA | 未签名 IPA 产出通过；`PhotoCleanupMVE-unsigned.ipa` 为 266436 字节，SHA-256 为 `a59d35934ae65b991ca2659fa9007b43cab4494492c9933953142f95c2a16e1c`，压缩完整性检查无错误。 |
+| 上传产物 | `PhotoCleanupMVE-unsigned-862f0c0c99f2`，Artifact ID `9222396512`；上传归档 266606 字节，产物摘要 SHA-256 为 `6bf3f1898c5127dc90b289a1702c0d038da05c534eb7e20c7895e085727c67ad`。 |
+| 受验提交 | `862f0c0c99f261bbc5681bbb66e9d72a0be491d1` |
+| CI 运行 | `iOS 构建与自验 #25`；运行 ID `31808271169`；状态 Success；总耗时 11 分 26 秒。 |
+| CI 作业 | `构建、XCTest 与未签名产物`；作业 ID `94792370102`；耗时 11 分 21 秒。 |
+| CI 硬编码检查 | 通过；目录条目 90、产品源码引用 90、用户可见硬编码残留 0。 |
+| CI 链接 | [GitHub Actions 运行 31808271169](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31808271169) |
 
-当前 Windows 环境没有 Xcode，因此不能在本机伪造运行态结果。完成态必须以本次推送触发的 macOS CI 为准，回填 226 项 XCTest、0 失败、0 unexpected、Release 构建与未签名 IPA 证据后，再运行脚本最终模式。
+当前 Windows 环境没有 Xcode，因此运行态结论严格采用上述 macOS CI 原始日志与运行摘要，不在本机伪造。CI 受验对象是实现提交 `862f0c0c99f261bbc5681bbb66e9d72a0be491d1`；随后仅提交本报告的证据回填，并以 `[skip ci]` 避免用报告改动重复触发同一套构建。该报告提交不改动产品源码、测试、工程、脚本或 CI 配置。
