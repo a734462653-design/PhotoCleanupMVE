@@ -20,6 +20,8 @@ struct PhotoCleanupMVEApp: App {
                     S5View(coordinator: coordinator)
                 case .finished:
                     Text(L10n.text("app.session.finished"))
+                case .upstream:
+                    EmptyView()
                 }
             }
             .onAppear {

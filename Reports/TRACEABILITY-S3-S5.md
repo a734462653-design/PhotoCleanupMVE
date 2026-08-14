@@ -3,7 +3,8 @@
 ## 一、范围与判定口径
 
 - 任务：`IC-20260812-021-traceability-rerun`；当前产品与测试证据基线：`c7ed4b18c579fd6d2904ea856dcac404906e2ec0`；上游受验实现提交：`01ebf8263d20a58340aedd78be98cadd06d30eb0`。
-- 输入规格：`SPEC-S3-S4-20260812.v6.md` 与 `SPEC-S5-20260812.v5.md`；沿用 IC-20260812-011 的机械提取范围、七个正向字段和四个反向字段。
+- 输入规格：`SPEC-S3-S4-20260813.v7.md` 与 `SPEC-S5-20260812.v5.md`；沿用 IC-20260812-011 的机械提取范围、七个正向字段和四个反向字段。
+- v7 增量落位：`IC-20260814-045-contract-alignment-s3-route`；S3/S4 输入 SHA256 为 `BED82109BE905466FEFF2A915D290E7FE98B5179801F6F475995CBED468AD786`。新增条款使用 `C34-231`，避免改写既有条款稳定编号。
 - 状态迁移表仍按数据单元格编号；单元格坐标与可达/不可达标记保留在判定理由开头，供 `TransitionTableGuardTests` 在运行时读取。
 - 方法列只列直接相关的 XCTest 断言。若方法只覆盖复合条款的一部分，仍记录方法，但覆盖判定保守取“未覆盖”。
 - `不适用` 理由共五类：`MVE 范围外`、`该条款为未定项阻断`、`该条款为纯文案`、`该条款为纯视觉`、`实现约束比规格更强，该路径在当前实现下不可达`。
@@ -14,12 +15,12 @@
 
 | 指标 | 数量 |
 |---|---:|
-| 条款总数 | 376 |
-| 已覆盖 | 265 |
+| 条款总数 | 377 |
+| 已覆盖 | 266 |
 | 未覆盖 | 72 |
 | 不适用 | 39 |
 | 第五类不适用 | 2 |
-| XCTest 方法总数 | 179 |
+| XCTest 方法总数 | 184 |
 | 未命中测试 | 8 |
 
 ## 三、正向矩阵
@@ -29,236 +30,237 @@
 <!-- 正向矩阵开始 -->
 ```
 条款编号	规格文件	行号	条款原文（逐字，不改写）	对应 XCTest 方法名（可多个，无则留空）	覆盖判定	判定理由
-C34-001	SPEC-S3-S4-20260812.v6.md	17	设当前待删集合为 `D`，其去重后的资产数量为 `n`。S3 共三个状态，只允许存在一个当前状态，并按以下优先级归一化：	testCell01EnterFromOutsideWithEmptySetRoutesToS3_4, testCell01EnterFromOutsideWithLargeSetRoutesToS3_1AndQueuesEveryAsset, testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted, testCell01EnterFromOutsideWithCompletedCacheRoutesToS3_2WithoutRescan	已覆盖	所列方法直接断言该条款。
-C34-002	SPEC-S3-S4-20260812.v6.md	19	1. `n = 0`：S3-4 空集。	testCell01EnterFromOutsideWithEmptySetRoutesToS3_4	已覆盖	所列方法直接断言该条款。
-C34-003	SPEC-S3-S4-20260812.v6.md	20	2. `n ≥ 1` 且 `D` 中存在结论为“未开始”或“进行中”的项：S3-1 扫描中。	testCell01EnterFromOutsideWithLargeSetRoutesToS3_1AndQueuesEveryAsset, testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted	已覆盖	所列方法直接断言该条款。
-C34-004	SPEC-S3-S4-20260812.v6.md	21	3. `n ≥ 1` 且 `D` 中不存在结论为“未开始”或“进行中”的项：S3-2 就绪。	testCell01EnterFromOutsideWithCompletedCacheRoutesToS3_2WithoutRescan	已覆盖	所列方法直接断言该条款。
-C34-005	SPEC-S3-S4-20260812.v6.md	25	- S3 页面从上到下分为三个层级：页面头部导航层、头部信息条、资产内容区。		不适用	该条款为纯视觉
-C34-006	SPEC-S3-S4-20260812.v6.md	26	- “返回上游整理页”入口位于页面头部导航层，高于头部信息条与资产内容区；三个 S3 状态均显示该入口。触发后迁出 S3，目标为上游整理页；本文不定义上游整理页的内部目标状态。		不适用	MVE 范围外
-C34-007	SPEC-S3-S4-20260812.v6.md	27	- 头部信息条显示当前待删总数，并新增具名占位 `{当前范围说明：显示本轮整理范围的来源}`。该占位只规定必须说明本轮整理范围来自何处，不规定最终文案。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-008	SPEC-S3-S4-20260812.v6.md	28	- 确认页展示 `D` 中的全部资产，不得因收藏标记或体积不可用而隐藏其中任何一项。	testDIsDeduplicatedWithoutChangingFirstOccurrenceOrder	未覆盖	该方法只断言状态机保留完整去重集合，未断言确认页逐项显示。
-C34-009	SPEC-S3-S4-20260812.v6.md	29	- 每项至少展示缩略图、稳定资产标识对应的可辨认内容和收藏标记；收藏标记叠加在缩略图左下角，并采用系统“照片”App 的官方样式。收藏标记只作提示，不改变提交资格。	testFavoriteAssetsUseSameScanRulesAndRemainSubmittable	未覆盖	该方法只断言收藏项不影响扫描与提交，未断言缩略图、标识内容和收藏标记的页面呈现。
-C34-010	SPEC-S3-S4-20260812.v6.md	30	- 确认页单张缩略图的信息叠加只显示体积，不显示拍摄日期，采用 2a 方案。多资源资产的可展开体积明细遵循“体积扫描规格”中的信息结构。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-011	SPEC-S3-S4-20260812.v6.md	31	- 页面只允许从 `D` 移除待删项，不在 S3 内改变收藏、隐藏或相册归类状态。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-012	SPEC-S3-S4-20260812.v6.md	32	- S3 内的 `D` 只减不增；集合变大只能先返回上游整理页，再以新的 `D` 重新进入确认页。		不适用	MVE 范围外
-C34-013	SPEC-S3-S4-20260812.v6.md	33	- 每个资产标识在资产级结论缓存中持有唯一结论，取值为“未开始”“进行中”“已知字节”或“不可用”。结论不绑定集合；资产移出 `D` 时保留其结论，不清除缓存。	testRemovingAssetRetainsItsOnlyCachedConclusion, testUnknownOrNegativeScanResultIsRejectedWithoutChangingCache	已覆盖	所列方法直接断言该条款。
-C34-014	SPEC-S3-S4-20260812.v6.md	34	- `已知总字节数` 等于当前 `D` 中结论为“已知字节”的项之和；`unavailableCount` 等于当前 `D` 中结论为“不可用”的项数。两者均为对当前 `D` 的即时求和结果，不通过加减维护。	testKnownBytesAndUnavailableCountAreRecomputedFromCurrentD	已覆盖	所列方法直接断言该条款。
-C34-015	SPEC-S3-S4-20260812.v6.md	35	- 移除单项时，只从 `D` 移除该项，保留其缓存结论，并按当前 `D` 重新求和；不重扫、不作废、不减算。	testKnownBytesAndUnavailableCountAreRecomputedFromCurrentD, testRemovingAssetRetainsItsOnlyCachedConclusion, testRemovingQueuedAssetDoesNotInvalidateItsQueuedWork	已覆盖	所列方法直接断言该条款。
-C34-016	SPEC-S3-S4-20260812.v6.md	36	- `n ≥ 1` 时，`D` 中结论为“未开始”的项进入扫描队列。	testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted, testLargeSelectionQueuesEveryDeduplicatedAssetWithoutTruncation, testTakingQueueDoesNotQueueInProgressAssetsAgain	已覆盖	所列方法直接断言该条款。
-C34-017	SPEC-S3-S4-20260812.v6.md	37	- 晚到的成功或失败结果写入对应资产的结论缓存。该资产仍在 `D` 中时自动进入当前统计；已经移出时不影响当前统计。不设置丢弃规则。	testLateSuccessForCurrentAssetImmediatelyUpdatesCurrentStatistics, testLateFailureForCurrentAssetImmediatelyUpdatesCurrentStatistics, testLateResultForRemovedAssetUpdatesCacheButNotCurrentStatistics	已覆盖	所列方法直接断言该条款。
-C34-018	SPEC-S3-S4-20260812.v6.md	38	- 重新进入页面时直接复用各资产已有的缓存结论，不因重新进入而重扫。	testReentryReusesCompletedCacheWithoutQueueingAgain	已覆盖	所列方法直接断言该条款。
-C34-019	SPEC-S3-S4-20260812.v6.md	39	- 扫描完成是指当前 `D` 中不存在结论为“未开始”或“进行中”的项。扫描尚未完成时，提交操作必须禁用。	testCell02ScanCompletionFromS3_1RoutesToS3_2, testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot, testOneUnavailableConclusionDoesNotStopOtherScans	已覆盖	所列方法直接断言该条款。
-C34-020	SPEC-S3-S4-20260812.v6.md	40	- 任何提交都必须来自 S3-2，并在发起删除请求之前冻结提交集合快照。	testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot, testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot, testC34_020DeletionStartsOnlyAfterSnapshotFreeze	已覆盖	所列专项方法直接断言该条款。
-C34-021	SPEC-S3-S4-20260812.v6.md	46	- 页面头部导航层：页面标题、“确认删除”语义说明和“返回上游整理页”入口。		不适用	MVE 范围外
-C34-022	SPEC-S3-S4-20260812.v6.md	47	- 头部信息条：当前待删总数 `n` 与 `{当前范围说明：显示本轮整理范围的来源}`。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-023	SPEC-S3-S4-20260812.v6.md	48	- `D` 的完整资产清单；每项显示缩略图、位于左下角且采用系统“照片”App 官方样式的收藏标记、仅含体积的信息叠加和移除入口，不显示拍摄日期。	testDIsDeduplicatedWithoutChangingFirstOccurrenceOrder, testFavoriteAssetsUseSameScanRulesAndRemainSubmittable	未覆盖	方法只断言状态机资产集合和收藏项提交资格，未断言扫描中页面完整呈现。
-C34-024	SPEC-S3-S4-20260812.v6.md	49	- L2 体积区域显示“正在计算”，可同时显示当前已知字节总量和当前 `unavailableCount`；这些数值必须标为未完成结果。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-025	SPEC-S3-S4-20260812.v6.md	50	- 不确定活动指示，不显示完成比例。		不适用	该条款为纯视觉
-C34-026	SPEC-S3-S4-20260812.v6.md	54	- 浏览待删清单。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-027	SPEC-S3-S4-20260812.v6.md	55	- 移除单项。	testCell03RemoveDuringScanLastItemRoutesToS3_4, testCell03RemoveDuringScanLastIncompleteItemRoutesToS3_2, testCell03RemoveDuringScanWhileIncompleteItemRemainsStaysInS3_1	已覆盖	所列方法直接断言该条款。
-C34-028	SPEC-S3-S4-20260812.v6.md	56	- 全部取消。	testCell07CancelAllFromS3_1RoutesToS3_4AndKeepsCache, testCell08CancelAllFromS3_2RoutesToS3_4AndKeepsCache	已覆盖	所列方法直接断言该条款。
-C34-029	SPEC-S3-S4-20260812.v6.md	57	- 使用页面头部导航层的入口返回上游整理页；该操作迁出 S3，目标为上游整理页。		不适用	MVE 范围外
-C34-030	SPEC-S3-S4-20260812.v6.md	61	- 提交删除。	testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot	已覆盖	所列方法直接断言该条款。
-C34-031	SPEC-S3-S4-20260812.v6.md	62	- 对当前扫描结果执行确认或冻结。	testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot	已覆盖	所列方法直接断言该条款。
-C34-032	SPEC-S3-S4-20260812.v6.md	63	- 在确认页内改变收藏、隐藏或相册归类状态。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-033	SPEC-S3-S4-20260812.v6.md	67	- 结论更新后 `D` 中已无“未开始”或“进行中”项：迁至 S3-2。	testCell02ScanCompletionFromS3_1RoutesToS3_2	已覆盖	所列方法直接断言该条款。
-C34-034	SPEC-S3-S4-20260812.v6.md	68	- 移除单项后 `n = 0`：迁至 S3-4；该项的缓存结论保留。	testCell03RemoveDuringScanLastItemRoutesToS3_4	已覆盖	所列方法直接断言该条款。
-C34-035	SPEC-S3-S4-20260812.v6.md	69	- 移除单项后仍为非空，且 `D` 中已无“未开始”或“进行中”项：迁至 S3-2；按当前 `D` 重新求和。	testCell03RemoveDuringScanLastIncompleteItemRoutesToS3_2	已覆盖	所列方法直接断言该条款。
-C34-036	SPEC-S3-S4-20260812.v6.md	70	- 移除单项后仍为非空，且 `D` 中仍有“未开始”或“进行中”项：留在 S3-1；按当前 `D` 重新求和，不重扫。	testCell03RemoveDuringScanWhileIncompleteItemRemainsStaysInS3_1	已覆盖	所列方法直接断言该条款。
-C34-037	SPEC-S3-S4-20260812.v6.md	71	- 返回上游整理页：迁出 S3，目标为上游整理页；不定义其内部目标状态。		不适用	MVE 范围外
-C34-038	SPEC-S3-S4-20260812.v6.md	77	- 页面头部导航层：页面标题、最终确认说明和“返回上游整理页”入口。		不适用	MVE 范围外
-C34-039	SPEC-S3-S4-20260812.v6.md	78	- 头部信息条：当前待删总数 `n` 与 `{当前范围说明：显示本轮整理范围的来源}`。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-040	SPEC-S3-S4-20260812.v6.md	79	- `D` 的完整资产清单；每项显示缩略图、位于左下角且采用系统“照片”App 官方样式的收藏标记、仅含体积的信息叠加和移除入口，不显示拍摄日期。	testDIsDeduplicatedWithoutChangingFirstOccurrenceOrder, testFavoriteAssetsUseSameScanRulesAndRemainSubmittable	未覆盖	方法只断言状态机资产集合和收藏项提交资格，未断言就绪页面完整呈现。
-C34-041	SPEC-S3-S4-20260812.v6.md	80	- L2 体积结果：`unavailableCount = 0` 时显示精确已知总量；`unavailableCount > 0` 时显示“≥ 已知总量”，并同时显示 `unavailableCount`。	testSnapshotUsesExactModeWhenEveryAssetHasKnownBytes, testSnapshotUsesLowerBoundModeWhenAnyAssetIsUnavailable	未覆盖	方法只断言冻结快照的体积模式，未断言就绪页面的 L2 显示。
-C34-042	SPEC-S3-S4-20260812.v6.md	84	- 浏览待删清单。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-043	SPEC-S3-S4-20260812.v6.md	85	- 移除单项。	testCell05RemoveOneFromS3_2WhileNonEmptyStaysInS3_2, testCell05RemoveLastItemFromS3_2RoutesToS3_4	已覆盖	所列方法直接断言该条款。
-C34-044	SPEC-S3-S4-20260812.v6.md	86	- 全部取消。	testCell08CancelAllFromS3_2RoutesToS3_4AndKeepsCache	已覆盖	所列方法直接断言该条款。
-C34-045	SPEC-S3-S4-20260812.v6.md	87	- 提交删除。集合中存在收藏项时，此操作仍保持可用。	testFavoriteAssetsUseSameScanRulesAndRemainSubmittable, testCell14SubmitFromS3_2FreezesSnapshotForS4_1	已覆盖	所列方法直接断言该条款。
-C34-046	SPEC-S3-S4-20260812.v6.md	88	- 使用页面头部导航层的入口返回上游整理页；该操作迁出 S3，目标为上游整理页。		不适用	MVE 范围外
-C34-047	SPEC-S3-S4-20260812.v6.md	92	- 跳过快照冻结直接发起删除。	testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testC34_047UnfrozenSnapshotCannotReachDeletionService	已覆盖	所列专项方法直接断言该条款。
-C34-048	SPEC-S3-S4-20260812.v6.md	93	- 在确认页内改变收藏、隐藏或相册归类状态。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-049	SPEC-S3-S4-20260812.v6.md	97	- 移除单项后仍为非空：留在 S3-2；保留该项的缓存结论，并按当前 `D` 重新求和，不重扫。	testCell05RemoveOneFromS3_2WhileNonEmptyStaysInS3_2	已覆盖	所列方法直接断言该条款。
-C34-050	SPEC-S3-S4-20260812.v6.md	98	- 移除单项后 `n = 0`：迁至 S3-4；保留该项的缓存结论。	testCell05RemoveLastItemFromS3_2RoutesToS3_4	已覆盖	所列方法直接断言该条款。
-C34-051	SPEC-S3-S4-20260812.v6.md	99	- 点击提交且快照冻结校验成功：迁至 S4-1。	testCell14SubmitFromS3_2FreezesSnapshotForS4_1	已覆盖	所列方法直接断言该条款。
-C34-052	SPEC-S3-S4-20260812.v6.md	100	- 点击提交时快照冻结校验失败：不得发起删除；按共同状态判定规则迁至相应 S3 状态。	testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot, testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot	不适用	实现约束比规格更强，该路径在当前实现下不可达
-C34-053	SPEC-S3-S4-20260812.v6.md	101	- 返回上游整理页：迁出 S3，目标为上游整理页；不定义其内部目标状态。		不适用	MVE 范围外
-C34-054	SPEC-S3-S4-20260812.v6.md	107	- 页面头部导航层：页面标题和“返回上游整理页”入口。		不适用	MVE 范围外
-C34-055	SPEC-S3-S4-20260812.v6.md	108	- 头部信息条：待删总数 0 与 `{当前范围说明：显示本轮整理范围的来源}`。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-056	SPEC-S3-S4-20260812.v6.md	109	- “没有待删除照片”的空状态说明。		不适用	该条款为纯文案
-C34-057	SPEC-S3-S4-20260812.v6.md	113	- 使用页面头部导航层的入口返回上游整理页；该操作迁出 S3，目标为上游整理页。		不适用	MVE 范围外
-C34-058	SPEC-S3-S4-20260812.v6.md	117	- 提交删除。	testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot	已覆盖	所列方法直接断言该条款。
-C34-059	SPEC-S3-S4-20260812.v6.md	118	- 移除单项。	testDisabledOperationsInS3_4HaveNoEffect	已覆盖	所列方法直接断言该条款。
-C34-060	SPEC-S3-S4-20260812.v6.md	119	- 全部取消。	testDisabledOperationsInS3_4HaveNoEffect	已覆盖	所列方法直接断言该条款。
-C34-061	SPEC-S3-S4-20260812.v6.md	120	- 启动体积扫描。	testCell01EnterFromOutsideWithEmptySetRoutesToS3_4	已覆盖	所列方法直接断言该条款。
-C34-062	SPEC-S3-S4-20260812.v6.md	124	- 返回上游整理页：迁出 S3，目标为上游整理页；不定义其内部目标状态。		不适用	MVE 范围外
-C34-063	SPEC-S3-S4-20260812.v6.md	125	- 返回上游整理页后以新的非空 `D` 再次进入确认页：存在“未开始”或“进行中”项时进入 S3-1，只将“未开始”项入队；不存在上述两种结论时复用缓存并进入 S3-2。	testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted, testCell01EnterFromOutsideWithCompletedCacheRoutesToS3_2WithoutRescan, testReentryReusesCompletedCacheWithoutQueueingAgain	不适用	MVE 范围外
-C34-064	SPEC-S3-S4-20260812.v6.md	133	| 进入页面 | `n = 0` → S3-4；`n ≥ 1` 且有“未开始”或“进行中”项 → S3-1，只将“未开始”项入队；`n ≥ 1` 且无上述两种结论 → S3-2，直接复用缓存 | 不可达：S3-1 已表示页面完成进入 | 不可达：S3-2 已表示页面完成进入 | 不可达：S3-4 已表示页面完成进入 |	testCell01EnterFromOutsideWithEmptySetRoutesToS3_4, testCell01EnterFromOutsideWithLargeSetRoutesToS3_1AndQueuesEveryAsset, testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted, testCell01EnterFromOutsideWithCompletedCacheRoutesToS3_2WithoutRescan	已覆盖	可达单元格（事件“进入页面” × 起始状态“页面外”）：所列方法直接断言该单元格。
-C34-065	SPEC-S3-S4-20260812.v6.md	133	| 进入页面 | `n = 0` → S3-4；`n ≥ 1` 且有“未开始”或“进行中”项 → S3-1，只将“未开始”项入队；`n ≥ 1` 且无上述两种结论 → S3-2，直接复用缓存 | 不可达：S3-1 已表示页面完成进入 | 不可达：S3-2 已表示页面完成进入 | 不可达：S3-4 已表示页面完成进入 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“进入页面” × 起始状态“S3-1 扫描中”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-066	SPEC-S3-S4-20260812.v6.md	133	| 进入页面 | `n = 0` → S3-4；`n ≥ 1` 且有“未开始”或“进行中”项 → S3-1，只将“未开始”项入队；`n ≥ 1` 且无上述两种结论 → S3-2，直接复用缓存 | 不可达：S3-1 已表示页面完成进入 | 不可达：S3-2 已表示页面完成进入 | 不可达：S3-4 已表示页面完成进入 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“进入页面” × 起始状态“S3-2 就绪”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-067	SPEC-S3-S4-20260812.v6.md	133	| 进入页面 | `n = 0` → S3-4；`n ≥ 1` 且有“未开始”或“进行中”项 → S3-1，只将“未开始”项入队；`n ≥ 1` 且无上述两种结论 → S3-2，直接复用缓存 | 不可达：S3-1 已表示页面完成进入 | 不可达：S3-2 已表示页面完成进入 | 不可达：S3-4 已表示页面完成进入 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“进入页面” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-068	SPEC-S3-S4-20260812.v6.md	134	| 扫描完成 | 不可达：页面外没有 S3 扫描 | `D` 中已无“未开始”或“进行中”项 → S3-2 | 不可达：S3-2 的 `D` 已无未完成项 | 不可达：空集不启动扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描完成” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-069	SPEC-S3-S4-20260812.v6.md	134	| 扫描完成 | 不可达：页面外没有 S3 扫描 | `D` 中已无“未开始”或“进行中”项 → S3-2 | 不可达：S3-2 的 `D` 已无未完成项 | 不可达：空集不启动扫描 |	testCell02ScanCompletionFromS3_1RoutesToS3_2	已覆盖	可达单元格（事件“扫描完成” × 起始状态“S3-1 扫描中”）：所列方法直接断言该单元格。
-C34-070	SPEC-S3-S4-20260812.v6.md	134	| 扫描完成 | 不可达：页面外没有 S3 扫描 | `D` 中已无“未开始”或“进行中”项 → S3-2 | 不可达：S3-2 的 `D` 已无未完成项 | 不可达：空集不启动扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描完成” × 起始状态“S3-2 就绪”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-071	SPEC-S3-S4-20260812.v6.md	134	| 扫描完成 | 不可达：页面外没有 S3 扫描 | `D` 中已无“未开始”或“进行中”项 → S3-2 | 不可达：S3-2 的 `D` 已无未完成项 | 不可达：空集不启动扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描完成” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-072	SPEC-S3-S4-20260812.v6.md	135	| 扫描中移除项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 不可达：S3-2 没有进行中的扫描 | 不可达：空集没有进行中的扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描中移除项” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-073	SPEC-S3-S4-20260812.v6.md	135	| 扫描中移除项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 不可达：S3-2 没有进行中的扫描 | 不可达：空集没有进行中的扫描 |	testCell03RemoveDuringScanLastItemRoutesToS3_4, testCell03RemoveDuringScanLastIncompleteItemRoutesToS3_2, testCell03RemoveDuringScanWhileIncompleteItemRemainsStaysInS3_1	已覆盖	可达单元格（事件“扫描中移除项” × 起始状态“S3-1 扫描中”）：所列方法直接断言该单元格。
-C34-074	SPEC-S3-S4-20260812.v6.md	135	| 扫描中移除项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 不可达：S3-2 没有进行中的扫描 | 不可达：空集没有进行中的扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描中移除项” × 起始状态“S3-2 就绪”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-075	SPEC-S3-S4-20260812.v6.md	135	| 扫描中移除项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 不可达：S3-2 没有进行中的扫描 | 不可达：空集没有进行中的扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描中移除项” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-076	SPEC-S3-S4-20260812.v6.md	136	| 移除单项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 移除后仍非空 → S3-2；移除最后一项 → S3-4；均保留该项缓存并按当前 `D` 重新求和 | 不可达：空集没有可移除项且操作禁用 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“移除单项” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-077	SPEC-S3-S4-20260812.v6.md	136	| 移除单项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 移除后仍非空 → S3-2；移除最后一项 → S3-4；均保留该项缓存并按当前 `D` 重新求和 | 不可达：空集没有可移除项且操作禁用 |	testCell04RemoveOneFromS3_1LastItemRoutesToS3_4, testCell04RemoveOneFromS3_1LastIncompleteItemRoutesToS3_2, testCell04RemoveOneFromS3_1WhileIncompleteItemRemainsStaysInS3_1	已覆盖	可达单元格（事件“移除单项” × 起始状态“S3-1 扫描中”）：所列方法直接断言该单元格。
-C34-078	SPEC-S3-S4-20260812.v6.md	136	| 移除单项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 移除后仍非空 → S3-2；移除最后一项 → S3-4；均保留该项缓存并按当前 `D` 重新求和 | 不可达：空集没有可移除项且操作禁用 |	testCell05RemoveOneFromS3_2WhileNonEmptyStaysInS3_2, testCell05RemoveLastItemFromS3_2RoutesToS3_4	已覆盖	可达单元格（事件“移除单项” × 起始状态“S3-2 就绪”）：所列方法直接断言该单元格。
-C34-079	SPEC-S3-S4-20260812.v6.md	136	| 移除单项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 移除后仍非空 → S3-2；移除最后一项 → S3-4；均保留该项缓存并按当前 `D` 重新求和 | 不可达：空集没有可移除项且操作禁用 |	testDisabledOperationsInS3_4HaveNoEffect, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“移除单项” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-080	SPEC-S3-S4-20260812.v6.md	137	| 全部取消 | 不可达：页面外没有全部取消入口 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：空集的全部取消操作禁用 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“全部取消” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-081	SPEC-S3-S4-20260812.v6.md	137	| 全部取消 | 不可达：页面外没有全部取消入口 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：空集的全部取消操作禁用 |	testCell07CancelAllFromS3_1RoutesToS3_4AndKeepsCache	已覆盖	可达单元格（事件“全部取消” × 起始状态“S3-1 扫描中”）：所列方法直接断言该单元格。
-C34-082	SPEC-S3-S4-20260812.v6.md	137	| 全部取消 | 不可达：页面外没有全部取消入口 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：空集的全部取消操作禁用 |	testCell08CancelAllFromS3_2RoutesToS3_4AndKeepsCache	已覆盖	可达单元格（事件“全部取消” × 起始状态“S3-2 就绪”）：所列方法直接断言该单元格。
-C34-083	SPEC-S3-S4-20260812.v6.md	137	| 全部取消 | 不可达：页面外没有全部取消入口 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：空集的全部取消操作禁用 |	testDisabledOperationsInS3_4HaveNoEffect, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“全部取消” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-084	SPEC-S3-S4-20260812.v6.md	138	| 集合变为空 | 不可达：首次进入空集由“进入页面”事件路由 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：S3-4 的集合已经为空 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“集合变为空” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-085	SPEC-S3-S4-20260812.v6.md	138	| 集合变为空 | 不可达：首次进入空集由“进入页面”事件路由 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：S3-4 的集合已经为空 |	testCell11CollectionBecameEmptyFromS3_1RoutesToS3_4	已覆盖	可达单元格（事件“集合变为空” × 起始状态“S3-1 扫描中”）：所列方法直接断言该单元格。
-C34-086	SPEC-S3-S4-20260812.v6.md	138	| 集合变为空 | 不可达：首次进入空集由“进入页面”事件路由 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：S3-4 的集合已经为空 |	testCell12CollectionBecameEmptyFromS3_2RoutesToS3_4	已覆盖	可达单元格（事件“集合变为空” × 起始状态“S3-2 就绪”）：所列方法直接断言该单元格。
-C34-087	SPEC-S3-S4-20260812.v6.md	138	| 集合变为空 | 不可达：首次进入空集由“进入页面”事件路由 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：S3-4 的集合已经为空 |	testDisabledOperationsInS3_4HaveNoEffect, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“集合变为空” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-088	SPEC-S3-S4-20260812.v6.md	139	| 点击提交 | 不可达：页面外没有提交入口 | 不可达：提交操作禁用，原因是扫描未完成 | 两项校验与原子冻结成功 → S4-1；校验失败则按共同状态判定规则回到相应 S3 状态 | 不可达：提交操作禁用，原因是集合为空 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“点击提交” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-089	SPEC-S3-S4-20260812.v6.md	139	| 点击提交 | 不可达：页面外没有提交入口 | 不可达：提交操作禁用，原因是扫描未完成 | 两项校验与原子冻结成功 → S4-1；校验失败则按共同状态判定规则回到相应 S3 状态 | 不可达：提交操作禁用，原因是集合为空 |	testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“点击提交” × 起始状态“S3-1 扫描中”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-090	SPEC-S3-S4-20260812.v6.md	139	| 点击提交 | 不可达：页面外没有提交入口 | 不可达：提交操作禁用，原因是扫描未完成 | 两项校验与原子冻结成功 → S4-1；校验失败则按共同状态判定规则回到相应 S3 状态 | 不可达：提交操作禁用，原因是集合为空 |	testCell14SubmitFromS3_2FreezesSnapshotForS4_1	不适用	可达单元格（事件“点击提交” × 起始状态“S3-2 就绪”）：实现约束比规格更强，该路径在当前实现下不可达
-C34-091	SPEC-S3-S4-20260812.v6.md	139	| 点击提交 | 不可达：页面外没有提交入口 | 不可达：提交操作禁用，原因是扫描未完成 | 两项校验与原子冻结成功 → S4-1；校验失败则按共同状态判定规则回到相应 S3 状态 | 不可达：提交操作禁用，原因是集合为空 |	testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“点击提交” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-092	SPEC-S3-S4-20260812.v6.md	143	提交集合快照是不可变记录。它只在 S3-2 的提交操作中产生，不允许在 S4 中增删或替换资产。	testSnapshotRemainsImmutableAfterCacheReceivesAnotherResult, testFrozenSnapshotPreventsLaterMutationOfD, testSecondFreezeIsRejectedAndOriginalSnapshotIsKept, testSnapshotNeverChangesInsideExecutionState	已覆盖	所列方法直接断言该条款。
-C34-093	SPEC-S3-S4-20260812.v6.md	147	| `提交标识` | 全局唯一字符串 | 点击提交后、删除请求发起前生成 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testSecondStartWithSameSubmissionIdentifierIsRejected	未覆盖	方法断言提交标识被写入并拒绝重复使用，但未直接证明生成值全局唯一，也未断言字段在目标 S5 接收时结束。
-C34-094	SPEC-S3-S4-20260812.v6.md	148	| `资产标识集合` | 有序字符串数组；元素唯一；长度至少为 1 | 原子读取当前 `D` 时冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testDIsDeduplicatedWithoutChangingFirstOccurrenceOrder, testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testLargeCompletedSelectionCanBeFrozenWithoutTruncation	未覆盖	方法断言有序、唯一、非空及冻结值，但未直接断言字段在目标 S5 接收时结束。
-C34-095	SPEC-S3-S4-20260812.v6.md	149	| `资产数量` | 非负整数；必须等于资产标识集合长度 | 与资产标识集合同时冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testLargeCompletedSelectionCanBeFrozenWithoutTruncation	未覆盖	方法断言资产数量与集合长度相等，但未直接断言字段在目标 S5 接收时结束。
-C34-096	SPEC-S3-S4-20260812.v6.md	150	| `已知总字节数` | 非负整数；等于当前资产标识集合中结论为“已知字节”的项之和 | 校验通过后对当前 `D` 即时求和，并与全部快照字段一并原子冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testKnownBytesAndUnavailableCountAreRecomputedFromCurrentD, testSnapshotUsesExactModeWhenEveryAssetHasKnownBytes, testSnapshotUsesLowerBoundModeWhenAnyAssetIsUnavailable, testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testUnknownOrNegativeScanResultIsRejectedWithoutChangingCache	未覆盖	方法断言非负即时求和值及冻结值，但未直接断言字段在目标 S5 接收时结束。
-C34-097	SPEC-S3-S4-20260812.v6.md	151	| `unavailableCount` | 非负整数；必须等于当前资产标识集合中结论为“不可用”的项数，且不得大于资产数量 | 校验通过后对当前 `D` 即时求和，并与全部快照字段一并原子冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testKnownBytesAndUnavailableCountAreRecomputedFromCurrentD, testSnapshotUsesLowerBoundModeWhenAnyAssetIsUnavailable, testCell14SubmitFromS3_2FreezesSnapshotForS4_1	未覆盖	方法断言不可用项计数及冻结值，但未直接断言字段在目标 S5 接收时结束。
-C34-098	SPEC-S3-S4-20260812.v6.md	152	| `体积显示模式` | 枚举：`精确` 或 `下界`；前者要求 `unavailableCount = 0`，后者要求 `unavailableCount > 0` | 由对当前 `D` 的即时求和结果派生，并与全部快照字段一并原子冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testSnapshotUsesExactModeWhenEveryAssetHasKnownBytes, testSnapshotUsesLowerBoundModeWhenAnyAssetIsUnavailable, testCell14SubmitFromS3_2FreezesSnapshotForS4_1	未覆盖	方法断言两种枚举及派生条件，但未直接断言字段在目标 S5 接收时结束。
-C34-099	SPEC-S3-S4-20260812.v6.md	153	| `收藏资产标识集合` | 字符串集合；必须是资产标识集合的子集 | 提交时按页面已知收藏标记冻结；不参与提交资格判定 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testFavoriteAssetsUseSameScanRulesAndRemainSubmittable, testCell14SubmitFromS3_2FreezesSnapshotForS4_1	未覆盖	方法断言收藏集合冻结且不阻断提交，但未直接断言字段在目标 S5 接收时结束。
-C34-100	SPEC-S3-S4-20260812.v6.md	154	| `冻结时间` | 带时区的时间戳 | 与全部快照字段一并原子冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testCell14SubmitFromS3_2FreezesSnapshotForS4_1	未覆盖	方法断言冻结时间值，但未直接断言字段在目标 S5 接收时结束。
-C34-101	SPEC-S3-S4-20260812.v6.md	156	冻结校验只包括以下两条：	testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot, testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot, testFavoriteAssetsUseSameScanRulesAndRemainSubmittable, testLargeCompletedSelectionCanBeFrozenWithoutTruncation	未覆盖	方法直接断言两条冻结守卫并覆盖部分合法输入，但无法穷尽证明不存在第三类冻结校验。
-C34-102	SPEC-S3-S4-20260812.v6.md	158	1. `n ≥ 1`。	testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot	已覆盖	所列方法直接断言该条款。
-C34-103	SPEC-S3-S4-20260812.v6.md	159	2. `D` 中不存在结论为“未开始”或“进行中”的项。	testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot	已覆盖	所列方法直接断言该条款。
-C34-104	SPEC-S3-S4-20260812.v6.md	161	两条均通过后，对同一个当前 `D` 即时求出 `已知总字节数` 与 `unavailableCount`，并一次性原子冻结表中的全部快照字段；最后才允许发起删除请求。任一校验失败都不得形成可提交快照，也不得发起删除。	testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot, testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot, testC34_104FreezeFailureDoesNotCallDeletionService	已覆盖	所列专项方法直接断言该条款。
-C34-105	SPEC-S3-S4-20260812.v6.md	189	- S4 使用 S3 冻结的提交集合快照；S4 内不允许修改该快照。	testSnapshotNeverChangesInsideExecutionState, testSnapshotRemainsImmutableAfterCacheReceivesAnotherResult	已覆盖	所列方法直接断言该条款。
-C34-106	SPEC-S3-S4-20260812.v6.md	190	- 同一提交标识只能发起一次批次请求，重复提交必须被阻止。	testDuplicateSubmissionIsRejected, testSecondStartWithSameSubmissionIdentifierIsRejected	已覆盖	所列方法直接断言该条款。
-C34-107	SPEC-S3-S4-20260812.v6.md	191	- S4-1 与 S4-2 只显示不确定活动指示。不得按单个资产依次刷新处理进展，不得显示任何完成比例数值，也不得给出预计完成时间。	testReachable01SubmissionFromExternalSource, testReachable07ActiveFromSubmitted	未覆盖	方法只断言计时状态，未断言执行页的不确定活动指示、无单项进度、无比例及无预计时间。
-C34-108	SPEC-S3-S4-20260812.v6.md	192	- 收到回调时必须先持久化回调与终态，再更新界面或向目标状态交接，避免界面已显示终态而结果尚未保存。	testPersistenceFailureLeavesCallbackStateUnchanged, testUserCancellationWritesCancelledTargetBeforeHandoff	已覆盖	所列方法直接断言该条款。
-C34-109	SPEC-S3-S4-20260812.v6.md	193	- 第一个有效终态一经持久化即封闭该提交；其后的迟到回调不得改写 S4 终态。	testLateFailureCannotOverwriteSuccess, testLateSuccessCannotOverwriteFailure, testLateCallbackCannotOverwriteUnknown, testRestoreKeepsClosedTerminalState	已覆盖	所列方法直接断言该条款。
-C34-110	SPEC-S3-S4-20260812.v6.md	199	- “删除请求已提交”的状态标题。		不适用	该条款为纯文案
-C34-111	SPEC-S3-S4-20260812.v6.md	200	- 不确定活动指示。		不适用	该条款为纯视觉
-C34-112	SPEC-S3-S4-20260812.v6.md	201	- 本次提交的资产总数。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-113	SPEC-S3-S4-20260812.v6.md	202	- “正在等待系统返回结果”的说明；不得宣称资产已删除或空间已释放。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-114	SPEC-S3-S4-20260812.v6.md	206	- 无会改变提交结果的应用内操作；系统级返回桌面或切换应用不属于应用内操作。	testDuplicateSubmissionIsRejected, testC34_114SubmittedStateRejectsEveryFullPartialAndModifiedResubmission	已覆盖	所列专项方法直接断言该条款。
-C34-115	SPEC-S3-S4-20260812.v6.md	210	- 再次提交同一快照。	testDuplicateSubmissionIsRejected, testSecondStartWithSameSubmissionIdentifierIsRejected	已覆盖	所列方法直接断言该条款。
-C34-116	SPEC-S3-S4-20260812.v6.md	211	- 修改、取消或拆分已提交快照。	testSnapshotNeverChangesInsideExecutionState, testC34_116SubmittedSnapshotCannotBeModifiedCancelledOrSplit	已覆盖	所列专项方法直接断言该条款。
-C34-117	SPEC-S3-S4-20260812.v6.md	212	- 展示按单项更新的处理情况或完成比例。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-118	SPEC-S3-S4-20260812.v6.md	216	- 收到成功回调：迁至 S4-E1，并取消超时计时。	testReachable12SuccessCallbackFromSubmitted	已覆盖	所列方法直接断言该条款。
-C34-119	SPEC-S3-S4-20260812.v6.md	217	- 收到失败回调：迁至 S4-E2，并取消超时计时。	testReachable14FailureCallbackFromSubmitted	已覆盖	所列方法直接断言该条款。
-C34-120	SPEC-S3-S4-20260812.v6.md	218	- active 累计等待达到 60 秒且仍无有效回调：迁至 S4-E3。	testReachable16TimeoutFromSubmitted, testElapsedTimeBelowLimitKeepsPendingState	已覆盖	所列方法直接断言该条款。
-C34-121	SPEC-S3-S4-20260812.v6.md	219	- 应用进入非 active：留在 S4-1，暂停并保存已累计的 active 时长。	testReachable02InactiveFromSubmitted, testInactiveDurationDoesNotAccumulate	已覆盖	所列方法直接断言该条款。
-C34-122	SPEC-S3-S4-20260812.v6.md	220	- 应用由非 active 恢复为 active 且尚无终态：迁至 S4-2，并从剩余时长继续累计。	testReachable07ActiveFromSubmitted, testResumeContinuesRemainingActiveTime	已覆盖	所列方法直接断言该条款。
-C34-123	SPEC-S3-S4-20260812.v6.md	221	- 应用在尚无持久化终态时被系统终止：下次启动检测到未闭合提交后迁至 S4-E3。	testReachable18TerminationFromSubmitted, testRestoreConvertsSubmittedStateToUnknown	已覆盖	所列方法直接断言该条款。
-C34-124	SPEC-S3-S4-20260812.v6.md	232	- “正在确认删除结果”的状态标题。		不适用	该条款为纯文案
-C34-125	SPEC-S3-S4-20260812.v6.md	233	- 不确定活动指示。		不适用	该条款为纯视觉
-C34-126	SPEC-S3-S4-20260812.v6.md	234	- 本次提交的资产总数。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-127	SPEC-S3-S4-20260812.v6.md	235	- “等待系统返回结果”的说明；不得宣称资产已删除或空间已释放。		不适用	该条款为纯文案
-C34-128	SPEC-S3-S4-20260812.v6.md	239	- 无会改变提交结果的应用内操作。	testDuplicateSubmissionIsRejected, testSnapshotNeverChangesInsideExecutionState, testC34_128ResumedStateRejectsEveryResultChangingAppOperation	已覆盖	所列专项方法直接断言该条款。
-C34-129	SPEC-S3-S4-20260812.v6.md	243	- 再次提交同一快照。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-130	SPEC-S3-S4-20260812.v6.md	244	- 修改、取消或拆分已提交快照。	testSnapshotNeverChangesInsideExecutionState, testC34_130ResumedSnapshotCannotBeModifiedCancelledOrSplit	已覆盖	所列专项方法直接断言该条款。
-C34-131	SPEC-S3-S4-20260812.v6.md	245	- 展示按单项更新的处理情况或完成比例。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-132	SPEC-S3-S4-20260812.v6.md	246	- 手动把等待状态判为成功或失败。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-133	SPEC-S3-S4-20260812.v6.md	250	- 收到成功回调：迁至 S4-E1，并取消超时计时。	testReachable13SuccessCallbackFromResumedInteraction	已覆盖	所列方法直接断言该条款。
-C34-134	SPEC-S3-S4-20260812.v6.md	251	- 收到失败回调：迁至 S4-E2，并取消超时计时。	testReachable15FailureCallbackFromResumedInteraction	已覆盖	所列方法直接断言该条款。
-C34-135	SPEC-S3-S4-20260812.v6.md	252	- active 累计等待达到 60 秒且仍无有效回调：迁至 S4-E3。	testReachable17TimeoutFromResumedInteraction	已覆盖	所列方法直接断言该条款。
-C34-136	SPEC-S3-S4-20260812.v6.md	253	- 应用进入非 active：留在 S4-2 并暂停计时；应用由非 active 恢复为 active 后从剩余时长继续，不重置已累计的 active 时长。	testReachable03InactiveFromResumedInteraction, testReachable08ActiveFromResumedInteraction, testInactiveDurationDoesNotAccumulate, testResumeContinuesRemainingActiveTime	已覆盖	所列方法直接断言该条款。
-C34-137	SPEC-S3-S4-20260812.v6.md	254	- 应用在尚无持久化终态时被系统终止：下次启动检测到未闭合提交后迁至 S4-E3。	testReachable19TerminationFromResumedInteraction, testRestoreConvertsResumedStateToUnknown	已覆盖	所列方法直接断言该条款。
-C34-138	SPEC-S3-S4-20260812.v6.md	260	- 批次成功的终态标识。	testReachable12SuccessCallbackFromSubmitted, testReachable13SuccessCallbackFromResumedInteraction	未覆盖	方法断言成功终态模型，未断言执行页呈现终态标识。
-C34-139	SPEC-S3-S4-20260812.v6.md	261	- 提交资产数量与成功资产数量；两者必须相等。	testSuccessResultClassifiesEverySubmittedAssetAsSuccessful	未覆盖	方法断言成功集合等于提交集合，未断言页面显示的两个数量。
-C34-140	SPEC-S3-S4-20260812.v6.md	262	- 已停止的活动指示区域，不再显示进行中状态。		不适用	该条款为纯视觉
-C34-141	SPEC-S3-S4-20260812.v6.md	266	- 无；完成终态持久化后自动交接。	testReachable12SuccessCallbackFromSubmitted, testReachable09ActiveFromSuccessTerminal	已覆盖	所列方法直接断言该条款。
-C34-142	SPEC-S3-S4-20260812.v6.md	270	- 修改终态集合。	testLateFailureCannotOverwriteSuccess, testReachable20TerminationFromSuccessTerminal	已覆盖	所列方法直接断言该条款。
-C34-143	SPEC-S3-S4-20260812.v6.md	271	- 再次提交同一快照。	testSecondStartWithSameSubmissionIdentifierIsRejected	已覆盖	所列方法直接断言该条款。
-C34-144	SPEC-S3-S4-20260812.v6.md	272	- 恢复 S4 计时。	testReachable12SuccessCallbackFromSubmitted, testReachable04InactiveFromSuccessTerminal	已覆盖	所列方法直接断言该条款。
-C34-145	SPEC-S3-S4-20260812.v6.md	276	- 终态及快照引用持久化完成，且可以进行页面交接：迁至 S5-T0。	testReachable12SuccessCallbackFromSubmitted, testReachable09ActiveFromSuccessTerminal	已覆盖	所列方法直接断言该条款。
-C34-146	SPEC-S3-S4-20260812.v6.md	277	- 若交接前应用处于非 active 或被终止：保持已持久化的 S4-E1；下次应用恢复 active 后继续迁至 S5-T0。	testReachable04InactiveFromSuccessTerminal, testReachable09ActiveFromSuccessTerminal, testReachable20TerminationFromSuccessTerminal, testC34_146SuccessTerminalWaitsWhileInactiveAndContinuesAfterRestart	已覆盖	所列专项方法直接断言该条款。
-C34-147	SPEC-S3-S4-20260812.v6.md	283	- 批次失败的终态标识。	testReachable14FailureCallbackFromSubmitted, testReachable15FailureCallbackFromResumedInteraction	未覆盖	方法断言失败终态模型，未断言执行页呈现终态标识。
-C34-148	SPEC-S3-S4-20260812.v6.md	284	- 成功集合、失败集合、未处理集合各自的数量。	testDisjointCompleteClassificationIsAccepted	未覆盖	方法断言三个集合被保存，未断言页面显示各集合数量。
-C34-149	SPEC-S3-S4-20260812.v6.md	285	- 非空失败原因。	testEmptyFailureReasonIsRejected	未覆盖	方法断言空失败原因被拒绝，未断言页面呈现非空失败原因。
-C34-150	SPEC-S3-S4-20260812.v6.md	286	- 已停止的活动指示区域，不再显示进行中状态。		不适用	该条款为纯视觉
-C34-151	SPEC-S3-S4-20260812.v6.md	290	- 无；完成终态持久化后自动交接。	testReachable14FailureCallbackFromSubmitted, testReachable10ActiveFromFailureTerminal	已覆盖	所列方法直接断言该条款。
-C34-152	SPEC-S3-S4-20260812.v6.md	294	- 修改三个结果集合。	testDisjointCompleteClassificationIsAccepted, testC34_152FailureTerminalResultSetsRemainImmutableForEveryLaterEvent	已覆盖	所列专项方法直接断言该条款。
-C34-153	SPEC-S3-S4-20260812.v6.md	295	- 在 S4 内再次提交全部或部分资产。	testSecondStartWithSameSubmissionIdentifierIsRejected, testC34_153FailureTerminalRejectsWholeAndPartialResubmission	已覆盖	所列专项方法直接断言该条款。
-C34-154	SPEC-S3-S4-20260812.v6.md	296	- 把失败结果显示为成功。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-155	SPEC-S3-S4-20260812.v6.md	297	- 恢复 S4 计时。	testReachable14FailureCallbackFromSubmitted, testReachable05InactiveFromFailureTerminal	已覆盖	所列方法直接断言该条款。
-C34-156	SPEC-S3-S4-20260812.v6.md	301	- 失败回调、三个结果集合及快照引用持久化完成后，S4 按 `失败原因.类别码` 计算并写入 `下游目标状态`：`用户取消` → `S5-C`；`权限不足` / `资产不可删除` / `未知` → `S5-F`；可以进行页面交接时迁至该状态。	testUserCancellationWritesCancelledTargetBeforeHandoff, testOtherFailureCategoriesWriteFailureTarget, testReachable14FailureCallbackFromSubmitted	已覆盖	所列方法直接断言该条款。
-C34-157	SPEC-S3-S4-20260812.v6.md	302	- 若交接前应用处于非 active 或被终止：保持已持久化的 S4-E2；下次应用恢复 active 后按已写入的 `下游目标状态` 继续迁至 `S5-C` 或 `S5-F`，不重新分流。	testReachable05InactiveFromFailureTerminal, testReachable10ActiveFromFailureTerminal, testUserCancellationWritesCancelledTargetBeforeHandoff, testOtherFailureCategoriesWriteFailureTarget, testC34_157FailureTargetSurvivesTerminationWithoutReclassification	已覆盖	所列专项方法直接断言该条款。
-C34-158	SPEC-S3-S4-20260812.v6.md	308	- “结果未知”的终态标识。		不适用	该条款为纯文案
-C34-159	SPEC-S3-S4-20260812.v6.md	309	- 本次提交的资产总数。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C34-160	SPEC-S3-S4-20260812.v6.md	310	- 触发原因：active 累计等待超时，或应用在未取得持久化终态期间被系统终止。	testReachable16TimeoutFromSubmitted, testReachable18TerminationFromSubmitted	未覆盖	方法断言两种未知原因状态，未断言页面显示触发原因。
-C34-161	SPEC-S3-S4-20260812.v6.md	311	- 已停止的活动指示区域，不得把未知状态表达为成功或失败。	testReachable16TimeoutFromSubmitted, testReachable18TerminationFromSubmitted	未覆盖	方法断言未知终态与计时停止，未断言活动指示区域及页面措辞。
-C34-162	SPEC-S3-S4-20260812.v6.md	315	- 无；完成终态持久化后自动交接。	testReachable11ActiveFromUnknownTerminal	已覆盖	所列方法直接断言该条款。
-C34-163	SPEC-S3-S4-20260812.v6.md	319	- 推断任一资产成功或失败。	testUnknownEntryDoesNotConstructClassificationSets, testC34_163UnknownTerminalRejectsSuccessAndFailureInference	已覆盖	所列专项方法直接断言该条款。
-C34-164	SPEC-S3-S4-20260812.v6.md	320	- 修改提交集合快照。	testSnapshotNeverChangesInsideExecutionState	已覆盖	所列方法直接断言该条款。
-C34-165	SPEC-S3-S4-20260812.v6.md	321	- 在 S4 内再次提交全部或部分资产。	testSecondStartWithSameSubmissionIdentifierIsRejected, testC34_165UnknownTerminalRejectsWholeAndPartialResubmission	已覆盖	所列专项方法直接断言该条款。
-C34-166	SPEC-S3-S4-20260812.v6.md	322	- 接受迟到回调改写已封闭终态。	testLateCallbackCannotOverwriteUnknown, testC34_166LateFailureCannotOverwriteUnknownTerminal	已覆盖	所列专项方法直接断言该条款。
-C34-167	SPEC-S3-S4-20260812.v6.md	326	- 未知终态、触发原因及快照引用持久化完成，且可以进行页面交接：迁至 S5-U。	testReachable11ActiveFromUnknownTerminal	已覆盖	所列方法直接断言该条款。
-C34-168	SPEC-S3-S4-20260812.v6.md	327	- 若交接前应用处于非 active 或被终止：保持已持久化的 S4-E3；下次应用恢复 active 后继续迁至 S5-U。	testReachable22TerminationFromUnknownTerminal, testReachable11ActiveFromUnknownTerminal	未覆盖	方法分别断言未知终态被终止时保留及未闭合提交终止后可交接，但未直接覆盖已持久化 S4-E3 在重启后继续交接。
-C34-169	SPEC-S3-S4-20260812.v6.md	331	页面交接前，S4 必须计算并写入字段 `下游目标状态`。其取值域为 {`S5-T0`, `S5-F`, `S5-C`, `S5-U`}：`S4-E1` → `S5-T0`；`S4-E2` 按 `失败原因.类别码` 分流，`用户取消` → `S5-C`，`权限不足` / `资产不可删除` / `未知` → `S5-F`；`S4-E3` → `S5-U`。	testDownstreamTargetStateValueDomainIsComplete, testReachable12SuccessCallbackFromSubmitted, testUserCancellationWritesCancelledTargetBeforeHandoff, testOtherFailureCategoriesWriteFailureTarget, testReachable16TimeoutFromSubmitted, testPersistedSessionCarriesDownstreamTargetState	已覆盖	所列方法直接断言该条款。
-C34-170	SPEC-S3-S4-20260812.v6.md	337	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testReachable01SubmissionFromExternalSource	已覆盖	可达单元格（事件“提交发起” × 起始状态“S3-2 外部源”）：所列方法直接断言该单元格。
-C34-171	SPEC-S3-S4-20260812.v6.md	337	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testDuplicateSubmissionIsRejected, testSecondStartWithSameSubmissionIdentifierIsRejected, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“提交发起” × 起始状态“S4-1 已提交”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-172	SPEC-S3-S4-20260812.v6.md	337	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“提交发起” × 起始状态“S4-2 已恢复交互”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-173	SPEC-S3-S4-20260812.v6.md	337	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“提交发起” × 起始状态“S4-E1 全批成功”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-174	SPEC-S3-S4-20260812.v6.md	337	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“提交发起” × 起始状态“S4-E2 整批失败”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-175	SPEC-S3-S4-20260812.v6.md	337	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“提交发起” × 起始状态“S4-E3 结果未知”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-176	SPEC-S3-S4-20260812.v6.md	338	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“应用进入非 active” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-177	SPEC-S3-S4-20260812.v6.md	338	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testReachable02InactiveFromSubmitted, testInactiveDurationDoesNotAccumulate	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
-C34-178	SPEC-S3-S4-20260812.v6.md	338	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testReachable03InactiveFromResumedInteraction	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
-C34-179	SPEC-S3-S4-20260812.v6.md	338	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testReachable04InactiveFromSuccessTerminal, testReachable09ActiveFromSuccessTerminal	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S4-E1 全批成功”）：所列方法直接断言该单元格。
-C34-180	SPEC-S3-S4-20260812.v6.md	338	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testReachable05InactiveFromFailureTerminal, testReachable10ActiveFromFailureTerminal	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S4-E2 整批失败”）：所列方法直接断言该单元格。
-C34-181	SPEC-S3-S4-20260812.v6.md	338	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testReachable06InactiveFromUnknownTerminal, testReachable11ActiveFromUnknownTerminal	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S4-E3 结果未知”）：所列方法直接断言该单元格。
-C34-182	SPEC-S3-S4-20260812.v6.md	339	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“应用恢复 active” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-183	SPEC-S3-S4-20260812.v6.md	339	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testReachable07ActiveFromSubmitted	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
-C34-184	SPEC-S3-S4-20260812.v6.md	339	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testReachable08ActiveFromResumedInteraction	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
-C34-185	SPEC-S3-S4-20260812.v6.md	339	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testReachable09ActiveFromSuccessTerminal	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S4-E1 全批成功”）：所列方法直接断言该单元格。
-C34-186	SPEC-S3-S4-20260812.v6.md	339	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testReachable10ActiveFromFailureTerminal, testUserCancellationWritesCancelledTargetBeforeHandoff, testOtherFailureCategoriesWriteFailureTarget, testC34_186RestoredCancellationTerminalUsesPersistedTargetOnActive	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S4-E2 整批失败”）：所列专项方法直接断言该条款。
-C34-187	SPEC-S3-S4-20260812.v6.md	339	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testReachable11ActiveFromUnknownTerminal	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S4-E3 结果未知”）：所列方法直接断言该单元格。
-C34-188	SPEC-S3-S4-20260812.v6.md	340	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到成功回调” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-189	SPEC-S3-S4-20260812.v6.md	340	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testReachable12SuccessCallbackFromSubmitted	已覆盖	可达单元格（事件“收到成功回调” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
-C34-190	SPEC-S3-S4-20260812.v6.md	340	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testReachable13SuccessCallbackFromResumedInteraction	已覆盖	可达单元格（事件“收到成功回调” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
-C34-191	SPEC-S3-S4-20260812.v6.md	340	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到成功回调” × 起始状态“S4-E1 全批成功”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-192	SPEC-S3-S4-20260812.v6.md	340	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testLateSuccessCannotOverwriteFailure, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到成功回调” × 起始状态“S4-E2 整批失败”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-193	SPEC-S3-S4-20260812.v6.md	340	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testLateCallbackCannotOverwriteUnknown, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到成功回调” × 起始状态“S4-E3 结果未知”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-194	SPEC-S3-S4-20260812.v6.md	341	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到失败回调” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-195	SPEC-S3-S4-20260812.v6.md	341	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testReachable14FailureCallbackFromSubmitted	已覆盖	可达单元格（事件“收到失败回调” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
-C34-196	SPEC-S3-S4-20260812.v6.md	341	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testReachable15FailureCallbackFromResumedInteraction	已覆盖	可达单元格（事件“收到失败回调” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
-C34-197	SPEC-S3-S4-20260812.v6.md	341	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testLateFailureCannotOverwriteSuccess, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到失败回调” × 起始状态“S4-E1 全批成功”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-198	SPEC-S3-S4-20260812.v6.md	341	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到失败回调” × 起始状态“S4-E2 整批失败”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-199	SPEC-S3-S4-20260812.v6.md	341	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到失败回调” × 起始状态“S4-E3 结果未知”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-200	SPEC-S3-S4-20260812.v6.md	342	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“超时触发” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-201	SPEC-S3-S4-20260812.v6.md	342	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testReachable16TimeoutFromSubmitted, testElapsedTimeBelowLimitKeepsPendingState	已覆盖	可达单元格（事件“超时触发” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
-C34-202	SPEC-S3-S4-20260812.v6.md	342	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testReachable17TimeoutFromResumedInteraction	已覆盖	可达单元格（事件“超时触发” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
-C34-203	SPEC-S3-S4-20260812.v6.md	342	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“超时触发” × 起始状态“S4-E1 全批成功”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-204	SPEC-S3-S4-20260812.v6.md	342	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“超时触发” × 起始状态“S4-E2 整批失败”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-205	SPEC-S3-S4-20260812.v6.md	342	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“超时触发” × 起始状态“S4-E3 结果未知”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-206	SPEC-S3-S4-20260812.v6.md	343	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“应用在此期间被系统终止” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C34-207	SPEC-S3-S4-20260812.v6.md	343	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testReachable18TerminationFromSubmitted, testRestoreConvertsSubmittedStateToUnknown	已覆盖	可达单元格（事件“应用在此期间被系统终止” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
-C34-208	SPEC-S3-S4-20260812.v6.md	343	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testReachable19TerminationFromResumedInteraction, testRestoreConvertsResumedStateToUnknown	已覆盖	可达单元格（事件“应用在此期间被系统终止” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
-C34-209	SPEC-S3-S4-20260812.v6.md	343	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testReachable20TerminationFromSuccessTerminal, testC34_209SuccessTerminalContinuesHandoffAfterTerminationAndRestart	已覆盖	可达单元格（事件“应用在此期间被系统终止” × 起始状态“S4-E1 全批成功”）：所列专项方法直接断言该条款。
-C34-210	SPEC-S3-S4-20260812.v6.md	343	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testReachable21TerminationFromFailureTerminal, testC34_210FailureTerminalContinuesHandoffAfterTerminationAndRestart	已覆盖	可达单元格（事件“应用在此期间被系统终止” × 起始状态“S4-E2 整批失败”）：所列专项方法直接断言该条款。
-C34-211	SPEC-S3-S4-20260812.v6.md	343	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testReachable22TerminationFromUnknownTerminal, testC34_211UnknownTerminalContinuesHandoffAfterTerminationAndRestart	已覆盖	可达单元格（事件“应用在此期间被系统终止” × 起始状态“S4-E3 结果未知”）：所列专项方法直接断言该条款。
-C34-212	SPEC-S3-S4-20260812.v6.md	359	| `提交标识` | 字符串；必须匹配提交集合快照 | 关联唯一一次批次提交 |	testMismatchedSuccessCallbackIsRejected, testMismatchedFailureCallbackIsRejected	已覆盖	所列方法直接断言该条款。
-C34-213	SPEC-S3-S4-20260812.v6.md	360	| `成功集合` | 唯一字符串集合 | 回调已明确确认成功的资产标识 |	testDisjointCompleteClassificationIsAccepted, testSuccessResultClassifiesEverySubmittedAssetAsSuccessful	已覆盖	所列方法直接断言该条款。
-C34-214	SPEC-S3-S4-20260812.v6.md	361	| `失败集合` | 唯一字符串集合 | 回调已明确确认失败的资产标识 |	testDisjointCompleteClassificationIsAccepted, testBatchLevelFailureUsesWholeSubmittedSetAsFailure	已覆盖	所列方法直接断言该条款。
-C34-215	SPEC-S3-S4-20260812.v6.md	362	| `未处理集合` | 唯一字符串集合 | 批次未被系统接受或尚未进入处理的资产标识 |	testDisjointCompleteClassificationIsAccepted, testFailureBeforeSystemAcceptanceUsesWholeSubmittedSetAsUnprocessed	已覆盖	所列方法直接断言该条款。
-C34-216	SPEC-S3-S4-20260812.v6.md	363	| `失败原因.类别码` | 枚举：`权限不足` / `资产不可删除` / `用户取消` / `未知` | 稳定的失败分类标识 |	testDownstreamTargetStateValueDomainIsComplete, testUserCancellationWritesCancelledTargetBeforeHandoff, testOtherFailureCategoriesWriteFailureTarget, testS4UserCancellationClassifierRequiresExactDomainAndCode	已覆盖	所列方法直接断言该条款。
-C34-217	SPEC-S3-S4-20260812.v6.md	364	| `失败原因.说明` | 非空字符串 | 可供界面呈现或日志记录的原因说明 |	testEmptyFailureReasonIsRejected	已覆盖	所列方法直接断言该条款。
-C34-218	SPEC-S3-S4-20260812.v6.md	365	| `失败原因.系统域` | 可空字符串 | 底层错误存在错误域时保留原值，不做映射 |	testPhotoKitUserCancellationClassifiesWholeSetAsUnprocessed, testPhotoKitBatchFailureClassifiesWholeSetAsFailed	已覆盖	所列方法直接断言该条款。
-C34-219	SPEC-S3-S4-20260812.v6.md	366	| `失败原因.系统码` | 可空整数 | 底层错误存在错误码时保留原值，不做映射 |	testPhotoKitUserCancellationClassifiesWholeSetAsUnprocessed, testPhotoKitBatchFailureClassifiesWholeSetAsFailed	已覆盖	所列方法直接断言该条款。
-C34-220	SPEC-S3-S4-20260812.v6.md	367	| `回调接收时间` | 带时区的时间戳 | 应用接收本次失败回调的时间 |	testDisjointCompleteClassificationIsAccepted, testReachable14FailureCallbackFromSubmitted	已覆盖	所列方法直接断言该条款。
-C34-221	SPEC-S3-S4-20260812.v6.md	369	判定规则：`失败原因.系统域` 为 `PHPhotosErrorDomain` 且 `失败原因.系统码` 为 `3072` 时，`失败原因.类别码` 判定为 `用户取消`。	testS4UserCancellationClassifierRequiresExactDomainAndCode	已覆盖	所列方法直接断言该条款。
-C34-222	SPEC-S3-S4-20260812.v6.md	373	- 成功集合、失败集合与未处理集合两两不相交。	testSuccessAndFailureOverlapIsRejected, testSuccessAndUnprocessedOverlapIsRejected, testFailureAndUnprocessedOverlapIsRejected	已覆盖	所列方法直接断言该条款。
-C34-223	SPEC-S3-S4-20260812.v6.md	374	- 三个集合的并集必须严格等于提交集合快照中的资产标识集合。	testForeignAssetIsRejected, testOmittedAssetIsRejected, testDisjointCompleteClassificationIsAccepted	已覆盖	所列方法直接断言该条款。
-C34-224	SPEC-S3-S4-20260812.v6.md	375	- 三个集合均不得包含快照外资产，也不得静默漏项。	testForeignAssetIsRejected, testOmittedAssetIsRejected	已覆盖	所列方法直接断言该条款。
-C34-225	SPEC-S3-S4-20260812.v6.md	376	- 系统只给出批次级失败且明确表示整批未成功时，不虚构单项差异：失败集合取完整提交集合，成功集合与未处理集合为空。	testBatchLevelFailureUsesWholeSubmittedSetAsFailure	已覆盖	所列方法直接断言该条款。
-C34-226	SPEC-S3-S4-20260812.v6.md	377	- 请求在系统接受批次前失败时，未处理集合取完整提交集合，成功集合与失败集合为空。	testFailureBeforeSystemAcceptanceUsesWholeSubmittedSetAsUnprocessed	已覆盖	所列方法直接断言该条款。
-C34-227	SPEC-S3-S4-20260812.v6.md	378	- 失败原因必须非空；不能只用空集合或界面无变化表达失败。	testEmptyFailureReasonIsRejected	已覆盖	所列方法直接断言该条款。
-C34-228	SPEC-S3-S4-20260812.v6.md	379	- `失败原因.类别码` 是不完整枚举；未覆盖情形一律归入 `未知`。	testS4UserCancellationClassifierRequiresExactDomainAndCode, testPhotoKitBatchFailureClassifiesWholeSetAsFailed	已覆盖	所列方法直接断言该条款。
-C34-229	SPEC-S3-S4-20260812.v6.md	380	- `失败原因.系统域` 与 `失败原因.系统码` 保留底层原值，不做映射。	testPhotoKitUserCancellationClassifiesWholeSetAsUnprocessed, testPhotoKitBatchFailureClassifiesWholeSetAsFailed	已覆盖	所列方法直接断言该条款。
-C34-230	SPEC-S3-S4-20260812.v6.md	381	- 回调结构只记录批次最终分类，不要求系统提供按单项连续通知的能力。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-001	SPEC-S3-S4-20260813.v7.md	19	设当前待删集合为 `D`，其去重后的资产数量为 `n`。S3 共三个状态，只允许存在一个当前状态，并按以下优先级归一化：	testCell01EnterFromOutsideWithEmptySetRoutesToS3_4, testCell01EnterFromOutsideWithLargeSetRoutesToS3_1AndQueuesEveryAsset, testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted, testCell01EnterFromOutsideWithCompletedCacheRoutesToS3_2WithoutRescan	已覆盖	所列方法直接断言该条款。
+C34-002	SPEC-S3-S4-20260813.v7.md	21	1. `n = 0`：S3-4 空集。	testCell01EnterFromOutsideWithEmptySetRoutesToS3_4	已覆盖	所列方法直接断言该条款。
+C34-003	SPEC-S3-S4-20260813.v7.md	22	2. `n ≥ 1` 且 `D` 中存在结论为“未开始”或“进行中”的项：S3-1 扫描中。	testCell01EnterFromOutsideWithLargeSetRoutesToS3_1AndQueuesEveryAsset, testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted	已覆盖	所列方法直接断言该条款。
+C34-004	SPEC-S3-S4-20260813.v7.md	23	3. `n ≥ 1` 且 `D` 中不存在结论为“未开始”或“进行中”的项：S3-2 就绪。	testCell01EnterFromOutsideWithCompletedCacheRoutesToS3_2WithoutRescan	已覆盖	所列方法直接断言该条款。
+C34-005	SPEC-S3-S4-20260813.v7.md	27	- S3 页面从上到下分为三个层级：页面头部导航层、头部信息条、资产内容区。		不适用	该条款为纯视觉
+C34-006	SPEC-S3-S4-20260813.v7.md	28	- “返回上游整理页”入口位于页面头部导航层，高于头部信息条与资产内容区；三个 S3 状态均显示该入口。触发后迁出 S3，目标为上游整理页；本文不定义上游整理页的内部目标状态。		不适用	MVE 范围外
+C34-231	SPEC-S3-S4-20260813.v7.md	29	- 迁出上游整理页时，必须向上游提供两个字段：`来源整理会话标识`，等于进入 S3 时接收的同名字段；`返回时的当前待删集合`，即迁出瞬间 S3 持有的 `D`，元素唯一，允许为空（S3-4 空集时为空集）。由于 S3 内的 `D` 只减不增，该集合必然是进入时所收集合的子集。上游如何使用这两个字段不在本文定义。	testIC045_001ProperSubsetShrinksEveryRangeThroughCoordinator, testIC045_002EmptyReturnClearsSessionSelections, testIC045_003UnchangedReturnPreservesMAndF, testIC045_004MismatchedSourceSessionDoesNotUpdateStore, testIC045_005SharedAssetIsRemovedFromAllRanges	已覆盖	S3 返回值直接断言两个字段；协调器测试覆盖真子集、空集、未移除、会话不匹配及跨多范围同步收缩。
+C34-007	SPEC-S3-S4-20260813.v7.md	30	- 头部信息条显示当前待删总数，并新增具名占位 `{当前范围说明：显示本轮整理范围的来源}`。该占位只规定必须说明本轮整理范围来自何处，不规定最终文案。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-008	SPEC-S3-S4-20260813.v7.md	31	- 确认页展示 `D` 中的全部资产，不得因收藏标记或体积不可用而隐藏其中任何一项。	testDIsDeduplicatedWithoutChangingFirstOccurrenceOrder	未覆盖	该方法只断言状态机保留完整去重集合，未断言确认页逐项显示。
+C34-009	SPEC-S3-S4-20260813.v7.md	32	- 每项至少展示缩略图、稳定资产标识对应的可辨认内容和收藏标记；收藏标记叠加在缩略图左下角，并采用系统“照片”App 的官方样式。收藏标记只作提示，不改变提交资格。	testFavoriteAssetsUseSameScanRulesAndRemainSubmittable	未覆盖	该方法只断言收藏项不影响扫描与提交，未断言缩略图、标识内容和收藏标记的页面呈现。
+C34-010	SPEC-S3-S4-20260813.v7.md	33	- 确认页单张缩略图的信息叠加只显示体积，不显示拍摄日期，采用 2a 方案。多资源资产的可展开体积明细遵循“体积扫描规格”中的信息结构。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-011	SPEC-S3-S4-20260813.v7.md	34	- 页面只允许从 `D` 移除待删项，不在 S3 内改变收藏、隐藏或相册归类状态。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-012	SPEC-S3-S4-20260813.v7.md	35	- S3 内的 `D` 只减不增；集合变大只能先返回上游整理页，再以新的 `D` 重新进入确认页。		不适用	MVE 范围外
+C34-013	SPEC-S3-S4-20260813.v7.md	36	- 每个资产标识在资产级结论缓存中持有唯一结论，取值为“未开始”“进行中”“已知字节”或“不可用”。结论不绑定集合；资产移出 `D` 时保留其结论，不清除缓存。	testRemovingAssetRetainsItsOnlyCachedConclusion, testUnknownOrNegativeScanResultIsRejectedWithoutChangingCache	已覆盖	所列方法直接断言该条款。
+C34-014	SPEC-S3-S4-20260813.v7.md	37	- `已知总字节数` 等于当前 `D` 中结论为“已知字节”的项之和；`unavailableCount` 等于当前 `D` 中结论为“不可用”的项数。两者均为对当前 `D` 的即时求和结果，不通过加减维护。	testKnownBytesAndUnavailableCountAreRecomputedFromCurrentD	已覆盖	所列方法直接断言该条款。
+C34-015	SPEC-S3-S4-20260813.v7.md	38	- 移除单项时，只从 `D` 移除该项，保留其缓存结论，并按当前 `D` 重新求和；不重扫、不作废、不减算。	testKnownBytesAndUnavailableCountAreRecomputedFromCurrentD, testRemovingAssetRetainsItsOnlyCachedConclusion, testRemovingQueuedAssetDoesNotInvalidateItsQueuedWork	已覆盖	所列方法直接断言该条款。
+C34-016	SPEC-S3-S4-20260813.v7.md	39	- `n ≥ 1` 时，`D` 中结论为“未开始”的项进入扫描队列。	testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted, testLargeSelectionQueuesEveryDeduplicatedAssetWithoutTruncation, testTakingQueueDoesNotQueueInProgressAssetsAgain	已覆盖	所列方法直接断言该条款。
+C34-017	SPEC-S3-S4-20260813.v7.md	40	- 晚到的成功或失败结果写入对应资产的结论缓存。该资产仍在 `D` 中时自动进入当前统计；已经移出时不影响当前统计。不设置丢弃规则。	testLateSuccessForCurrentAssetImmediatelyUpdatesCurrentStatistics, testLateFailureForCurrentAssetImmediatelyUpdatesCurrentStatistics, testLateResultForRemovedAssetUpdatesCacheButNotCurrentStatistics	已覆盖	所列方法直接断言该条款。
+C34-018	SPEC-S3-S4-20260813.v7.md	41	- 重新进入页面时直接复用各资产已有的缓存结论，不因重新进入而重扫。	testReentryReusesCompletedCacheWithoutQueueingAgain	已覆盖	所列方法直接断言该条款。
+C34-019	SPEC-S3-S4-20260813.v7.md	42	- 扫描完成是指当前 `D` 中不存在结论为“未开始”或“进行中”的项。扫描尚未完成时，提交操作必须禁用。	testCell02ScanCompletionFromS3_1RoutesToS3_2, testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot, testOneUnavailableConclusionDoesNotStopOtherScans	已覆盖	所列方法直接断言该条款。
+C34-020	SPEC-S3-S4-20260813.v7.md	43	- 任何提交都必须来自 S3-2，并在发起删除请求之前冻结提交集合快照。	testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot, testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot, testC34_020DeletionStartsOnlyAfterSnapshotFreeze	已覆盖	所列专项方法直接断言该条款。
+C34-021	SPEC-S3-S4-20260813.v7.md	49	- 页面头部导航层：页面标题、“确认删除”语义说明和“返回上游整理页”入口。		不适用	MVE 范围外
+C34-022	SPEC-S3-S4-20260813.v7.md	50	- 头部信息条：当前待删总数 `n` 与 `{当前范围说明：显示本轮整理范围的来源}`。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-023	SPEC-S3-S4-20260813.v7.md	51	- `D` 的完整资产清单；每项显示缩略图、位于左下角且采用系统“照片”App 官方样式的收藏标记、仅含体积的信息叠加和移除入口，不显示拍摄日期。	testDIsDeduplicatedWithoutChangingFirstOccurrenceOrder, testFavoriteAssetsUseSameScanRulesAndRemainSubmittable	未覆盖	方法只断言状态机资产集合和收藏项提交资格，未断言扫描中页面完整呈现。
+C34-024	SPEC-S3-S4-20260813.v7.md	52	- L2 体积区域显示“正在计算”，可同时显示当前已知字节总量和当前 `unavailableCount`；这些数值必须标为未完成结果。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-025	SPEC-S3-S4-20260813.v7.md	53	- 不确定活动指示，不显示完成比例。		不适用	该条款为纯视觉
+C34-026	SPEC-S3-S4-20260813.v7.md	57	- 浏览待删清单。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-027	SPEC-S3-S4-20260813.v7.md	58	- 移除单项。	testCell03RemoveDuringScanLastItemRoutesToS3_4, testCell03RemoveDuringScanLastIncompleteItemRoutesToS3_2, testCell03RemoveDuringScanWhileIncompleteItemRemainsStaysInS3_1	已覆盖	所列方法直接断言该条款。
+C34-028	SPEC-S3-S4-20260813.v7.md	59	- 全部取消。	testCell07CancelAllFromS3_1RoutesToS3_4AndKeepsCache, testCell08CancelAllFromS3_2RoutesToS3_4AndKeepsCache	已覆盖	所列方法直接断言该条款。
+C34-029	SPEC-S3-S4-20260813.v7.md	60	- 使用页面头部导航层的入口返回上游整理页；该操作迁出 S3，目标为上游整理页。		不适用	MVE 范围外
+C34-030	SPEC-S3-S4-20260813.v7.md	64	- 提交删除。	testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot	已覆盖	所列方法直接断言该条款。
+C34-031	SPEC-S3-S4-20260813.v7.md	65	- 对当前扫描结果执行确认或冻结。	testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot	已覆盖	所列方法直接断言该条款。
+C34-032	SPEC-S3-S4-20260813.v7.md	66	- 在确认页内改变收藏、隐藏或相册归类状态。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-033	SPEC-S3-S4-20260813.v7.md	70	- 结论更新后 `D` 中已无“未开始”或“进行中”项：迁至 S3-2。	testCell02ScanCompletionFromS3_1RoutesToS3_2	已覆盖	所列方法直接断言该条款。
+C34-034	SPEC-S3-S4-20260813.v7.md	71	- 移除单项后 `n = 0`：迁至 S3-4；该项的缓存结论保留。	testCell03RemoveDuringScanLastItemRoutesToS3_4	已覆盖	所列方法直接断言该条款。
+C34-035	SPEC-S3-S4-20260813.v7.md	72	- 移除单项后仍为非空，且 `D` 中已无“未开始”或“进行中”项：迁至 S3-2；按当前 `D` 重新求和。	testCell03RemoveDuringScanLastIncompleteItemRoutesToS3_2	已覆盖	所列方法直接断言该条款。
+C34-036	SPEC-S3-S4-20260813.v7.md	73	- 移除单项后仍为非空，且 `D` 中仍有“未开始”或“进行中”项：留在 S3-1；按当前 `D` 重新求和，不重扫。	testCell03RemoveDuringScanWhileIncompleteItemRemainsStaysInS3_1	已覆盖	所列方法直接断言该条款。
+C34-037	SPEC-S3-S4-20260813.v7.md	74	- 返回上游整理页：迁出 S3，目标为上游整理页；不定义其内部目标状态。		不适用	MVE 范围外
+C34-038	SPEC-S3-S4-20260813.v7.md	80	- 页面头部导航层：页面标题、最终确认说明和“返回上游整理页”入口。		不适用	MVE 范围外
+C34-039	SPEC-S3-S4-20260813.v7.md	81	- 头部信息条：当前待删总数 `n` 与 `{当前范围说明：显示本轮整理范围的来源}`。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-040	SPEC-S3-S4-20260813.v7.md	82	- `D` 的完整资产清单；每项显示缩略图、位于左下角且采用系统“照片”App 官方样式的收藏标记、仅含体积的信息叠加和移除入口，不显示拍摄日期。	testDIsDeduplicatedWithoutChangingFirstOccurrenceOrder, testFavoriteAssetsUseSameScanRulesAndRemainSubmittable	未覆盖	方法只断言状态机资产集合和收藏项提交资格，未断言就绪页面完整呈现。
+C34-041	SPEC-S3-S4-20260813.v7.md	83	- L2 体积结果：`unavailableCount = 0` 时显示精确已知总量；`unavailableCount > 0` 时显示“≥ 已知总量”，并同时显示 `unavailableCount`。	testSnapshotUsesExactModeWhenEveryAssetHasKnownBytes, testSnapshotUsesLowerBoundModeWhenAnyAssetIsUnavailable	未覆盖	方法只断言冻结快照的体积模式，未断言就绪页面的 L2 显示。
+C34-042	SPEC-S3-S4-20260813.v7.md	87	- 浏览待删清单。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-043	SPEC-S3-S4-20260813.v7.md	88	- 移除单项。	testCell05RemoveOneFromS3_2WhileNonEmptyStaysInS3_2, testCell05RemoveLastItemFromS3_2RoutesToS3_4	已覆盖	所列方法直接断言该条款。
+C34-044	SPEC-S3-S4-20260813.v7.md	89	- 全部取消。	testCell08CancelAllFromS3_2RoutesToS3_4AndKeepsCache	已覆盖	所列方法直接断言该条款。
+C34-045	SPEC-S3-S4-20260813.v7.md	90	- 提交删除。集合中存在收藏项时，此操作仍保持可用。	testFavoriteAssetsUseSameScanRulesAndRemainSubmittable, testCell14SubmitFromS3_2FreezesSnapshotForS4_1	已覆盖	所列方法直接断言该条款。
+C34-046	SPEC-S3-S4-20260813.v7.md	91	- 使用页面头部导航层的入口返回上游整理页；该操作迁出 S3，目标为上游整理页。		不适用	MVE 范围外
+C34-047	SPEC-S3-S4-20260813.v7.md	95	- 跳过快照冻结直接发起删除。	testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testC34_047UnfrozenSnapshotCannotReachDeletionService	已覆盖	所列专项方法直接断言该条款。
+C34-048	SPEC-S3-S4-20260813.v7.md	96	- 在确认页内改变收藏、隐藏或相册归类状态。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-049	SPEC-S3-S4-20260813.v7.md	100	- 移除单项后仍为非空：留在 S3-2；保留该项的缓存结论，并按当前 `D` 重新求和，不重扫。	testCell05RemoveOneFromS3_2WhileNonEmptyStaysInS3_2	已覆盖	所列方法直接断言该条款。
+C34-050	SPEC-S3-S4-20260813.v7.md	101	- 移除单项后 `n = 0`：迁至 S3-4；保留该项的缓存结论。	testCell05RemoveLastItemFromS3_2RoutesToS3_4	已覆盖	所列方法直接断言该条款。
+C34-051	SPEC-S3-S4-20260813.v7.md	102	- 点击提交且快照冻结校验成功：迁至 S4-1。	testCell14SubmitFromS3_2FreezesSnapshotForS4_1	已覆盖	所列方法直接断言该条款。
+C34-052	SPEC-S3-S4-20260813.v7.md	103	- 点击提交时快照冻结校验失败：不得发起删除；按共同状态判定规则迁至相应 S3 状态。	testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot, testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot	不适用	实现约束比规格更强，该路径在当前实现下不可达
+C34-053	SPEC-S3-S4-20260813.v7.md	104	- 返回上游整理页：迁出 S3，目标为上游整理页；不定义其内部目标状态。		不适用	MVE 范围外
+C34-054	SPEC-S3-S4-20260813.v7.md	110	- 页面头部导航层：页面标题和“返回上游整理页”入口。		不适用	MVE 范围外
+C34-055	SPEC-S3-S4-20260813.v7.md	111	- 头部信息条：待删总数 0 与 `{当前范围说明：显示本轮整理范围的来源}`。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-056	SPEC-S3-S4-20260813.v7.md	112	- “没有待删除照片”的空状态说明。		不适用	该条款为纯文案
+C34-057	SPEC-S3-S4-20260813.v7.md	116	- 使用页面头部导航层的入口返回上游整理页；该操作迁出 S3，目标为上游整理页。		不适用	MVE 范围外
+C34-058	SPEC-S3-S4-20260813.v7.md	120	- 提交删除。	testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot	已覆盖	所列方法直接断言该条款。
+C34-059	SPEC-S3-S4-20260813.v7.md	121	- 移除单项。	testDisabledOperationsInS3_4HaveNoEffect	已覆盖	所列方法直接断言该条款。
+C34-060	SPEC-S3-S4-20260813.v7.md	122	- 全部取消。	testDisabledOperationsInS3_4HaveNoEffect	已覆盖	所列方法直接断言该条款。
+C34-061	SPEC-S3-S4-20260813.v7.md	123	- 启动体积扫描。	testCell01EnterFromOutsideWithEmptySetRoutesToS3_4	已覆盖	所列方法直接断言该条款。
+C34-062	SPEC-S3-S4-20260813.v7.md	127	- 返回上游整理页：迁出 S3，目标为上游整理页；不定义其内部目标状态。		不适用	MVE 范围外
+C34-063	SPEC-S3-S4-20260813.v7.md	128	- 返回上游整理页后以新的非空 `D` 再次进入确认页：存在“未开始”或“进行中”项时进入 S3-1，只将“未开始”项入队；不存在上述两种结论时复用缓存并进入 S3-2。	testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted, testCell01EnterFromOutsideWithCompletedCacheRoutesToS3_2WithoutRescan, testReentryReusesCompletedCacheWithoutQueueingAgain	不适用	MVE 范围外
+C34-064	SPEC-S3-S4-20260813.v7.md	136	| 进入页面 | `n = 0` → S3-4；`n ≥ 1` 且有“未开始”或“进行中”项 → S3-1，只将“未开始”项入队；`n ≥ 1` 且无上述两种结论 → S3-2，直接复用缓存 | 不可达：S3-1 已表示页面完成进入 | 不可达：S3-2 已表示页面完成进入 | 不可达：S3-4 已表示页面完成进入 |	testCell01EnterFromOutsideWithEmptySetRoutesToS3_4, testCell01EnterFromOutsideWithLargeSetRoutesToS3_1AndQueuesEveryAsset, testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted, testCell01EnterFromOutsideWithCompletedCacheRoutesToS3_2WithoutRescan	已覆盖	可达单元格（事件“进入页面” × 起始状态“页面外”）：所列方法直接断言该单元格。
+C34-065	SPEC-S3-S4-20260813.v7.md	136	| 进入页面 | `n = 0` → S3-4；`n ≥ 1` 且有“未开始”或“进行中”项 → S3-1，只将“未开始”项入队；`n ≥ 1` 且无上述两种结论 → S3-2，直接复用缓存 | 不可达：S3-1 已表示页面完成进入 | 不可达：S3-2 已表示页面完成进入 | 不可达：S3-4 已表示页面完成进入 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“进入页面” × 起始状态“S3-1 扫描中”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-066	SPEC-S3-S4-20260813.v7.md	136	| 进入页面 | `n = 0` → S3-4；`n ≥ 1` 且有“未开始”或“进行中”项 → S3-1，只将“未开始”项入队；`n ≥ 1` 且无上述两种结论 → S3-2，直接复用缓存 | 不可达：S3-1 已表示页面完成进入 | 不可达：S3-2 已表示页面完成进入 | 不可达：S3-4 已表示页面完成进入 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“进入页面” × 起始状态“S3-2 就绪”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-067	SPEC-S3-S4-20260813.v7.md	136	| 进入页面 | `n = 0` → S3-4；`n ≥ 1` 且有“未开始”或“进行中”项 → S3-1，只将“未开始”项入队；`n ≥ 1` 且无上述两种结论 → S3-2，直接复用缓存 | 不可达：S3-1 已表示页面完成进入 | 不可达：S3-2 已表示页面完成进入 | 不可达：S3-4 已表示页面完成进入 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“进入页面” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-068	SPEC-S3-S4-20260813.v7.md	137	| 扫描完成 | 不可达：页面外没有 S3 扫描 | `D` 中已无“未开始”或“进行中”项 → S3-2 | 不可达：S3-2 的 `D` 已无未完成项 | 不可达：空集不启动扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描完成” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-069	SPEC-S3-S4-20260813.v7.md	137	| 扫描完成 | 不可达：页面外没有 S3 扫描 | `D` 中已无“未开始”或“进行中”项 → S3-2 | 不可达：S3-2 的 `D` 已无未完成项 | 不可达：空集不启动扫描 |	testCell02ScanCompletionFromS3_1RoutesToS3_2	已覆盖	可达单元格（事件“扫描完成” × 起始状态“S3-1 扫描中”）：所列方法直接断言该单元格。
+C34-070	SPEC-S3-S4-20260813.v7.md	137	| 扫描完成 | 不可达：页面外没有 S3 扫描 | `D` 中已无“未开始”或“进行中”项 → S3-2 | 不可达：S3-2 的 `D` 已无未完成项 | 不可达：空集不启动扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描完成” × 起始状态“S3-2 就绪”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-071	SPEC-S3-S4-20260813.v7.md	137	| 扫描完成 | 不可达：页面外没有 S3 扫描 | `D` 中已无“未开始”或“进行中”项 → S3-2 | 不可达：S3-2 的 `D` 已无未完成项 | 不可达：空集不启动扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描完成” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-072	SPEC-S3-S4-20260813.v7.md	138	| 扫描中移除项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 不可达：S3-2 没有进行中的扫描 | 不可达：空集没有进行中的扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描中移除项” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-073	SPEC-S3-S4-20260813.v7.md	138	| 扫描中移除项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 不可达：S3-2 没有进行中的扫描 | 不可达：空集没有进行中的扫描 |	testCell03RemoveDuringScanLastItemRoutesToS3_4, testCell03RemoveDuringScanLastIncompleteItemRoutesToS3_2, testCell03RemoveDuringScanWhileIncompleteItemRemainsStaysInS3_1	已覆盖	可达单元格（事件“扫描中移除项” × 起始状态“S3-1 扫描中”）：所列方法直接断言该单元格。
+C34-074	SPEC-S3-S4-20260813.v7.md	138	| 扫描中移除项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 不可达：S3-2 没有进行中的扫描 | 不可达：空集没有进行中的扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描中移除项” × 起始状态“S3-2 就绪”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-075	SPEC-S3-S4-20260813.v7.md	138	| 扫描中移除项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 不可达：S3-2 没有进行中的扫描 | 不可达：空集没有进行中的扫描 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“扫描中移除项” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-076	SPEC-S3-S4-20260813.v7.md	139	| 移除单项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 移除后仍非空 → S3-2；移除最后一项 → S3-4；均保留该项缓存并按当前 `D` 重新求和 | 不可达：空集没有可移除项且操作禁用 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“移除单项” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-077	SPEC-S3-S4-20260813.v7.md	139	| 移除单项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 移除后仍非空 → S3-2；移除最后一项 → S3-4；均保留该项缓存并按当前 `D` 重新求和 | 不可达：空集没有可移除项且操作禁用 |	testCell04RemoveOneFromS3_1LastItemRoutesToS3_4, testCell04RemoveOneFromS3_1LastIncompleteItemRoutesToS3_2, testCell04RemoveOneFromS3_1WhileIncompleteItemRemainsStaysInS3_1	已覆盖	可达单元格（事件“移除单项” × 起始状态“S3-1 扫描中”）：所列方法直接断言该单元格。
+C34-078	SPEC-S3-S4-20260813.v7.md	139	| 移除单项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 移除后仍非空 → S3-2；移除最后一项 → S3-4；均保留该项缓存并按当前 `D` 重新求和 | 不可达：空集没有可移除项且操作禁用 |	testCell05RemoveOneFromS3_2WhileNonEmptyStaysInS3_2, testCell05RemoveLastItemFromS3_2RoutesToS3_4	已覆盖	可达单元格（事件“移除单项” × 起始状态“S3-2 就绪”）：所列方法直接断言该单元格。
+C34-079	SPEC-S3-S4-20260813.v7.md	139	| 移除单项 | 不可达：页面外没有移除入口 | 移除后 `n = 0` → S3-4；仍非空且 `D` 已无未完成项 → S3-2；否则 → S3-1；均保留该项缓存并按当前 `D` 重新求和 | 移除后仍非空 → S3-2；移除最后一项 → S3-4；均保留该项缓存并按当前 `D` 重新求和 | 不可达：空集没有可移除项且操作禁用 |	testDisabledOperationsInS3_4HaveNoEffect, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“移除单项” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-080	SPEC-S3-S4-20260813.v7.md	140	| 全部取消 | 不可达：页面外没有全部取消入口 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：空集的全部取消操作禁用 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“全部取消” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-081	SPEC-S3-S4-20260813.v7.md	140	| 全部取消 | 不可达：页面外没有全部取消入口 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：空集的全部取消操作禁用 |	testCell07CancelAllFromS3_1RoutesToS3_4AndKeepsCache	已覆盖	可达单元格（事件“全部取消” × 起始状态“S3-1 扫描中”）：所列方法直接断言该单元格。
+C34-082	SPEC-S3-S4-20260813.v7.md	140	| 全部取消 | 不可达：页面外没有全部取消入口 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：空集的全部取消操作禁用 |	testCell08CancelAllFromS3_2RoutesToS3_4AndKeepsCache	已覆盖	可达单元格（事件“全部取消” × 起始状态“S3-2 就绪”）：所列方法直接断言该单元格。
+C34-083	SPEC-S3-S4-20260813.v7.md	140	| 全部取消 | 不可达：页面外没有全部取消入口 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：空集的全部取消操作禁用 |	testDisabledOperationsInS3_4HaveNoEffect, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“全部取消” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-084	SPEC-S3-S4-20260813.v7.md	141	| 集合变为空 | 不可达：首次进入空集由“进入页面”事件路由 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：S3-4 的集合已经为空 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“集合变为空” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-085	SPEC-S3-S4-20260813.v7.md	141	| 集合变为空 | 不可达：首次进入空集由“进入页面”事件路由 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：S3-4 的集合已经为空 |	testCell11CollectionBecameEmptyFromS3_1RoutesToS3_4	已覆盖	可达单元格（事件“集合变为空” × 起始状态“S3-1 扫描中”）：所列方法直接断言该单元格。
+C34-086	SPEC-S3-S4-20260813.v7.md	141	| 集合变为空 | 不可达：首次进入空集由“进入页面”事件路由 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：S3-4 的集合已经为空 |	testCell12CollectionBecameEmptyFromS3_2RoutesToS3_4	已覆盖	可达单元格（事件“集合变为空” × 起始状态“S3-2 就绪”）：所列方法直接断言该单元格。
+C34-087	SPEC-S3-S4-20260813.v7.md	141	| 集合变为空 | 不可达：首次进入空集由“进入页面”事件路由 | → S3-4；所有资产的缓存结论保留 | → S3-4；所有资产的缓存结论保留 | 不可达：S3-4 的集合已经为空 |	testDisabledOperationsInS3_4HaveNoEffect, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“集合变为空” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-088	SPEC-S3-S4-20260813.v7.md	142	| 点击提交 | 不可达：页面外没有提交入口 | 不可达：提交操作禁用，原因是扫描未完成 | 两项校验与原子冻结成功 → S4-1；校验失败则按共同状态判定规则回到相应 S3 状态 | 不可达：提交操作禁用，原因是集合为空 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“点击提交” × 起始状态“页面外”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-089	SPEC-S3-S4-20260813.v7.md	142	| 点击提交 | 不可达：页面外没有提交入口 | 不可达：提交操作禁用，原因是扫描未完成 | 两项校验与原子冻结成功 → S4-1；校验失败则按共同状态判定规则回到相应 S3 状态 | 不可达：提交操作禁用，原因是集合为空 |	testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“点击提交” × 起始状态“S3-1 扫描中”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-090	SPEC-S3-S4-20260813.v7.md	142	| 点击提交 | 不可达：页面外没有提交入口 | 不可达：提交操作禁用，原因是扫描未完成 | 两项校验与原子冻结成功 → S4-1；校验失败则按共同状态判定规则回到相应 S3 状态 | 不可达：提交操作禁用，原因是集合为空 |	testCell14SubmitFromS3_2FreezesSnapshotForS4_1	不适用	可达单元格（事件“点击提交” × 起始状态“S3-2 就绪”）：实现约束比规格更强，该路径在当前实现下不可达
+C34-091	SPEC-S3-S4-20260813.v7.md	142	| 点击提交 | 不可达：页面外没有提交入口 | 不可达：提交操作禁用，原因是扫描未完成 | 两项校验与原子冻结成功 → S4-1；校验失败则按共同状态判定规则回到相应 S3 状态 | 不可达：提交操作禁用，原因是集合为空 |	testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“点击提交” × 起始状态“S3-4 空集”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-092	SPEC-S3-S4-20260813.v7.md	146	提交集合快照是不可变记录。它只在 S3-2 的提交操作中产生，不允许在 S4 中增删或替换资产。	testSnapshotRemainsImmutableAfterCacheReceivesAnotherResult, testFrozenSnapshotPreventsLaterMutationOfD, testSecondFreezeIsRejectedAndOriginalSnapshotIsKept, testSnapshotNeverChangesInsideExecutionState	已覆盖	所列方法直接断言该条款。
+C34-093	SPEC-S3-S4-20260813.v7.md	150	| `提交标识` | 全局唯一字符串 | 点击提交后、删除请求发起前生成 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testSecondStartWithSameSubmissionIdentifierIsRejected	未覆盖	方法断言提交标识被写入并拒绝重复使用，但未直接证明生成值全局唯一，也未断言字段在目标 S5 接收时结束。
+C34-094	SPEC-S3-S4-20260813.v7.md	151	| `资产标识集合` | 有序字符串数组；元素唯一；长度至少为 1 | 原子读取当前 `D` 时冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testDIsDeduplicatedWithoutChangingFirstOccurrenceOrder, testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testLargeCompletedSelectionCanBeFrozenWithoutTruncation	未覆盖	方法断言有序、唯一、非空及冻结值，但未直接断言字段在目标 S5 接收时结束。
+C34-095	SPEC-S3-S4-20260813.v7.md	152	| `资产数量` | 非负整数；必须等于资产标识集合长度 | 与资产标识集合同时冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testLargeCompletedSelectionCanBeFrozenWithoutTruncation	未覆盖	方法断言资产数量与集合长度相等，但未直接断言字段在目标 S5 接收时结束。
+C34-096	SPEC-S3-S4-20260813.v7.md	153	| `已知总字节数` | 非负整数；等于当前资产标识集合中结论为“已知字节”的项之和 | 校验通过后对当前 `D` 即时求和，并与全部快照字段一并原子冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testKnownBytesAndUnavailableCountAreRecomputedFromCurrentD, testSnapshotUsesExactModeWhenEveryAssetHasKnownBytes, testSnapshotUsesLowerBoundModeWhenAnyAssetIsUnavailable, testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testUnknownOrNegativeScanResultIsRejectedWithoutChangingCache	未覆盖	方法断言非负即时求和值及冻结值，但未直接断言字段在目标 S5 接收时结束。
+C34-097	SPEC-S3-S4-20260813.v7.md	154	| `unavailableCount` | 非负整数；必须等于当前资产标识集合中结论为“不可用”的项数，且不得大于资产数量 | 校验通过后对当前 `D` 即时求和，并与全部快照字段一并原子冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testKnownBytesAndUnavailableCountAreRecomputedFromCurrentD, testSnapshotUsesLowerBoundModeWhenAnyAssetIsUnavailable, testCell14SubmitFromS3_2FreezesSnapshotForS4_1	未覆盖	方法断言不可用项计数及冻结值，但未直接断言字段在目标 S5 接收时结束。
+C34-098	SPEC-S3-S4-20260813.v7.md	155	| `体积显示模式` | 枚举：`精确` 或 `下界`；前者要求 `unavailableCount = 0`，后者要求 `unavailableCount > 0` | 由对当前 `D` 的即时求和结果派生，并与全部快照字段一并原子冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testSnapshotUsesExactModeWhenEveryAssetHasKnownBytes, testSnapshotUsesLowerBoundModeWhenAnyAssetIsUnavailable, testCell14SubmitFromS3_2FreezesSnapshotForS4_1	未覆盖	方法断言两种枚举及派生条件，但未直接断言字段在目标 S5 接收时结束。
+C34-099	SPEC-S3-S4-20260813.v7.md	156	| `收藏资产标识集合` | 字符串集合；必须是资产标识集合的子集 | 提交时按页面已知收藏标记冻结；不参与提交资格判定 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testFavoriteAssetsUseSameScanRulesAndRemainSubmittable, testCell14SubmitFromS3_2FreezesSnapshotForS4_1	未覆盖	方法断言收藏集合冻结且不阻断提交，但未直接断言字段在目标 S5 接收时结束。
+C34-100	SPEC-S3-S4-20260813.v7.md	157	| `冻结时间` | 带时区的时间戳 | 与全部快照字段一并原子冻结 | 对应 S4 终态数据被目标 S5 状态接收时结束 |	testCell14SubmitFromS3_2FreezesSnapshotForS4_1	未覆盖	方法断言冻结时间值，但未直接断言字段在目标 S5 接收时结束。
+C34-101	SPEC-S3-S4-20260813.v7.md	159	冻结校验只包括以下两条：	testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot, testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot, testFavoriteAssetsUseSameScanRulesAndRemainSubmittable, testLargeCompletedSelectionCanBeFrozenWithoutTruncation	未覆盖	方法直接断言两条冻结守卫并覆盖部分合法输入，但无法穷尽证明不存在第三类冻结校验。
+C34-102	SPEC-S3-S4-20260813.v7.md	161	1. `n ≥ 1`。	testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot	已覆盖	所列方法直接断言该条款。
+C34-103	SPEC-S3-S4-20260813.v7.md	162	2. `D` 中不存在结论为“未开始”或“进行中”的项。	testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot	已覆盖	所列方法直接断言该条款。
+C34-104	SPEC-S3-S4-20260813.v7.md	164	两条均通过后，对同一个当前 `D` 即时求出 `已知总字节数` 与 `unavailableCount`，并一次性原子冻结表中的全部快照字段；最后才允许发起删除请求。任一校验失败都不得形成可提交快照，也不得发起删除。	testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testFreezeCountGuardRejectsEmptySetAndFormsNoSnapshot, testFreezeCompletionGuardRejectsS3_1AndFormsNoSnapshot, testC34_104FreezeFailureDoesNotCallDeletionService	已覆盖	所列专项方法直接断言该条款。
+C34-105	SPEC-S3-S4-20260813.v7.md	192	- S4 使用 S3 冻结的提交集合快照；S4 内不允许修改该快照。	testSnapshotNeverChangesInsideExecutionState, testSnapshotRemainsImmutableAfterCacheReceivesAnotherResult	已覆盖	所列方法直接断言该条款。
+C34-106	SPEC-S3-S4-20260813.v7.md	193	- 同一提交标识只能发起一次批次请求，重复提交必须被阻止。	testDuplicateSubmissionIsRejected, testSecondStartWithSameSubmissionIdentifierIsRejected	已覆盖	所列方法直接断言该条款。
+C34-107	SPEC-S3-S4-20260813.v7.md	194	- S4-1 与 S4-2 只显示不确定活动指示。不得按单个资产依次刷新处理进展，不得显示任何完成比例数值，也不得给出预计完成时间。	testReachable01SubmissionFromExternalSource, testReachable07ActiveFromSubmitted	未覆盖	方法只断言计时状态，未断言执行页的不确定活动指示、无单项进度、无比例及无预计时间。
+C34-108	SPEC-S3-S4-20260813.v7.md	195	- 收到回调时必须先持久化回调与终态，再更新界面或向目标状态交接，避免界面已显示终态而结果尚未保存。	testPersistenceFailureLeavesCallbackStateUnchanged, testUserCancellationWritesCancelledTargetBeforeHandoff	已覆盖	所列方法直接断言该条款。
+C34-109	SPEC-S3-S4-20260813.v7.md	196	- 第一个有效终态一经持久化即封闭该提交；其后的迟到回调不得改写 S4 终态。	testLateFailureCannotOverwriteSuccess, testLateSuccessCannotOverwriteFailure, testLateCallbackCannotOverwriteUnknown, testRestoreKeepsClosedTerminalState	已覆盖	所列方法直接断言该条款。
+C34-110	SPEC-S3-S4-20260813.v7.md	202	- “删除请求已提交”的状态标题。		不适用	该条款为纯文案
+C34-111	SPEC-S3-S4-20260813.v7.md	203	- 不确定活动指示。		不适用	该条款为纯视觉
+C34-112	SPEC-S3-S4-20260813.v7.md	204	- 本次提交的资产总数。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-113	SPEC-S3-S4-20260813.v7.md	205	- “正在等待系统返回结果”的说明；不得宣称资产已删除或空间已释放。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-114	SPEC-S3-S4-20260813.v7.md	209	- 无会改变提交结果的应用内操作；系统级返回桌面或切换应用不属于应用内操作。	testDuplicateSubmissionIsRejected, testC34_114SubmittedStateRejectsEveryFullPartialAndModifiedResubmission	已覆盖	所列专项方法直接断言该条款。
+C34-115	SPEC-S3-S4-20260813.v7.md	213	- 再次提交同一快照。	testDuplicateSubmissionIsRejected, testSecondStartWithSameSubmissionIdentifierIsRejected	已覆盖	所列方法直接断言该条款。
+C34-116	SPEC-S3-S4-20260813.v7.md	214	- 修改、取消或拆分已提交快照。	testSnapshotNeverChangesInsideExecutionState, testC34_116SubmittedSnapshotCannotBeModifiedCancelledOrSplit	已覆盖	所列专项方法直接断言该条款。
+C34-117	SPEC-S3-S4-20260813.v7.md	215	- 展示按单项更新的处理情况或完成比例。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-118	SPEC-S3-S4-20260813.v7.md	219	- 收到成功回调：迁至 S4-E1，并取消超时计时。	testReachable12SuccessCallbackFromSubmitted	已覆盖	所列方法直接断言该条款。
+C34-119	SPEC-S3-S4-20260813.v7.md	220	- 收到失败回调：迁至 S4-E2，并取消超时计时。	testReachable14FailureCallbackFromSubmitted	已覆盖	所列方法直接断言该条款。
+C34-120	SPEC-S3-S4-20260813.v7.md	221	- active 累计等待达到 60 秒且仍无有效回调：迁至 S4-E3。	testReachable16TimeoutFromSubmitted, testElapsedTimeBelowLimitKeepsPendingState	已覆盖	所列方法直接断言该条款。
+C34-121	SPEC-S3-S4-20260813.v7.md	222	- 应用进入非 active：留在 S4-1，暂停并保存已累计的 active 时长。	testReachable02InactiveFromSubmitted, testInactiveDurationDoesNotAccumulate	已覆盖	所列方法直接断言该条款。
+C34-122	SPEC-S3-S4-20260813.v7.md	223	- 应用由非 active 恢复为 active 且尚无终态：迁至 S4-2，并从剩余时长继续累计。	testReachable07ActiveFromSubmitted, testResumeContinuesRemainingActiveTime	已覆盖	所列方法直接断言该条款。
+C34-123	SPEC-S3-S4-20260813.v7.md	224	- 应用在尚无持久化终态时被系统终止：下次启动检测到未闭合提交后迁至 S4-E3。	testReachable18TerminationFromSubmitted, testRestoreConvertsSubmittedStateToUnknown	已覆盖	所列方法直接断言该条款。
+C34-124	SPEC-S3-S4-20260813.v7.md	235	- “正在确认删除结果”的状态标题。		不适用	该条款为纯文案
+C34-125	SPEC-S3-S4-20260813.v7.md	236	- 不确定活动指示。		不适用	该条款为纯视觉
+C34-126	SPEC-S3-S4-20260813.v7.md	237	- 本次提交的资产总数。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-127	SPEC-S3-S4-20260813.v7.md	238	- “等待系统返回结果”的说明；不得宣称资产已删除或空间已释放。		不适用	该条款为纯文案
+C34-128	SPEC-S3-S4-20260813.v7.md	242	- 无会改变提交结果的应用内操作。	testDuplicateSubmissionIsRejected, testSnapshotNeverChangesInsideExecutionState, testC34_128ResumedStateRejectsEveryResultChangingAppOperation	已覆盖	所列专项方法直接断言该条款。
+C34-129	SPEC-S3-S4-20260813.v7.md	246	- 再次提交同一快照。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-130	SPEC-S3-S4-20260813.v7.md	247	- 修改、取消或拆分已提交快照。	testSnapshotNeverChangesInsideExecutionState, testC34_130ResumedSnapshotCannotBeModifiedCancelledOrSplit	已覆盖	所列专项方法直接断言该条款。
+C34-131	SPEC-S3-S4-20260813.v7.md	248	- 展示按单项更新的处理情况或完成比例。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-132	SPEC-S3-S4-20260813.v7.md	249	- 手动把等待状态判为成功或失败。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-133	SPEC-S3-S4-20260813.v7.md	253	- 收到成功回调：迁至 S4-E1，并取消超时计时。	testReachable13SuccessCallbackFromResumedInteraction	已覆盖	所列方法直接断言该条款。
+C34-134	SPEC-S3-S4-20260813.v7.md	254	- 收到失败回调：迁至 S4-E2，并取消超时计时。	testReachable15FailureCallbackFromResumedInteraction	已覆盖	所列方法直接断言该条款。
+C34-135	SPEC-S3-S4-20260813.v7.md	255	- active 累计等待达到 60 秒且仍无有效回调：迁至 S4-E3。	testReachable17TimeoutFromResumedInteraction	已覆盖	所列方法直接断言该条款。
+C34-136	SPEC-S3-S4-20260813.v7.md	256	- 应用进入非 active：留在 S4-2 并暂停计时；应用由非 active 恢复为 active 后从剩余时长继续，不重置已累计的 active 时长。	testReachable03InactiveFromResumedInteraction, testReachable08ActiveFromResumedInteraction, testInactiveDurationDoesNotAccumulate, testResumeContinuesRemainingActiveTime	已覆盖	所列方法直接断言该条款。
+C34-137	SPEC-S3-S4-20260813.v7.md	257	- 应用在尚无持久化终态时被系统终止：下次启动检测到未闭合提交后迁至 S4-E3。	testReachable19TerminationFromResumedInteraction, testRestoreConvertsResumedStateToUnknown	已覆盖	所列方法直接断言该条款。
+C34-138	SPEC-S3-S4-20260813.v7.md	263	- 批次成功的终态标识。	testReachable12SuccessCallbackFromSubmitted, testReachable13SuccessCallbackFromResumedInteraction	未覆盖	方法断言成功终态模型，未断言执行页呈现终态标识。
+C34-139	SPEC-S3-S4-20260813.v7.md	264	- 提交资产数量与成功资产数量；两者必须相等。	testSuccessResultClassifiesEverySubmittedAssetAsSuccessful	未覆盖	方法断言成功集合等于提交集合，未断言页面显示的两个数量。
+C34-140	SPEC-S3-S4-20260813.v7.md	265	- 已停止的活动指示区域，不再显示进行中状态。		不适用	该条款为纯视觉
+C34-141	SPEC-S3-S4-20260813.v7.md	269	- 无；完成终态持久化后自动交接。	testReachable12SuccessCallbackFromSubmitted, testReachable09ActiveFromSuccessTerminal	已覆盖	所列方法直接断言该条款。
+C34-142	SPEC-S3-S4-20260813.v7.md	273	- 修改终态集合。	testLateFailureCannotOverwriteSuccess, testReachable20TerminationFromSuccessTerminal	已覆盖	所列方法直接断言该条款。
+C34-143	SPEC-S3-S4-20260813.v7.md	274	- 再次提交同一快照。	testSecondStartWithSameSubmissionIdentifierIsRejected	已覆盖	所列方法直接断言该条款。
+C34-144	SPEC-S3-S4-20260813.v7.md	275	- 恢复 S4 计时。	testReachable12SuccessCallbackFromSubmitted, testReachable04InactiveFromSuccessTerminal	已覆盖	所列方法直接断言该条款。
+C34-145	SPEC-S3-S4-20260813.v7.md	279	- 终态及快照引用持久化完成，且可以进行页面交接：迁至 S5-T0。	testReachable12SuccessCallbackFromSubmitted, testReachable09ActiveFromSuccessTerminal	已覆盖	所列方法直接断言该条款。
+C34-146	SPEC-S3-S4-20260813.v7.md	280	- 若交接前应用处于非 active 或被终止：保持已持久化的 S4-E1；下次应用恢复 active 后继续迁至 S5-T0。	testReachable04InactiveFromSuccessTerminal, testReachable09ActiveFromSuccessTerminal, testReachable20TerminationFromSuccessTerminal, testC34_146SuccessTerminalWaitsWhileInactiveAndContinuesAfterRestart	已覆盖	所列专项方法直接断言该条款。
+C34-147	SPEC-S3-S4-20260813.v7.md	286	- 批次失败的终态标识。	testReachable14FailureCallbackFromSubmitted, testReachable15FailureCallbackFromResumedInteraction	未覆盖	方法断言失败终态模型，未断言执行页呈现终态标识。
+C34-148	SPEC-S3-S4-20260813.v7.md	287	- 成功集合、失败集合、未处理集合各自的数量。	testDisjointCompleteClassificationIsAccepted	未覆盖	方法断言三个集合被保存，未断言页面显示各集合数量。
+C34-149	SPEC-S3-S4-20260813.v7.md	288	- 非空失败原因。	testEmptyFailureReasonIsRejected	未覆盖	方法断言空失败原因被拒绝，未断言页面呈现非空失败原因。
+C34-150	SPEC-S3-S4-20260813.v7.md	289	- 已停止的活动指示区域，不再显示进行中状态。		不适用	该条款为纯视觉
+C34-151	SPEC-S3-S4-20260813.v7.md	293	- 无；完成终态持久化后自动交接。	testReachable14FailureCallbackFromSubmitted, testReachable10ActiveFromFailureTerminal	已覆盖	所列方法直接断言该条款。
+C34-152	SPEC-S3-S4-20260813.v7.md	297	- 修改三个结果集合。	testDisjointCompleteClassificationIsAccepted, testC34_152FailureTerminalResultSetsRemainImmutableForEveryLaterEvent	已覆盖	所列专项方法直接断言该条款。
+C34-153	SPEC-S3-S4-20260813.v7.md	298	- 在 S4 内再次提交全部或部分资产。	testSecondStartWithSameSubmissionIdentifierIsRejected, testC34_153FailureTerminalRejectsWholeAndPartialResubmission	已覆盖	所列专项方法直接断言该条款。
+C34-154	SPEC-S3-S4-20260813.v7.md	299	- 把失败结果显示为成功。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-155	SPEC-S3-S4-20260813.v7.md	300	- 恢复 S4 计时。	testReachable14FailureCallbackFromSubmitted, testReachable05InactiveFromFailureTerminal	已覆盖	所列方法直接断言该条款。
+C34-156	SPEC-S3-S4-20260813.v7.md	304	- 失败回调、三个结果集合及快照引用持久化完成后，S4 按 `失败原因.类别码` 计算并写入 `下游目标状态`：`用户取消` → `S5-C`；`权限不足` / `资产不可删除` / `未知` → `S5-F`；可以进行页面交接时迁至该状态。	testUserCancellationWritesCancelledTargetBeforeHandoff, testOtherFailureCategoriesWriteFailureTarget, testReachable14FailureCallbackFromSubmitted	已覆盖	所列方法直接断言该条款。
+C34-157	SPEC-S3-S4-20260813.v7.md	305	- 若交接前应用处于非 active 或被终止：保持已持久化的 S4-E2；下次应用恢复 active 后按已写入的 `下游目标状态` 继续迁至 `S5-C` 或 `S5-F`，不重新分流。	testReachable05InactiveFromFailureTerminal, testReachable10ActiveFromFailureTerminal, testUserCancellationWritesCancelledTargetBeforeHandoff, testOtherFailureCategoriesWriteFailureTarget, testC34_157FailureTargetSurvivesTerminationWithoutReclassification	已覆盖	所列专项方法直接断言该条款。
+C34-158	SPEC-S3-S4-20260813.v7.md	311	- “结果未知”的终态标识。		不适用	该条款为纯文案
+C34-159	SPEC-S3-S4-20260813.v7.md	312	- 本次提交的资产总数。		未覆盖	未发现直接断言该条款的 XCTest 方法。
+C34-160	SPEC-S3-S4-20260813.v7.md	313	- 触发原因：active 累计等待超时，或应用在未取得持久化终态期间被系统终止。	testReachable16TimeoutFromSubmitted, testReachable18TerminationFromSubmitted	未覆盖	方法断言两种未知原因状态，未断言页面显示触发原因。
+C34-161	SPEC-S3-S4-20260813.v7.md	314	- 已停止的活动指示区域，不得把未知状态表达为成功或失败。	testReachable16TimeoutFromSubmitted, testReachable18TerminationFromSubmitted	未覆盖	方法断言未知终态与计时停止，未断言活动指示区域及页面措辞。
+C34-162	SPEC-S3-S4-20260813.v7.md	318	- 无；完成终态持久化后自动交接。	testReachable11ActiveFromUnknownTerminal	已覆盖	所列方法直接断言该条款。
+C34-163	SPEC-S3-S4-20260813.v7.md	322	- 推断任一资产成功或失败。	testUnknownEntryDoesNotConstructClassificationSets, testC34_163UnknownTerminalRejectsSuccessAndFailureInference	已覆盖	所列专项方法直接断言该条款。
+C34-164	SPEC-S3-S4-20260813.v7.md	323	- 修改提交集合快照。	testSnapshotNeverChangesInsideExecutionState	已覆盖	所列方法直接断言该条款。
+C34-165	SPEC-S3-S4-20260813.v7.md	324	- 在 S4 内再次提交全部或部分资产。	testSecondStartWithSameSubmissionIdentifierIsRejected, testC34_165UnknownTerminalRejectsWholeAndPartialResubmission	已覆盖	所列专项方法直接断言该条款。
+C34-166	SPEC-S3-S4-20260813.v7.md	325	- 接受迟到回调改写已封闭终态。	testLateCallbackCannotOverwriteUnknown, testC34_166LateFailureCannotOverwriteUnknownTerminal	已覆盖	所列专项方法直接断言该条款。
+C34-167	SPEC-S3-S4-20260813.v7.md	329	- 未知终态、触发原因及快照引用持久化完成，且可以进行页面交接：迁至 S5-U。	testReachable11ActiveFromUnknownTerminal	已覆盖	所列方法直接断言该条款。
+C34-168	SPEC-S3-S4-20260813.v7.md	330	- 若交接前应用处于非 active 或被终止：保持已持久化的 S4-E3；下次应用恢复 active 后继续迁至 S5-U。	testReachable22TerminationFromUnknownTerminal, testReachable11ActiveFromUnknownTerminal	未覆盖	方法分别断言未知终态被终止时保留及未闭合提交终止后可交接，但未直接覆盖已持久化 S4-E3 在重启后继续交接。
+C34-169	SPEC-S3-S4-20260813.v7.md	334	页面交接前，S4 必须计算并写入字段 `下游目标状态`。其取值域为 {`S5-T0`, `S5-F`, `S5-C`, `S5-U`}：`S4-E1` → `S5-T0`；`S4-E2` 按 `失败原因.类别码` 分流，`用户取消` → `S5-C`，`权限不足` / `资产不可删除` / `未知` → `S5-F`；`S4-E3` → `S5-U`。	testDownstreamTargetStateValueDomainIsComplete, testReachable12SuccessCallbackFromSubmitted, testUserCancellationWritesCancelledTargetBeforeHandoff, testOtherFailureCategoriesWriteFailureTarget, testReachable16TimeoutFromSubmitted, testPersistedSessionCarriesDownstreamTargetState	已覆盖	所列方法直接断言该条款。
+C34-170	SPEC-S3-S4-20260813.v7.md	340	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testReachable01SubmissionFromExternalSource	已覆盖	可达单元格（事件“提交发起” × 起始状态“S3-2 外部源”）：所列方法直接断言该单元格。
+C34-171	SPEC-S3-S4-20260813.v7.md	340	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testDuplicateSubmissionIsRejected, testSecondStartWithSameSubmissionIdentifierIsRejected, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“提交发起” × 起始状态“S4-1 已提交”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-172	SPEC-S3-S4-20260813.v7.md	340	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“提交发起” × 起始状态“S4-2 已恢复交互”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-173	SPEC-S3-S4-20260813.v7.md	340	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“提交发起” × 起始状态“S4-E1 全批成功”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-174	SPEC-S3-S4-20260813.v7.md	340	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“提交发起” × 起始状态“S4-E2 整批失败”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-175	SPEC-S3-S4-20260813.v7.md	340	| 提交发起 | 快照冻结成功并发起批次请求 → S4-1，立即开始累计 60 秒 | 不可达：同一提交标识禁止重复发起 | 不可达：恢复期间禁止重复发起 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 | 不可达：终态已经封闭提交 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“提交发起” × 起始状态“S4-E3 结果未知”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-176	SPEC-S3-S4-20260813.v7.md	341	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“应用进入非 active” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-177	SPEC-S3-S4-20260813.v7.md	341	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testReachable02InactiveFromSubmitted, testInactiveDurationDoesNotAccumulate	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
+C34-178	SPEC-S3-S4-20260813.v7.md	341	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testReachable03InactiveFromResumedInteraction	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
+C34-179	SPEC-S3-S4-20260813.v7.md	341	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testReachable04InactiveFromSuccessTerminal, testReachable09ActiveFromSuccessTerminal	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S4-E1 全批成功”）：所列方法直接断言该单元格。
+C34-180	SPEC-S3-S4-20260813.v7.md	341	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testReachable05InactiveFromFailureTerminal, testReachable10ActiveFromFailureTerminal	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S4-E2 整批失败”）：所列方法直接断言该单元格。
+C34-181	SPEC-S3-S4-20260813.v7.md	341	| 应用进入非 active | 不可达：S4 尚未开始 | → S4-1；暂停并保存已累计的 active 时长 | → S4-2；暂停并保存已累计的 active 时长 | → S4-E1；终态已持久化，等待应用恢复 active 后交接 | → S4-E2；终态已持久化，等待应用恢复 active 后交接 | → S4-E3；终态已持久化，等待应用恢复 active 后交接 |	testReachable06InactiveFromUnknownTerminal, testReachable11ActiveFromUnknownTerminal	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S4-E3 结果未知”）：所列方法直接断言该单元格。
+C34-182	SPEC-S3-S4-20260813.v7.md	342	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“应用恢复 active” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-183	SPEC-S3-S4-20260813.v7.md	342	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testReachable07ActiveFromSubmitted	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
+C34-184	SPEC-S3-S4-20260813.v7.md	342	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testReachable08ActiveFromResumedInteraction	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
+C34-185	SPEC-S3-S4-20260813.v7.md	342	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testReachable09ActiveFromSuccessTerminal	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S4-E1 全批成功”）：所列方法直接断言该单元格。
+C34-186	SPEC-S3-S4-20260813.v7.md	342	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testReachable10ActiveFromFailureTerminal, testUserCancellationWritesCancelledTargetBeforeHandoff, testOtherFailureCategoriesWriteFailureTarget, testC34_186RestoredCancellationTerminalUsesPersistedTargetOnActive	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S4-E2 整批失败”）：所列专项方法直接断言该条款。
+C34-187	SPEC-S3-S4-20260813.v7.md	342	| 应用恢复 active | 不可达：S4 尚未开始 | → S4-2；从剩余时长继续累计 | → S4-2；从剩余时长继续累计 | → S4-E1，随后交接 S5-T0 | → S4-E2，随后按 `失败原因.类别码` 分流：`用户取消` → S5-C；`权限不足` / `资产不可删除` / `未知` → S5-F | → S4-E3，随后交接 S5-U |	testReachable11ActiveFromUnknownTerminal	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S4-E3 结果未知”）：所列方法直接断言该单元格。
+C34-188	SPEC-S3-S4-20260813.v7.md	343	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到成功回调” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-189	SPEC-S3-S4-20260813.v7.md	343	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testReachable12SuccessCallbackFromSubmitted	已覆盖	可达单元格（事件“收到成功回调” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
+C34-190	SPEC-S3-S4-20260813.v7.md	343	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testReachable13SuccessCallbackFromResumedInteraction	已覆盖	可达单元格（事件“收到成功回调” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
+C34-191	SPEC-S3-S4-20260813.v7.md	343	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到成功回调” × 起始状态“S4-E1 全批成功”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-192	SPEC-S3-S4-20260813.v7.md	343	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testLateSuccessCannotOverwriteFailure, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到成功回调” × 起始状态“S4-E2 整批失败”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-193	SPEC-S3-S4-20260813.v7.md	343	| 收到成功回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E1，并取消计时 | → S4-E1，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testLateCallbackCannotOverwriteUnknown, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到成功回调” × 起始状态“S4-E3 结果未知”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-194	SPEC-S3-S4-20260813.v7.md	344	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到失败回调” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-195	SPEC-S3-S4-20260813.v7.md	344	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testReachable14FailureCallbackFromSubmitted	已覆盖	可达单元格（事件“收到失败回调” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
+C34-196	SPEC-S3-S4-20260813.v7.md	344	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testReachable15FailureCallbackFromResumedInteraction	已覆盖	可达单元格（事件“收到失败回调” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
+C34-197	SPEC-S3-S4-20260813.v7.md	344	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testLateFailureCannotOverwriteSuccess, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到失败回调” × 起始状态“S4-E1 全批成功”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-198	SPEC-S3-S4-20260813.v7.md	344	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到失败回调” × 起始状态“S4-E2 整批失败”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-199	SPEC-S3-S4-20260813.v7.md	344	| 收到失败回调 | 不可达：S4 尚未开始且没有本次提交 | → S4-E2，并取消计时 | → S4-E2，并取消计时 | 不可达：首个终态已经持久化，迟到回调不得改写 | 不可达：首个终态已经持久化，重复回调不得改写 | 不可达：首个终态已经持久化，迟到回调不得改写 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“收到失败回调” × 起始状态“S4-E3 结果未知”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-200	SPEC-S3-S4-20260813.v7.md	345	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“超时触发” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-201	SPEC-S3-S4-20260813.v7.md	345	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testReachable16TimeoutFromSubmitted, testElapsedTimeBelowLimitKeepsPendingState	已覆盖	可达单元格（事件“超时触发” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
+C34-202	SPEC-S3-S4-20260813.v7.md	345	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testReachable17TimeoutFromResumedInteraction	已覆盖	可达单元格（事件“超时触发” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
+C34-203	SPEC-S3-S4-20260813.v7.md	345	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“超时触发” × 起始状态“S4-E1 全批成功”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-204	SPEC-S3-S4-20260813.v7.md	345	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“超时触发” × 起始状态“S4-E2 整批失败”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-205	SPEC-S3-S4-20260813.v7.md	345	| 超时触发 | 不可达：S4 尚未开始 | active 累计达到 60 秒且无有效回调 → S4-E3 | active 累计达到 60 秒且无有效回调 → S4-E3 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 | 不可达：终态已形成且计时器已取消 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“超时触发” × 起始状态“S4-E3 结果未知”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-206	SPEC-S3-S4-20260813.v7.md	346	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“应用在此期间被系统终止” × 起始状态“S3-2 外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C34-207	SPEC-S3-S4-20260813.v7.md	346	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testReachable18TerminationFromSubmitted, testRestoreConvertsSubmittedStateToUnknown	已覆盖	可达单元格（事件“应用在此期间被系统终止” × 起始状态“S4-1 已提交”）：所列方法直接断言该单元格。
+C34-208	SPEC-S3-S4-20260813.v7.md	346	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testReachable19TerminationFromResumedInteraction, testRestoreConvertsResumedStateToUnknown	已覆盖	可达单元格（事件“应用在此期间被系统终止” × 起始状态“S4-2 已恢复交互”）：所列方法直接断言该单元格。
+C34-209	SPEC-S3-S4-20260813.v7.md	346	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testReachable20TerminationFromSuccessTerminal, testC34_209SuccessTerminalContinuesHandoffAfterTerminationAndRestart	已覆盖	可达单元格（事件“应用在此期间被系统终止” × 起始状态“S4-E1 全批成功”）：所列专项方法直接断言该条款。
+C34-210	SPEC-S3-S4-20260813.v7.md	346	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testReachable21TerminationFromFailureTerminal, testC34_210FailureTerminalContinuesHandoffAfterTerminationAndRestart	已覆盖	可达单元格（事件“应用在此期间被系统终止” × 起始状态“S4-E2 整批失败”）：所列专项方法直接断言该条款。
+C34-211	SPEC-S3-S4-20260813.v7.md	346	| 应用在此期间被系统终止 | 不可达：S4 尚未开始 | 若尚无持久化终态，下次启动 → S4-E3 | 若尚无持久化终态，下次启动 → S4-E3 | → S4-E1；持久化终态不丢失，下次启动继续交接 | → S4-E2；持久化终态不丢失，下次启动继续交接 | → S4-E3；持久化终态不丢失，下次启动继续交接 |	testReachable22TerminationFromUnknownTerminal, testC34_211UnknownTerminalContinuesHandoffAfterTerminationAndRestart	已覆盖	可达单元格（事件“应用在此期间被系统终止” × 起始状态“S4-E3 结果未知”）：所列专项方法直接断言该条款。
+C34-212	SPEC-S3-S4-20260813.v7.md	362	| `提交标识` | 字符串；必须匹配提交集合快照 | 关联唯一一次批次提交 |	testMismatchedSuccessCallbackIsRejected, testMismatchedFailureCallbackIsRejected	已覆盖	所列方法直接断言该条款。
+C34-213	SPEC-S3-S4-20260813.v7.md	363	| `成功集合` | 唯一字符串集合 | 回调已明确确认成功的资产标识 |	testDisjointCompleteClassificationIsAccepted, testSuccessResultClassifiesEverySubmittedAssetAsSuccessful	已覆盖	所列方法直接断言该条款。
+C34-214	SPEC-S3-S4-20260813.v7.md	364	| `失败集合` | 唯一字符串集合 | 回调已明确确认失败的资产标识 |	testDisjointCompleteClassificationIsAccepted, testBatchLevelFailureUsesWholeSubmittedSetAsFailure	已覆盖	所列方法直接断言该条款。
+C34-215	SPEC-S3-S4-20260813.v7.md	365	| `未处理集合` | 唯一字符串集合 | 批次未被系统接受或尚未进入处理的资产标识 |	testDisjointCompleteClassificationIsAccepted, testFailureBeforeSystemAcceptanceUsesWholeSubmittedSetAsUnprocessed	已覆盖	所列方法直接断言该条款。
+C34-216	SPEC-S3-S4-20260813.v7.md	366	| `失败原因.类别码` | 枚举：`权限不足` / `资产不可删除` / `用户取消` / `未知` | 稳定的失败分类标识 |	testDownstreamTargetStateValueDomainIsComplete, testUserCancellationWritesCancelledTargetBeforeHandoff, testOtherFailureCategoriesWriteFailureTarget, testS4UserCancellationClassifierRequiresExactDomainAndCode	已覆盖	所列方法直接断言该条款。
+C34-217	SPEC-S3-S4-20260813.v7.md	367	| `失败原因.说明` | 非空字符串 | 可供界面呈现或日志记录的原因说明 |	testEmptyFailureReasonIsRejected	已覆盖	所列方法直接断言该条款。
+C34-218	SPEC-S3-S4-20260813.v7.md	368	| `失败原因.系统域` | 可空字符串 | 底层错误存在错误域时保留原值，不做映射 |	testPhotoKitUserCancellationClassifiesWholeSetAsUnprocessed, testPhotoKitBatchFailureClassifiesWholeSetAsFailed	已覆盖	所列方法直接断言该条款。
+C34-219	SPEC-S3-S4-20260813.v7.md	369	| `失败原因.系统码` | 可空整数 | 底层错误存在错误码时保留原值，不做映射 |	testPhotoKitUserCancellationClassifiesWholeSetAsUnprocessed, testPhotoKitBatchFailureClassifiesWholeSetAsFailed	已覆盖	所列方法直接断言该条款。
+C34-220	SPEC-S3-S4-20260813.v7.md	370	| `回调接收时间` | 带时区的时间戳 | 应用接收本次失败回调的时间 |	testDisjointCompleteClassificationIsAccepted, testReachable14FailureCallbackFromSubmitted	已覆盖	所列方法直接断言该条款。
+C34-221	SPEC-S3-S4-20260813.v7.md	372	判定规则：`失败原因.系统域` 为 `PHPhotosErrorDomain` 且 `失败原因.系统码` 为 `3072` 时，`失败原因.类别码` 判定为 `用户取消`。	testS4UserCancellationClassifierRequiresExactDomainAndCode	已覆盖	所列方法直接断言该条款。
+C34-222	SPEC-S3-S4-20260813.v7.md	376	- 成功集合、失败集合与未处理集合两两不相交。	testSuccessAndFailureOverlapIsRejected, testSuccessAndUnprocessedOverlapIsRejected, testFailureAndUnprocessedOverlapIsRejected	已覆盖	所列方法直接断言该条款。
+C34-223	SPEC-S3-S4-20260813.v7.md	377	- 三个集合的并集必须严格等于提交集合快照中的资产标识集合。	testForeignAssetIsRejected, testOmittedAssetIsRejected, testDisjointCompleteClassificationIsAccepted	已覆盖	所列方法直接断言该条款。
+C34-224	SPEC-S3-S4-20260813.v7.md	378	- 三个集合均不得包含快照外资产，也不得静默漏项。	testForeignAssetIsRejected, testOmittedAssetIsRejected	已覆盖	所列方法直接断言该条款。
+C34-225	SPEC-S3-S4-20260813.v7.md	379	- 系统只给出批次级失败且明确表示整批未成功时，不虚构单项差异：失败集合取完整提交集合，成功集合与未处理集合为空。	testBatchLevelFailureUsesWholeSubmittedSetAsFailure	已覆盖	所列方法直接断言该条款。
+C34-226	SPEC-S3-S4-20260813.v7.md	380	- 请求在系统接受批次前失败时，未处理集合取完整提交集合，成功集合与失败集合为空。	testFailureBeforeSystemAcceptanceUsesWholeSubmittedSetAsUnprocessed	已覆盖	所列方法直接断言该条款。
+C34-227	SPEC-S3-S4-20260813.v7.md	381	- 失败原因必须非空；不能只用空集合或界面无变化表达失败。	testEmptyFailureReasonIsRejected	已覆盖	所列方法直接断言该条款。
+C34-228	SPEC-S3-S4-20260813.v7.md	382	- `失败原因.类别码` 是不完整枚举；未覆盖情形一律归入 `未知`。	testS4UserCancellationClassifierRequiresExactDomainAndCode, testPhotoKitBatchFailureClassifiesWholeSetAsFailed	已覆盖	所列方法直接断言该条款。
+C34-229	SPEC-S3-S4-20260813.v7.md	383	- `失败原因.系统域` 与 `失败原因.系统码` 保留底层原值，不做映射。	testPhotoKitUserCancellationClassifiesWholeSetAsUnprocessed, testPhotoKitBatchFailureClassifiesWholeSetAsFailed	已覆盖	所列方法直接断言该条款。
+C34-230	SPEC-S3-S4-20260813.v7.md	384	- 回调结构只记录批次最终分类，不要求系统提供按单项连续通知的能力。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-001	SPEC-S5-20260812.v5.md	16	S5 仅有以下四个状态：	testCell01SuccessEntry, testCancellationEntryUsesDownstreamTargetWithoutReadingFailureCategory, testCell02FailureEntry, testCell03UnknownEntry	已覆盖	所列方法直接断言该条款。
 C5-002	SPEC-S5-20260812.v5.md	18	1. `S5-T0` 已移入最近删除。	testCell01SuccessEntry	已覆盖	所列方法直接断言该条款。
 C5-003	SPEC-S5-20260812.v5.md	19	2. `S5-C` 已取消删除。	testCancellationEntryUsesDownstreamTargetWithoutReadingFailureCategory	已覆盖	所列方法直接断言该条款。
@@ -455,6 +457,11 @@ testC5_101UnknownEntryPersistsReasonAndSnapshotBeforeReturning	PhotoCleanupMVETe
 testC5_143NewDeletionMustReturnToS3AndFreezeNewSnapshot	PhotoCleanupMVETests/CoverageGapTests.swift	527	C5-143
 testC5_144SuccessExitClearsPersistedL3Session	PhotoCleanupMVETests/CoverageGapTests.swift	561	C5-144
 testC5_145UnknownExitDoesNotInferResultOrResubmit	PhotoCleanupMVETests/CoverageGapTests.swift	591	C5-145
+testIC045_001ProperSubsetShrinksEveryRangeThroughCoordinator	PhotoCleanupMVETests/S3ReturnRouteTests.swift	6	C34-231
+testIC045_002EmptyReturnClearsSessionSelections	PhotoCleanupMVETests/S3ReturnRouteTests.swift	43	C34-231
+testIC045_003UnchangedReturnPreservesMAndF	PhotoCleanupMVETests/S3ReturnRouteTests.swift	69	C34-231
+testIC045_004MismatchedSourceSessionDoesNotUpdateStore	PhotoCleanupMVETests/S3ReturnRouteTests.swift	85	C34-231
+testIC045_005SharedAssetIsRemovedFromAllRanges	PhotoCleanupMVETests/S3ReturnRouteTests.swift	105	C34-231
 testCell01EnterFromOutsideWithEmptySetRoutesToS3_4	PhotoCleanupMVETests/S3StateMachineTests.swift	7	C34-001, C34-002, C34-061, C34-064
 testCell01EnterFromOutsideWithLargeSetRoutesToS3_1AndQueuesEveryAsset	PhotoCleanupMVETests/S3StateMachineTests.swift	15	C34-001, C34-003, C34-064
 testCell01EnterFromOutsideWithIncompleteItemsRoutesToS3_1AndQueuesOnlyNotStarted	PhotoCleanupMVETests/S3StateMachineTests.swift	24	C34-001, C34-003, C34-016, C34-063, C34-064
@@ -600,50 +607,50 @@ testLargeGigabyteValueKeepsOneTruncatedDecimalPlace	PhotoCleanupMVETests/VolumeF
 <!-- 未覆盖清单开始 -->
 | 条款编号 | 规格位置 | 判定理由 |
 |---|---|---|
-| C34-007 | `SPEC-S3-S4-20260812.v6.md:27` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-008 | `SPEC-S3-S4-20260812.v6.md:28` | 该方法只断言状态机保留完整去重集合，未断言确认页逐项显示。 |
-| C34-009 | `SPEC-S3-S4-20260812.v6.md:29` | 该方法只断言收藏项不影响扫描与提交，未断言缩略图、标识内容和收藏标记的页面呈现。 |
-| C34-010 | `SPEC-S3-S4-20260812.v6.md:30` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-011 | `SPEC-S3-S4-20260812.v6.md:31` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-022 | `SPEC-S3-S4-20260812.v6.md:47` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-023 | `SPEC-S3-S4-20260812.v6.md:48` | 方法只断言状态机资产集合和收藏项提交资格，未断言扫描中页面完整呈现。 |
-| C34-024 | `SPEC-S3-S4-20260812.v6.md:49` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-026 | `SPEC-S3-S4-20260812.v6.md:54` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-032 | `SPEC-S3-S4-20260812.v6.md:63` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-039 | `SPEC-S3-S4-20260812.v6.md:78` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-040 | `SPEC-S3-S4-20260812.v6.md:79` | 方法只断言状态机资产集合和收藏项提交资格，未断言就绪页面完整呈现。 |
-| C34-041 | `SPEC-S3-S4-20260812.v6.md:80` | 方法只断言冻结快照的体积模式，未断言就绪页面的 L2 显示。 |
-| C34-042 | `SPEC-S3-S4-20260812.v6.md:84` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-048 | `SPEC-S3-S4-20260812.v6.md:93` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-055 | `SPEC-S3-S4-20260812.v6.md:108` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-093 | `SPEC-S3-S4-20260812.v6.md:147` | 方法断言提交标识被写入并拒绝重复使用，但未直接证明生成值全局唯一，也未断言字段在目标 S5 接收时结束。 |
-| C34-094 | `SPEC-S3-S4-20260812.v6.md:148` | 方法断言有序、唯一、非空及冻结值，但未直接断言字段在目标 S5 接收时结束。 |
-| C34-095 | `SPEC-S3-S4-20260812.v6.md:149` | 方法断言资产数量与集合长度相等，但未直接断言字段在目标 S5 接收时结束。 |
-| C34-096 | `SPEC-S3-S4-20260812.v6.md:150` | 方法断言非负即时求和值及冻结值，但未直接断言字段在目标 S5 接收时结束。 |
-| C34-097 | `SPEC-S3-S4-20260812.v6.md:151` | 方法断言不可用项计数及冻结值，但未直接断言字段在目标 S5 接收时结束。 |
-| C34-098 | `SPEC-S3-S4-20260812.v6.md:152` | 方法断言两种枚举及派生条件，但未直接断言字段在目标 S5 接收时结束。 |
-| C34-099 | `SPEC-S3-S4-20260812.v6.md:153` | 方法断言收藏集合冻结且不阻断提交，但未直接断言字段在目标 S5 接收时结束。 |
-| C34-100 | `SPEC-S3-S4-20260812.v6.md:154` | 方法断言冻结时间值，但未直接断言字段在目标 S5 接收时结束。 |
-| C34-101 | `SPEC-S3-S4-20260812.v6.md:156` | 方法直接断言两条冻结守卫并覆盖部分合法输入，但无法穷尽证明不存在第三类冻结校验。 |
-| C34-107 | `SPEC-S3-S4-20260812.v6.md:191` | 方法只断言计时状态，未断言执行页的不确定活动指示、无单项进度、无比例及无预计时间。 |
-| C34-112 | `SPEC-S3-S4-20260812.v6.md:201` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-113 | `SPEC-S3-S4-20260812.v6.md:202` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-117 | `SPEC-S3-S4-20260812.v6.md:212` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-126 | `SPEC-S3-S4-20260812.v6.md:234` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-129 | `SPEC-S3-S4-20260812.v6.md:243` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-131 | `SPEC-S3-S4-20260812.v6.md:245` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-132 | `SPEC-S3-S4-20260812.v6.md:246` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-138 | `SPEC-S3-S4-20260812.v6.md:260` | 方法断言成功终态模型，未断言执行页呈现终态标识。 |
-| C34-139 | `SPEC-S3-S4-20260812.v6.md:261` | 方法断言成功集合等于提交集合，未断言页面显示的两个数量。 |
-| C34-147 | `SPEC-S3-S4-20260812.v6.md:283` | 方法断言失败终态模型，未断言执行页呈现终态标识。 |
-| C34-148 | `SPEC-S3-S4-20260812.v6.md:284` | 方法断言三个集合被保存，未断言页面显示各集合数量。 |
-| C34-149 | `SPEC-S3-S4-20260812.v6.md:285` | 方法断言空失败原因被拒绝，未断言页面呈现非空失败原因。 |
-| C34-154 | `SPEC-S3-S4-20260812.v6.md:296` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-159 | `SPEC-S3-S4-20260812.v6.md:309` | 未发现直接断言该条款的 XCTest 方法。 |
-| C34-160 | `SPEC-S3-S4-20260812.v6.md:310` | 方法断言两种未知原因状态，未断言页面显示触发原因。 |
-| C34-161 | `SPEC-S3-S4-20260812.v6.md:311` | 方法断言未知终态与计时停止，未断言活动指示区域及页面措辞。 |
-| C34-168 | `SPEC-S3-S4-20260812.v6.md:327` | 方法分别断言未知终态被终止时保留及未闭合提交终止后可交接，但未直接覆盖已持久化 S4-E3 在重启后继续交接。 |
-| C34-230 | `SPEC-S3-S4-20260812.v6.md:381` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-007 | `SPEC-S3-S4-20260813.v7.md:30` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-008 | `SPEC-S3-S4-20260813.v7.md:31` | 该方法只断言状态机保留完整去重集合，未断言确认页逐项显示。 |
+| C34-009 | `SPEC-S3-S4-20260813.v7.md:32` | 该方法只断言收藏项不影响扫描与提交，未断言缩略图、标识内容和收藏标记的页面呈现。 |
+| C34-010 | `SPEC-S3-S4-20260813.v7.md:33` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-011 | `SPEC-S3-S4-20260813.v7.md:34` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-022 | `SPEC-S3-S4-20260813.v7.md:50` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-023 | `SPEC-S3-S4-20260813.v7.md:51` | 方法只断言状态机资产集合和收藏项提交资格，未断言扫描中页面完整呈现。 |
+| C34-024 | `SPEC-S3-S4-20260813.v7.md:52` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-026 | `SPEC-S3-S4-20260813.v7.md:57` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-032 | `SPEC-S3-S4-20260813.v7.md:66` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-039 | `SPEC-S3-S4-20260813.v7.md:81` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-040 | `SPEC-S3-S4-20260813.v7.md:82` | 方法只断言状态机资产集合和收藏项提交资格，未断言就绪页面完整呈现。 |
+| C34-041 | `SPEC-S3-S4-20260813.v7.md:83` | 方法只断言冻结快照的体积模式，未断言就绪页面的 L2 显示。 |
+| C34-042 | `SPEC-S3-S4-20260813.v7.md:87` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-048 | `SPEC-S3-S4-20260813.v7.md:96` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-055 | `SPEC-S3-S4-20260813.v7.md:111` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-093 | `SPEC-S3-S4-20260813.v7.md:150` | 方法断言提交标识被写入并拒绝重复使用，但未直接证明生成值全局唯一，也未断言字段在目标 S5 接收时结束。 |
+| C34-094 | `SPEC-S3-S4-20260813.v7.md:151` | 方法断言有序、唯一、非空及冻结值，但未直接断言字段在目标 S5 接收时结束。 |
+| C34-095 | `SPEC-S3-S4-20260813.v7.md:152` | 方法断言资产数量与集合长度相等，但未直接断言字段在目标 S5 接收时结束。 |
+| C34-096 | `SPEC-S3-S4-20260813.v7.md:153` | 方法断言非负即时求和值及冻结值，但未直接断言字段在目标 S5 接收时结束。 |
+| C34-097 | `SPEC-S3-S4-20260813.v7.md:154` | 方法断言不可用项计数及冻结值，但未直接断言字段在目标 S5 接收时结束。 |
+| C34-098 | `SPEC-S3-S4-20260813.v7.md:155` | 方法断言两种枚举及派生条件，但未直接断言字段在目标 S5 接收时结束。 |
+| C34-099 | `SPEC-S3-S4-20260813.v7.md:156` | 方法断言收藏集合冻结且不阻断提交，但未直接断言字段在目标 S5 接收时结束。 |
+| C34-100 | `SPEC-S3-S4-20260813.v7.md:157` | 方法断言冻结时间值，但未直接断言字段在目标 S5 接收时结束。 |
+| C34-101 | `SPEC-S3-S4-20260813.v7.md:159` | 方法直接断言两条冻结守卫并覆盖部分合法输入，但无法穷尽证明不存在第三类冻结校验。 |
+| C34-107 | `SPEC-S3-S4-20260813.v7.md:194` | 方法只断言计时状态，未断言执行页的不确定活动指示、无单项进度、无比例及无预计时间。 |
+| C34-112 | `SPEC-S3-S4-20260813.v7.md:204` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-113 | `SPEC-S3-S4-20260813.v7.md:205` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-117 | `SPEC-S3-S4-20260813.v7.md:215` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-126 | `SPEC-S3-S4-20260813.v7.md:237` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-129 | `SPEC-S3-S4-20260813.v7.md:246` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-131 | `SPEC-S3-S4-20260813.v7.md:248` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-132 | `SPEC-S3-S4-20260813.v7.md:249` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-138 | `SPEC-S3-S4-20260813.v7.md:263` | 方法断言成功终态模型，未断言执行页呈现终态标识。 |
+| C34-139 | `SPEC-S3-S4-20260813.v7.md:264` | 方法断言成功集合等于提交集合，未断言页面显示的两个数量。 |
+| C34-147 | `SPEC-S3-S4-20260813.v7.md:286` | 方法断言失败终态模型，未断言执行页呈现终态标识。 |
+| C34-148 | `SPEC-S3-S4-20260813.v7.md:287` | 方法断言三个集合被保存，未断言页面显示各集合数量。 |
+| C34-149 | `SPEC-S3-S4-20260813.v7.md:288` | 方法断言空失败原因被拒绝，未断言页面呈现非空失败原因。 |
+| C34-154 | `SPEC-S3-S4-20260813.v7.md:299` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-159 | `SPEC-S3-S4-20260813.v7.md:312` | 未发现直接断言该条款的 XCTest 方法。 |
+| C34-160 | `SPEC-S3-S4-20260813.v7.md:313` | 方法断言两种未知原因状态，未断言页面显示触发原因。 |
+| C34-161 | `SPEC-S3-S4-20260813.v7.md:314` | 方法断言未知终态与计时停止，未断言活动指示区域及页面措辞。 |
+| C34-168 | `SPEC-S3-S4-20260813.v7.md:330` | 方法分别断言未知终态被终止时保留及未闭合提交终止后可交接，但未直接覆盖已持久化 S4-E3 在重启后继续交接。 |
+| C34-230 | `SPEC-S3-S4-20260813.v7.md:384` | 未发现直接断言该条款的 XCTest 方法。 |
 | C5-017 | `SPEC-S5-20260812.v5.md:36` | 未发现直接断言该条款的 XCTest 方法。 |
 | C5-019 | `SPEC-S5-20260812.v5.md:147` | 方法断言成功集合等于原提交集合，未断言页面 L1 文案和三个计数的呈现。 |
 | C5-020 | `SPEC-S5-20260812.v5.md:148` | 方法证明快照随成功上下文持久化，未断言页面按第二节显示 L2。 |
@@ -679,31 +686,31 @@ testLargeGigabyteValueKeepsOneTruncatedDecimalPlace	PhotoCleanupMVETests/VolumeF
 <!-- 不适用清单开始 -->
 | 条款编号 | 规格位置 | 判定理由 |
 |---|---|---|
-| C34-005 | `SPEC-S3-S4-20260812.v6.md:25` | 该条款为纯视觉 |
-| C34-006 | `SPEC-S3-S4-20260812.v6.md:26` | MVE 范围外 |
-| C34-012 | `SPEC-S3-S4-20260812.v6.md:32` | MVE 范围外 |
-| C34-021 | `SPEC-S3-S4-20260812.v6.md:46` | MVE 范围外 |
-| C34-025 | `SPEC-S3-S4-20260812.v6.md:50` | 该条款为纯视觉 |
-| C34-029 | `SPEC-S3-S4-20260812.v6.md:57` | MVE 范围外 |
-| C34-037 | `SPEC-S3-S4-20260812.v6.md:71` | MVE 范围外 |
-| C34-038 | `SPEC-S3-S4-20260812.v6.md:77` | MVE 范围外 |
-| C34-046 | `SPEC-S3-S4-20260812.v6.md:88` | MVE 范围外 |
-| C34-052 | `SPEC-S3-S4-20260812.v6.md:100` | 实现约束比规格更强，该路径在当前实现下不可达 |
-| C34-053 | `SPEC-S3-S4-20260812.v6.md:101` | MVE 范围外 |
-| C34-054 | `SPEC-S3-S4-20260812.v6.md:107` | MVE 范围外 |
-| C34-056 | `SPEC-S3-S4-20260812.v6.md:109` | 该条款为纯文案 |
-| C34-057 | `SPEC-S3-S4-20260812.v6.md:113` | MVE 范围外 |
-| C34-062 | `SPEC-S3-S4-20260812.v6.md:124` | MVE 范围外 |
-| C34-063 | `SPEC-S3-S4-20260812.v6.md:125` | MVE 范围外 |
-| C34-090 | `SPEC-S3-S4-20260812.v6.md:139` | 可达单元格（事件“点击提交” × 起始状态“S3-2 就绪”）：实现约束比规格更强，该路径在当前实现下不可达 |
-| C34-110 | `SPEC-S3-S4-20260812.v6.md:199` | 该条款为纯文案 |
-| C34-111 | `SPEC-S3-S4-20260812.v6.md:200` | 该条款为纯视觉 |
-| C34-124 | `SPEC-S3-S4-20260812.v6.md:232` | 该条款为纯文案 |
-| C34-125 | `SPEC-S3-S4-20260812.v6.md:233` | 该条款为纯视觉 |
-| C34-127 | `SPEC-S3-S4-20260812.v6.md:235` | 该条款为纯文案 |
-| C34-140 | `SPEC-S3-S4-20260812.v6.md:262` | 该条款为纯视觉 |
-| C34-150 | `SPEC-S3-S4-20260812.v6.md:286` | 该条款为纯视觉 |
-| C34-158 | `SPEC-S3-S4-20260812.v6.md:308` | 该条款为纯文案 |
+| C34-005 | `SPEC-S3-S4-20260813.v7.md:27` | 该条款为纯视觉 |
+| C34-006 | `SPEC-S3-S4-20260813.v7.md:28` | MVE 范围外 |
+| C34-012 | `SPEC-S3-S4-20260813.v7.md:35` | MVE 范围外 |
+| C34-021 | `SPEC-S3-S4-20260813.v7.md:49` | MVE 范围外 |
+| C34-025 | `SPEC-S3-S4-20260813.v7.md:53` | 该条款为纯视觉 |
+| C34-029 | `SPEC-S3-S4-20260813.v7.md:60` | MVE 范围外 |
+| C34-037 | `SPEC-S3-S4-20260813.v7.md:74` | MVE 范围外 |
+| C34-038 | `SPEC-S3-S4-20260813.v7.md:80` | MVE 范围外 |
+| C34-046 | `SPEC-S3-S4-20260813.v7.md:91` | MVE 范围外 |
+| C34-052 | `SPEC-S3-S4-20260813.v7.md:103` | 实现约束比规格更强，该路径在当前实现下不可达 |
+| C34-053 | `SPEC-S3-S4-20260813.v7.md:104` | MVE 范围外 |
+| C34-054 | `SPEC-S3-S4-20260813.v7.md:110` | MVE 范围外 |
+| C34-056 | `SPEC-S3-S4-20260813.v7.md:112` | 该条款为纯文案 |
+| C34-057 | `SPEC-S3-S4-20260813.v7.md:116` | MVE 范围外 |
+| C34-062 | `SPEC-S3-S4-20260813.v7.md:127` | MVE 范围外 |
+| C34-063 | `SPEC-S3-S4-20260813.v7.md:128` | MVE 范围外 |
+| C34-090 | `SPEC-S3-S4-20260813.v7.md:142` | 可达单元格（事件“点击提交” × 起始状态“S3-2 就绪”）：实现约束比规格更强，该路径在当前实现下不可达 |
+| C34-110 | `SPEC-S3-S4-20260813.v7.md:202` | 该条款为纯文案 |
+| C34-111 | `SPEC-S3-S4-20260813.v7.md:203` | 该条款为纯视觉 |
+| C34-124 | `SPEC-S3-S4-20260813.v7.md:235` | 该条款为纯文案 |
+| C34-125 | `SPEC-S3-S4-20260813.v7.md:236` | 该条款为纯视觉 |
+| C34-127 | `SPEC-S3-S4-20260813.v7.md:238` | 该条款为纯文案 |
+| C34-140 | `SPEC-S3-S4-20260813.v7.md:265` | 该条款为纯视觉 |
+| C34-150 | `SPEC-S3-S4-20260813.v7.md:289` | 该条款为纯视觉 |
+| C34-158 | `SPEC-S3-S4-20260813.v7.md:311` | 该条款为纯文案 |
 | C5-006 | `SPEC-S5-20260812.v5.md:23` | MVE 范围外 |
 | C5-016 | `SPEC-S5-20260812.v5.md:35` | MVE 范围外 |
 | C5-018 | `SPEC-S5-20260812.v5.md:146` | 该条款为纯文案 |

@@ -30,7 +30,7 @@ final class TransitionTableGuardTests: XCTestCase {
         XCTAssertEqual(cells.filter(\.isUnreachable).count, 63, "不可达标记数量发生变化")
         XCTAssertEqual(
             Set(cells.map(\.specification)),
-            ["SPEC-S3-S4-20260812.v6.md", "SPEC-S5-20260812.v5.md"]
+            ["SPEC-S3-S4-20260813.v7.md", "SPEC-S5-20260812.v5.md"]
         )
 
         var visited = Set<String>()
@@ -41,7 +41,7 @@ final class TransitionTableGuardTests: XCTestCase {
             }
 
             switch cell.specification {
-            case "SPEC-S3-S4-20260812.v6.md":
+            case "SPEC-S3-S4-20260813.v7.md":
                 if cell.sourceState == "S3-2 外部源" {
                     try assertS4Unreachable(cell)
                 } else if cell.sourceState.hasPrefix("S3-") || cell.sourceState == "页面外" {

@@ -16,6 +16,11 @@ enum S3SnapshotFreezeResult: Equatable, Sendable {
     case rejected(S3FreezeRejection)
 }
 
+struct S3UpstreamReturn: Equatable, Sendable {
+    let sourceSessionID: String
+    let currentPendingDeletionAssetIDs: Set<String>
+}
+
 enum DecimalVolumeFormatter {
     private static let bytesPerMegabyte: Int64 = 1_000_000
     private static let bytesPerGigabyte: Int64 = 1_000_000_000
@@ -33,6 +38,7 @@ enum DecimalVolumeFormatter {
 }
 
 final class S3StateMachine {
+    let sourceSessionID: String
     private(set) var assets: [AssetDescriptor]
     private(set) var conclusionCache: [String: AssetScanConclusion]
     private(set) var pendingScanAssetIDs: [String] = []
@@ -45,9 +51,12 @@ final class S3StateMachine {
     init(
         assets: [AssetDescriptor],
         cachedConclusions: [String: AssetScanConclusion] = [:],
+        sourceSessionID: String = UUID().uuidString,
         submissionIDGenerator: @escaping () -> String = { UUID().uuidString },
         clock: @escaping () -> Date = { Date() }
     ) {
+        precondition(!sourceSessionID.isEmpty)
+        self.sourceSessionID = sourceSessionID
         self.assets = Self.deduplicated(assets)
         self.conclusionCache = cachedConclusions
         self.submissionIDGenerator = submissionIDGenerator
@@ -109,6 +118,13 @@ final class S3StateMachine {
 
     func cachedConclusion(for assetID: String) -> AssetScanConclusion? {
         conclusionCache[assetID]
+    }
+
+    func makeUpstreamReturn() -> S3UpstreamReturn {
+        S3UpstreamReturn(
+            sourceSessionID: sourceSessionID,
+            currentPendingDeletionAssetIDs: Set(assetIDs)
+        )
     }
 
     func takePendingScanAssetIDs() -> [String] {

@@ -8,6 +8,7 @@ enum CleanupRoute: Equatable {
     case execution
     case completion
     case finished
+    case upstream
 }
 
 @MainActor
@@ -19,6 +20,7 @@ final class CleanupCoordinator: ObservableObject {
     @Published private(set) var s4Machine: S4StateMachine?
     @Published private(set) var s5Machine: S5StateMachine?
     @Published private(set) var message: String?
+    private(set) var sessionStore: SessionStore?
 
     private let photoLibrary: PhotoLibraryService
     private let sizeScanner: AssetSizeScanner
@@ -80,7 +82,69 @@ final class CleanupCoordinator: ObservableObject {
     }
 
     func leaveConfirmation() {
-        finishSession()
+        guard let returned = s3Machine?.makeUpstreamReturn() else {
+            return
+        }
+        _ = handleS3Return(returned)
+    }
+
+    @discardableResult
+    func handleS3Return(_ returned: S3UpstreamReturn) -> Bool {
+        guard route == .confirmation,
+              var store = sessionStore,
+              store.applyS3Return(
+                  .init(
+                      sourceSessionID: returned.sourceSessionID,
+                      currentPendingDeletionAssetIDs:
+                          returned.currentPendingDeletionAssetIDs
+                  )
+              ) else {
+            return false
+        }
+
+        sessionStore = store
+        route = .upstream
+        message = nil
+        return true
+    }
+
+    @discardableResult
+    func enterConfirmation(
+        from submission: SessionStore.S3Submission,
+        sessionStore: SessionStore,
+        descriptors: [AssetDescriptor],
+        cachedConclusions: [String: AssetScanConclusion] = [:]
+    ) -> Bool {
+        let descriptorIDs = descriptors.map(\.identifier)
+        guard submission.sourceSessionID == sessionStore.sessionID,
+              Set(submission.orderedAssetIDs).count ==
+                  submission.orderedAssetIDs.count,
+              Set(submission.orderedAssetIDs) ==
+                  sessionStore.allPendingDeletionAssetIDs,
+              Set(descriptorIDs).count == descriptorIDs.count,
+              Set(descriptorIDs) == Set(submission.orderedAssetIDs) else {
+            return false
+        }
+
+        let descriptorByID = Dictionary(
+            uniqueKeysWithValues: descriptors.map { ($0.identifier, $0) }
+        )
+        let orderedDescriptors = submission.orderedAssetIDs.compactMap {
+            descriptorByID[$0]
+        }
+        self.sessionStore = sessionStore
+        sessionDescriptors = descriptorByID
+        s3Machine = S3StateMachine(
+            assets: orderedDescriptors,
+            cachedConclusions: cachedConclusions,
+            sourceSessionID: submission.sourceSessionID
+        )
+        s4Machine = nil
+        s5Machine = nil
+        route = .confirmation
+        message = nil
+        beginPendingScans()
+        return true
     }
 
     func submitDeletion() {
@@ -113,7 +177,8 @@ final class CleanupCoordinator: ObservableObject {
         } catch {
             s3Machine = S3StateMachine(
                 assets: machine.assets,
-                cachedConclusions: machine.conclusionCache
+                cachedConclusions: machine.conclusionCache,
+                sourceSessionID: machine.sourceSessionID
             )
             message = L10n.text(
                 "coordinator.error.persist_submission_snapshot",
@@ -136,6 +201,8 @@ final class CleanupCoordinator: ObservableObject {
             return
         }
         let cached = s3Machine?.conclusionCache
+        let sourceSessionID = s3Machine?.sourceSessionID ??
+            sessionStore?.sessionID ?? UUID().uuidString
         let cacheExists = snapshot.assetIDs.allSatisfy { identifier in
             guard let conclusion = cached?[identifier] else {
                 return false
@@ -173,7 +240,8 @@ final class CleanupCoordinator: ObservableObject {
             }
             s3Machine = S3StateMachine(
                 assets: descriptors,
-                cachedConclusions: conclusions
+                cachedConclusions: conclusions,
+                sourceSessionID: sourceSessionID
             )
             s4Machine = nil
             s5Machine = nil
@@ -296,14 +364,22 @@ final class CleanupCoordinator: ObservableObject {
                 isFavorite: $0.isFavorite
             )
         }
-        sessionDescriptors = Dictionary(
-            uniqueKeysWithValues: descriptors.map { ($0.identifier, $0) }
+        var store = SessionStore(sessionID: UUID().uuidString)
+        for descriptor in descriptors {
+            store.setMarked(
+                true,
+                assetID: descriptor.identifier,
+                rangeID: "debug"
+            )
+        }
+        let submission = store.makeS3Submission { $0 }
+        precondition(
+            enterConfirmation(
+                from: submission,
+                sessionStore: store,
+                descriptors: descriptors
+            )
         )
-        s3Machine = S3StateMachine(assets: descriptors)
-        s4Machine = nil
-        s5Machine = nil
-        route = .confirmation
-        beginPendingScans()
     }
 
     private func beginPendingScans() {
@@ -493,6 +569,7 @@ final class CleanupCoordinator: ObservableObject {
         scanTasks.removeAll()
         loadedAssets.removeAll()
         sessionDescriptors.removeAll()
+        sessionStore = nil
         s3Machine = nil
         s4Machine = nil
         s5Machine = nil
