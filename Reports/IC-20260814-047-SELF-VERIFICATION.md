@@ -81,6 +81,37 @@
 
 源码在每个函数前分别标注来源任务号。专项测试以确定尺寸逐项断言五个函数，包括四种锚点、`s = 1` 零边界、`s = 2` 边界及双轴钳制。
 
+### 5. 第二次补充：初始化顺序修复
+
+CI #27 的编译错误原文为：
+
+```text
+/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:622:23: error: 'self' used in property access 'currentIndex' before all stored properties are initialized
+```
+
+修法：把既有 `firstIndex` 结果先保存到局部常量 `initialCurrentIndex`，再分别赋给 `currentIndex` 与 `farthestIndex`，避免在其他存储属性完成初始化前读取 `self.currentIndex`。索引值和后续赋值保持不变，不改变状态机语义。`S2StateMachine.swift` 相对受验提交 `9f744c57feca1f00480c98faa9620dca82a11138` 的完整 diff 如下：
+
+```diff
+diff --git a/PhotoCleanupMVE/Core/S2StateMachine.swift b/PhotoCleanupMVE/Core/S2StateMachine.swift
+index 52c4946..dfb4d21 100644
+--- a/PhotoCleanupMVE/Core/S2StateMachine.swift
++++ b/PhotoCleanupMVE/Core/S2StateMachine.swift
+@@ -616,10 +616,11 @@ final class S2StateMachine: ObservableObject {
+         viewportOffset = initialPresentation.scale == 1
+             ? .zero
+             : initialPresentation.viewportOffset
+-        currentIndex = entry.orderedAssetIDs.firstIndex(
++        let initialCurrentIndex = entry.orderedAssetIDs.firstIndex(
+             of: entry.currentAssetID
+         ) ?? 0
+-        farthestIndex = currentIndex
++        currentIndex = initialCurrentIndex
++        farthestIndex = initialCurrentIndex
+         pendingDeletionAssetIDs = entry.pendingDeletionAssetIDs
+         favoriteAssetIDs = initialFavoriteAssetIDs
+         recentAlbum = initialRecentAlbum
+```
+
 ## 四、v13 第九节未定项逐项占位
 
 全部占位集中在 `S2StateMachine.swift` 的 `S2UndecidedItems`。该枚举只保存 `.unresolved`，不含产品参数值。为使状态机可测试，`S2ResolvedParameters` 要求未来调用方显式注入已决议值，且没有默认实例；测试和 SwiftUI 预览中的数字均标注为合成夹具，不是产品值或标定结果。

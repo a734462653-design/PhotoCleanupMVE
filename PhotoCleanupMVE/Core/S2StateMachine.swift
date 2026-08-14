@@ -616,10 +616,11 @@ final class S2StateMachine: ObservableObject {
         viewportOffset = initialPresentation.scale == 1
             ? .zero
             : initialPresentation.viewportOffset
-        currentIndex = entry.orderedAssetIDs.firstIndex(
+        let initialCurrentIndex = entry.orderedAssetIDs.firstIndex(
             of: entry.currentAssetID
         ) ?? 0
-        farthestIndex = currentIndex
+        currentIndex = initialCurrentIndex
+        farthestIndex = initialCurrentIndex
         pendingDeletionAssetIDs = entry.pendingDeletionAssetIDs
         favoriteAssetIDs = initialFavoriteAssetIDs
         recentAlbum = initialRecentAlbum
