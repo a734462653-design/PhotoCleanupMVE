@@ -12,17 +12,18 @@
 
 S3 现已保存进入时收到的来源整理会话标识，并在离开确认页的瞬间形成元素唯一、允许为空的当前待删集合。`CleanupCoordinator` 是唯一调用 `SessionStore.applyS3Return` 的产品层对象；`S3StateMachine` 不引用也不改写 `SessionStore`。会话标识和子集校验通过后，协调器一次性接收 043 已实现的 `M/F/D_全部` 交集结果，并把路由切换到新增的 `.upstream` 落点。
 
-新增路由没有接入 S1 页面：工程内仍不存在 `Features/S1/` 文件，应用入口对 `.upstream` 使用 `EmptyView`，只保留落点选择。既有 `loading`、`confirmation`、`execution`、`completion`、`finished` 五个枚举声明逐字保留。
+新增路由没有接入 S1 页面：在本卡实现提交 `7fcbe9c37c66094c0c2e3c0d61315e4646fa5e3d` 中不存在 `Features/S1/` 文件，应用入口对 `.upstream` 使用 `EmptyView`，只保留落点选择。既有 `loading`、`confirmation`、`execution`、`completion`、`finished` 五个枚举声明逐字保留。
 
-Windows 静态自验、范围门禁与 Git blob 比对已在实现提交的干净临时工作树执行：377 项检查全部通过，0 项失败。当前机器没有 Xcode，运行态测试、Release 构建和未签名 IPA 由推送后的 macOS CI 验证。CI 结果待本次推送回填。
+Windows 静态自验、范围门禁与 Git blob 比对已在实现提交的干净临时工作树执行：377 项检查全部通过，0 项失败。当前机器没有 Xcode，运行态测试、Release 构建和未签名 IPA 采用 macOS CI `iOS 构建与自验 #25` 的真实结果：全量 226 项 XCTest 全部通过，0 失败、0 unexpected，Release 构建与未签名 IPA 产出均通过。该 CI 的受验提交 `862f0c0c99f261bbc5681bbb66e9d72a0be491d1` 以本卡实现提交为祖先及实际开发起点；其中本卡产品源码、专项测试、追踪矩阵和专项脚本的 Git blob 与 `7fcbe9c` 一致。226 项由本卡完成态 208 项加后继 IC-046 的 18 项组成，本卡自身统计仍是基线 203、新增 5、总数 208。
 
 | 统计项 | 数量或结果 |
 |---|---:|
 | 基线 XCTest | 203 |
 | 新增 XCTest | 5 |
 | XCTest 总数 | 208 |
-| 失败 | 待 CI |
-| unexpected | 待 CI |
+| CI 实际执行总数（含后继 IC-046 的 18 项） | 226 |
+| 失败 | 0 |
+| unexpected | 0 |
 
 ## 二、实现与契约对应
 
@@ -94,7 +95,7 @@ Windows 静态自验、范围门禁与 Git blob 比对已在实现提交的干�
 | `480400926bbbc6e90001b9fe4044a11995204f3e` | `Scripts/verify-IC-20260812-023.ps1` |
 | `20c8a7d155bf50fdac9e9bc23631c02f71357ab2` | `Scripts/verify-IC-20260812-024.ps1` |
 
-`Features/S1/` 在任务基线和当前交付中均为 0 个 Git 路径。
+`Features/S1/` 在任务基线和本卡实现提交 `7fcbe9c` 中均为 0 个 Git 路径。共享主线随后由独立任务 IC-046 新增的 S1 路径不属于本卡交付，也未被本卡提交或改写。
 
 ## 五、仓库外 SPEC 保护
 
@@ -120,7 +121,7 @@ Windows 静态自验、范围门禁与 Git blob 比对已在实现提交的干�
 
 ## 七、改动范围
 
-本卡完成态只允许以下九个路径相对任务基线发生变化：
+本卡实现提交 `7fcbe9c` 只允许以下九个路径相对任务基线发生变化：
 
 1. `PhotoCleanupMVE.xcodeproj/project.pbxproj`
 2. `PhotoCleanupMVE/App/CleanupCoordinator.swift`
@@ -132,7 +133,7 @@ Windows 静态自验、范围门禁与 Git blob 比对已在实现提交的干�
 8. `Scripts/verify-IC-20260814-045.ps1`
 9. `Reports/IC-20260814-045-SELF-VERIFICATION.md`
 
-脚本要求改动集合与上述九项完全相同；完成态还要求工作树干净、所有九项均被 Git 追踪、未跟踪条目为 0。
+脚本要求改动集合与上述九项完全相同；完成态还要求工作树干净、所有九项均被 Git 追踪、未跟踪条目为 0。该门禁在以 `7fcbe9c` 为代码基线的隔离工作树执行，避免共享主线稍后落地的独立 IC-046 变更被误算进本卡范围。
 
 ## 八、自验脚本与当前结果
 
@@ -163,15 +164,20 @@ CI 回填后在干净工作树执行：
 
 | 项目 | 结果 |
 |---|---|
-| 全量 XCTest | CI 结果待本次推送回填。 |
-| 失败 | 待 CI |
-| unexpected | 待 CI |
-| Release 构建 | CI 结果待本次推送回填。 |
-| 未签名 IPA | CI 结果待本次推送回填。 |
-| 受验提交 | CI 结果待本次推送回填。 |
-| CI 运行 | CI 结果待本次推送回填。 |
-| CI 链接 | CI 结果待本次推送回填。 |
+| 全量 XCTest | 全量 XCTest 通过；CI 实际执行 226 项，0 failures（0 unexpected）；测试套件运行 4.954 秒，测试操作总耗时 566.206 秒；`** TEST SUCCEEDED **`。其中本卡为基线 203、新增 5、完成态总数 208，另含后继 IC-046 新增 18 项。 |
+| 失败 | 0 |
+| unexpected | 0 |
+| Release 构建 | Release 构建通过；使用 `Release`、`iphoneos`、`CODE_SIGNING_ALLOWED=NO`、`CODE_SIGNING_REQUIRED=NO`，结果为 `** BUILD SUCCEEDED **`。 |
+| 未签名 IPA | 未签名 IPA 产出通过；`PhotoCleanupMVE-unsigned.ipa` 为 266436 字节，SHA-256 为 `a59d35934ae65b991ca2659fa9007b43cab4494492c9933953142f95c2a16e1c`，压缩完整性检查无错误。 |
+| 上传产物 | `PhotoCleanupMVE-unsigned-862f0c0c99f2`，Artifact ID `9222396512`；上传归档 266606 字节，产物摘要 SHA-256 为 `6bf3f1898c5127dc90b289a1702c0d038da05c534eb7e20c7895e085727c67ad`。 |
+| 本卡实现提交 | `7fcbe9c37c66094c0c2e3c0d61315e4646fa5e3d` |
+| 受验提交 | `862f0c0c99f261bbc5681bbb66e9d72a0be491d1` |
+| CI 运行 | `iOS 构建与自验 #25`；运行 ID `31808271169`；状态 Success；总耗时 11 分 26 秒。 |
+| CI 作业 | `构建、XCTest 与未签名产物`；作业 ID `94792370102`；耗时 11 分 21 秒。 |
+| CI 链接 | [GitHub Actions 运行 31808271169](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31808271169) |
+
+工作流按同一分支启用 `cancel-in-progress`，本卡实现提交后紧接着有 IC-046 推送，因此本报告不假定较早运行的完成状态，而采用最后完成并可追溯的 #25。`862f0c0` 是 `7fcbe9c` 的后继提交；IC-046 报告也把 `7fcbe9c` 明确记录为其 208 项实际开发基线。对 `CleanupCoordinator.swift`、`PhotoCleanupMVEApp.swift`、`S3StateMachine.swift`、`S3ReturnRouteTests.swift`、`TransitionTableGuardTests.swift`、`TRACEABILITY-S3-S5.md` 和本卡专项脚本执行 `git diff 7fcbe9c..862f0c0`，结果为空；其中专项测试文件在两提交中的 Git blob 均为 `97a1c86badd4588c0ef24e71528ba5322ea24986`。因此 #25 实际编译并执行的是本卡原样产品实现与 5 项新增测试，后继 S1 任务只把全量测试数从 208 增加到 226。
 
 ## 十、完成边界
 
-本卡到 `.upstream` 落点选择即止。未创建 S1 文件、未实现 S1 页面、未把 `.upstream` 接到 S1 视图，也未扩展到 S1 内部路由。
+本卡到 `.upstream` 落点选择即止。本卡实现提交未创建 S1 文件、未实现 S1 页面、未把 `.upstream` 接到 S1 视图，也未扩展到 S1 内部路由。共享主线后续出现的 S1 文件来自独立任务 IC-046，不属于本卡动作或范围。
