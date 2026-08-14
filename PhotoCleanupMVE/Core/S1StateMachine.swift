@@ -14,14 +14,14 @@ enum S1LoadingState: Equatable, Sendable {
     case failed
 }
 
-enum S1GroupingDimension: CaseIterable, Equatable, Sendable {
+enum S1GroupingDimension: CaseIterable, Equatable, Hashable, Sendable {
     case month
     case year
     case album
     case unclassified
 }
 
-enum S1SortOrder: CaseIterable, Equatable, Sendable {
+enum S1SortOrder: CaseIterable, Equatable, Hashable, Sendable {
     case newestFirst
     case oldestFirst
 
