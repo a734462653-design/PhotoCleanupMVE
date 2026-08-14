@@ -143,6 +143,9 @@ final class FullFlowRoutingTests: XCTestCase {
             XCTAssertTrue(machine.changeCurrentPhotoDuringBottomStripDrag(by: 1))
             XCTAssertTrue(machine.endBottomStripDrag())
             XCTAssertTrue(machine.handleSwipeUp())
+            XCTAssertTrue(machine.beginBottomStripDrag())
+            XCTAssertTrue(machine.changeCurrentPhotoDuringBottomStripDrag(by: -1))
+            XCTAssertTrue(machine.endBottomStripDrag())
             guard let payload = machine.makeExitPayload() else {
                 return XCTFail("应形成 S2 返回载荷")
             }
@@ -151,24 +154,24 @@ final class FullFlowRoutingTests: XCTestCase {
             XCTAssertEqual(payload.upstreamReturn.sourceRangeID, "范围-月")
             XCTAssertEqual(
                 payload.upstreamReturn.pendingDeletionAssetIDs,
-                ["资产-B", "资产-C"]
+                ["资产-A", "资产-C"]
             )
             XCTAssertEqual(payload.upstreamReturn.currentAssetID, "资产-B")
-            XCTAssertEqual(payload.upstreamReturn.farthestAssetID, "资产-B")
+            XCTAssertEqual(payload.upstreamReturn.farthestAssetID, "资产-A")
 
             XCTAssertTrue(coordinator.leaveS2(with: payload))
             XCTAssertEqual(coordinator.route, .s1)
             XCTAssertEqual(
                 coordinator.s1Machine?.sessionStore
                     .pendingDeletionAssetIDsByRangeID["范围-月"],
-                ["资产-B", "资产-C"]
+                ["资产-A", "资产-C"]
             )
             XCTAssertEqual(
                 coordinator.s1Machine?.sessionStore
                     .continuationsByRangeID["范围-月"],
                 SessionStore.Continuation(
                     currentAssetID: "资产-B",
-                    farthestAssetID: "资产-B",
+                    farthestAssetID: "资产-A",
                     recordedSortOrder: .newestFirst
                 )
             )
