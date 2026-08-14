@@ -38,7 +38,11 @@ jobs:
 
       - name: 运行结构自验
         shell: pwsh
-        run: ./Scripts/verify-IC-20260812-024.ps1 -允许待回填CI
+        run: ./Scripts/selfcheck.ps1
+
+      - name: 扫描用户可见硬编码字符串
+        shell: pwsh
+        run: ./Scripts/scan-hardcoded-user-visible-strings.ps1
 
       - name: 运行 XCTest
         run: bash Scripts/test-xcode.sh

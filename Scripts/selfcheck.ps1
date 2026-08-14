@@ -11,15 +11,7 @@ function Add-Failure {
     $failures.Add($Message)
 }
 
-$requiredFiles = @(
-    ".gitattributes",
-    "PhotoCleanupMVE.xcodeproj/project.pbxproj",
-    "PhotoCleanupMVE.xcodeproj/xcshareddata/xcschemes/PhotoCleanupMVE.xcscheme",
-    "PhotoCleanupMVE/Info.plist",
-    "PhotoCleanupMVE/Assets.xcassets/Contents.json",
-    "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/Contents.json",
-    "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/RECENTLY_DELETED_PLACEHOLDER.png",
-    "PhotoCleanupMVE/Localizable.xcstrings",
+$baselineProductSourceFiles = @(
     "PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift",
     "PhotoCleanupMVE/App/CleanupCoordinator.swift",
     "PhotoCleanupMVE/Core/L10n.swift",
@@ -35,7 +27,18 @@ $requiredFiles = @(
     "PhotoCleanupMVE/Features/S3/S3View.swift",
     "PhotoCleanupMVE/Features/S4/S4View.swift",
     "PhotoCleanupMVE/Features/S5/S5View.swift",
-    "PhotoCleanupMVE/Features/Shared/ThumbnailView.swift",
+    "PhotoCleanupMVE/Features/Shared/ThumbnailView.swift"
+)
+
+$requiredFiles = @(
+    ".gitattributes",
+    "PhotoCleanupMVE.xcodeproj/project.pbxproj",
+    "PhotoCleanupMVE.xcodeproj/xcshareddata/xcschemes/PhotoCleanupMVE.xcscheme",
+    "PhotoCleanupMVE/Info.plist",
+    "PhotoCleanupMVE/Assets.xcassets/Contents.json",
+    "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/Contents.json",
+    "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/RECENTLY_DELETED_PLACEHOLDER.png",
+    "PhotoCleanupMVE/Localizable.xcstrings",
     "PhotoCleanupMVETests/S3StateMachineTests.swift",
     "PhotoCleanupMVETests/SnapshotInvariantTests.swift",
     "PhotoCleanupMVETests/VolumeFormattingTests.swift",
@@ -79,6 +82,27 @@ if (Test-Path -LiteralPath $projectFile -PathType Leaf) {
         }
     }
 
+    $productTypes = @(
+        [regex]::Matches($projectText, 'productType = "([^"]+)";') |
+            ForEach-Object { $_.Groups[1].Value }
+    )
+    $requiredProductTypes = @(
+        "com.apple.product-type.application",
+        "com.apple.product-type.bundle.unit-test"
+    )
+    if ($productTypes.Count -ne $requiredProductTypes.Count) {
+        Add-Failure "工程 target 数量应为 2，实际为 $($productTypes.Count)"
+    }
+    foreach ($productType in $requiredProductTypes) {
+        if ($productTypes -cnotcontains $productType) {
+            Add-Failure "工程缺少 target 类型：$productType"
+        }
+    }
+    if ($projectText.Contains("com.apple.product-type.bundle.ui-testing") -or
+        $projectText.Contains("XCUITest")) {
+        Add-Failure "工程出现 XCUITest target"
+    }
+
     $sourceNames = @(
         "PhotoCleanupMVEApp.swift",
         "CleanupCoordinator.swift",
@@ -110,6 +134,14 @@ if (Test-Path -LiteralPath $projectFile -PathType Leaf) {
         if (-not $projectText.Contains($sourceName)) {
             Add-Failure "工程未引用源码：$sourceName"
         }
+    }
+}
+
+$schemeFile = Join-Path $projectRoot "PhotoCleanupMVE.xcodeproj/xcshareddata/xcschemes/PhotoCleanupMVE.xcscheme"
+if (Test-Path -LiteralPath $schemeFile -PathType Leaf) {
+    $schemeText = Get-Content -LiteralPath $schemeFile -Raw -Encoding UTF8
+    if ($schemeText.Contains("UITest")) {
+        Add-Failure "共享方案出现 UI 测试引用"
     }
 }
 
@@ -220,6 +252,16 @@ foreach ($directory in $swiftDirectories) {
     }
 }
 
+$productSourceFiles = @(
+    $swiftFiles |
+        ForEach-Object { $_.FullName.Substring($projectRoot.Length + 1).Replace("\", "/") }
+)
+foreach ($baselineProductSourceFile in $baselineProductSourceFiles) {
+    if ($productSourceFiles -cnotcontains $baselineProductSourceFile) {
+        Add-Failure "产品源码文件清单缺少基线文件：$baselineProductSourceFile"
+    }
+}
+
 if ($swiftFiles.Count -gt 0) {
     $networkPattern = "\b(URLSession|NWConnection|NetworkExtension|Alamofire|Moya)\b|import\s+Network\b"
     $accountPattern = "\b(AuthenticationServices|ASAuthorization|StoreKit)\b"
@@ -302,8 +344,9 @@ if (Test-Path -LiteralPath $testDirectory -PathType Container) {
     $testFiles = Get-ChildItem -LiteralPath $testDirectory -Filter "*.swift" -File
     if ($testFiles.Count -gt 0) {
         $testCases = Select-String -LiteralPath $testFiles.FullName -Pattern "^\s*func\s+test"
-        if ($testCases.Count -ne 189) {
-            Add-Failure "XCTest 测试函数应为 189 个，实际为 $($testCases.Count) 个"
+        $minimumTestMethodCount = 189
+        if ($testCases.Count -lt $minimumTestMethodCount) {
+            Add-Failure "XCTest 测试函数不得少于 $minimumTestMethodCount 个，实际为 $($testCases.Count) 个"
         }
 
         $s3Cells = Select-String -LiteralPath (Join-Path $testDirectory "S3StateMachineTests.swift") -Pattern "testCell([0-9]{2})" -AllMatches
@@ -357,4 +400,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host "结构自验通过：文件、工程配置、String Catalog、PNG、禁联网门禁、硬编码扫描及 189 项测试数量均符合要求。" -ForegroundColor Green
+Write-Host "结构自验通过：文件、工程配置、String Catalog、PNG、禁联网门禁、硬编码扫描及不少于 189 项测试的数量门禁均符合要求。" -ForegroundColor Green
