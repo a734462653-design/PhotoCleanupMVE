@@ -15,7 +15,7 @@ jobs:
   build-test-package:
     name: 构建、XCTest 与未签名产物
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 15
 
     steps:
       - name: 检出源码

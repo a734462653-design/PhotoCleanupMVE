@@ -23,7 +23,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>用于读取测试资产、计算体积并提交你确认的照片删除操作。</string>
+	<string>用于读取和整理照片，并将你确认删除的照片移入系统“最近删除”。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
