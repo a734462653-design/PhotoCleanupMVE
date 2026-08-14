@@ -194,12 +194,27 @@
 
 | 项目 | 结果 |
 |---|---|
-| CI | CI 未触发，遵照任务末尾完成后动作。 |
-| 全量 XCTest 运行 | 未执行；当前 Windows 主机无 Xcode。 |
-| 失败 / unexpected | 未取得运行数据，不填写为 0。 |
-| Release 构建 | 未执行。 |
-| 未签名 IPA | 未产出。 |
-| Git commit | 未执行。 |
-| Git push | 未执行。 |
+| 受验提交 | `9f744c57feca1f00480c98faa9620dca82a11138`。 |
+| Git commit | 已提交九个交付路径，提交说明为 `feat: 实现 SPEC-S2 v13 六状态照片查看页`。 |
+| Git push | 已推送到 `origin/main`。 |
+| CI | GitHub Actions 运行 [#27](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31817159405)，运行 ID `31817159405`，尝试次数 1；终态为 `completed / failure`。 |
+| 全量 XCTest 运行 | 已启动；产品源码编译失败后测试会话取消，实际 XCTest 执行数为 0，未取得 267 项运行结果。 |
+| 失败项 | 作业“构建、XCTest 与未签名产物”的步骤“运行 XCTest”失败，退出码 65；唯一编译错误位于 `PhotoCleanupMVE/Core/S2StateMachine.swift:622:23`。 |
+| Release 构建 | 前序 XCTest 步骤失败后被 GitHub Actions 标记为 `skipped`。 |
+| 未签名 IPA | 构建与上传步骤均被标记为 `skipped`；运行产物数为 0。 |
+| 完整日志 | [运行日志](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31817159405)；[失败作业日志](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31817159405/job/94821494453)。 |
 
-因此，本卡完成的是全部本地实现与静态验收交付；“CI 全绿、Release 构建、未签名 IPA”没有本次运行证据。若未来指令允许触发 CI，应由同一工作树的后续提交取得并另行回填，不应把历史 226 项 CI 结果冒充为本卡 267 项结果。
+CI 于 `2026-08-14T15:59:12Z` 创建，于 `2026-08-14T16:00:37Z` 更新为失败终态。完整错误诊断如下；本次没有修改实现绕过失败：
+
+```text
+/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:622:23: error: 'self' used in property access 'currentIndex' before all stored properties are initialized
+        farthestIndex = currentIndex
+                      ^
+/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:622:23: note: 'self.farthestIndex' not initialized
+/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:622:23: note: 'self.pendingDeletionAssetIDs' not initialized
+/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:622:23: note: 'self.favoriteAssetIDs' not initialized
+/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:578:17: note: 'self.pendingDeletionDidChange' not initialized
+Testing cancelled because the build failed.
+** TEST FAILED **
+Process completed with exit code 65.
+```
