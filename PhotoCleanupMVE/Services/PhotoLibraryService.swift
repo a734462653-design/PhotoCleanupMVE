@@ -321,7 +321,7 @@ final class PhotoLibraryService {
             components.year ?? 0,
             groupingDimension == .month ? components.month ?? 0 : 0
         ]
-        return ([prefix] + values.map(String.init)).joined(separator: ":")
+        return ([prefix] + values.map { String($0) }).joined(separator: ":")
     }
 
     private func chronologicalDisplayName(

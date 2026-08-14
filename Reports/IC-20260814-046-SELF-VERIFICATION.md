@@ -50,9 +50,9 @@
 | 有序资产标识列表 `A` | 当前范围的拍摄时间新到旧数组；`O=旧到新` 时严格反转 | 非空；元素唯一；不在 S1 交互中改写。 |
 | 当前资产标识 `c` | 有续接时取 `K[r].c`，否则取 `A.first` | 必须属于 `A`。 |
 | 待删集合 `D` | `M[r]`，无键时为空集 | 必须是 `A` 的子集。 |
-| 会话级合并待删总数 | `D_全部.count` | 非负只读值；S1 不自行按局部增量推算。 |
+| 会话级合并待删总数 | 只读计算属性每次向会话层读取 `D_全部.count` | 非负、可刷新且不是一次性快照；S1 不自行按局部增量推算。 |
 
-本卡只形成结构与构造逻辑，没有实际跳转 S2。S2 内如何刷新该只读总数属于后续接线卡使用会话层的责任，本卡没有扩展路由权限。
+本卡只形成结构与构造逻辑，没有实际跳转 S2。第六字段保存只读读取来源而非整数副本；专项测试在交接对象形成后更新会话层，并断言同一交接对象读到更新后的总数。本卡没有扩展路由权限。
 
 ## 四、编号专项 XCTest
 
@@ -70,7 +70,7 @@
 | IC046-010 | `testIC046_010ProcessedAssetsUsePrefixWhenOrdersMatch` | `O=O_记录` 时取 `p` 及之前。 |
 | IC046-011 | `testIC046_011ProcessedAssetsUseSuffixWhenOrderFlips` | `O≠O_记录` 时按当前 `A` 取 `p` 及之后。 |
 | IC046-012 | `testIC046_012BadgeAlwaysUsesMergedDeletionSetCount` | 徽标等于去重后的 `D_全部` 数量，与 `T/O/L` 无关。 |
-| IC046-013 | `testIC046_013S2HandoffContainsSixValidFields` | 六字段逐项值及 `A/c/D` 三项约束。 |
+| IC046-013 | `testIC046_013S2HandoffContainsSixValidFields` | 六字段逐项值、`A/c/D` 三项约束，以及会话层总数可刷新且非快照。 |
 | IC046-014 | `testIC046_014InvalidAOrDRejectsS2Handoff` | 重复 `A` 或范围外 `D` 拒绝交接；无效读取进入失败而非空态。 |
 | IC046-015 | `testIC046_015SortFlipsChronologicalRangesButNotAlbumRanges` | 只翻转月、年范围列表；相册顺序不被 `O` 决定。 |
 | IC046-016 | `testIC046_016ObscurationBlocksInputsAndPreservesState` | `Q=呈现` 时输入失效并保持状态、范围和会话。 |
@@ -175,7 +175,7 @@ CI 回填后在干净工作树执行：
 | Windows 通用 selfcheck | 通过。 |
 | String Catalog | 90 个目录条目、90 个产品源码引用，双向一致。 |
 | 用户可见硬编码残留 | 0。 |
-| 本卡专项静态自验 | CI 结果待本次推送回填。 |
+| 本卡专项静态自验 | 通过；提交前模式执行 189 项检查，0 项失败，退出码 0。 |
 | 全量 XCTest | CI 结果待本次推送回填。 |
 | 失败 | CI 结果待本次推送回填。 |
 | unexpected | CI 结果待本次推送回填。 |

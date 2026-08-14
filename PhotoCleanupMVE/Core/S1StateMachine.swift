@@ -83,13 +83,35 @@ struct S1RangeDisplayInformation: Equatable, Sendable {
     let totalAssetCount: Int
 }
 
-struct S1ToS2Handoff: Equatable, Sendable {
+struct S1ToS2Handoff {
     let sessionID: String
     let rangeDisplayInformation: S1RangeDisplayInformation
     let orderedAssetIDs: [String]
     let currentAssetID: String
     let pendingDeletionAssetIDs: Set<String>
-    let sessionMergedPendingDeletionCount: Int
+
+    private let sessionMergedPendingDeletionCountProvider: () -> Int
+
+    var sessionMergedPendingDeletionCount: Int {
+        sessionMergedPendingDeletionCountProvider()
+    }
+
+    init(
+        sessionID: String,
+        rangeDisplayInformation: S1RangeDisplayInformation,
+        orderedAssetIDs: [String],
+        currentAssetID: String,
+        pendingDeletionAssetIDs: Set<String>,
+        sessionMergedPendingDeletionCountProvider: @escaping () -> Int
+    ) {
+        self.sessionID = sessionID
+        self.rangeDisplayInformation = rangeDisplayInformation
+        self.orderedAssetIDs = orderedAssetIDs
+        self.currentAssetID = currentAssetID
+        self.pendingDeletionAssetIDs = pendingDeletionAssetIDs
+        self.sessionMergedPendingDeletionCountProvider =
+            sessionMergedPendingDeletionCountProvider
+    }
 }
 
 struct S1RangeRow: Identifiable, Equatable, Sendable {
@@ -360,7 +382,7 @@ final class S1StateMachine: ObservableObject {
             orderedAssetIDs: orderedAssetIDs,
             currentAssetID: currentAssetID,
             pendingDeletionAssetIDs: pendingDeletionAssetIDs,
-            sessionMergedPendingDeletionCount: badgeCount
+            sessionMergedPendingDeletionCountProvider: { self.badgeCount }
         )
     }
 
@@ -374,8 +396,9 @@ final class S1StateMachine: ObservableObject {
         guard groupedRangeIDs.allSatisfy({ knownRangeNamesByID[$0] != nil }) else {
             return nil
         }
-        return sessionStore.makeS3Submission { [knownRangeNamesByID] rangeID in
-            knownRangeNamesByID[rangeID] ?? String()
+        let rangeNamesByID = knownRangeNamesByID
+        return sessionStore.makeS3Submission { rangeID in
+            rangeNamesByID[rangeID] ?? String()
         }
     }
 

@@ -228,7 +228,8 @@ foreach ($常量 in $未定项常量) {
 检查 ($状态机文本.Contains("func switchGroupingDimension")) "缺少 T 切换迁移"
 检查 ($状态机文本.Contains("func switchSortOrder")) "缺少 O 切换迁移"
 检查 ($状态机文本.Contains("func makeS2Handoff")) "缺少 S1 到 S2 构造逻辑"
-检查 ($状态机文本.Contains("let sessionMergedPendingDeletionCount: Int")) "六字段交接缺少只读会话合并待删总数"
+检查 ($状态机文本.Contains("var sessionMergedPendingDeletionCount: Int")) "六字段交接缺少只读会话合并待删总数"
+检查 ($状态机文本.Contains("sessionMergedPendingDeletionCountProvider: @escaping () -> Int")) "会话合并待删总数不是可刷新的只读来源"
 检查 ($状态机文本.Contains("sessionStore.allPendingDeletionAssetIDs.count")) "徽标数值未直接派生自 D_全部"
 
 $服务文本 = Get-Content -LiteralPath $服务路径 -Raw -Encoding UTF8

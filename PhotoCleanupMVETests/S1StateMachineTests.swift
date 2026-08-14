@@ -234,6 +234,23 @@ final class S1StateMachineTests: XCTestCase {
             )
         )
         XCTAssertEqual(handoff.sessionMergedPendingDeletionCount, 1)
+
+        let entryContext = SessionStore.S2EntryContext(
+            rangeID: "range-month",
+            orderedAssetIDs: ["asset-3", "asset-2", "asset-1"],
+            sortOrder: .newestFirst
+        )
+        let returned = SessionStore.S2Return(
+            sourceSessionID: "session-with-continuation",
+            sourceRangeID: "range-month",
+            pendingDeletionAssetIDs: [],
+            currentAssetID: "asset-2",
+            farthestAssetID: "asset-2"
+        )
+        XCTAssertTrue(
+            machine.applyS2Return(returned, entryContext: entryContext)
+        )
+        XCTAssertEqual(handoff.sessionMergedPendingDeletionCount, 0)
     }
 
     // IC046-014：重复 A 或范围外 D 不能形成交接数据，且错误读取不得伪装为空态。
