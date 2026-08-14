@@ -225,27 +225,15 @@ index 52c4946..dfb4d21 100644
 
 | 项目 | 结果 |
 |---|---|
-| 受验提交 | `9f744c57feca1f00480c98faa9620dca82a11138`。 |
-| Git commit | 已提交九个交付路径，提交说明为 `feat: 实现 SPEC-S2 v13 六状态照片查看页`。 |
+| 受验修复提交 | `4d564832c57a1f199a1c5b4420e09e091a93a3dd`。 |
+| Git commit | 已提交初始化顺序修复与报告第三节，提交说明为 `fix: 修复 S2 初始化顺序`。 |
 | Git push | 已推送到 `origin/main`。 |
-| CI | GitHub Actions 运行 [#27](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31817159405)，运行 ID `31817159405`，尝试次数 1；终态为 `completed / failure`。 |
-| 全量 XCTest 运行 | 已启动；产品源码编译失败后测试会话取消，实际 XCTest 执行数为 0，未取得 267 项运行结果。 |
-| 失败项 | 作业“构建、XCTest 与未签名产物”的步骤“运行 XCTest”失败，退出码 65；唯一编译错误位于 `PhotoCleanupMVE/Core/S2StateMachine.swift:622:23`。 |
-| Release 构建 | 前序 XCTest 步骤失败后被 GitHub Actions 标记为 `skipped`。 |
-| 未签名 IPA | 构建与上传步骤均被标记为 `skipped`；运行产物数为 0。 |
-| 完整日志 | [运行日志](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31817159405)；[失败作业日志](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31817159405/job/94821494453)。 |
+| CI | GitHub Actions 运行 [#29](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31818453530)，运行 ID `31818453530`，尝试次数 1；终态为 `completed / success`。 |
+| 全量 XCTest | 实际执行 267 项，0 失败、0 unexpected；日志以 `** TEST SUCCEEDED **` 和“XCTest 已全部通过。”结束。 |
+| 同类初始化顺序错误 | 修复后未再出现。 |
+| Release 构建 | 成功；日志包含 `** BUILD SUCCEEDED **`，并通过无代码签名、无 `_CodeSignature`、无 `embedded.mobileprovision` 检查。 |
+| 未签名 IPA | `PhotoCleanupMVE-unsigned.ipa` 生成成功，280845 字节，SHA-256 `c4702c7e2a2958c9de66391eeffab2bb10e9fe540210a86abb063755235923e3`；压缩完整性检查通过。 |
+| GitHub 产物 | [PhotoCleanupMVE-unsigned-4d564832c57a](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31818453530/artifacts/9226047792)，产物 ID `9226047792`，上传归档 281015 字节，上传摘要 SHA-256 `6ea77708aec84824d4dbeb7bb94ddab65526ea198dd7990ec212366538d03e74`。 |
+| 完整日志 | [运行与完整日志](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31818453530)；[作业日志](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31818453530/job/94825665184)。 |
 
-CI 于 `2026-08-14T15:59:12Z` 创建，于 `2026-08-14T16:00:37Z` 更新为失败终态。完整错误诊断如下；本次没有修改实现绕过失败：
-
-```text
-/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:622:23: error: 'self' used in property access 'currentIndex' before all stored properties are initialized
-        farthestIndex = currentIndex
-                      ^
-/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:622:23: note: 'self.farthestIndex' not initialized
-/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:622:23: note: 'self.pendingDeletionAssetIDs' not initialized
-/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:622:23: note: 'self.favoriteAssetIDs' not initialized
-/Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVE/Core/S2StateMachine.swift:578:17: note: 'self.pendingDeletionDidChange' not initialized
-Testing cancelled because the build failed.
-** TEST FAILED **
-Process completed with exit code 65.
-```
+CI 于 `2026-08-14T16:15:15Z` 创建，于 `2026-08-14T16:18:39Z` 更新为成功终态。第三节记录的初始化顺序修复是唯一 Swift 变更；XCTest 文件未变，静态与实际总数均为 267。除本次显式允许修改的 `S2StateMachine.swift` 与本报告外，其余七个原始交付路径的 Git blob 均与 `9f744c57feca1f00480c98faa9620dca82a11138` 一致；报告因第三节与本节的强制回填而必然不可能同时保持该基线 blob。
