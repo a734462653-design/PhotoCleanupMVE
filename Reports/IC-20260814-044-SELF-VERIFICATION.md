@@ -10,7 +10,7 @@
 
 本卡只修改 `.github/workflows/ci.yml`、`Scripts/selfcheck.ps1`，并新增本报告。没有修改 Swift 源码、测试、历史专项自验脚本、SPEC 或既有报告，也没有删除 `Scripts/` 下文件。
 
-本地静态门禁已经通过。当前执行环境为 Windows，没有 `xcodebuild`、`xcrun` 或 Swift 工具链，因此 XCTest、Release 构建和未签名 IPA 由本次实现提交触发的 `macos-15` CI 验证；结果待本次推送回填。
+本地静态门禁已经通过；受验提交 `c9d54c959367cb9cd9c79758ef4bce319847f49c` 触发的 `macos-15` CI #21 也已全绿。CI 实际执行 203 项 XCTest，0 失败、0 unexpected；Release 构建、未签名 `.app` 门禁、IPA 生成与完整性校验及产物上传均通过。
 
 ## 二、CI 门禁切换
 
@@ -146,7 +146,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Scripts\scan-hardcoded-use
 
 - 文件数：7
 - 基线清单 SHA-256：`5ace7f1953c3e849e2b2388ebe0b7eba3586656f27e4f0bf3f47ad6ed5371469`
-- 完成态清单 SHA-256：待最终复核回填
+- 实现提交后清单 SHA-256：`5ace7f1953c3e849e2b2388ebe0b7eba3586656f27e4f0bf3f47ad6ed5371469`
 
 | Git blob | 路径 |
 |---|---|
@@ -162,7 +162,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Scripts\scan-hardcoded-use
 
 - 文件数：26
 - 基线清单 SHA-256：`1f1d81f7551fe2b4464f634bd5b754ede9b738197841365f05fd112c4ab6b9a5`
-- 完成态清单 SHA-256：待最终复核回填
+- 实现提交后清单 SHA-256：`1f1d81f7551fe2b4464f634bd5b754ede9b738197841365f05fd112c4ab6b9a5`
 
 | Git blob | 路径 |
 |---|---|
@@ -197,27 +197,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Scripts\scan-hardcoded-use
 
 | 验收项 | 结果 |
 |---|---|
-| 受验提交 | 待本次推送回填 |
-| CI 运行 | 待本次推送回填 |
-| CI 链接 | 待本次推送回填 |
-| 通用结构自验 | 本地通过；CI 待回填 |
-| XCTest | 静态总数 203；运行结果待 CI 回填 |
-| 失败 | 待 CI 回填 |
-| unexpected | 待 CI 回填 |
-| Release 构建 | 待 CI 回填 |
-| 未签名 `.app` 检查 | 待 CI 回填 |
-| 未签名 IPA 生成与完整性校验 | 待 CI 回填 |
-| IPA 上传 | 待 CI 回填 |
+| 受验提交 | `c9d54c959367cb9cd9c79758ef4bce319847f49c` |
+| CI 运行 | `iOS 构建与自验 #21`，run ID `31801619923`，状态 `Success`；工作流总耗时 8 分 50 秒，唯一 job 耗时 8 分 46 秒 |
+| CI 链接 | [GitHub Actions #21](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31801619923) |
+| 通用结构自验 | 本地退出码 0；CI“运行通用结构自验”步骤通过，目录 72 项、产品源码引用 72 项、用户可见硬编码残留 0，并确认测试数量不少于 189 |
+| CI 独立硬编码扫描 | “扫描用户可见硬编码字符串”步骤通过；目录与产品源码引用双向一致，残留为 0 |
+| XCTest | CI 实际执行 203 项，203 项全部通过；测试总耗时 3.778 秒 |
+| 失败 | 0 |
+| unexpected | 0 |
+| Release 构建 | 通过；CI 日志报告 `BUILD SUCCEEDED` |
+| 未签名 `.app` 检查 | 通过；构建继续使用 `CODE_SIGNING_ALLOWED=NO`、`CODE_SIGNING_REQUIRED=NO` 与空 `CODE_SIGN_IDENTITY`，原有 `codesign`、`_CodeSignature`、`embedded.mobileprovision` 反向检查所在步骤成功 |
+| 未签名 IPA 生成与完整性校验 | 通过；`PhotoCleanupMVE-unsigned.ipa` 为 242548 字节，`unzip -tq` 完整性校验成功，文件 SHA-256 为 `416dd2820ad7babc4942eb01f03b01724c831170a1363ea1b62a874eafbb4841` |
+| IPA 上传 | 通过；产物名 `PhotoCleanupMVE-unsigned-c9d54c959367`，Artifact ID `9219722818`，上传归档 242718 字节，归档摘要 SHA-256 为 `87ecc405e538a7912ea88a4ad3b3fb62e8b5189b04b61ea66c3edf3c6b239faf` |
+
+XCTest 日志同时给出总测试套件通过与 `TEST SUCCEEDED`；IPA 步骤给出压缩数据无错误，上传步骤确认产物完成固化。IPA 文件 SHA-256 与 GitHub 上传归档摘要是不同层级的两个摘要，均在上表分别记录。
 
 ## 八、范围与最终工作树
 
-最终复核待 CI 回填提交完成后执行。验收要求如下：
+实现提交与 CI 证据回填后的最终范围复核结果如下。本报告回填提交使用 `[skip ci]`，只记录已经完成的 #21 结果，不改变受验提交：
 
-- 最终差异必须且只能包含 `.github/workflows/ci.yml`、`Scripts/selfcheck.ps1`、`Reports/IC-20260814-044-SELF-VERIFICATION.md`。
-- 7 个 `Scripts/verify-IC-20260812-*.ps1` 的路径集合和 Git blob 必须与任务基线一致。
-- 26 个 Swift 源码与测试文件的路径集合和 Git blob 必须与任务基线一致。
-- 不得修改 `Reports/IC-20260814-043-SELF-VERIFICATION.md` 或任何既有报告。
-- 不得修改 SPEC、签名检查、未签名 IPA 校验与上传参数。
-- 最终工作树必须洁净，未跟踪条目必须为 0。
+- 任务基线到最终 HEAD 的差异路径严格为 `.github/workflows/ci.yml`、`Scripts/selfcheck.ps1`、`Reports/IC-20260814-044-SELF-VERIFICATION.md`。
+- 7 个 `Scripts/verify-IC-20260812-*.ps1` 的路径集合和 Git blob 与任务基线一致。
+- 26 个 Swift 源码与测试文件的路径集合和 Git blob 与任务基线一致。
+- `Reports/IC-20260814-043-SELF-VERIFICATION.md` 及其他既有报告均未修改。
+- SPEC、签名检查、未签名 IPA 校验与上传参数均未修改。
+- 最终推送后，HEAD 与本地 `origin/main` 跟踪引用相同，工作树洁净，未跟踪条目为 0。
 
-CI 结果未回填前，本报告不把 XCTest、Release 构建、IPA 或 CI 状态记为通过。
+验收标准 1 至 7 全部满足。本卡在 044 完成处停止，没有回填或修改 043 报告。
