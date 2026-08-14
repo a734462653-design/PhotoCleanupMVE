@@ -188,6 +188,204 @@
         }
       }
     },
+    "s1.dimension.accessibility" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分组维度"
+          }
+        }
+      }
+    },
+    "s1.dimension.album" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相册"
+          }
+        }
+      }
+    },
+    "s1.dimension.month" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按月"
+          }
+        }
+      }
+    },
+    "s1.dimension.unclassified" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未分类"
+          }
+        }
+      }
+    },
+    "s1.dimension.year" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按年"
+          }
+        }
+      }
+    },
+    "s1.placeholder.empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "【未定项 15 占位】空态文案"
+          }
+        }
+      }
+    },
+    "s1.placeholder.failure" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "【未定项 15 占位】失败态文案"
+          }
+        }
+      }
+    },
+    "s1.placeholder.loading" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "【未定项 10 占位】读取中状态指示"
+          }
+        }
+      }
+    },
+    "s1.placeholder.pending_zero" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "【未定项 6 占位】待删计数为零"
+          }
+        }
+      }
+    },
+    "s1.placeholder.processed_progress" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "【未定项 6 占位】已处理原始值 {processed}/{total}"
+          }
+        }
+      }
+    },
+    "s1.placeholder.retry" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "【未定项 9 占位】重试入口"
+          }
+        }
+      }
+    },
+    "s1.placeholder.trash_empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "【未定项 7 占位】空待删集合垃圾桶入口"
+          }
+        }
+      }
+    },
+    "s1.range.pending_count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待删计数 {count}"
+          }
+        }
+      }
+    },
+    "s1.range.total_count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "资产总数 {count}"
+          }
+        }
+      }
+    },
+    "s1.sort.accessibility" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序方式"
+          }
+        }
+      }
+    },
+    "s1.sort.newest_first" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按拍摄时间从新到旧"
+          }
+        }
+      }
+    },
+    "s1.sort.oldest_first" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按拍摄时间从旧到新"
+          }
+        }
+      }
+    },
+    "s1.trash.accessibility" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会话待删总数 {count}"
+          }
+        }
+      }
+    },
     "s3.action.back" : {
       "extractionState" : "manual",
       "localizations" : {

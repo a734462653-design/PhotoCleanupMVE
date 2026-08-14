@@ -1,0 +1,467 @@
+import XCTest
+@testable import PhotoCleanupMVE
+
+final class S1StateMachineTests: XCTestCase {
+    // IC046-001：首次进入后直接到达 S1-1，且读取请求携带显式注入的 T。
+    func testIC046_001InitialEntryReachesLoading() {
+        let machine = makeMachine(state: .loading)
+
+        XCTAssertEqual(machine.state, .loading)
+        XCTAssertEqual(machine.loadingState, .loading)
+        XCTAssertEqual(machine.currentReadRequest?.groupingDimension, .month)
+        XCTAssertTrue(machine.ranges.isEmpty)
+    }
+
+    // IC046-002：读取成功且存在可用范围时，从 S1-1 到达 S1-2。
+    func testIC046_002SuccessfulNonemptyReadReachesReady() {
+        let machine = makeMachine(state: .loading)
+        let request = tryUnwrap(machine.currentReadRequest)
+
+        XCTAssertTrue(
+            machine.completeRangeRead(
+                .success([makeRange()]),
+                for: request
+            )
+        )
+        XCTAssertEqual(machine.state, .ready)
+        XCTAssertEqual(machine.loadingState, .ready)
+        XCTAssertEqual(machine.ranges.map(\.id), ["range-month"])
+    }
+
+    // IC046-003：读取成功但范围数为零时到达 S1-3，而不是 S1-2。
+    func testIC046_003SuccessfulEmptyReadReachesEmpty() {
+        let machine = makeMachine(state: .loading)
+        let request = tryUnwrap(machine.currentReadRequest)
+
+        XCTAssertTrue(machine.completeRangeRead(.success([]), for: request))
+        XCTAssertEqual(machine.state, .empty)
+        XCTAssertEqual(machine.loadingState, .ready)
+        XCTAssertTrue(machine.ranges.isEmpty)
+    }
+
+    // IC046-004：读取失败到达 S1-4，并保留可区分的失败原因向上报告。
+    func testIC046_004FailedReadReachesFailedWithDistinctReason() {
+        let machine = makeMachine(state: .loading)
+        let request = tryUnwrap(machine.currentReadRequest)
+        let failure = S1RangeReadFailure(
+            groupingDimension: .month,
+            reason: .authorizationDenied
+        )
+
+        XCTAssertTrue(
+            machine.completeRangeRead(.failure(failure), for: request)
+        )
+        XCTAssertEqual(machine.state, .failed)
+        XCTAssertEqual(machine.loadingState, .failed)
+        XCTAssertEqual(machine.readFailure, failure)
+        XCTAssertNotEqual(
+            failure,
+            S1RangeReadFailure(
+                groupingDimension: .month,
+                reason: .missingCreationDate(assetID: "asset-1")
+            )
+        )
+    }
+
+    // IC046-005：四个起始状态切换 T 均回到 S1-1，且 M、K、O、O_记录、会话标识不变。
+    func testIC046_005GroupingSwitchAlwaysReturnsToLoadingAndPreservesSession() {
+        for initialState in allStates {
+            let machine = makeMachine(
+                state: initialState,
+                store: makeStoreWithContinuation()
+            )
+            let originalStore = machine.sessionStore
+            let originalSortOrder = machine.sortOrder
+            let originalRecordedSortOrder = machine.sessionStore
+                .continuationsByRangeID["range-month"]?.recordedSortOrder
+
+            XCTAssertTrue(machine.switchGroupingDimension(to: .year))
+            XCTAssertEqual(machine.state, .loading)
+            XCTAssertEqual(machine.loadingState, .loading)
+            XCTAssertEqual(machine.groupingDimension, .year)
+            XCTAssertEqual(machine.sortOrder, originalSortOrder)
+            XCTAssertEqual(machine.sessionStore, originalStore)
+            XCTAssertEqual(
+                machine.sessionStore.continuationsByRangeID["range-month"]?
+                    .recordedSortOrder,
+                originalRecordedSortOrder
+            )
+            XCTAssertEqual(machine.sessionStore.sessionID, originalStore.sessionID)
+        }
+    }
+
+    // IC046-006：四个起始状态切换 O 均保持 L，且 T、M、K、O_记录、会话标识不变。
+    func testIC046_006SortSwitchPreservesLoadingAndSessionState() {
+        for initialState in allStates {
+            let machine = makeMachine(
+                state: initialState,
+                store: makeStoreWithContinuation()
+            )
+            let originalLoadingState = machine.loadingState
+            let originalGroupingDimension = machine.groupingDimension
+            let originalStore = machine.sessionStore
+            let originalRequest = machine.currentReadRequest
+
+            XCTAssertTrue(machine.switchSortOrder(to: .oldestFirst))
+            XCTAssertEqual(machine.loadingState, originalLoadingState)
+            XCTAssertEqual(machine.groupingDimension, originalGroupingDimension)
+            XCTAssertEqual(machine.sessionStore, originalStore)
+            XCTAssertEqual(machine.currentReadRequest, originalRequest)
+            XCTAssertEqual(
+                machine.sessionStore.continuationsByRangeID["range-month"]?
+                    .recordedSortOrder,
+                .newestFirst
+            )
+        }
+    }
+
+    // IC046-007：切换 T 后，旧读取的晚到结果被拒绝且不能覆盖新 T 的加载态。
+    func testIC046_007StaleReadCompletionIsIgnoredAfterGroupingSwitch() {
+        let machine = makeMachine(state: .loading)
+        let staleRequest = tryUnwrap(machine.currentReadRequest)
+
+        XCTAssertTrue(machine.switchGroupingDimension(to: .album))
+        XCTAssertFalse(
+            machine.completeRangeRead(
+                .success([makeRange()]),
+                for: staleRequest
+            )
+        )
+        XCTAssertEqual(machine.state, .loading)
+        XCTAssertEqual(machine.groupingDimension, .album)
+        XCTAssertNotEqual(machine.currentReadRequest, staleRequest)
+        XCTAssertTrue(machine.ranges.isEmpty)
+    }
+
+    // IC046-008：只有 S1-4 可重试，重试后对同一 T 形成新请求并到达 S1-1。
+    func testIC046_008RetryFromFailureCreatesNewLoadingRequest() {
+        let machine = makeMachine(
+            state: .failed,
+            store: makeStoreWithContinuation()
+        )
+        let originalStore = machine.sessionStore
+
+        XCTAssertTrue(machine.retry())
+        XCTAssertEqual(machine.state, .loading)
+        XCTAssertEqual(machine.currentReadRequest?.groupingDimension, .month)
+        XCTAssertEqual(machine.sessionStore, originalStore)
+        XCTAssertFalse(machine.retry())
+    }
+
+    // IC046-009：加载中、失败与空态都不能形成 A 或 S1 到 S2 的交接数据。
+    func testIC046_009LoadingFailedAndEmptyCannotFormS2Handoff() {
+        for state in [S1State.loading, .failed, .empty] {
+            let machine = makeMachine(state: state)
+            XCTAssertNil(machine.makeS2Handoff(for: "range-month"))
+        }
+    }
+
+    // IC046-010：当前 O 与 O_记录一致时，已处理集合取 p 及其之前。
+    func testIC046_010ProcessedAssetsUsePrefixWhenOrdersMatch() {
+        let machine = makeMachine(
+            state: .ready,
+            store: makeStoreWithContinuation()
+        )
+
+        XCTAssertEqual(
+            machine.processedAssetIDs(for: "range-month"),
+            ["asset-3", "asset-2"]
+        )
+    }
+
+    // IC046-011：当前 O 与 O_记录不一致时，已处理集合按当前 A 取 p 及其之后。
+    func testIC046_011ProcessedAssetsUseSuffixWhenOrderFlips() {
+        let machine = makeMachine(
+            state: .ready,
+            store: makeStoreWithContinuation()
+        )
+
+        XCTAssertTrue(machine.switchSortOrder(to: .oldestFirst))
+        XCTAssertEqual(
+            machine.processedAssetIDs(for: "range-month"),
+            ["asset-2", "asset-3"]
+        )
+    }
+
+    // IC046-012：徽标始终等于 D_全部 去重元素数，与当前 T、O 和 L 无关。
+    func testIC046_012BadgeAlwaysUsesMergedDeletionSetCount() {
+        var store = SessionStore(sessionID: "session-badge")
+        store.setMarked(true, assetID: "asset-shared", rangeID: "range-month")
+        store.setMarked(true, assetID: "asset-shared", rangeID: "range-album")
+        store.setMarked(true, assetID: "asset-only", rangeID: "range-album")
+        let machine = makeMachine(state: .ready, store: store)
+
+        XCTAssertEqual(machine.badgeCount, 2)
+        XCTAssertTrue(machine.switchSortOrder(to: .oldestFirst))
+        XCTAssertEqual(machine.badgeCount, 2)
+        XCTAssertTrue(machine.switchGroupingDimension(to: .album))
+        XCTAssertEqual(machine.state, .loading)
+        XCTAssertEqual(machine.badgeCount, 2)
+
+        let request = tryUnwrap(machine.currentReadRequest)
+        XCTAssertTrue(machine.completeRangeRead(.success([]), for: request))
+        XCTAssertEqual(machine.state, .empty)
+        XCTAssertEqual(machine.badgeCount, 2)
+    }
+
+    // IC046-013：六字段交接满足 A 非空有序唯一、c 属于 A、D 是 A 的子集及总数只读快照。
+    func testIC046_013S2HandoffContainsSixValidFields() {
+        let machine = makeMachine(
+            state: .ready,
+            store: makeStoreWithContinuation()
+        )
+        XCTAssertTrue(machine.switchSortOrder(to: .oldestFirst))
+
+        let handoff = tryUnwrap(
+            machine.makeS2Handoff(for: "range-month")
+        )
+
+        XCTAssertEqual(handoff.sessionID, "session-with-continuation")
+        XCTAssertEqual(handoff.rangeDisplayInformation.rangeID, "range-month")
+        XCTAssertEqual(handoff.rangeDisplayInformation.displayName, "2026-08")
+        XCTAssertEqual(handoff.rangeDisplayInformation.totalAssetCount, 3)
+        XCTAssertEqual(
+            handoff.orderedAssetIDs,
+            ["asset-1", "asset-2", "asset-3"]
+        )
+        XCTAssertEqual(Set(handoff.orderedAssetIDs).count, 3)
+        XCTAssertEqual(handoff.currentAssetID, "asset-2")
+        XCTAssertTrue(handoff.orderedAssetIDs.contains(handoff.currentAssetID))
+        XCTAssertEqual(handoff.pendingDeletionAssetIDs, ["asset-1"])
+        XCTAssertTrue(
+            handoff.pendingDeletionAssetIDs.isSubset(
+                of: Set(handoff.orderedAssetIDs)
+            )
+        )
+        XCTAssertEqual(handoff.sessionMergedPendingDeletionCount, 1)
+    }
+
+    // IC046-014：重复 A 或范围外 D 不能形成交接数据，且错误读取不得伪装为空态。
+    func testIC046_014InvalidAOrDRejectsS2Handoff() {
+        let invalidReadMachine = makeMachine(state: .loading)
+        let request = tryUnwrap(invalidReadMachine.currentReadRequest)
+        let duplicateRange = S1Range(
+            id: "range-month",
+            displayName: "2026-08",
+            assetIDsNewestFirst: ["asset-1", "asset-1"]
+        )
+
+        XCTAssertFalse(
+            invalidReadMachine.completeRangeRead(
+                .success([duplicateRange]),
+                for: request
+            )
+        )
+        XCTAssertEqual(invalidReadMachine.state, .failed)
+        XCTAssertNil(
+            invalidReadMachine.makeS2Handoff(for: "range-month")
+        )
+
+        var invalidStore = SessionStore(sessionID: "session-invalid-d")
+        invalidStore.setMarked(
+            true,
+            assetID: "asset-outside",
+            rangeID: "range-month"
+        )
+        let invalidDMachine = makeMachine(state: .ready, store: invalidStore)
+        XCTAssertNil(invalidDMachine.makeS2Handoff(for: "range-month"))
+    }
+
+    // IC046-015：O 只翻转月、年范围列表；相册列表保持读取方提供的占位顺序。
+    func testIC046_015SortFlipsChronologicalRangesButNotAlbumRanges() {
+        let chronologicalMachine = makeMachine(
+            state: .ready,
+            ranges: [
+                makeRange(id: "newer", displayName: "2026-08"),
+                makeRange(id: "older", displayName: "2026-07")
+            ]
+        )
+        XCTAssertEqual(
+            chronologicalMachine.visibleRanges.map(\.id),
+            ["newer", "older"]
+        )
+        XCTAssertTrue(
+            chronologicalMachine.switchSortOrder(to: .oldestFirst)
+        )
+        XCTAssertEqual(
+            chronologicalMachine.visibleRanges.map(\.id),
+            ["older", "newer"]
+        )
+
+        let albumMachine = makeMachine(
+            state: .ready,
+            groupingDimension: .album,
+            ranges: [
+                makeRange(id: "album-b", displayName: "B"),
+                makeRange(id: "album-a", displayName: "A")
+            ]
+        )
+        XCTAssertTrue(albumMachine.switchSortOrder(to: .oldestFirst))
+        XCTAssertEqual(
+            albumMachine.visibleRanges.map(\.id),
+            ["album-b", "album-a"]
+        )
+    }
+
+    // IC046-016：Q 呈现时所有 S1 输入失效，关闭后恢复覆盖前状态与数据。
+    func testIC046_016ObscurationBlocksInputsAndPreservesState() {
+        let machine = makeMachine(
+            state: .ready,
+            store: makeStoreWithContinuation()
+        )
+        let originalStore = machine.sessionStore
+        let originalRanges = machine.ranges
+
+        machine.presentObscuration()
+        XCTAssertFalse(machine.switchGroupingDimension(to: .year))
+        XCTAssertFalse(machine.switchSortOrder(to: .oldestFirst))
+        XCTAssertNil(machine.makeS2Handoff(for: "range-month"))
+        XCTAssertNil(machine.makeS3Submission())
+        XCTAssertEqual(machine.state, .ready)
+        XCTAssertEqual(machine.ranges, originalRanges)
+        XCTAssertEqual(machine.sessionStore, originalStore)
+
+        machine.dismissObscuration()
+        XCTAssertNotNil(machine.makeS2Handoff(for: "range-month"))
+    }
+
+    // IC046-017：有效 S2 返回原子写回 M 与 K，并保持 T、O、L 与会话标识。
+    func testIC046_017S2ReturnWritesSessionWithoutChangingS1Parameters() {
+        var store = SessionStore(sessionID: "session-return")
+        store.setMarked(true, assetID: "asset-1", rangeID: "range-month")
+        let machine = makeMachine(state: .ready, store: store)
+        let originalGroupingDimension = machine.groupingDimension
+        let originalSortOrder = machine.sortOrder
+        let context = SessionStore.S2EntryContext(
+            rangeID: "range-month",
+            orderedAssetIDs: ["asset-3", "asset-2", "asset-1"],
+            sortOrder: .newestFirst
+        )
+        let returned = SessionStore.S2Return(
+            sourceSessionID: "session-return",
+            sourceRangeID: "range-month",
+            pendingDeletionAssetIDs: ["asset-1"],
+            currentAssetID: "asset-2",
+            farthestAssetID: "asset-2"
+        )
+
+        XCTAssertTrue(machine.applyS2Return(returned, entryContext: context))
+        XCTAssertEqual(machine.state, .ready)
+        XCTAssertEqual(machine.groupingDimension, originalGroupingDimension)
+        XCTAssertEqual(machine.sortOrder, originalSortOrder)
+        XCTAssertEqual(machine.sessionStore.sessionID, "session-return")
+        XCTAssertEqual(
+            machine.sessionStore.continuationsByRangeID["range-month"],
+            SessionStore.Continuation(
+                currentAssetID: "asset-2",
+                farthestAssetID: "asset-2",
+                recordedSortOrder: .newestFirst
+            )
+        )
+    }
+
+    // IC046-018：S1 范围项投影同时给出显示名、资产总数、待删计数与已处理进度。
+    func testIC046_018RangeRowContainsAllFourRequiredValues() {
+        let machine = makeMachine(
+            state: .ready,
+            store: makeStoreWithContinuation()
+        )
+        let row = tryUnwrap(machine.rangeRows.first)
+
+        XCTAssertEqual(row.displayName, "2026-08")
+        XCTAssertEqual(row.totalAssetCount, 3)
+        XCTAssertEqual(row.pendingDeletionCount, 1)
+        XCTAssertEqual(row.processedAssetCount, 2)
+    }
+
+    private var allStates: [S1State] {
+        [.loading, .ready, .empty, .failed]
+    }
+
+    private func makeMachine(
+        state: S1State,
+        store: SessionStore = SessionStore(sessionID: "session-default"),
+        groupingDimension: S1GroupingDimension = .month,
+        ranges: [S1Range]? = nil
+    ) -> S1StateMachine {
+        let machine = S1StateMachine(
+            sessionStore: store,
+            initialGroupingDimension: groupingDimension,
+            initialSortOrder: .newestFirst
+        )
+        guard state != .loading,
+              let request = machine.currentReadRequest else {
+            return machine
+        }
+
+        switch state {
+        case .loading:
+            break
+        case .ready:
+            precondition(
+                machine.completeRangeRead(
+                    .success(ranges ?? [makeRange()]),
+                    for: request
+                )
+            )
+        case .empty:
+            precondition(machine.completeRangeRead(.success([]), for: request))
+        case .failed:
+            precondition(
+                machine.completeRangeRead(
+                    .failure(
+                        S1RangeReadFailure(
+                            groupingDimension: groupingDimension,
+                            reason: .invalidResponse
+                        )
+                    ),
+                    for: request
+                )
+            )
+        }
+        return machine
+    }
+
+    private func makeRange(
+        id: String = "range-month",
+        displayName: String = "2026-08"
+    ) -> S1Range {
+        S1Range(
+            id: id,
+            displayName: displayName,
+            assetIDsNewestFirst: ["asset-3", "asset-2", "asset-1"]
+        )
+    }
+
+    private func makeStoreWithContinuation() -> SessionStore {
+        var store = SessionStore(sessionID: "session-with-continuation")
+        store.setMarked(true, assetID: "asset-1", rangeID: "range-month")
+        let context = SessionStore.S2EntryContext(
+            rangeID: "range-month",
+            orderedAssetIDs: ["asset-3", "asset-2", "asset-1"],
+            sortOrder: .newestFirst
+        )
+        let returned = SessionStore.S2Return(
+            sourceSessionID: store.sessionID,
+            sourceRangeID: "range-month",
+            pendingDeletionAssetIDs: ["asset-1"],
+            currentAssetID: "asset-2",
+            farthestAssetID: "asset-2"
+        )
+        precondition(store.applyS2Return(returned, entryContext: context))
+        return store
+    }
+
+    private func tryUnwrap<T>(
+        _ value: T?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> T {
+        do {
+            return try XCTUnwrap(value, file: file, line: line)
+        } catch {
+            XCTFail(String(describing: error), file: file, line: line)
+            preconditionFailure()
+        }
+    }
+}

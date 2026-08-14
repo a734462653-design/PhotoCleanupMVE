@@ -37,6 +37,9 @@
 		20000000000000000000001C /* SessionStore.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001F /* SessionStore.swift */; };
 		20000000000000000000001D /* SessionStoreTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000020 /* SessionStoreTests.swift */; };
 		20000000000000000000001E /* S3ReturnRouteTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000021 /* S3ReturnRouteTests.swift */; };
+		20000000000000000000001F /* S1StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* S1StateMachine.swift */; };
+		200000000000000000000020 /* S1View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* S1View.swift */; };
+		200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* S1StateMachineTests.swift */; };
 /* PBXBuildFile 区段结束 */
 
 /* PBXContainerItemProxy 区段开始 */
@@ -83,6 +86,9 @@
 		10000000000000000000001F /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		100000000000000000000020 /* SessionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStoreTests.swift; sourceTree = "<group>"; };
 		100000000000000000000021 /* S3ReturnRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S3ReturnRouteTests.swift; sourceTree = "<group>"; };
+		100000000000000000000022 /* S1StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachine.swift; sourceTree = "<group>"; };
+		100000000000000000000023 /* S1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1View.swift; sourceTree = "<group>"; };
+		100000000000000000000024 /* S1StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachineTests.swift; sourceTree = "<group>"; };
 /* PBXFileReference 区段结束 */
 
 /* PBXFrameworksBuildPhase 区段开始 */
@@ -140,6 +146,7 @@
 			children = (
 				100000000000000000000003 /* AssetModels.swift */,
 				10000000000000000000001F /* SessionStore.swift */,
+				100000000000000000000022 /* S1StateMachine.swift */,
 				100000000000000000000004 /* S3StateMachine.swift */,
 				100000000000000000000005 /* S4StateMachine.swift */,
 				100000000000000000000006 /* S5StateMachine.swift */,
@@ -163,12 +170,21 @@
 		300000000000000000000005 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				30000000000000000000000C /* S1 */,
 				300000000000000000000006 /* S3 */,
 				300000000000000000000007 /* S4 */,
 				300000000000000000000008 /* S5 */,
 				30000000000000000000000B /* Shared */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		30000000000000000000000C /* S1 */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000023 /* S1View.swift */,
+			);
+			path = S1;
 			sourceTree = "<group>";
 		};
 		300000000000000000000006 /* S3 */ = {
@@ -206,6 +222,7 @@
 		300000000000000000000009 /* PhotoCleanupMVETests */ = {
 			isa = PBXGroup;
 			children = (
+				100000000000000000000024 /* S1StateMachineTests.swift */,
 				100000000000000000000020 /* SessionStoreTests.swift */,
 				100000000000000000000021 /* S3ReturnRouteTests.swift */,
 				100000000000000000000013 /* S3StateMachineTests.swift */,
@@ -336,6 +353,7 @@
 				200000000000000000000002 /* CleanupCoordinator.swift（源码） */,
 				200000000000000000000003 /* AssetModels.swift（源码） */,
 				20000000000000000000001C /* SessionStore.swift（源码） */,
+				20000000000000000000001F /* S1StateMachine.swift（源码） */,
 				200000000000000000000004 /* S3StateMachine.swift（源码） */,
 				200000000000000000000005 /* S4StateMachine.swift（源码） */,
 				200000000000000000000006 /* S5StateMachine.swift（源码） */,
@@ -344,6 +362,7 @@
 				200000000000000000000009 /* AssetSizeScanner.swift（源码） */,
 				20000000000000000000000A /* PhotoDeletionService.swift（源码） */,
 				200000000000000000000018 /* FreeDiskSpaceReader.swift（源码） */,
+				200000000000000000000020 /* S1View.swift（源码） */,
 				20000000000000000000000B /* S3View.swift（源码） */,
 				20000000000000000000000C /* S4View.swift（源码） */,
 				20000000000000000000000D /* S5View.swift（源码） */,
@@ -356,6 +375,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */,
 				20000000000000000000001D /* SessionStoreTests.swift（测试源码） */,
 				20000000000000000000001E /* S3ReturnRouteTests.swift（测试源码） */,
 				200000000000000000000010 /* S3StateMachineTests.swift（测试源码） */,
