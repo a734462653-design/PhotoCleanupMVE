@@ -312,8 +312,8 @@ if ($swiftFiles.Count -gt 0) {
     $debugEntryUses = @(
         Select-String -LiteralPath $swiftFiles.FullName -Pattern "limit:\s*Self\.debugAssetLimit"
     )
-    if ($debugEntryUses.Count -ne 1) {
-        Add-Failure "调试入口取样调用必须且只能引用常量 1 次，实际为 $($debugEntryUses.Count)"
+    if ($debugEntryUses.Count -ne 0) {
+        Add-Failure "S1 接管启动后不得再调用调试入口取样，实际为 $($debugEntryUses.Count)"
     }
 
     $removedS3Patterns = @(

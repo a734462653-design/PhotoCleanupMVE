@@ -1,57 +1,13 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
-    "app.loading.test_assets" : {
+    "app.loading.photo_library" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在读取测试资产"
-          }
-        }
-      }
-    },
-    "app.session.finished" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本次清理会话已结束"
-          }
-        }
-      }
-    },
-    "coordinator.authorization.not_completed" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片库授权尚未完成"
-          }
-        }
-      }
-    },
-    "coordinator.authorization.unavailable" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片库权限不可用"
-          }
-        }
-      }
-    },
-    "coordinator.authorization.unknown" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法识别照片库授权状态"
+            "value" : "正在准备照片库"
           }
         }
       }
@@ -672,6 +628,17 @@
         }
       }
     },
+    "s3.group.asset_count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{name}（{count} 张）"
+          }
+        }
+      }
+    },
     "s3.navigation.title" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -694,13 +661,13 @@
         }
       }
     },
-    "s3.section.pending_assets" : {
+    "s3.scope.source_summary.placeholder" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "待删除资产"
+            "value" : "本轮来自 {count} 个整理范围（当前范围说明文案待定）"
           }
         }
       }

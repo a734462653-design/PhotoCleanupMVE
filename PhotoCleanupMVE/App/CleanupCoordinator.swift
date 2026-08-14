@@ -4,6 +4,8 @@ import Photos
 
 enum CleanupRoute: Equatable {
     case loading
+    case s1
+    case s2
     case confirmation
     case execution
     case completion
@@ -11,12 +13,41 @@ enum CleanupRoute: Equatable {
     case upstream
 }
 
+struct CleanupRouteConfiguration {
+    let initialGroupingDimension: S1GroupingDimension
+    let initialSortOrder: S1SortOrder
+    let s2InitialPresentation: S2InitialPresentation
+    let s2Parameters: S2ResolvedParameters
+    let s2ImageRequestStrategy: S2ImageRequestStrategy
+
+    // 只引用既有合成预览夹具完成 IC-048 接线，不新增产品默认值或标定结果。
+    static func ic048TemporaryWiringFixture() -> CleanupRouteConfiguration {
+        return CleanupRouteConfiguration(
+            initialGroupingDimension: .month,
+            initialSortOrder: .newestFirst,
+            s2InitialPresentation: S2InitialPresentation(
+                interfaceVisibility: .visible,
+                scale: 1,
+                viewportOffset: .zero
+            ),
+            s2Parameters: S2PreviewData.parameters,
+            s2ImageRequestStrategy: S2ImageRequestStrategy(
+                scaleChangePolicy: .everyScaleChange,
+                degradedPreviewPolicy: .finalImageOnly
+            )
+        )
+    }
+}
+
 @MainActor
 final class CleanupCoordinator: ObservableObject {
     static let debugAssetLimit = 300
 
     @Published private(set) var route: CleanupRoute = .loading
+    @Published private(set) var s1Machine: S1StateMachine?
+    @Published private(set) var s2Machine: S2StateMachine?
     @Published private(set) var s3Machine: S3StateMachine?
+    @Published private(set) var s3Groups: [SessionStore.S3Submission.Group] = []
     @Published private(set) var s4Machine: S4StateMachine?
     @Published private(set) var s5Machine: S5StateMachine?
     @Published private(set) var message: String?
@@ -27,9 +58,11 @@ final class CleanupCoordinator: ObservableObject {
     private let deletionService: any PhotoDeletionServicing
     private let freeDiskSpaceReader: FreeDiskSpaceReader
     private let persistence: SessionPersistence
+    private let routeConfiguration: CleanupRouteConfiguration
 
     private var loadedAssets: [String: PHAsset] = [:]
     private var sessionDescriptors: [String: AssetDescriptor] = [:]
+    private var s2EntryContext: SessionStore.S2EntryContext?
     private var scanTasks: [String: Task<Void, Never>] = [:]
     private var s4TimerTask: Task<Void, Never>?
     private var s4LastUptime: TimeInterval?
@@ -40,13 +73,16 @@ final class CleanupCoordinator: ObservableObject {
         sizeScanner: AssetSizeScanner = AssetSizeScanner(),
         deletionService: any PhotoDeletionServicing = DeletionServiceDependency.production(),
         freeDiskSpaceReader: FreeDiskSpaceReader = FreeDiskSpaceReader(),
-        persistence: SessionPersistence = SessionPersistence()
+        persistence: SessionPersistence = SessionPersistence(),
+        routeConfiguration: CleanupRouteConfiguration =
+            .ic048TemporaryWiringFixture()
     ) {
         self.photoLibrary = photoLibrary ?? PhotoLibraryService()
         self.sizeScanner = sizeScanner
         self.deletionService = deletionService
         self.freeDiskSpaceReader = freeDiskSpaceReader
         self.persistence = persistence
+        self.routeConfiguration = routeConfiguration
     }
 
     func start() {
@@ -59,8 +95,127 @@ final class CleanupCoordinator: ObservableObject {
             return
         }
         Task { [weak self] in
-            await self?.loadDebugAssets()
+            await self?.prepareS1AfterAuthorizationRequest()
         }
+    }
+
+    @discardableResult
+    func enterS1(sessionID: String) -> Bool {
+        guard !sessionID.isEmpty else {
+            return false
+        }
+        installS1Session(
+            SessionStore(sessionID: sessionID),
+            route: .s1
+        )
+        return true
+    }
+
+    func readS1Ranges(
+        groupedBy groupingDimension: S1GroupingDimension
+    ) -> Result<[S1Range], S1RangeReadFailure> {
+        // 相册纳入范围仍是 SPEC-S1 未定项；空集合只保证默认按月路径可接线。
+        photoLibrary.s1Ranges(
+            groupedBy: groupingDimension,
+            albumCollections: []
+        )
+    }
+
+    @discardableResult
+    func enterS2(from handoff: S1ToS2Handoff) -> Bool {
+        guard route == .s1 || route == .upstream || route == .finished,
+              let s1Machine,
+              handoff.sessionID == s1Machine.sessionStore.sessionID else {
+            return false
+        }
+
+        let entryContext = SessionStore.S2EntryContext(
+            rangeID: handoff.rangeDisplayInformation.rangeID,
+            orderedAssetIDs: handoff.orderedAssetIDs,
+            sortOrder: s1Machine.sortOrder.sessionSortOrder
+        )
+        let fetchedAssets = photoLibrary.assetsByIdentifier(
+            handoff.orderedAssetIDs
+        )
+        loadedAssets.merge(fetchedAssets) { _, newValue in newValue }
+        let favoriteAssetIDs = Set(
+            fetchedAssets.values.filter(\.isFavorite).map(\.localIdentifier)
+        )
+        let machine = S2StateMachine(
+            entry: S2EntryContext(handoff: handoff),
+            initialPresentation: routeConfiguration.s2InitialPresentation,
+            parameters: routeConfiguration.s2Parameters,
+            imageRequestStrategy: routeConfiguration.s2ImageRequestStrategy,
+            initialFavoriteAssetIDs: favoriteAssetIDs,
+            initialRecentAlbum: nil,
+            pendingDeletionDidChange: { [weak self] pendingAssetIDs in
+                self?.receiveS2PendingDeletionChange(pendingAssetIDs)
+            }
+        )
+        guard let machine else {
+            return false
+        }
+
+        s2EntryContext = entryContext
+        s2Machine = machine
+        route = .s2
+        message = nil
+        return true
+    }
+
+    @discardableResult
+    func leaveS2(with payload: S2ExitPayload) -> Bool {
+        guard applyS2ExitPayload(payload) else {
+            return false
+        }
+        clearS2RouteState()
+        route = .s1
+        message = nil
+        return true
+    }
+
+    @discardableResult
+    func enterConfirmationFromS2(with payload: S2ExitPayload) -> Bool {
+        guard applyS2ExitPayload(payload),
+              let submission = s1Machine?.makeS3Submission() else {
+            return false
+        }
+        clearS2RouteState()
+        return enterConfirmationFromS1(submission)
+    }
+
+    @discardableResult
+    func enterConfirmationFromS1(
+        _ submission: SessionStore.S3Submission
+    ) -> Bool {
+        guard let s1Machine,
+              submission == s1Machine.makeS3Submission() else {
+            return false
+        }
+        let descriptors = descriptorsForS3(
+            orderedAssetIDs: submission.orderedAssetIDs
+        )
+        let cachedConclusions: [String: AssetScanConclusion]
+        if s3Machine?.sourceSessionID == submission.sourceSessionID {
+            cachedConclusions = s3Machine?.conclusionCache ?? [:]
+        } else {
+            cachedConclusions = [:]
+        }
+        return enterConfirmation(
+            from: submission,
+            sessionStore: s1Machine.sessionStore,
+            descriptors: descriptors,
+            cachedConclusions: cachedConclusions
+        )
+    }
+
+    func s2AssetAspectRatio(for assetID: String) -> CGFloat {
+        guard let asset = loadedAssets[assetID],
+              asset.pixelWidth > 0,
+              asset.pixelHeight > 0 else {
+            return 1
+        }
+        return CGFloat(asset.pixelWidth) / CGFloat(asset.pixelHeight)
     }
 
     func removeAsset(_ identifier: String) {
@@ -90,16 +245,22 @@ final class CleanupCoordinator: ObservableObject {
 
     @discardableResult
     func handleS3Return(_ returned: S3UpstreamReturn) -> Bool {
+        let sessionReturn = SessionStore.S3Return(
+            sourceSessionID: returned.sourceSessionID,
+            currentPendingDeletionAssetIDs:
+                returned.currentPendingDeletionAssetIDs
+        )
         guard route == .confirmation,
               var store = sessionStore,
-              store.applyS3Return(
-                  .init(
-                      sourceSessionID: returned.sourceSessionID,
-                      currentPendingDeletionAssetIDs:
-                          returned.currentPendingDeletionAssetIDs
-                  )
-              ) else {
+              store.applyS3Return(sessionReturn) else {
             return false
+        }
+        if let s1Machine {
+            guard s1Machine.sessionStore == sessionStore,
+                  s1Machine.applyS3Return(sessionReturn),
+                  s1Machine.sessionStore == store else {
+                return false
+            }
         }
 
         sessionStore = store
@@ -116,13 +277,27 @@ final class CleanupCoordinator: ObservableObject {
         cachedConclusions: [String: AssetScanConclusion] = [:]
     ) -> Bool {
         let descriptorIDs = descriptors.map(\.identifier)
+        let groupRangeIDs = submission.groups.map(\.sourceRangeID)
+        let groupedAssetIDs = submission.groups.flatMap(\.orderedAssetIDs)
         guard submission.sourceSessionID == sessionStore.sessionID,
               Set(submission.orderedAssetIDs).count ==
                   submission.orderedAssetIDs.count,
               Set(submission.orderedAssetIDs) ==
                   sessionStore.allPendingDeletionAssetIDs,
               Set(descriptorIDs).count == descriptorIDs.count,
-              Set(descriptorIDs) == Set(submission.orderedAssetIDs) else {
+              Set(descriptorIDs) == Set(submission.orderedAssetIDs),
+              Set(groupRangeIDs).count == groupRangeIDs.count,
+              submission.groups.allSatisfy({ group in
+                  !group.sourceRangeID.isEmpty &&
+                      !group.name.trimmingCharacters(
+                          in: .whitespacesAndNewlines
+                      ).isEmpty &&
+                      !group.orderedAssetIDs.isEmpty &&
+                      Set(group.orderedAssetIDs).count ==
+                          group.orderedAssetIDs.count
+              }),
+              groupedAssetIDs.count == submission.orderedAssetIDs.count,
+              Set(groupedAssetIDs) == Set(submission.orderedAssetIDs) else {
             return false
         }
 
@@ -134,6 +309,7 @@ final class CleanupCoordinator: ObservableObject {
         }
         self.sessionStore = sessionStore
         sessionDescriptors = descriptorByID
+        s3Groups = submission.groups
         s3Machine = S3StateMachine(
             assets: orderedDescriptors,
             cachedConclusions: cachedConclusions,
@@ -337,49 +513,98 @@ final class CleanupCoordinator: ObservableObject {
         }
     }
 
-    private func loadDebugAssets() async {
-        let authorization = await photoLibrary.requestAuthorization()
-        let assets: [PHAsset]
-        switch authorization {
-        case .authorized, .limited:
-            assets = photoLibrary.firstImageAssets(limit: Self.debugAssetLimit)
-            message = nil
-        case .denied, .restricted:
-            assets = []
-            message = L10n.text("coordinator.authorization.unavailable")
-        case .notDetermined:
-            assets = []
-            message = L10n.text("coordinator.authorization.not_completed")
-        @unknown default:
-            assets = []
-            message = L10n.text("coordinator.authorization.unknown")
+    private func prepareS1AfterAuthorizationRequest() async {
+        _ = await photoLibrary.requestAuthorization()
+        guard route == .loading else {
+            return
         }
+        _ = enterS1(sessionID: UUID().uuidString)
+    }
 
-        loadedAssets = Dictionary(
-            uniqueKeysWithValues: assets.map { ($0.localIdentifier, $0) }
+    private func installS1Session(
+        _ store: SessionStore,
+        route targetRoute: CleanupRoute
+    ) {
+        for task in scanTasks.values {
+            task.cancel()
+        }
+        scanTasks.removeAll()
+        s4TimerTask?.cancel()
+        s4TimerTask = nil
+        s4LastUptime = nil
+        loadedAssets.removeAll()
+        sessionDescriptors.removeAll()
+        sessionStore = store
+        s1Machine = S1StateMachine(
+            sessionStore: store,
+            initialGroupingDimension:
+                routeConfiguration.initialGroupingDimension,
+            initialSortOrder: routeConfiguration.initialSortOrder
         )
-        let descriptors = assets.map {
+        s2Machine = nil
+        s2EntryContext = nil
+        s3Machine = nil
+        s3Groups = []
+        s4Machine = nil
+        s5Machine = nil
+        route = targetRoute
+        message = nil
+    }
+
+    private func receiveS2PendingDeletionChange(
+        _ pendingDeletionAssetIDs: Set<String>
+    ) {
+        guard route == .s2,
+              let s1Machine,
+              let s2EntryContext,
+              s1Machine.applyS2PendingDeletionChange(
+                  pendingDeletionAssetIDs,
+                  entryContext: s2EntryContext
+              ) else {
+            return
+        }
+        sessionStore = s1Machine.sessionStore
+    }
+
+    private func applyS2ExitPayload(_ payload: S2ExitPayload) -> Bool {
+        guard route == .s2,
+              let s1Machine,
+              let entryContext = s2EntryContext,
+              payload.continuationSnapshot.orderedAssetIDs ==
+                  entryContext.orderedAssetIDs,
+              payload.continuationSnapshot.rangeDisplayInformation.rangeID ==
+                  entryContext.rangeID,
+              payload.continuationSnapshot.pendingDeletionAssetIDs ==
+                  payload.upstreamReturn.pendingDeletionAssetIDs,
+              payload.continuationSnapshot.currentAssetID ==
+                  payload.upstreamReturn.currentAssetID,
+              s1Machine.applyS2Return(
+                  payload.upstreamReturn,
+                  entryContext: entryContext
+              ) else {
+            return false
+        }
+        sessionStore = s1Machine.sessionStore
+        return true
+    }
+
+    private func clearS2RouteState() {
+        s2Machine = nil
+        s2EntryContext = nil
+    }
+
+    private func descriptorsForS3(
+        orderedAssetIDs: [String]
+    ) -> [AssetDescriptor] {
+        let fetchedAssets = photoLibrary.assetsByIdentifier(orderedAssetIDs)
+        loadedAssets.merge(fetchedAssets) { _, newValue in newValue }
+        return orderedAssetIDs.map { identifier in
             AssetDescriptor(
-                identifier: $0.localIdentifier,
-                isFavorite: $0.isFavorite
+                identifier: identifier,
+                isFavorite: loadedAssets[identifier]?.isFavorite ??
+                    sessionDescriptors[identifier]?.isFavorite ?? false
             )
         }
-        var store = SessionStore(sessionID: UUID().uuidString)
-        for descriptor in descriptors {
-            store.setMarked(
-                true,
-                assetID: descriptor.identifier,
-                rangeID: "debug"
-            )
-        }
-        let submission = store.makeS3Submission { $0 }
-        precondition(
-            enterConfirmation(
-                from: submission,
-                sessionStore: store,
-                descriptors: descriptors
-            )
-        )
     }
 
     private func beginPendingScans() {
@@ -560,21 +785,15 @@ final class CleanupCoordinator: ObservableObject {
             )
             return
         }
-        s4TimerTask?.cancel()
-        s4TimerTask = nil
-        s4LastUptime = nil
-        for task in scanTasks.values {
-            task.cancel()
+        let expiredSessionID = sessionStore?.sessionID
+        var nextSessionID = UUID().uuidString
+        while nextSessionID == expiredSessionID {
+            nextSessionID = UUID().uuidString
         }
-        scanTasks.removeAll()
-        loadedAssets.removeAll()
-        sessionDescriptors.removeAll()
-        sessionStore = nil
-        s3Machine = nil
-        s4Machine = nil
-        s5Machine = nil
-        route = .finished
-        message = nil
+        installS1Session(
+            SessionStore(sessionID: nextSessionID),
+            route: .finished
+        )
     }
 
     private func restorePersistedSession() -> Bool {

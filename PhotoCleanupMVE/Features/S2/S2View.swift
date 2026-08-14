@@ -613,7 +613,7 @@ struct S2BottomStripView: View {
     }
 }
 
-private enum S2PreviewData {
+enum S2PreviewData {
     // 以下数值只用于静态预览夹具，不是产品默认值或标定结果。
     static let parameters = S2ResolvedParameters(
         pinchMaxScale: 4,

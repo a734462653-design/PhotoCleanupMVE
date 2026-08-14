@@ -43,6 +43,8 @@
 		200000000000000000000022 /* S2StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000025 /* S2StateMachine.swift */; };
 		200000000000000000000023 /* S2View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000026 /* S2View.swift */; };
 		200000000000000000000024 /* S2StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000027 /* S2StateMachineTests.swift */; };
+		200000000000000000000025 /* S2TemporaryPhotoImageStrategy.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* S2TemporaryPhotoImageStrategy.swift */; };
+		200000000000000000000026 /* FullFlowRoutingTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000029 /* FullFlowRoutingTests.swift */; };
 /* PBXBuildFile 区段结束 */
 
 /* PBXContainerItemProxy 区段开始 */
@@ -95,6 +97,8 @@
 		100000000000000000000025 /* S2StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000026 /* S2View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2View.swift; sourceTree = "<group>"; };
 		100000000000000000000027 /* S2StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2StateMachineTests.swift; sourceTree = "<group>"; };
+		100000000000000000000028 /* S2TemporaryPhotoImageStrategy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2TemporaryPhotoImageStrategy.swift; sourceTree = "<group>"; };
+		100000000000000000000029 /* FullFlowRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullFlowRoutingTests.swift; sourceTree = "<group>"; };
 /* PBXFileReference 区段结束 */
 
 /* PBXFrameworksBuildPhase 区段开始 */
@@ -199,6 +203,7 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000026 /* S2View.swift */,
+				100000000000000000000028 /* S2TemporaryPhotoImageStrategy.swift */,
 			);
 			path = S2;
 			sourceTree = "<group>";
@@ -238,6 +243,7 @@
 		300000000000000000000009 /* PhotoCleanupMVETests */ = {
 			isa = PBXGroup;
 			children = (
+				100000000000000000000029 /* FullFlowRoutingTests.swift */,
 				100000000000000000000024 /* S1StateMachineTests.swift */,
 				100000000000000000000027 /* S2StateMachineTests.swift */,
 				100000000000000000000020 /* SessionStoreTests.swift */,
@@ -382,6 +388,7 @@
 				200000000000000000000018 /* FreeDiskSpaceReader.swift（源码） */,
 				200000000000000000000020 /* S1View.swift（源码） */,
 				200000000000000000000023 /* S2View.swift（源码） */,
+				200000000000000000000025 /* S2TemporaryPhotoImageStrategy.swift（源码） */,
 				20000000000000000000000B /* S3View.swift（源码） */,
 				20000000000000000000000C /* S4View.swift（源码） */,
 				20000000000000000000000D /* S5View.swift（源码） */,
@@ -394,6 +401,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				200000000000000000000026 /* FullFlowRoutingTests.swift（测试源码） */,
 				200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */,
 				200000000000000000000024 /* S2StateMachineTests.swift（测试源码） */,
 				20000000000000000000001D /* SessionStoreTests.swift（测试源码） */,

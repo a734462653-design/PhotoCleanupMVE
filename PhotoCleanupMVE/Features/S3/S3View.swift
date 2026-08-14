@@ -19,6 +19,12 @@ struct S3View: View {
                             "s3.asset.pending_count",
                             replacing: ["count": String(machine.assetCount)]
                         ))
+                        Text(L10n.text(
+                            "s3.scope.source_summary.placeholder",
+                            replacing: [
+                                "count": String(coordinator.s3Groups.count)
+                            ]
+                        ))
                         Text(volumeText(machine))
                         if machine.state == .ready {
                             Text(L10n.text("s3.confirmation.recently_deleted_notice"))
@@ -28,25 +34,14 @@ struct S3View: View {
                         }
                     }
 
-                    Section(L10n.text("s3.section.pending_assets")) {
-                        ForEach(machine.assets, id: \.identifier) { asset in
-                            HStack {
-                                ThumbnailView(assetIdentifier: asset.identifier)
-                                VStack(alignment: .leading) {
-                                    Text(asset.identifier)
-                                        .lineLimit(2)
-                                    if asset.isFavorite {
-                                        Label(
-                                            L10n.text("s3.asset.favorite"),
-                                            systemImage: "heart.fill"
-                                        )
-                                    }
-                                }
-                                Spacer()
-                                Button(L10n.text("s3.action.remove")) {
-                                    coordinator.removeAsset(asset.identifier)
-                                }
-                                .disabled(machine.frozenSnapshot != nil)
+                    ForEach(
+                        coordinator.s3Groups,
+                        id: \.sourceRangeID
+                    ) { group in
+                        let assets = currentAssets(in: group, machine: machine)
+                        Section(groupTitle(group, assetCount: assets.count)) {
+                            ForEach(assets, id: \.identifier) { asset in
+                                assetRow(asset, machine: machine)
                             }
                         }
                     }
@@ -71,6 +66,55 @@ struct S3View: View {
             } else {
                 ProgressView()
             }
+        }
+    }
+
+    private func currentAssets(
+        in group: SessionStore.S3Submission.Group,
+        machine: S3StateMachine
+    ) -> [AssetDescriptor] {
+        let descriptorByID = Dictionary(
+            uniqueKeysWithValues: machine.assets.map {
+                ($0.identifier, $0)
+            }
+        )
+        return group.orderedAssetIDs.compactMap { descriptorByID[$0] }
+    }
+
+    private func groupTitle(
+        _ group: SessionStore.S3Submission.Group,
+        assetCount: Int
+    ) -> String {
+        L10n.text(
+            "s3.group.asset_count",
+            replacing: [
+                "name": group.name,
+                "count": String(assetCount)
+            ]
+        )
+    }
+
+    private func assetRow(
+        _ asset: AssetDescriptor,
+        machine: S3StateMachine
+    ) -> some View {
+        HStack {
+            ThumbnailView(assetIdentifier: asset.identifier)
+            VStack(alignment: .leading) {
+                Text(asset.identifier)
+                    .lineLimit(2)
+                if asset.isFavorite {
+                    Label(
+                        L10n.text("s3.asset.favorite"),
+                        systemImage: "heart.fill"
+                    )
+                }
+            }
+            Spacer()
+            Button(L10n.text("s3.action.remove")) {
+                coordinator.removeAsset(asset.identifier)
+            }
+            .disabled(machine.frozenSnapshot != nil)
         }
     }
 

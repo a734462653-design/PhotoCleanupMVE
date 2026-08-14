@@ -421,6 +421,57 @@ final class S1StateMachine: ObservableObject {
         return true
     }
 
+    @discardableResult
+    func applyS2PendingDeletionChange(
+        _ pendingDeletionAssetIDs: Set<String>,
+        entryContext: SessionStore.S2EntryContext
+    ) -> Bool {
+        guard !isObscured,
+              state == .ready,
+              let range = ranges.first(where: { $0.id == entryContext.rangeID }),
+              entryContext.sortOrder == sortOrder.sessionSortOrder,
+              entryContext.orderedAssetIDs == range.orderedAssetIDs(for: sortOrder),
+              pendingDeletionAssetIDs.isSubset(
+                  of: Set(entryContext.orderedAssetIDs)
+              ) else {
+            return false
+        }
+
+        var nextStore = sessionStore
+        let previous = nextStore.pendingDeletionAssetIDsByRangeID[
+            entryContext.rangeID
+        ] ?? []
+        for assetID in previous.subtracting(pendingDeletionAssetIDs).sorted() {
+            nextStore.setMarked(
+                false,
+                assetID: assetID,
+                rangeID: entryContext.rangeID
+            )
+        }
+        for assetID in pendingDeletionAssetIDs.subtracting(previous).sorted() {
+            nextStore.setMarked(
+                true,
+                assetID: assetID,
+                rangeID: entryContext.rangeID
+            )
+        }
+        sessionStore = nextStore
+        return true
+    }
+
+    @discardableResult
+    func applyS3Return(_ returned: SessionStore.S3Return) -> Bool {
+        guard !isObscured else {
+            return false
+        }
+        var nextStore = sessionStore
+        guard nextStore.applyS3Return(returned) else {
+            return false
+        }
+        sessionStore = nextStore
+        return true
+    }
+
     private static func areValid(_ ranges: [S1Range]) -> Bool {
         var rangeIDs = Set<String>()
         for range in ranges {
