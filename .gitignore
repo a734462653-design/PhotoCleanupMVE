@@ -5,3 +5,12 @@ build/
 *.xcuserstate
 xcuserdata/
 *.ipa
+# 签名材料，禁止提交
+*.p12
+*.p8
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+*.keychain
+*.key
