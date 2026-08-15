@@ -683,6 +683,17 @@
         }
       }
     },
+    "s2.calibration.option.anchor.touch_point_to_center" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前触点移至屏幕中心"
+          }
+        }
+      }
+    },
     "s2.calibration.option.fit_scope.all_photos" : {
       "extractionState" : "manual",
       "localizations" : {

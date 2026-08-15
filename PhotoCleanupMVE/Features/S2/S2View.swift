@@ -837,6 +837,8 @@ struct S2View: View {
             return L10n.text("s2.calibration.option.anchor.touch_point")
         case .previousTouchPoint:
             return L10n.text("s2.calibration.option.anchor.previous_touch_point")
+        case .touchPointToCenter:
+            return L10n.text("s2.calibration.option.anchor.touch_point_to_center")
         }
     }
 
