@@ -1,67 +1,135 @@
-# IC-20260815-055 自验报告
+# IC-20260815-055-s2-system-parity 自验报告
 
 ## 1. 结论
 
-IC-055 已完成。功能提交 `28b33ea3dd30cb482edbc75207d4a8af15581586` 在 CI #37
-通过结构自验、用户可见硬编码扫描、295 项 XCTest、未签名 Release 应用构建和 IPA
-artifact 上传，结论为 `completed/success`。
+IC-055 系统对齐卡已完成。功能提交
+`cc82ec493c21aba7d2b162270f697dc63c39a8b5` 在 CI #38 通过结构自验、
+用户可见硬编码扫描、304 项 XCTest、未签名 Release 应用构建及 IPA artifact 上传，
+结论为 `completed/success`。
 
-本卡新增 L1～L7 共 7 项 XCTest，上游 IC-054 的 V1～V8 全部继续通过。CI 日志的
-全量结果为 `Executed 295 tests, with 0 failures (0 unexpected)`，满足不少于
-`288 + 7` 项的数量门槛。
+CI 全量测试结果为：
 
-## 2. L1～L7
+```text
+Executed 304 tests, with 0 failures (0 unexpected)
+** TEST SUCCEEDED **
+```
 
-| 编号 | XCTest 方法 | 当前状态 |
+数量构成为：IC-054 上游 288 项 + 本卡要求的 15 项 + 统一动画策略附加测试 1 项
+= 304 项，满足“不少于 288 + 15”的门槛。L1～L7、P1～P3、R1～R2、
+T1～T3 与 V1～V8 均在 CI 日志中逐项显示为 `passed`。
+
+## 2. L1～L7 布局与面板测试
+
+| 编号 | XCTest 方法 | CI #38 状态 |
 |---|---|---|
-| L1 | `testL1TopOverlayFramesRespectSafeAreaTop` | CI #37 通过 |
-| L2 | `testL2BottomOverlayFramesRespectHomeIndicator` | CI #37 通过 |
-| L3 | `testL3TopOverlayFramesDoNotIntersect` | CI #37 通过 |
-| L4 | `testL4ClickableOverlayControlsMeetMinimumTouchTarget` | CI #37 通过 |
-| L5 | `testL5CalibrationPanelsDoNotChangeViewportSize` | CI #37 通过 |
-| L6 | `testL6CalibrationPanelsStartHiddenWithoutVisibleEntry` | CI #37 通过 |
-| L7 | `testL7FactoryDefaultsMatchUsableBuildDecision` | CI #37 通过 |
+| L1 | `testL1TopOverlayFramesRespectSafeAreaTop` | 通过 |
+| L2 | `testL2BottomOverlayFramesRespectHomeIndicator` | 通过 |
+| L3 | `testL3TopOverlayFramesDoNotIntersect` | 通过 |
+| L4 | `testL4ClickableOverlayControlsMeetMinimumTouchTarget` | 通过 |
+| L5 | `testL5CalibrationPanelsDoNotChangeViewportSize` | 通过 |
+| L6 | `testL6CalibrationPanelsStartHiddenWithoutVisibleEntry` | 通过 |
+| L7 | `testL7FactoryDefaultsMatchSystemParityDecision` | 通过 |
 
-## 3. V1～V8 回归
+布局实现继续保持全屏物理边界视口，主图不因安全区或面板内缩。顶部浮层从系统顶部
+安全区下沿开始，底部浮层截止于 home indicator 上沿；顶部四元素使用明确帧计算与
+最小 8 pt 间距，全部可点击浮层控件至少为 44 × 44 pt。两个后台面板首次启动关闭，
+主界面无入口占位，长按主图才显示后台控制条；面板开关不参与视口尺寸计算。
 
-| 编号 | XCTest 方法 | 当前状态 |
+## 3. P1～P3 Nx 平移测试与根因
+
+| 编号 | XCTest 方法 | CI #38 状态 |
 |---|---|---|
-| V1 | `testV1InterfaceVisibilityKeepsViewportSizeEqual` | CI #37 通过 |
-| V2 | `testV2BottomStripStatesKeepViewportSizeAndHeightEqual` | CI #37 通过 |
-| V3 | `testV3SheetPresentationKeepsViewportSizeEqual` | CI #37 通过 |
-| V4 | `testV4AllPresentationStatesShareFitAndDoubleTapMultiplier` | CI #37 通过 |
-| V5 | `testV5ParametersSurviveProcessModelRestart` | CI #37 通过 |
-| V6 | `testV6AllFourImageRequestStrategiesTakeEffectImmediately` | CI #37 通过 |
-| V7 | `testV7MissingAspectCategoryReturnsExplicitEmptyResult` | CI #37 通过 |
-| V8 | `testV8FitInsetRatioGeometryAndScopeAreCorrect` | CI #37 通过 |
+| P1 | `testP1NxSingleFingerDragProducesNonzeroPan` | 通过 |
+| P2 | `testP2NxPanStopsAtContentBoundaryWithoutExtraMargin` | 通过 |
+| P3 | `testP3OneXSingleFingerDragDoesNotPanPhoto` | 通过 |
 
-- IC-054 上游 XCTest：288
-- 本卡新增 XCTest：7
-- CI 实际执行 XCTest：295
-- 失败：0
-- 意外失败：0
+### 根因
 
-## 4. 实现与布局自验
+根因是手势识别被拦截，不是 `panLimits` 算错或边界公式退化。旧实现的
+`S2MainGestureModifier` 在默认 `pinchBeforeSingleDrag` 下使用：
 
-- 主图继续以全屏物理边界作为视口，根视图的 `ignoresSafeArea` 保持不变。
-- 浮层从系统窗口读取实际安全区；顶部元素从顶部安全区下沿开始，底部操作区与照片横栏
-  截止于主屏幕指示条上沿。
-- 返回、范围信息、当前照片状态、确认入口使用同一套明确帧计算；最小间距为 8 pt。
-- 产品按钮、照片横栏和后台控制条的触控区域不小于 44 × 44 pt。
-- 参数面板与实时读数面板首次进入均关闭；主界面没有入口帧或可见入口，长按主图区域后
-  才显示后台控制条，再分别打开两个面板。
-- 两个后台面板只覆盖视口，不参与视口尺寸计算；分别开关和同时打开均由 L5 覆盖。
-- `.regularMaterial` 使用数量与 IC-054 基线一致，没有新增配色、字体、图标、圆角或阴影。
+```swift
+pinchGesture.exclusively(before: singleDragGesture)
+```
 
-## 5. 参数导出文本样例
+单指序列开始后，排在前面的 `MagnifyGesture` 不会及时失败，排在后面的
+`DragGesture` 因而拿不到连续 `onChanged`。状态机的 `updateMainPan` 与
+`S2Geometry.clampedOffset` 本身可以产生正确位移，但真机输入没有抵达该路径，表现为
+“Nx 放大后无法平移”。
 
-导出格式仍为 UTF-8 纯文本，字段顺序固定，浮点数固定保留六位小数。值状态统一改为
-“④项目判断默认值，可修订”。竖滑距离和速度位于后台面板最上方，并显示“核心手感参数，
-优先调整”。第 8 条列出的系统惯例字段不再出现在调参范围中，但继续完整导出。
+修复后捏合与单拖识别器同时接收事件，再由 `S2MainGestureArbitration` 和状态机既有
+触摸所有权显式仲裁；捏合已占用序列时单拖不更新，普通单指序列可实时进入 Nx 平移。
+`panLimits` 仍严格使用 v13 锁定公式：
+
+```text
+max(0, (缩放后内容尺寸 - 视口尺寸) / 2)
+```
+
+未增加余量，未改动共同不变量。P2 在两个轴到达内容边界后继续施加位移，结果保持在
+精确边界；P3 确认 s = 1 时仍不产生主图平移。
+
+## 4. R1～R2 图像请求测试
+
+| 编号 | XCTest 方法 | CI #38 状态 |
+|---|---|---|
+| R1 | `testR1PinchRequestsExactlyOnceAfterPinchEnded` | 通过 |
+| R2 | `testR2PinchDoesNotReplaceWithDegradedPreview` | 通过 |
+
+出厂请求策略已改为 `pinchEnded`，降质预览策略为 `finalImageOnly`。捏合过程中的每次
+比例变化只变换已加载图像，`scaleChange` 请求判定全部为 false；捏合结束后仅为当前
+素材增加一次请求修订并发出一次请求。请求修订与素材 ID 绑定，切页造成的旧修订回退
+不会触发请求。PhotoKit 即使返回降质回调也只记录、不替换显示图，最终图返回后才一次
+性替换。两个策略枚举与调参面板 Picker 均保留，可在后台面板切换。
+
+## 5. T1～T3 系统式跟手分页测试
+
+| 编号 | XCTest 方法 | CI #38 状态 |
+|---|---|---|
+| T1 | `testT1AdjacentPageTracksFingerWithSameSignAndMonotonicOffset` | 通过 |
+| T2 | `testT2BelowSnapThresholdReturnsToCurrentPage` | 通过 |
+| T3 | `testT3PagingKeepsPhotoSizeAndResetsScaleAfterSwitch` | 通过 |
+
+主图容器同时保留前一页、当前页和后一页。水平拖动期间三页只叠加同一个手指横向位移，
+相邻照片与手指同号、等量、单调移动；不使用淡入淡出、缩放弹出或任意方向飞入。
+松手后按原水平或 Nx 边缘分页距离与速度阈值吸附：达标时滑到相邻页，未达标时回到
+当前页且索引不变。分页跟手和吸附过程中当前主图的缩放尺寸不变；切页提交仍复用既有
+`resetZoomAfterPhotoChange`，新照片的 s = 1、偏移为零。
+
+## 6. V1～V8 回归
+
+| 编号 | XCTest 方法 | CI #38 状态 |
+|---|---|---|
+| V1 | `testV1InterfaceVisibilityKeepsViewportSizeEqual` | 通过 |
+| V2 | `testV2BottomStripStatesKeepViewportSizeAndHeightEqual` | 通过 |
+| V3 | `testV3SheetPresentationKeepsViewportSizeEqual` | 通过 |
+| V4 | `testV4AllPresentationStatesShareFitAndDoubleTapMultiplier` | 通过 |
+| V5 | `testV5ParametersSurviveProcessModelRestart` | 通过 |
+| V6 | `testV6AllFourImageRequestStrategiesTakeEffectImmediately` | 通过 |
+| V7 | `testV7MissingAspectCategoryReturnsExplicitEmptyResult` | 通过 |
+| V8 | `testV8FitInsetRatioGeometryAndScopeAreCorrect` | 通过 |
+
+附加测试 `testA1AnimationPolicyDisablesCalibratedAnimations` 也在 CI #38 通过。
+
+## 7. 动效来源审计
+
+| 来源位置 | 触发条件 | 修复前是否受 `animationsEnabled` 控制 | 当前状态 |
+|---|---|---|---|
+| `S2View.performCalibratedAnimation` | 单击界面显隐、双击缩放、捏合结束回正；返回、确认及相册操作状态变化 | 手势结束受控；返回、确认和相册状态变化未全部经此入口 | 已统一接入；false 时使用禁用动画的 Transaction |
+| `S2View.animatePageTranslation` | 水平拖动松手后的目标页吸附或当前页回弹 | 原实现没有跟手分页 | 受 `S2AnimationPolicy` 控制；false 时立即结算，无吸附动画 |
+| SwiftUI `.sheet` | 点击“添加到相册”展示，取消或选择后退场 | 未受控；这是确认的遗漏来源 | 展示、关闭、选择均经统一动画入口；false 时根事务禁用动画，并禁用交互式拖拽退场 |
+| S2 根视图隐式动画事务 | 条件浮层、状态文本或系统容器继承到动画事务时 | 没有统一兜底 | 根 `.transaction` 在 false 时清空动画并设置 `disablesAnimations = true` |
+
+源码中实际显式 `withAnimation` 只有两处：统一校准动画与分页吸附，二者都读取同一个
+`S2AnimationPolicy`。以下可见变化不属于动画源：捏合、Nx 平移、分页跟手和底部横栏
+拖动是手指直接驱动；单击延时是单双击判定窗口；最终图片替换没有 transition；收藏、
+相册写入后的文字或图标是瞬时状态更新。关闭动画不会阻断这些直接手势输入，但会移除
+松手后的补间、系统 sheet 展退场和继承到的隐式动效。
+
+## 8. 参数导出样例
 
 ```text
 schemaVersion=1
-taskID=IC-20260815-055-s2-usable-build
+taskID=IC-20260815-055-s2-system-parity
 valueStatus=④项目判断默认值，可修订
 pinchMaxScale=4.000000
 zoomSnapBackThreshold=1.100000
@@ -91,11 +159,11 @@ doubleTapTouchCount=1
 singleDragTouchCount=1
 pinchTouchCount=2
 gestureExclusivityPolicy=pinchBeforeSingleDrag
-scaleChangeRequestPolicy=everyScaleChange
+scaleChangeRequestPolicy=pinchEnded
 degradedPreviewPolicy=finalImageOnly
 animationsEnabled=true
-animationDurationMilliseconds=220.000000
-fitInsetRatio=0.050000
+animationDurationMilliseconds=180.000000
+fitInsetRatio=0.080000
 fitInsetScope=screenAspectOnly
 bottomStripCurrentItemSize=72.000000
 bottomStripNeighborItemWidth=52.000000
@@ -106,40 +174,49 @@ bottomStripDragMinimumDistance=4.000000
 bottomStripSwitchDistance=44.000000
 ```
 
-## 6. CI 与 IPA
+第 12～15 条逐项结果：`fitInsetRatio=0.08`、
+`fitInsetScope=screenAspectOnly`、`animationDurationMilliseconds=180`、
+`animationsEnabled=true`、`verticalSwipeDistance=40`、
+`verticalSwipeVelocity=100`；其余字段保持 IC-054 数值，状态标签统一为
+“④项目判断默认值，可修订”。
 
-- CI run：[iOS 构建与自验 #37](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31882760952)
-- CI job：[构建、XCTest 与未签名产物](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31882760952/job/95007520958)
+## 9. CI 与 IPA
+
+- CI run：[iOS 构建与自验 #38](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31893421517)
+- CI job：[构建、XCTest 与未签名产物](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31893421517/job/95032977308)
 - CI 结论：`completed/success`
-- CI 被测提交：`28b33ea3dd30cb482edbc75207d4a8af15581586`
-- XCTest 日志：`Executed 295 tests, with 0 failures (0 unexpected)`
-- IPA artifact：[PhotoCleanupMVE-unsigned-28b33ea3dd30](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31882760952/artifacts/9246488406)
-- artifact ID：`9246488406`
-- artifact 外层归档字节数：`559200`
-- artifact 外层归档摘要：`sha256:79b236dbe70d1acfced33b11d1ff7e1b279b700f531db63fa1638813a4884670`
+- CI 被测提交：`cc82ec493c21aba7d2b162270f697dc63c39a8b5`
+- XCTest：`Executed 304 tests, with 0 failures (0 unexpected)`
+- IPA artifact：[PhotoCleanupMVE-unsigned-cc82ec493c21](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31893421517/artifacts/9249172230)
+- artifact ID：`9249172230`
+- artifact 外层归档字节数：`570449`
+- artifact 外层归档摘要：`sha256:9fb35bb9b90e6563881f93bbac7636becae8a3fc77475251983a73cf2d065c23`
 - IPA 文件：`PhotoCleanupMVE-unsigned.ipa`
-- IPA 字节数：`559030`
-- IPA SHA-256：`101f95b3b5a0a9e2aea9906f77eaf495d71bf04386561ac6d00110d57a74527b`
-- artifact 到期时间：`2026-11-13T11:43:10Z`
+- IPA 字节数：`570279`
+- IPA SHA-256：`0785aa0e29a62deb935882b7296ab13e454ed9e7799dcc4ea2f92efccfd70030`
+- artifact 到期时间：`2026-11-13T15:41:17Z`
 
-核验过程只从 GitHub 官方 API 读取本次 run 的日志与 artifact。下载前已全文审阅 CI
-workflow；下载后先拒绝绝对路径及 `..` 路径，再确认外层归档恰有一个 IPA，并确认 IPA
-存在 `Payload/PhotoCleanupMVE.app/PhotoCleanupMVE` 主程序。未执行任何下载内容。外层归档
-摘要与 GitHub 元数据一致，独立复算的 IPA 字节数和 SHA-256 与 CI 日志一致。
+CI workflow 已全文审阅：只检出本仓库、运行仓库内自验/Xcode 命令、构建无账号签名的
+Release 应用，并由固定提交的 GitHub 官方 artifact 动作上传。应用代码没有新增网络
+地址、数据传输或第三方依赖。IPA 摘要与大小取自 CI 构建步骤生成的 job summary，外层
+摘要与大小由 GitHub artifact 元数据确认。未执行下载内容。
 
-该产物不含开发者账号签名，可供侧载工具签名安装；本卡禁止账号操作，因此没有生成绑定
-具体设备或账号的签名包。
+产物不包含开发者账号签名，可由侧载工具签名安装；本卡禁止账号操作，因此未生成绑定
+具体账号、设备或描述文件的签名包。
 
-## 7. 变更文件清单
+## 10. 变更文件清单
 
+- `PhotoCleanupMVE/Core/S2StateMachine.swift`
 - `PhotoCleanupMVE/Features/S2/S2Calibration.swift`
+- `PhotoCleanupMVE/Features/S2/S2TemporaryPhotoImageStrategy.swift`
 - `PhotoCleanupMVE/Features/S2/S2View.swift`
-- `PhotoCleanupMVE/Localizable.xcstrings`
 - `PhotoCleanupMVETests/S2CalibrationHarnessTests.swift`
 - `Scripts/verify-IC-20260815-055.ps1`
 - `selfcheck_IC-055_report.md`
 
-## 8. 自验脚本
+清单不含任何 `SPEC-*.md` 或 `Decision_log.md`。
+
+## 11. 自验脚本
 
 执行：
 
@@ -147,33 +224,24 @@ workflow；下载后先拒绝绝对路径及 `..` 路径，再确认外层归档
 ./Scripts/verify-IC-20260815-055.ps1
 ```
 
-脚本检查指定分支与 IC-054 基线、295 项数量门槛、L1～L7、V1～V8、默认参数、面板范围、
-安全区接线、44 pt 触达约束、后台入口、系统材质、禁止视觉样式、允许文件清单、
-`debugAssetLimit`、`git diff --check`、仓库结构及用户可见硬编码扫描。
+最终本地结果：99 项检查通过；静态 XCTest 总数 304；L1～L7、P1～P3、R1～R2、
+T1～T3 与 V1～V8 全部存在；用户可见硬编码残留 0；String Catalog 产品 key 与源码
+引用均为 148；`git diff --check` 通过。
 
-最终本地结果：73 项检查通过；静态 XCTest 总数 295；用户可见硬编码残留 0；String
-Catalog 的产品 key 与源码引用均为 148。
+## 12. 执行边界声明
 
-## 9. 执行边界声明
-
-- 开发基线：`16c03234f96f12af10843b1df2602214f2e71a74`（IC-054 分支最终提交）
-- 开发分支：`feature/ic-055-usable-build`
-- 功能提交：`28b33ea3dd30cb482edbc75207d4a8af15581586`
-- 成功普通 push：2 次（功能提交与本报告回填提交）
-- push 目标：仅 `origin/feature/ic-055-usable-build`
+- 开发基线：`3bfa5f53bb7742b9dff2a6fdb12ca03f755bee93`
+- 开发分支：`feature/ic-055-system-parity`
+- 功能提交：`cc82ec493c21aba7d2b162270f697dc63c39a8b5`
+- push 目标：仅 `origin/feature/ic-055-system-parity`
 - 合并 `main`：未执行
 - force push：未执行
 - PR：未创建
-- 账号设置、授权或其他账号操作：未执行
+- 账号设置、授权、签名或其他账号操作：未执行
 - `SPEC-*.md` 与 `Decision_log.md`：未修改
 - S1、S3、S4、S5：未修改
-- 视口几何、缩放逻辑、既有手势判定、图像请求实现：未修改；只增加本卡授权的后台长按入口
+- 上滑标记、下滑取消语义与阈值：未修改
+- v13 `panLimits` 公式及零余量共同不变量：未修改
 - `debugAssetLimit`：保持 `300`，未清理
-
-任务卡第 8 条的文字称“38 项”，但其列出的字段名和通配模式按 IC-054 当前导出实际覆盖
-30 项；另有 `aspectFillDegenerate*` 两项与 `verticalSwipeMaximumDurationMilliseconds` 未被
-第 8～11 条直接点名。本实现以显式字段名和通配模式优先：这三项保持 IC-054 数值不变，
-也不擅自加入可修订面板；L7 对全部 41 个出厂字段逐项锁定。
-
-验收标准原文停在“C.”且没有后续内容。本报告只对已完整下发的 A、B 和三项交付物作结论，
-没有猜测或扩展缺失的 C 条件。
+- 配色、字体、图标、圆角、阴影：未修改；既有 `.regularMaterial` 数量不变
+- 产品负责人手感验收：不冒充自动自验结论，仍由负责人真机验收
