@@ -155,7 +155,12 @@ try {
 
     $调试定义 = @(Select-String -LiteralPath (Join-Path $项目根 "PhotoCleanupMVE/App/CleanupCoordinator.swift") -Pattern 'static\s+let\s+debugAssetLimit\s*=\s*300')
     检查 ($调试定义.Count -eq 1) "debugAssetLimit 被改动"
-    检查 (Test-Path -LiteralPath (Join-Path $项目根 "selfcheck_IC-059_report.md") -PathType Leaf) "缺少 IC-059 自验报告"
+    $报告存在 = Test-Path -LiteralPath (Join-Path $项目根 "selfcheck_IC-059_report.md") -PathType Leaf
+    检查 $报告存在 "缺少 IC-059 自验报告"
+    if ($报告存在) {
+        $报告文本 = 读取 "selfcheck_IC-059_report.md"
+        检查 (-not [regex]::IsMatch($报告文本, '__[A-Z0-9_]+__')) "IC-059 自验报告仍含待回填占位符"
+    }
 
     git diff --check $继承提交
     检查 ($LASTEXITCODE -eq 0) "git diff --check 失败"
