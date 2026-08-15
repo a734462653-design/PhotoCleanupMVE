@@ -631,6 +631,20 @@ final class S2NativeZoomPageController: UIViewController,
             recognizers.contains { $0 === doubleTapRecognizer }
     }
 
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldReceive touch: UITouch
+    ) -> Bool {
+        guard gestureRecognizer === singleTapRecognizer else {
+            return true
+        }
+        return allowsSingleTap(tapCount: touch.tapCount)
+    }
+
+    func allowsSingleTap(tapCount: Int) -> Bool {
+        tapCount == 1
+    }
+
     private func applyCornerMask() {
         hostingController.view.layer.cornerRadius = max(0, cornerRadius)
         hostingController.view.layer.cornerCurve = .continuous

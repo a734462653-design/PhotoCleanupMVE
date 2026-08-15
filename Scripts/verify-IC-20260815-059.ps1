@@ -116,6 +116,8 @@ try {
     检查 ($原生容器文本.Contains("let singleTapRecognizer = UITapGestureRecognizer()")) "缺少原生单击识别器"
     检查 ($原生容器文本.Contains("let doubleTapRecognizer = UITapGestureRecognizer()")) "缺少原生双击识别器"
     检查 ($原生容器文本.Contains("shouldRecognizeSimultaneouslyWith")) "单击与双击未交给原生同时识别裁决"
+    检查 ($原生容器文本.Contains("shouldReceive touch: UITouch")) "单击识别器未在原生 delegate 层接收触点"
+    检查 ($原生容器文本.Contains("allowsSingleTap(tapCount: touch.tapCount)")) "第二击未使用 UIKit tapCount 从单击识别器排除"
     检查 (-not $原生容器文本.Contains("S2TapSequenceCoordinator")) "仍使用自建点击协调器"
     检查 (([regex]::Matches($原生容器文本, 'require\(\s*toFail:\s*verticalSwipeRecognizer')).Count -eq 2) "竖向手势与两层原生滚动的优先级未显式声明"
     检查 ($原生容器文本.Contains("S2NxEdgePagingInteraction")) "缺少 Nx 边界溢出分页"

@@ -1133,6 +1133,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page.singleTapRecognizer,
             shouldRecognizeSimultaneouslyWith: page.doubleTapRecognizer
         ))
+        XCTAssertTrue(page.allowsSingleTap(tapCount: 1))
+        XCTAssertFalse(page.allowsSingleTap(tapCount: 2))
         XCTAssertTrue(direct.handleNativeDoubleTap(targetScale: targetScale))
         XCTAssertTrue(page.applyRecognizedSingleTap())
         XCTAssertTrue(page.applyRecognizedDoubleTap(
@@ -1149,7 +1151,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let controller = makeNativePagerController(machine: machine)
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
 
+        XCTAssertTrue(page.allowsSingleTap(tapCount: 1))
         XCTAssertTrue(page.applyRecognizedSingleTap())
+        XCTAssertTrue(page.allowsSingleTap(tapCount: 1))
         XCTAssertTrue(page.applyRecognizedSingleTap())
         XCTAssertEqual(machine.interfaceVisibility, .visible)
         XCTAssertEqual(machine.scale, 1)
