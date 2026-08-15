@@ -110,6 +110,8 @@ try {
     检查 (-not $视图文本.Contains("private func mainDragGesture")) "S2 主图仍使用自定义拖动实现"
     检查 (-not $视图文本.Contains("scaleEffect(scale)")) "S2 主图仍使用手写缩放变换"
     检查 (-not $状态机文本.Contains("enum S2PagingInteraction")) "仍保留手写分页计算器"
+    检查 (-not $原生容器文本.Contains("isAtHorizontalBoundary")) "原生嵌套滚动仍包含手写边界计算"
+    检查 (-not $原生容器文本.Contains("holdPaging")) "原生嵌套滚动仍手动锁定分页偏移"
 
     检查 ($原生容器文本.Contains("final class S2NativePagingScrollView: UIScrollView")) "分页容器不是 UIScrollView"
     检查 ($原生容器文本.Contains("isPagingEnabled = true")) "分页容器未启用原生分页"

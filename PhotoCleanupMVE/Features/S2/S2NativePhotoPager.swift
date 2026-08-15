@@ -284,20 +284,6 @@ final class S2NativeZoomScrollView: UIScrollView {
         return zoomContentView.convert(zoomContentView.bounds, to: self)
     }
 
-    func isAtHorizontalBoundary(towardNext: Bool) -> Bool {
-        let minimumOffset = -adjustedContentInset.left
-        let maximumOffset = max(
-            minimumOffset,
-            contentSize.width - bounds.width + adjustedContentInset.right
-        )
-        if maximumOffset - minimumOffset <= 0.5 {
-            return true
-        }
-        return towardNext
-            ? contentOffset.x >= maximumOffset - 0.5
-            : contentOffset.x <= minimumOffset + 0.5
-    }
-
     func updatePanAvailability() {
         let shouldEnable = zoomScale > minimumZoomScale + 0.000_001
         if panGestureRecognizer.isEnabled != shouldEnable {
@@ -490,8 +476,7 @@ final class S2NativeZoomPageController: UIViewController,
 }
 
 final class S2NativePagerViewController: UIViewController,
-    UIScrollViewDelegate,
-    UIGestureRecognizerDelegate {
+    UIScrollViewDelegate {
     let pagingScrollView = S2NativePagingScrollView()
     private(set) var pageControllers: [Int: S2NativeZoomPageController] = [:]
     private weak var machine: S2StateMachine?
@@ -500,8 +485,6 @@ final class S2NativePagerViewController: UIViewController,
     private var tapSequenceCoordinator = S2TapSequenceCoordinator()
     private var onLongPress: (() -> Void)?
     private var isApplyingSnapshot = false
-    private var isHoldingPagingOffset = false
-    private var pagingUnlocked = true
     private var settledIndex = 0
     private var outerDragStartDate: Date?
     private var lastOuterTranslation = CGSize.zero
@@ -519,7 +502,6 @@ final class S2NativePagerViewController: UIViewController,
     override func viewDidLoad() {
         super.viewDidLoad()
         pagingScrollView.delegate = self
-        pagingScrollView.panGestureRecognizer.delegate = self
         let longPress = UILongPressGestureRecognizer(
             target: self,
             action: #selector(handleLongPress(_:))
@@ -722,49 +704,6 @@ final class S2NativePagerViewController: UIViewController,
         lastOuterTranslation = .zero
         lastOuterVelocity = 0
         lastOuterDuration = 0
-        guard let machine, machine.zoomState == .nX,
-              let currentPage = pageControllers[machine.currentIndex] else {
-            pagingUnlocked = true
-            return
-        }
-        let velocity = pagingScrollView.panGestureRecognizer.velocity(
-            in: pagingScrollView
-        )
-        if abs(velocity.x) <= abs(velocity.y) {
-            pagingUnlocked = false
-        } else {
-            pagingUnlocked = currentPage.zoomScrollView
-                .isAtHorizontalBoundary(towardNext: velocity.x < 0)
-        }
-    }
-
-    func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard scrollView === pagingScrollView,
-              !isApplyingSnapshot,
-              !isHoldingPagingOffset,
-              let machine else {
-            return
-        }
-        let settledOffset = pagingScrollView
-            .contentOffsetForPage(at: settledIndex)
-        let delta = pagingScrollView.contentOffset.x - settledOffset.x
-        guard abs(delta) > 0.000_001,
-              machine.zoomState == .nX,
-              !pagingUnlocked,
-              let currentPage = pageControllers[machine.currentIndex] else {
-            return
-        }
-
-        let reachedBoundary = currentPage.zoomScrollView
-            .isAtHorizontalBoundary(towardNext: delta > 0)
-        holdPaging(at: settledOffset)
-        if reachedBoundary {
-            pagingUnlocked = true
-            pagingScrollView.panGestureRecognizer.setTranslation(
-                .zero,
-                in: pagingScrollView
-            )
-        }
     }
 
     func scrollViewDidEndDragging(
@@ -786,26 +725,6 @@ final class S2NativePagerViewController: UIViewController,
             return
         }
         finishNativePaging()
-    }
-
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        gestureRecognizer === pagingScrollView.panGestureRecognizer
-    }
-
-    func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        guard gestureRecognizer === pagingScrollView.panGestureRecognizer ||
-                otherGestureRecognizer === pagingScrollView.panGestureRecognizer else {
-            return false
-        }
-        let other = gestureRecognizer === pagingScrollView.panGestureRecognizer
-            ? otherGestureRecognizer
-            : gestureRecognizer
-        return pageControllers.values.contains {
-            other === $0.zoomScrollView.panGestureRecognizer
-        }
     }
 
     @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
@@ -845,12 +764,6 @@ final class S2NativePagerViewController: UIViewController,
                 .contentOffsetForPage(at: settledIndex)
         }
         isApplyingSnapshot = previousApplyingState
-    }
-
-    private func holdPaging(at offset: CGPoint) {
-        isHoldingPagingOffset = true
-        pagingScrollView.setContentOffset(offset, animated: false)
-        isHoldingPagingOffset = false
     }
 
     private func captureOuterGestureReading() {
@@ -906,7 +819,7 @@ final class S2NativePagerViewController: UIViewController,
             forContentOffsetX: pagingScrollView.contentOffset.x
         )
         let previousIndex = machine.currentIndex
-        if pagingUnlocked, targetIndex != previousIndex {
+        if targetIndex != previousIndex {
             _ = machine.handleNativePageChange(to: targetIndex)
             tapSequenceCoordinator.reset()
         } else if targetIndex == previousIndex {
@@ -915,7 +828,6 @@ final class S2NativePagerViewController: UIViewController,
         settledIndex = machine.currentIndex
         synchronizeNativeStateToMachine()
         outerDragStartDate = nil
-        pagingUnlocked = true
     }
 
     private func synchronizeNativeStateToMachine() {

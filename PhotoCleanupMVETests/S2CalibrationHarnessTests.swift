@@ -2,7 +2,26 @@ import XCTest
 import UIKit
 @testable import PhotoCleanupMVE
 
+private final class S2NativeZoomTestDelegate: NSObject, UIScrollViewDelegate {
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        (scrollView as? S2NativeZoomScrollView)?.zoomContentView
+    }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        scrollView.setNeedsLayout()
+        scrollView.layoutIfNeeded()
+    }
+
+    func scrollViewDidEndZooming(
+        _ scrollView: UIScrollView,
+        with view: UIView?,
+        atScale scale: CGFloat
+    ) {}
+}
+
 final class S2CalibrationHarnessTests: XCTestCase {
+    private var nativeZoomDelegates: [S2NativeZoomTestDelegate] = []
+
     // V1：界面显隐不改变全屏物理视口。
     func testV1InterfaceVisibilityKeepsViewportSizeEqual() {
         let visible = metrics(
@@ -1170,6 +1189,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let scrollView = S2NativeZoomScrollView(
             frame: CGRect(origin: .zero, size: physicalSize)
         )
+        let delegate = S2NativeZoomTestDelegate()
+        nativeZoomDelegates.append(delegate)
+        scrollView.delegate = delegate
         let contentView = UIView()
         scrollView.configure(
             contentView: contentView,

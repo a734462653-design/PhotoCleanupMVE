@@ -647,17 +647,16 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertEqual(machine.state, .visibleNxIdle)
     }
 
-    // IC047-040：Nx 单击不改变显隐、缩放、视口、c 或 D。
-    func testIC047_040NxSingleTapDoesNothing() {
+    // IC047-040 已由决策 17 改写：Nx 单击切换显隐，但不改变视口、c 或 D。
+    func testIC058NxSingleTapTogglesVisibilityWithoutViewportOrDataChanges() {
         let machine = makeMachine(state: .hiddenNx)
-        let originalVisibility = machine.interfaceVisibility
         let originalScale = machine.scale
         let originalOffset = machine.viewportOffset
         let originalCurrent = machine.currentAssetID
         let originalPending = machine.pendingDeletionAssetIDs
 
-        XCTAssertFalse(machine.handleSingleTap())
-        XCTAssertEqual(machine.interfaceVisibility, originalVisibility)
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
         XCTAssertEqual(machine.scale, originalScale)
         XCTAssertEqual(machine.viewportOffset, originalOffset)
         XCTAssertEqual(machine.currentAssetID, originalCurrent)
