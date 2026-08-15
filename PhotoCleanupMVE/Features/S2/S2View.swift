@@ -6,6 +6,8 @@ struct S2ImageContentContext {
     let fittedSize: CGSize
     let scale: CGFloat
     let requestStrategy: S2ImageRequestStrategy?
+    let requestRevision: Int
+    let onRequestReading: (S2ImageRequestReading) -> Void
 }
 
 struct S2BottomStripItemPresentation {
@@ -31,6 +33,7 @@ struct S2View: View {
     ) -> AnyView
 
     @ObservedObject var machine: S2StateMachine
+    @ObservedObject var calibration: S2CalibrationModel
 
     private let assetAspectRatio: (String) -> CGFloat
     private let photoContent: PhotoContent
@@ -42,11 +45,24 @@ struct S2View: View {
     private let onRecentAlbumRequest: (S2AlbumActionRequest) -> Void
 
     @State private var pinchIsActive = false
+    @State private var pinchStartTime: Date?
+    @State private var pinchPreviousTime: Date?
+    @State private var pinchPreviousMagnification: CGFloat = 1
+    @State private var pinchPeakVelocity: CGFloat = 0
     @State private var mainDragStartTime: Date?
     @State private var mainDragStartOffset = CGSize.zero
+    @State private var mainDragPreviousTime: Date?
+    @State private var mainDragPreviousTranslation = CGSize.zero
+    @State private var mainDragPeakVelocity: CGFloat = 0
+    @State private var firstTapDate: Date?
+    @State private var firstTapLocation: CGPoint?
+    @State private var pendingSingleTap: DispatchWorkItem?
+    @State private var parameterPanelVisible = false
+    @State private var readingsVisible = false
 
     init(
         machine: S2StateMachine,
+        calibration: S2CalibrationModel,
         assetAspectRatio: @escaping (String) -> CGFloat,
         photoContent: @escaping PhotoContent,
         stripItemContent: @escaping StripItemContent,
@@ -57,6 +73,7 @@ struct S2View: View {
         onRecentAlbumRequest: @escaping (S2AlbumActionRequest) -> Void = { _ in }
     ) {
         self.machine = machine
+        self.calibration = calibration
         self.assetAspectRatio = assetAspectRatio
         self.photoContent = photoContent
         self.stripItemContent = stripItemContent
@@ -70,9 +87,11 @@ struct S2View: View {
     var body: some View {
         GeometryReader { geometry in
             let ratio = assetAspectRatio(machine.currentAssetID)
-            let fittedSize = S2Geometry.aspectFitSize(
-                viewportSize: geometry.size,
-                assetAspectRatio: ratio
+            let viewportMetrics = S2ViewportLayout.metrics(
+                physicalSize: geometry.size,
+                presentationState: viewportPresentationState,
+                assetAspectRatio: ratio,
+                configuration: calibration.configuration
             )
 
             ZStack {
@@ -80,45 +99,90 @@ struct S2View: View {
                     .ignoresSafeArea()
 
                 mainPhoto(
-                    viewportSize: geometry.size,
-                    fittedSize: fittedSize,
+                    viewportSize: viewportMetrics.viewportSize,
+                    fittedSize: viewportMetrics.oneXDisplaySize,
                     assetAspectRatio: ratio
                 )
 
                 if machine.interfaceVisibility == .visible {
-                    interfaceOverlay
+                    interfaceOverlay(
+                        bottomStripHeight: viewportMetrics.bottomStripHeight
+                    )
                 }
+
+                calibrationOverlay(
+                    metrics: viewportMetrics,
+                    assetAspectRatio: ratio
+                )
             }
             .allowsHitTesting(machine.sheetState == .closed)
             .onAppear {
                 machine.clampViewport(
-                    viewportSize: geometry.size,
-                    fittedSize: fittedSize
+                    viewportSize: viewportMetrics.viewportSize,
+                    fittedSize: viewportMetrics.oneXDisplaySize
                 )
+                _ = machine.applyCalibration(calibration.configuration)
             }
             .onChange(of: geometry.size) { _, newSize in
+                let nextMetrics = S2ViewportLayout.metrics(
+                    physicalSize: newSize,
+                    presentationState: viewportPresentationState,
+                    assetAspectRatio: assetAspectRatio(machine.currentAssetID),
+                    configuration: calibration.configuration
+                )
                 machine.clampViewport(
-                    viewportSize: newSize,
-                    fittedSize: S2Geometry.aspectFitSize(
-                        viewportSize: newSize,
-                        assetAspectRatio: assetAspectRatio(machine.currentAssetID)
-                    )
+                    viewportSize: nextMetrics.viewportSize,
+                    fittedSize: nextMetrics.oneXDisplaySize
                 )
             }
             .onChange(of: machine.currentAssetID) { _, newAssetID in
+                let nextMetrics = S2ViewportLayout.metrics(
+                    physicalSize: geometry.size,
+                    presentationState: viewportPresentationState,
+                    assetAspectRatio: assetAspectRatio(newAssetID),
+                    configuration: calibration.configuration
+                )
                 machine.clampViewport(
-                    viewportSize: geometry.size,
-                    fittedSize: S2Geometry.aspectFitSize(
-                        viewportSize: geometry.size,
-                        assetAspectRatio: assetAspectRatio(newAssetID)
-                    )
+                    viewportSize: nextMetrics.viewportSize,
+                    fittedSize: nextMetrics.oneXDisplaySize
                 )
             }
+            .onChange(of: calibration.configuration) { _, configuration in
+                guard machine.applyCalibration(configuration) else {
+                    return
+                }
+                let nextMetrics = S2ViewportLayout.metrics(
+                    physicalSize: geometry.size,
+                    presentationState: viewportPresentationState,
+                    assetAspectRatio: assetAspectRatio(machine.currentAssetID),
+                    configuration: configuration
+                )
+                machine.clampViewport(
+                    viewportSize: nextMetrics.viewportSize,
+                    fittedSize: nextMetrics.oneXDisplaySize
+                )
+            }
+            .onDisappear {
+                pendingSingleTap?.cancel()
+                pendingSingleTap = nil
+                firstTapDate = nil
+                firstTapLocation = nil
+            }
         }
+        .ignoresSafeArea()
         .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: albumSheetBinding) {
             albumSheet
         }
+    }
+
+    private var viewportPresentationState: S2ViewportPresentationState {
+        S2ViewportPresentationState(
+            interfaceVisibility: machine.interfaceVisibility,
+            bottomStripState: machine.bottomStripState,
+            sheetState: machine.sheetState
+        )
     }
 
     private func mainPhoto(
@@ -131,7 +195,9 @@ struct S2View: View {
                 assetID: machine.currentAssetID,
                 fittedSize: fittedSize,
                 scale: machine.scale,
-                requestStrategy: machine.imageRequestStrategy
+                requestStrategy: machine.imageRequestStrategy,
+                requestRevision: machine.imageRequestRevision,
+                onRequestReading: machine.recordImageRequestReading
             )
         )
         .frame(width: fittedSize.width, height: fittedSize.height)
@@ -140,35 +206,48 @@ struct S2View: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .clipped()
-        .gesture(mainGesture(
-            viewportSize: viewportSize,
-            fittedSize: fittedSize,
-            assetAspectRatio: assetAspectRatio
+        .modifier(S2MainGestureModifier(
+            pinchBeforeSingleDrag:
+                calibration.configuration.gestureExclusivityPolicy ==
+                    .pinchBeforeSingleDrag,
+            pinchGesture: pinchGesture(
+                viewportSize: viewportSize,
+                fittedSize: fittedSize
+            ),
+            singleDragGesture: mainDragGesture(
+                viewportSize: viewportSize,
+                fittedSize: fittedSize,
+                assetAspectRatio: assetAspectRatio
+            )
         ))
     }
 
-    private var interfaceOverlay: some View {
+    private func interfaceOverlay(
+        bottomStripHeight: CGFloat
+    ) -> some View {
         VStack {
             topBar
+                .background(.regularMaterial)
 
             if let albumBadgeText {
                 Text(albumBadgeText)
                     .accessibilityLabel(albumBadgeAccessibilityLabel)
+                    .background(.regularMaterial)
             }
 
             Spacer()
 
             actionBar
+                .background(.regularMaterial)
 
             S2BottomStripView(
                 machine: machine,
                 metrics: machine.parameters.bottomStripMetrics,
                 itemContent: stripItemContent
             )
-            .frame(height: machine.parameters.bottomStripMetrics.height)
+            .frame(height: bottomStripHeight)
+            .background(.regularMaterial)
         }
-        .padding()
-        .foregroundStyle(.white)
     }
 
     private var topBar: some View {
@@ -343,22 +422,518 @@ struct S2View: View {
         }
     }
 
-    private func mainGesture(
-        viewportSize: CGSize,
-        fittedSize: CGSize,
+    private func calibrationOverlay(
+        metrics: S2ViewportMetrics,
         assetAspectRatio: CGFloat
-    ) -> some Gesture {
-        pinchGesture(
-            viewportSize: viewportSize,
-            fittedSize: fittedSize
+    ) -> some View {
+        VStack(alignment: .trailing) {
+            HStack {
+                Button(parameterPanelToggleTitle) {
+                    parameterPanelVisible.toggle()
+                }
+                Button(readingsToggleTitle) {
+                    readingsVisible.toggle()
+                }
+            }
+            .background(.regularMaterial)
+
+            if parameterPanelVisible {
+                calibrationPanel(
+                    viewportSize: metrics.viewportSize
+                )
+                .frame(
+                    maxWidth: 520,
+                    maxHeight: metrics.viewportSize.height * 0.7
+                )
+                .background(.regularMaterial)
+            }
+
+            if readingsVisible {
+                readingsPanel(
+                    metrics: metrics,
+                    assetAspectRatio: assetAspectRatio
+                )
+                .background(.regularMaterial)
+            }
+        }
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity,
+            alignment: .topTrailing
         )
-        .exclusively(before: doubleTapGesture(
-            viewportSize: viewportSize,
-            assetAspectRatio: assetAspectRatio
-        ).exclusively(before: singleTapGesture.exclusively(before: mainDragGesture(
-            viewportSize: viewportSize,
-            fittedSize: fittedSize
-        ))))
+    }
+
+    private func calibrationPanel(
+        viewportSize: CGSize
+    ) -> some View {
+        ScrollView {
+            VStack(alignment: .leading) {
+                Text(L10n.text("s2.calibration.value_status"))
+
+                S2CalibrationSliderRow(
+                    title: "pinchMaxScale",
+                    value: calibrationBinding(\.pinchMaxScale),
+                    range: 1.01...10,
+                    step: 0.01
+                )
+                S2CalibrationSliderRow(
+                    title: "zoomSnapBackThreshold",
+                    value: calibrationBinding(\.zoomSnapBackThreshold),
+                    range: 1...calibration.configuration.pinchMaxScale,
+                    step: 0.01
+                )
+                S2CalibrationSliderRow(
+                    title: "aspectFillDegenerateTolerancePercent",
+                    value: calibrationBinding(
+                        \.aspectFillDegenerateTolerancePercent
+                    ),
+                    range: 0...10,
+                    step: 0.1
+                )
+                S2CalibrationSliderRow(
+                    title: "aspectFillDegenerateTargetScale",
+                    value: calibrationBinding(\.aspectFillDegenerateTargetScale),
+                    range: 1.01...calibration.configuration.pinchMaxScale,
+                    step: 0.01
+                )
+                Picker(
+                    "doubleTapAnchorStrategy",
+                    selection: calibrationBinding(\.doubleTapAnchorStrategy)
+                ) {
+                    ForEach(S2DoubleTapAnchorStrategy.allCases, id: \.self) {
+                        Text(doubleTapAnchorTitle($0)).tag($0)
+                    }
+                }
+                S2CalibrationSliderRow(
+                    title: "edgePagingTriggerDistance",
+                    value: calibrationBinding(\.edgePagingTriggerDistance),
+                    range: 0...300,
+                    step: 1
+                )
+                S2CalibrationSliderRow(
+                    title: "edgePagingTriggerVelocity",
+                    value: calibrationBinding(\.edgePagingTriggerVelocity),
+                    range: 0...3_000,
+                    step: 25
+                )
+                S2CalibrationSliderRow(
+                    title: "verticalSwipeDistance",
+                    value: calibrationBinding(\.verticalSwipeDistance),
+                    range: 0...300,
+                    step: 1
+                )
+                S2CalibrationSliderRow(
+                    title: "verticalSwipeVelocity",
+                    value: calibrationBinding(\.verticalSwipeVelocity),
+                    range: 0...3_000,
+                    step: 25
+                )
+                S2CalibrationSliderRow(
+                    title: "verticalSwipeMaximumDurationMilliseconds",
+                    value: calibrationBinding(
+                        \.verticalSwipeMaximumDurationMilliseconds
+                    ),
+                    range: 0...2_000,
+                    step: 10
+                )
+                S2CalibrationSliderRow(
+                    title: "horizontalSwipeDistance",
+                    value: calibrationBinding(\.horizontalSwipeDistance),
+                    range: 0...300,
+                    step: 1
+                )
+                S2CalibrationSliderRow(
+                    title: "horizontalSwipeVelocity",
+                    value: calibrationBinding(\.horizontalSwipeVelocity),
+                    range: 0...3_000,
+                    step: 25
+                )
+                S2CalibrationSliderRow(
+                    title: "horizontalSwipeMaximumDurationMilliseconds",
+                    value: calibrationBinding(
+                        \.horizontalSwipeMaximumDurationMilliseconds
+                    ),
+                    range: 0...2_000,
+                    step: 10
+                )
+                S2CalibrationSliderRow(
+                    title: "pinchMinimumScaleDelta",
+                    value: calibrationBinding(\.pinchMinimumScaleDelta),
+                    range: 0...0.5,
+                    step: 0.001
+                )
+                S2CalibrationSliderRow(
+                    title: "pinchMinimumVelocityPerSecond",
+                    value: calibrationBinding(\.pinchMinimumVelocityPerSecond),
+                    range: 0...10,
+                    step: 0.1
+                )
+                S2CalibrationSliderRow(
+                    title: "pinchMaximumDurationMilliseconds",
+                    value: calibrationBinding(\.pinchMaximumDurationMilliseconds),
+                    range: 0...5_000,
+                    step: 10
+                )
+                S2CalibrationSliderRow(
+                    title: "mainDragMinimumDistance",
+                    value: calibrationBinding(\.mainDragMinimumDistance),
+                    range: 0...100,
+                    step: 1
+                )
+                S2CalibrationSliderRow(
+                    title: "mainDragMinimumVelocity",
+                    value: calibrationBinding(\.mainDragMinimumVelocity),
+                    range: 0...3_000,
+                    step: 25
+                )
+                S2CalibrationSliderRow(
+                    title: "mainDragMaximumDurationMilliseconds",
+                    value: calibrationBinding(
+                        \.mainDragMaximumDurationMilliseconds
+                    ),
+                    range: 0...5_000,
+                    step: 10
+                )
+                S2CalibrationSliderRow(
+                    title: "singleTapMaximumMovement",
+                    value: calibrationBinding(\.singleTapMaximumMovement),
+                    range: 0...100,
+                    step: 1
+                )
+                S2CalibrationSliderRow(
+                    title: "singleTapMaximumDurationMilliseconds",
+                    value: calibrationBinding(
+                        \.singleTapMaximumDurationMilliseconds
+                    ),
+                    range: 0...1_000,
+                    step: 10
+                )
+                S2CalibrationSliderRow(
+                    title: "singleTapDecisionWindowMilliseconds",
+                    value: calibrationBinding(
+                        \.singleTapDecisionWindowMilliseconds
+                    ),
+                    range: 0...1_000,
+                    step: 10
+                )
+                S2CalibrationSliderRow(
+                    title: "doubleTapDecisionWindowMilliseconds",
+                    value: calibrationBinding(
+                        \.doubleTapDecisionWindowMilliseconds
+                    ),
+                    range: 0...1_000,
+                    step: 10
+                )
+                calibrationTouchCountSteppers
+                Picker(
+                    "gestureExclusivityPolicy",
+                    selection: calibrationBinding(\.gestureExclusivityPolicy)
+                ) {
+                    ForEach(S2GestureExclusivityPolicy.allCases, id: \.self) {
+                        Text(gestureExclusivityTitle($0)).tag($0)
+                    }
+                }
+                Picker(
+                    "scaleChangeRequestPolicy",
+                    selection: calibrationBinding(\.scaleChangeRequestPolicy)
+                ) {
+                    ForEach(
+                        S2ScaleChangeImageRequestPolicy.allCases,
+                        id: \.self
+                    ) {
+                        Text(scaleChangeRequestTitle($0)).tag($0)
+                    }
+                }
+                Picker(
+                    "degradedPreviewPolicy",
+                    selection: calibrationBinding(\.degradedPreviewPolicy)
+                ) {
+                    ForEach(S2DegradedPreviewPolicy.allCases, id: \.self) {
+                        Text(degradedPreviewTitle($0)).tag($0)
+                    }
+                }
+                Toggle(
+                    L10n.text("s2.calibration.animation.enabled"),
+                    isOn: calibrationBinding(\.animationsEnabled)
+                )
+                Picker(
+                    "animationDurationMilliseconds",
+                    selection: calibrationBinding(
+                        \.animationDurationMilliseconds
+                    )
+                ) {
+                    Text(verbatim: "0 ms").tag(Double(0))
+                    Text(verbatim: "200 ms").tag(Double(200))
+                }
+                S2CalibrationSliderRow(
+                    title: "fitInsetRatio",
+                    value: calibrationBinding(\.fitInsetRatio),
+                    range: 0...0.45,
+                    step: 0.005
+                )
+                Picker(
+                    "fitInsetScope",
+                    selection: calibrationBinding(\.fitInsetScope)
+                ) {
+                    ForEach(S2FitInsetScope.allCases, id: \.self) {
+                        Text(fitInsetScopeTitle($0)).tag($0)
+                    }
+                }
+
+                Text(L10n.text("s2.calibration.navigation.title"))
+                ForEach(S2AssetAspectCategory.allCases, id: \.self) { category in
+                    Button(categoryTitle(category)) {
+                        guard viewportSize.height > 0 else {
+                            return
+                        }
+                        performCalibratedAnimation {
+                            _ = machine.navigateToNextAsset(
+                                category: category,
+                                viewportAspectRatio:
+                                    viewportSize.width / viewportSize.height,
+                                assetAspectRatio: assetAspectRatio
+                            )
+                        }
+                    }
+                }
+                if machine.assetNavigationResult == .empty {
+                    Text(L10n.text("s2.calibration.navigation.empty"))
+                }
+
+                ShareLink(item: calibration.exportText()) {
+                    Text(L10n.text("s2.calibration.export"))
+                }
+                Button(L10n.text("s2.calibration.restore_factory")) {
+                    calibration.restoreFactoryPlaceholder()
+                }
+                if calibration.persistenceFailed {
+                    Text(L10n.text("s2.calibration.persistence_failed"))
+                }
+            }
+        }
+    }
+
+    private var calibrationTouchCountSteppers: some View {
+        Group {
+            Stepper(
+                value: calibrationBinding(\.singleTapTouchCount),
+                in: 1...5
+            ) {
+                Text(verbatim: "singleTapTouchCount=\(calibration.configuration.singleTapTouchCount)")
+            }
+            Stepper(
+                value: calibrationBinding(\.doubleTapTouchCount),
+                in: 1...5
+            ) {
+                Text(verbatim: "doubleTapTouchCount=\(calibration.configuration.doubleTapTouchCount)")
+            }
+            Stepper(
+                value: calibrationBinding(\.singleDragTouchCount),
+                in: 1...5
+            ) {
+                Text(verbatim: "singleDragTouchCount=\(calibration.configuration.singleDragTouchCount)")
+            }
+            Stepper(
+                value: calibrationBinding(\.pinchTouchCount),
+                in: 1...5
+            ) {
+                Text(verbatim: "pinchTouchCount=\(calibration.configuration.pinchTouchCount)")
+            }
+        }
+    }
+
+    private func readingsPanel(
+        metrics: S2ViewportMetrics,
+        assetAspectRatio: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading) {
+            Text(L10n.text(
+                "s2.calibration.reading.scale",
+                replacing: ["value": decimal(machine.scale)]
+            ))
+            Text(L10n.text(
+                "s2.calibration.reading.asset_ratio",
+                replacing: ["value": decimal(assetAspectRatio)]
+            ))
+            let viewportRatio = metrics.viewportSize.height > 0
+                ? metrics.viewportSize.width / metrics.viewportSize.height
+                : 0
+            Text(L10n.text(
+                "s2.calibration.reading.viewport_ratio",
+                replacing: ["value": decimal(viewportRatio)]
+            ))
+            Text(L10n.text(
+                "s2.calibration.reading.aspect_fill",
+                replacing: ["value": decimal(metrics.aspectFillMultiplier)]
+            ))
+            Text(L10n.text(
+                "s2.calibration.reading.display_size",
+                replacing: [
+                    "width": decimal(metrics.oneXDisplaySize.width),
+                    "height": decimal(metrics.oneXDisplaySize.height)
+                ]
+            ))
+            if let reading = machine.lastGestureReading {
+                Text(L10n.text(
+                    "s2.calibration.reading.gesture",
+                    replacing: [
+                        "distance": decimal(reading.displacementDistance),
+                        "velocity": decimal(reading.peakVelocity),
+                        "duration": decimal(reading.duration * 1_000)
+                    ]
+                ))
+            } else {
+                Text(L10n.text("s2.calibration.reading.gesture_empty"))
+            }
+            if let reading = machine.lastImageRequestReading {
+                Text(L10n.text(
+                    "s2.calibration.reading.image_request",
+                    replacing: [
+                        "trigger": imageRequestTriggerTitle(reading.trigger),
+                        "return": imageReturnTypeTitle(reading.returnType)
+                    ]
+                ))
+            } else {
+                Text(L10n.text("s2.calibration.reading.image_request_empty"))
+            }
+        }
+    }
+
+    private func calibrationBinding<Value>(
+        _ keyPath: WritableKeyPath<S2CalibrationConfiguration, Value>
+    ) -> Binding<Value> {
+        Binding(
+            get: { calibration.configuration[keyPath: keyPath] },
+            set: { value in
+                _ = calibration.update { configuration in
+                    configuration[keyPath: keyPath] = value
+                }
+            }
+        )
+    }
+
+    private func categoryTitle(_ category: S2AssetAspectCategory) -> String {
+        switch category {
+        case .screenAspect:
+            return L10n.text("s2.calibration.navigation.screen_aspect")
+        case .portrait:
+            return L10n.text("s2.calibration.navigation.portrait")
+        case .landscape:
+            return L10n.text("s2.calibration.navigation.landscape")
+        case .square:
+            return L10n.text("s2.calibration.navigation.square")
+        case .extreme:
+            return L10n.text("s2.calibration.navigation.extreme")
+        }
+    }
+
+    private func doubleTapAnchorTitle(
+        _ strategy: S2DoubleTapAnchorStrategy
+    ) -> String {
+        switch strategy {
+        case .screenCenter:
+            return L10n.text("s2.calibration.option.anchor.screen_center")
+        case .touchPoint:
+            return L10n.text("s2.calibration.option.anchor.touch_point")
+        case .previousTouchPoint:
+            return L10n.text("s2.calibration.option.anchor.previous_touch_point")
+        }
+    }
+
+    private func gestureExclusivityTitle(
+        _ policy: S2GestureExclusivityPolicy
+    ) -> String {
+        switch policy {
+        case .pinchBeforeSingleDrag:
+            return L10n.text("s2.calibration.option.gesture.pinch_first")
+        case .singleDragBeforePinch:
+            return L10n.text("s2.calibration.option.gesture.drag_first")
+        }
+    }
+
+    private func scaleChangeRequestTitle(
+        _ policy: S2ScaleChangeImageRequestPolicy
+    ) -> String {
+        switch policy {
+        case .everyScaleChange:
+            return L10n.text("s2.calibration.option.request.every_scale_change")
+        case .pinchEnded:
+            return L10n.text("s2.calibration.option.request.pinch_ended")
+        }
+    }
+
+    private func degradedPreviewTitle(
+        _ policy: S2DegradedPreviewPolicy
+    ) -> String {
+        switch policy {
+        case .display:
+            return L10n.text("s2.calibration.option.preview.display")
+        case .finalImageOnly:
+            return L10n.text("s2.calibration.option.preview.final_only")
+        }
+    }
+
+    private func fitInsetScopeTitle(_ scope: S2FitInsetScope) -> String {
+        switch scope {
+        case .screenAspectOnly:
+            return L10n.text("s2.calibration.option.fit_scope.screen_aspect")
+        case .allPhotos:
+            return L10n.text("s2.calibration.option.fit_scope.all_photos")
+        }
+    }
+
+    private func imageRequestTriggerTitle(
+        _ trigger: S2ImageRequestTrigger
+    ) -> String {
+        switch trigger {
+        case .initial:
+            return L10n.text("s2.calibration.reading.trigger.initial")
+        case .assetChange:
+            return L10n.text("s2.calibration.reading.trigger.asset_change")
+        case .viewportChange:
+            return L10n.text("s2.calibration.reading.trigger.viewport_change")
+        case .scaleChange:
+            return L10n.text("s2.calibration.reading.trigger.scale_change")
+        case .pinchEnded:
+            return L10n.text("s2.calibration.reading.trigger.pinch_ended")
+        case .strategyChange:
+            return L10n.text("s2.calibration.reading.trigger.strategy_change")
+        }
+    }
+
+    private func imageReturnTypeTitle(
+        _ returnType: S2ImageReturnType
+    ) -> String {
+        switch returnType {
+        case .pending:
+            return L10n.text("s2.calibration.reading.return.pending")
+        case .degradedPreview:
+            return L10n.text("s2.calibration.reading.return.degraded_preview")
+        case .finalImage:
+            return L10n.text("s2.calibration.reading.return.final_image")
+        case .failure:
+            return L10n.text("s2.calibration.reading.return.failure")
+        }
+    }
+
+    private var parameterPanelToggleTitle: String {
+        parameterPanelVisible
+            ? L10n.text("s2.calibration.panel.hide")
+            : L10n.text("s2.calibration.panel.show")
+    }
+
+    private var readingsToggleTitle: String {
+        readingsVisible
+            ? L10n.text("s2.calibration.readings.hide")
+            : L10n.text("s2.calibration.readings.show")
+    }
+
+    private func decimal<T: BinaryFloatingPoint>(_ value: T) -> String {
+        String(
+            format: "%.3f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            Double(value)
+        )
     }
 
     private func pinchGesture(
@@ -370,62 +945,116 @@ struct S2View: View {
         )
             .onChanged { value in
                 if !pinchIsActive {
+                    guard calibration.configuration.pinchTouchCount == 2 else {
+                        return
+                    }
                     pinchIsActive = machine.beginPinch()
+                    let now = Date()
+                    pinchStartTime = now
+                    pinchPreviousTime = now
+                    pinchPreviousMagnification = value.magnification
+                    pinchPeakVelocity = 0
                 }
                 guard pinchIsActive else {
                     return
                 }
+                let now = Date()
+                if let previousTime = pinchPreviousTime {
+                    let elapsed = now.timeIntervalSince(previousTime)
+                    if elapsed > 0 {
+                        let velocity = abs(
+                            value.magnification - pinchPreviousMagnification
+                        ) / CGFloat(elapsed)
+                        pinchPeakVelocity = max(pinchPeakVelocity, velocity)
+                    }
+                }
+                pinchPreviousTime = now
+                pinchPreviousMagnification = value.magnification
                 _ = machine.updatePinch(
                     magnification: value.magnification,
                     viewportSize: viewportSize,
                     fittedSize: fittedSize
                 )
             }
-            .onEnded { _ in
+            .onEnded { value in
                 guard pinchIsActive else {
                     return
                 }
-                _ = machine.endPinch(
-                    viewportSize: viewportSize,
-                    fittedSize: fittedSize
+                let duration = Date().timeIntervalSince(
+                    pinchStartTime ?? Date()
                 )
+                machine.recordGestureReading(S2GestureReading(
+                    displacementDistance: abs(value.magnification - 1),
+                    peakVelocity: pinchPeakVelocity,
+                    duration: duration
+                ))
+                let configuration = calibration.configuration
+                let accepted =
+                    pinchPeakVelocity >=
+                        CGFloat(configuration.pinchMinimumVelocityPerSecond) &&
+                    durationIsAllowed(
+                        duration,
+                        maximumMilliseconds:
+                            configuration.pinchMaximumDurationMilliseconds
+                    )
+                performCalibratedAnimation {
+                    if accepted {
+                        _ = machine.endPinch(
+                            viewportSize: viewportSize,
+                            fittedSize: fittedSize
+                        )
+                    } else {
+                        _ = machine.cancelPinch(
+                            viewportSize: viewportSize,
+                            fittedSize: fittedSize
+                        )
+                    }
+                }
                 pinchIsActive = false
-            }
-    }
-
-    private func doubleTapGesture(
-        viewportSize: CGSize,
-        assetAspectRatio: CGFloat
-    ) -> some Gesture {
-        SpatialTapGesture(count: 2, coordinateSpace: .local)
-            .onEnded { value in
-                _ = machine.handleDoubleTap(
-                    at: value.location,
-                    viewportSize: viewportSize,
-                    assetAspectRatio: assetAspectRatio
-                )
-            }
-    }
-
-    private var singleTapGesture: some Gesture {
-        SpatialTapGesture(count: 1, coordinateSpace: .local)
-            .onEnded { _ in
-                _ = machine.handleSingleTap()
+                pinchStartTime = nil
+                pinchPreviousTime = nil
+                pinchPreviousMagnification = 1
+                pinchPeakVelocity = 0
             }
     }
 
     private func mainDragGesture(
         viewportSize: CGSize,
-        fittedSize: CGSize
+        fittedSize: CGSize,
+        assetAspectRatio: CGFloat
     ) -> some Gesture {
         DragGesture(
-            minimumDistance: machine.parameters.mainDragMinimumDistance,
+            minimumDistance: 0,
             coordinateSpace: .local
         )
         .onChanged { value in
             if mainDragStartTime == nil {
                 mainDragStartTime = value.time
                 mainDragStartOffset = machine.viewportOffset
+                mainDragPreviousTime = value.time
+                mainDragPreviousTranslation = value.translation
+                mainDragPeakVelocity = 0
+            } else if let previousTime = mainDragPreviousTime {
+                let elapsed = value.time.timeIntervalSince(previousTime)
+                if elapsed > 0 {
+                    let delta = CGSize(
+                        width: value.translation.width -
+                            mainDragPreviousTranslation.width,
+                        height: value.translation.height -
+                            mainDragPreviousTranslation.height
+                    )
+                    mainDragPeakVelocity = max(
+                        mainDragPeakVelocity,
+                        hypot(delta.width, delta.height) / CGFloat(elapsed)
+                    )
+                }
+                mainDragPreviousTime = value.time
+                mainDragPreviousTranslation = value.translation
+            }
+            guard calibration.configuration.singleDragTouchCount == 1,
+                  hypot(value.translation.width, value.translation.height) >=
+                    machine.parameters.mainDragMinimumDistance else {
+                return
             }
             _ = machine.updateMainPan(
                 from: mainDragStartOffset,
@@ -436,16 +1065,195 @@ struct S2View: View {
         }
         .onEnded { value in
             let startedAt = mainDragStartTime ?? value.time
-            _ = machine.completeMainDrag(
-                translation: value.translation,
-                duration: value.time.timeIntervalSince(startedAt),
-                startedOffset: mainDragStartOffset,
-                viewportSize: viewportSize,
-                fittedSize: fittedSize
+            let duration = value.time.timeIntervalSince(startedAt)
+            let distance = hypot(
+                value.translation.width,
+                value.translation.height
             )
+            let averageVelocity = duration > 0
+                ? distance / CGFloat(duration)
+                : 0
+            let peakVelocity = max(mainDragPeakVelocity, averageVelocity)
+            machine.recordGestureReading(S2GestureReading(
+                displacementDistance: distance,
+                peakVelocity: peakVelocity,
+                duration: duration
+            ))
+
+            let configuration = calibration.configuration
+            let direction = S2StateMachine.dragDirection(
+                for: value.translation
+            )
+            let directionalMaximumDuration = direction == .vertical
+                ? configuration.verticalSwipeMaximumDurationMilliseconds
+                : configuration.horizontalSwipeMaximumDurationMilliseconds
+            if configuration.singleTapTouchCount == 1,
+               distance <= CGFloat(configuration.singleTapMaximumMovement),
+               duration * 1_000 <=
+                configuration.singleTapMaximumDurationMilliseconds {
+                registerTap(
+                    at: value.location,
+                    viewportSize: viewportSize,
+                    oneXDisplaySize: fittedSize,
+                    assetAspectRatio: assetAspectRatio
+                )
+            } else if configuration.singleDragTouchCount == 1,
+                      distance >= machine.parameters.mainDragMinimumDistance,
+                      peakVelocity >=
+                        CGFloat(configuration.mainDragMinimumVelocity),
+                      durationIsAllowed(
+                          duration,
+                          maximumMilliseconds:
+                            configuration.mainDragMaximumDurationMilliseconds
+                      ),
+                      durationIsAllowed(
+                          duration,
+                          maximumMilliseconds: directionalMaximumDuration
+                      ) {
+                performCalibratedAnimation {
+                    _ = machine.completeMainDrag(
+                        translation: value.translation,
+                        duration: duration,
+                        startedOffset: mainDragStartOffset,
+                        viewportSize: viewportSize,
+                        fittedSize: fittedSize
+                    )
+                }
+            }
             mainDragStartTime = nil
             mainDragStartOffset = machine.viewportOffset
+            mainDragPreviousTime = nil
+            mainDragPreviousTranslation = .zero
+            mainDragPeakVelocity = 0
         }
+    }
+
+    private func registerTap(
+        at location: CGPoint,
+        viewportSize: CGSize,
+        oneXDisplaySize: CGSize,
+        assetAspectRatio: CGFloat
+    ) {
+        let now = Date()
+        let configuration = calibration.configuration
+        if let firstTapDate,
+           let firstTapLocation,
+           configuration.doubleTapTouchCount == 1 {
+            let interval = now.timeIntervalSince(firstTapDate) * 1_000
+            let movement = hypot(
+                location.x - firstTapLocation.x,
+                location.y - firstTapLocation.y
+            )
+            if interval <= configuration.doubleTapDecisionWindowMilliseconds,
+               movement <= CGFloat(configuration.singleTapMaximumMovement) {
+                pendingSingleTap?.cancel()
+                pendingSingleTap = nil
+                self.firstTapDate = nil
+                self.firstTapLocation = nil
+                performCalibratedAnimation {
+                    _ = machine.handleDoubleTap(
+                        at: location,
+                        viewportSize: viewportSize,
+                        assetAspectRatio: assetAspectRatio,
+                        oneXDisplaySize: oneXDisplaySize
+                    )
+                }
+                return
+            }
+            pendingSingleTap?.cancel()
+            performCalibratedAnimation {
+                _ = machine.handleSingleTap()
+            }
+        }
+
+        firstTapDate = now
+        firstTapLocation = location
+        let work = DispatchWorkItem {
+            guard self.firstTapDate == now else {
+                return
+            }
+            self.firstTapDate = nil
+            self.firstTapLocation = nil
+            self.pendingSingleTap = nil
+            self.performCalibratedAnimation {
+                _ = machine.handleSingleTap()
+            }
+        }
+        pendingSingleTap = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() +
+                configuration.singleTapDecisionWindowMilliseconds / 1_000,
+            execute: work
+        )
+    }
+
+    private func durationIsAllowed(
+        _ duration: TimeInterval,
+        maximumMilliseconds: Double
+    ) -> Bool {
+        maximumMilliseconds == 0 || duration * 1_000 <= maximumMilliseconds
+    }
+
+    private func performCalibratedAnimation(_ action: () -> Void) {
+        let configuration = calibration.configuration
+        if configuration.animationsEnabled,
+           configuration.animationDurationMilliseconds > 0 {
+            withAnimation(.linear(
+                duration: configuration.animationDurationMilliseconds / 1_000
+            )) {
+                action()
+            }
+        } else {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                action()
+            }
+        }
+    }
+}
+
+private struct S2MainGestureModifier<
+    PinchGestureType: Gesture,
+    SingleDragGestureType: Gesture
+>: ViewModifier {
+    let pinchBeforeSingleDrag: Bool
+    let pinchGesture: PinchGestureType
+    let singleDragGesture: SingleDragGestureType
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if pinchBeforeSingleDrag {
+            content.gesture(
+                pinchGesture.exclusively(before: singleDragGesture)
+            )
+        } else {
+            content.gesture(
+                singleDragGesture.exclusively(before: pinchGesture)
+            )
+        }
+    }
+}
+
+private struct S2CalibrationSliderRow: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text(verbatim: "\(title)=\(formattedValue)")
+            Slider(value: $value, in: range, step: step)
+        }
+    }
+
+    private var formattedValue: String {
+        String(
+            format: "%.3f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            value
+        )
     }
 }
 
@@ -461,8 +1269,6 @@ struct S2BottomStripView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color.black
-
                 ForEach(
                     Array(machine.orderedAssetIDs.enumerated()),
                     id: \.element
@@ -497,24 +1303,6 @@ struct S2BottomStripView: View {
                     .accessibilityValue(markAccessibilityValue(for: assetID))
                 }
 
-                if machine.bottomStripState == .idle {
-                    HStack(spacing: 0) {
-                        LinearGradient(
-                            colors: [.black, .black.opacity(0)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                        .frame(width: metrics.edgeFadeWidth)
-                        Spacer()
-                        LinearGradient(
-                            colors: [.black.opacity(0), .black],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                        .frame(width: metrics.edgeFadeWidth)
-                    }
-                    .allowsHitTesting(false)
-                }
             }
             .clipped()
             .contentShape(Rectangle())
@@ -614,31 +1402,11 @@ struct S2BottomStripView: View {
 }
 
 enum S2PreviewData {
-    // 以下数值只用于静态预览夹具，不是产品默认值或标定结果。
-    static let parameters = S2ResolvedParameters(
-        pinchMaxScale: 4,
-        zoomSnapBackThreshold: 1.1,
-        aspectFillDegenerateTolerancePercent: 1,
-        aspectFillDegenerateTargetScale: 2,
-        doubleTapAnchorStrategy: .touchPoint,
-        edgePagingTriggerDistance: 40,
-        edgePagingTriggerVelocity: 300,
-        verticalSwipeDistance: 40,
-        verticalSwipeVelocity: 100,
-        horizontalSwipeDistance: 40,
-        horizontalSwipeVelocity: 100,
-        pinchMinimumScaleDelta: 0.01,
-        mainDragMinimumDistance: 8,
-        bottomStripMetrics: S2BottomStripMetrics(
-            currentItemSize: 72,
-            neighborItemWidth: 52,
-            neighborItemHeight: 44,
-            itemSpacing: 8,
-            edgeFadeWidth: 24,
-            dragMinimumDistance: 4,
-            switchDistance: 44
-        )
-    )!
+    static let parameters =
+        S2CalibrationConfiguration.factoryPlaceholder.resolvedParameters!
+    static let calibration = S2CalibrationModel(
+        persistence: S2DiscardingCalibrationPersistence()
+    )
 
     static func machine(for state: S2State) -> S2StateMachine {
         let visibility: S2InterfaceVisibility
@@ -697,6 +1465,7 @@ enum S2PreviewData {
     static func view(for state: S2State) -> S2View {
         S2View(
             machine: machine(for: state),
+            calibration: calibration,
             assetAspectRatio: { assetID in
                 assetID.hasSuffix("1")
                     ? CGFloat(3) / 4

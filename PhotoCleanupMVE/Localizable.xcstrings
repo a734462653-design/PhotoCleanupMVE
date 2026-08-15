@@ -551,6 +551,512 @@
         }
       }
     },
+    "s2.calibration.animation.enabled" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启用全局动画"
+          }
+        }
+      }
+    },
+    "s2.calibration.export" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出当前全部参数为纯文本"
+          }
+        }
+      }
+    },
+    "s2.calibration.navigation.empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无此类素材"
+          }
+        }
+      }
+    },
+    "s2.calibration.navigation.extreme" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一张极端比例"
+          }
+        }
+      }
+    },
+    "s2.calibration.navigation.landscape" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一张横图"
+          }
+        }
+      }
+    },
+    "s2.calibration.navigation.portrait" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一张竖图"
+          }
+        }
+      }
+    },
+    "s2.calibration.navigation.screen_aspect" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一张屏幕比例"
+          }
+        }
+      }
+    },
+    "s2.calibration.navigation.square" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一张正方形"
+          }
+        }
+      }
+    },
+    "s2.calibration.navigation.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "测试素材导航"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.anchor.previous_touch_point" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次触点"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.anchor.screen_center" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕中心"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.anchor.touch_point" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前触点"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.fit_scope.all_photos" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对全部照片生效"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.fit_scope.screen_aspect" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅对屏幕比例照片生效"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.gesture.drag_first" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单指拖动优先于捏合"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.gesture.pinch_first" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "捏合优先于单指拖动"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.preview.display" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "降质预览返回即显示"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.preview.final_only" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅最终图返回后一次性替换"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.request.every_scale_change" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次 s 变化都请求"
+          }
+        }
+      }
+    },
+    "s2.calibration.option.request.pinch_ended" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅捏合结束后请求一次"
+          }
+        }
+      }
+    },
+    "s2.calibration.panel.hide" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭调参面板"
+          }
+        }
+      }
+    },
+    "s2.calibration.panel.show" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开调参面板"
+          }
+        }
+      }
+    },
+    "s2.calibration.persistence_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参数持久化失败"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.aspect_fill" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前照片 aspectFill 计算倍数：{value}"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.asset_ratio" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前照片像素宽高比：{value}"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.display_size" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "fitInsetRatio 生效后的实际显示尺寸：{width} × {height}"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.gesture" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近手势：位移 {distance}，峰值速度 {velocity}，持续 {duration} 毫秒"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.gesture_empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近手势：暂无读数"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.image_request" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近图像请求：触发 {trigger}，返回 {return}"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.image_request_empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近图像请求：暂无读数"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.return.degraded_preview" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "降质预览"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.return.failure" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.return.final_image" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最终图"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.return.pending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求中"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.scale" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前 s：{value}"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.trigger.asset_change" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片变化"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.trigger.initial" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首次显示"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.trigger.pinch_ended" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "捏合结束"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.trigger.scale_change" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "s 变化"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.trigger.strategy_change" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "策略切换"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.trigger.viewport_change" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视口变化"
+          }
+        }
+      }
+    },
+    "s2.calibration.reading.viewport_ratio" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视口宽高比：{value}"
+          }
+        }
+      }
+    },
+    "s2.calibration.readings.hide" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭实时读数"
+          }
+        }
+      }
+    },
+    "s2.calibration.readings.show" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开实时读数"
+          }
+        }
+      }
+    },
+    "s2.calibration.restore_factory" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复出厂占位值"
+          }
+        }
+      }
+    },
+    "s2.calibration.value_status" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未标定：以下值均为出厂占位值或人工调参值，不是推荐默认值"
+          }
+        }
+      }
+    },
     "s3.action.back" : {
       "extractionState" : "manual",
       "localizations" : {

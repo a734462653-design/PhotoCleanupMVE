@@ -98,22 +98,22 @@ enum S2UndecidedItems {
     static let item19AlreadyMarkedHint = S2UndecidedPlaceholder.unresolved
 }
 
-enum S2ScaleChangeImageRequestPolicy: Equatable {
+enum S2ScaleChangeImageRequestPolicy: String, CaseIterable, Codable, Equatable {
     case everyScaleChange
-    case thresholdOrDeferred
+    case pinchEnded
 }
 
-enum S2DegradedPreviewPolicy: Equatable {
+enum S2DegradedPreviewPolicy: String, CaseIterable, Codable, Equatable {
     case display
     case finalImageOnly
 }
 
-struct S2ImageRequestStrategy: Equatable {
+struct S2ImageRequestStrategy: Codable, Equatable {
     let scaleChangePolicy: S2ScaleChangeImageRequestPolicy
     let degradedPreviewPolicy: S2DegradedPreviewPolicy
 }
 
-enum S2DoubleTapAnchorStrategy: CaseIterable, Equatable {
+enum S2DoubleTapAnchorStrategy: String, CaseIterable, Codable, Equatable {
     case screenCenter
     case touchPoint
     case previousTouchPoint
@@ -557,8 +557,8 @@ enum S2Geometry {
 
 final class S2StateMachine: ObservableObject {
     let entry: S2EntryContext
-    let parameters: S2ResolvedParameters
-    let imageRequestStrategy: S2ImageRequestStrategy?
+    @Published private(set) var parameters: S2ResolvedParameters
+    @Published private(set) var imageRequestStrategy: S2ImageRequestStrategy?
 
     @Published private(set) var interfaceVisibility: S2InterfaceVisibility
     @Published private(set) var scale: CGFloat
@@ -574,6 +574,10 @@ final class S2StateMachine: ObservableObject {
     @Published private(set) var addedAlbumsByAssetID: [String: [S2AlbumReference]] = [:]
     @Published private(set) var semanticNotice: S2SemanticNotice?
     @Published private(set) var pendingUndecidedItem: S2UndecidedItem?
+    @Published private(set) var imageRequestRevision = 0
+    @Published private(set) var lastGestureReading: S2GestureReading?
+    @Published private(set) var lastImageRequestReading: S2ImageRequestReading?
+    @Published private(set) var assetNavigationResult: S2AssetNavigationResult?
 
     private let pendingDeletionDidChange: (Set<String>) -> Void
     private var visibilityBeforeDoubleTapZoom: S2InterfaceVisibility?
@@ -985,7 +989,8 @@ final class S2StateMachine: ObservableObject {
     func handleDoubleTap(
         at location: CGPoint,
         viewportSize: CGSize,
-        assetAspectRatio: CGFloat
+        assetAspectRatio: CGFloat,
+        oneXDisplaySize: CGSize? = nil
     ) -> Bool {
         guard receivesUnobscuredInput else {
             return false
@@ -1001,11 +1006,22 @@ final class S2StateMachine: ObservableObject {
             return true
         }
 
-        guard let calculatedMultiplier = S2Geometry.aspectFillMultiplier(
-            viewportSize: viewportSize,
-            assetAspectRatio: assetAspectRatio
-        ) else {
-            return false
+        let calculatedMultiplier: CGFloat
+        if let oneXDisplaySize,
+           oneXDisplaySize.width > 0,
+           oneXDisplaySize.height > 0 {
+            calculatedMultiplier = max(
+                viewportSize.width / oneXDisplaySize.width,
+                viewportSize.height / oneXDisplaySize.height
+            )
+        } else {
+            guard let multiplier = S2Geometry.aspectFillMultiplier(
+                viewportSize: viewportSize,
+                assetAspectRatio: assetAspectRatio
+            ) else {
+                return false
+            }
+            calculatedMultiplier = multiplier
         }
         let differencePercent = abs(calculatedMultiplier - 1) * 100
         let requestedScale = differencePercent <
@@ -1019,7 +1035,7 @@ final class S2StateMachine: ObservableObject {
 
         visibilityBeforeDoubleTapZoom = interfaceVisibility
         scale = nextScale
-        let fittedSize = S2Geometry.aspectFitSize(
+        let fittedSize = oneXDisplaySize ?? S2Geometry.aspectFitSize(
             viewportSize: viewportSize,
             assetAspectRatio: assetAspectRatio
         )
@@ -1100,6 +1116,33 @@ final class S2StateMachine: ObservableObject {
         }
         pinchStartScale = nil
         touchSequenceOwner = .none
+        if imageRequestStrategy?.scaleChangePolicy == .pinchEnded {
+            imageRequestRevision += 1
+        }
+        return true
+    }
+
+    @discardableResult
+    func cancelPinch(
+        viewportSize: CGSize,
+        fittedSize: CGSize
+    ) -> Bool {
+        guard touchSequenceOwner == .pinch,
+              let pinchStartScale else {
+            return false
+        }
+        scale = pinchStartScale
+        viewportOffset = S2Geometry.clampedOffset(
+            viewportOffset,
+            viewportSize: viewportSize,
+            fittedSize: fittedSize,
+            zoomScale: scale
+        )
+        self.pinchStartScale = nil
+        touchSequenceOwner = .none
+        if imageRequestStrategy?.scaleChangePolicy == .pinchEnded {
+            imageRequestRevision += 1
+        }
         return true
     }
 
@@ -1437,6 +1480,51 @@ final class S2StateMachine: ObservableObject {
 
     func clearPendingUndecidedItem() {
         pendingUndecidedItem = nil
+    }
+
+    @discardableResult
+    func applyCalibration(
+        _ configuration: S2CalibrationConfiguration
+    ) -> Bool {
+        guard let resolvedParameters = configuration.resolvedParameters else {
+            return false
+        }
+        parameters = resolvedParameters
+        imageRequestStrategy = configuration.imageRequestStrategy
+        if scale > resolvedParameters.pinchMaxScale {
+            scale = resolvedParameters.pinchMaxScale
+        }
+        return true
+    }
+
+    func recordGestureReading(_ reading: S2GestureReading) {
+        lastGestureReading = reading
+    }
+
+    func recordImageRequestReading(_ reading: S2ImageRequestReading) {
+        lastImageRequestReading = reading
+    }
+
+    @discardableResult
+    func navigateToNextAsset(
+        category: S2AssetAspectCategory,
+        viewportAspectRatio: CGFloat,
+        assetAspectRatio: (String) -> CGFloat
+    ) -> S2AssetNavigationResult {
+        let result = S2AssetAspectNavigator.next(
+            in: orderedAssetIDs,
+            after: currentIndex,
+            category: category,
+            viewportAspectRatio: viewportAspectRatio,
+            assetAspectRatio: assetAspectRatio
+        )
+        assetNavigationResult = result
+        if case let .found(index, _) = result {
+            currentIndex = index
+            farthestIndex = max(farthestIndex, index)
+            resetZoomAfterPhotoChange()
+        }
+        return result
     }
 
     private var receivesUnobscuredInput: Bool {

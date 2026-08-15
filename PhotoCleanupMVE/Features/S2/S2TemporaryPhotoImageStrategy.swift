@@ -7,6 +7,7 @@ protocol S2PhotoImageRequesting: AnyObject {
     func requestImage(
         assetID: String,
         targetSize: CGSize,
+        requestStrategy: S2ImageRequestStrategy,
         resultHandler: @escaping (UIImage?, Bool) -> Void
     ) -> PHImageRequestID
 
@@ -25,6 +26,7 @@ final class S2TemporaryPhotoKitImageStrategy: S2PhotoImageRequesting {
     func requestImage(
         assetID: String,
         targetSize: CGSize,
+        requestStrategy: S2ImageRequestStrategy,
         resultHandler: @escaping (UIImage?, Bool) -> Void
     ) -> PHImageRequestID {
         let result = PHAsset.fetchAssets(
@@ -39,7 +41,9 @@ final class S2TemporaryPhotoKitImageStrategy: S2PhotoImageRequesting {
         let options = PHImageRequestOptions()
         options.isSynchronous = false
         options.isNetworkAccessAllowed = false
-        options.deliveryMode = .highQualityFormat
+        options.deliveryMode = requestStrategy.degradedPreviewPolicy == .display
+            ? .opportunistic
+            : .highQualityFormat
         options.resizeMode = .fast
         options.version = .current
 
@@ -68,6 +72,9 @@ struct S2TemporaryPhotoImageView: View {
     let assetID: String
     let requestedScale: CGFloat
     let requestStrategy: S2ImageRequestStrategy?
+    let requestRevision: Int
+    let showsOpaqueLoadingBackground: Bool
+    let onReading: (S2ImageRequestReading) -> Void
 
     @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
@@ -79,7 +86,9 @@ struct S2TemporaryPhotoImageView: View {
         GeometryReader { geometry in
             let key = requestKey(for: geometry.size)
             ZStack {
-                Color.black
+                if showsOpaqueLoadingBackground {
+                    Color.black
+                }
                 if let image, displayedAssetID == assetID {
                     Image(uiImage: image)
                         .resizable()
@@ -87,14 +96,25 @@ struct S2TemporaryPhotoImageView: View {
                 }
             }
             .onAppear {
-                requestImage(for: key)
+                requestImage(for: key, trigger: .initial)
             }
-            .onChange(of: key) { _, newKey in
-                guard requestStrategy?.scaleChangePolicy ==
-                        .everyScaleChange else {
-                    return
+            .onChange(of: key) { oldKey, newKey in
+                let trigger: S2ImageRequestTrigger
+                if oldKey.assetID != newKey.assetID {
+                    trigger = .assetChange
+                } else if oldKey.viewportWidth != newKey.viewportWidth ||
+                            oldKey.viewportHeight != newKey.viewportHeight {
+                    trigger = .viewportChange
+                } else {
+                    trigger = .scaleChange
                 }
-                requestImage(for: newKey)
+                requestImageIfNeeded(for: newKey, trigger: trigger)
+            }
+            .onChange(of: requestRevision) { _, _ in
+                requestImageIfNeeded(for: key, trigger: .pinchEnded)
+            }
+            .onChange(of: requestStrategy) { _, _ in
+                requestImageIfNeeded(for: key, trigger: .strategyChange)
             }
             .onDisappear {
                 strategy.cancelImageRequest(requestID)
@@ -107,27 +127,69 @@ struct S2TemporaryPhotoImageView: View {
         let multiplier = displayScale * max(1, requestedScale)
         return RequestKey(
             assetID: assetID,
+            viewportWidth: max(1, Int((size.width * displayScale).rounded(.up))),
+            viewportHeight: max(1, Int((size.height * displayScale).rounded(.up))),
             width: max(1, Int((size.width * multiplier).rounded(.up))),
             height: max(1, Int((size.height * multiplier).rounded(.up)))
         )
     }
 
-    private func requestImage(for key: RequestKey) {
+    private var effectiveStrategy: S2ImageRequestStrategy {
+        requestStrategy ??
+            S2CalibrationConfiguration.factoryPlaceholder.imageRequestStrategy
+    }
+
+    private func requestImageIfNeeded(
+        for key: RequestKey,
+        trigger: S2ImageRequestTrigger
+    ) {
+        guard S2ImageRequestDecision.shouldRequest(
+            for: trigger,
+            strategy: effectiveStrategy
+        ) else {
+            return
+        }
+        requestImage(for: key, trigger: trigger)
+    }
+
+    private func requestImage(
+        for key: RequestKey,
+        trigger: S2ImageRequestTrigger
+    ) {
         strategy.cancelImageRequest(requestID)
         requestGeneration += 1
         let generation = requestGeneration
+        let activeStrategy = effectiveStrategy
+        onReading(S2ImageRequestReading(trigger: trigger, returnType: .pending))
         requestID = strategy.requestImage(
             assetID: assetID,
             targetSize: CGSize(
                 width: CGFloat(key.width),
                 height: CGFloat(key.height)
-            )
+            ),
+            requestStrategy: activeStrategy
         ) { nextImage, isDegraded in
             DispatchQueue.main.async {
-                guard requestGeneration == generation,
-                      let nextImage,
-                      !isDegraded || requestStrategy?.degradedPreviewPolicy ==
-                        .display else {
+                guard requestGeneration == generation else {
+                    return
+                }
+                let returnType: S2ImageReturnType
+                if nextImage == nil {
+                    returnType = .failure
+                } else if isDegraded {
+                    returnType = .degradedPreview
+                } else {
+                    returnType = .finalImage
+                }
+                onReading(S2ImageRequestReading(
+                    trigger: trigger,
+                    returnType: returnType
+                ))
+                guard let nextImage,
+                      S2ImageRequestDecision.shouldDisplay(
+                          isDegraded: isDegraded,
+                          strategy: activeStrategy
+                      ) else {
                     return
                 }
                 image = nextImage
@@ -138,6 +200,8 @@ struct S2TemporaryPhotoImageView: View {
 
     private struct RequestKey: Equatable {
         let assetID: String
+        let viewportWidth: Int
+        let viewportHeight: Int
         let width: Int
         let height: Int
     }

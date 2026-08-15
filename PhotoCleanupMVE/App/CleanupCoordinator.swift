@@ -17,10 +17,7 @@ struct CleanupRouteConfiguration {
     let initialGroupingDimension: S1GroupingDimension
     let initialSortOrder: S1SortOrder
     let s2InitialPresentation: S2InitialPresentation
-    let s2Parameters: S2ResolvedParameters
-    let s2ImageRequestStrategy: S2ImageRequestStrategy
 
-    // 只引用既有合成预览夹具完成 IC-048 接线，不新增产品默认值或标定结果。
     static func ic048TemporaryWiringFixture() -> CleanupRouteConfiguration {
         return CleanupRouteConfiguration(
             initialGroupingDimension: .month,
@@ -29,11 +26,6 @@ struct CleanupRouteConfiguration {
                 interfaceVisibility: .visible,
                 scale: 1,
                 viewportOffset: .zero
-            ),
-            s2Parameters: S2PreviewData.parameters,
-            s2ImageRequestStrategy: S2ImageRequestStrategy(
-                scaleChangePolicy: .everyScaleChange,
-                degradedPreviewPolicy: .finalImageOnly
             )
         )
     }
@@ -52,6 +44,7 @@ final class CleanupCoordinator: ObservableObject {
     @Published private(set) var s5Machine: S5StateMachine?
     @Published private(set) var message: String?
     private(set) var sessionStore: SessionStore?
+    let s2Calibration: S2CalibrationModel
 
     private let photoLibrary: PhotoLibraryService
     private let sizeScanner: AssetSizeScanner
@@ -75,7 +68,9 @@ final class CleanupCoordinator: ObservableObject {
         freeDiskSpaceReader: FreeDiskSpaceReader = FreeDiskSpaceReader(),
         persistence: SessionPersistence = SessionPersistence(),
         routeConfiguration: CleanupRouteConfiguration =
-            .ic048TemporaryWiringFixture()
+            .ic048TemporaryWiringFixture(),
+        s2CalibrationPersistence: any S2CalibrationPersisting =
+            S2KeychainCalibrationPersistence()
     ) {
         self.photoLibrary = photoLibrary ?? PhotoLibraryService()
         self.sizeScanner = sizeScanner
@@ -83,6 +78,9 @@ final class CleanupCoordinator: ObservableObject {
         self.freeDiskSpaceReader = freeDiskSpaceReader
         self.persistence = persistence
         self.routeConfiguration = routeConfiguration
+        s2Calibration = S2CalibrationModel(
+            persistence: s2CalibrationPersistence
+        )
     }
 
     func start() {
@@ -137,11 +135,16 @@ final class CleanupCoordinator: ObservableObject {
         let favoriteAssetIDs = Set(
             fetchedAssets.values.filter(\.isFavorite).map(\.localIdentifier)
         )
+        guard let resolvedParameters =
+                s2Calibration.configuration.resolvedParameters else {
+            return false
+        }
         let machine = S2StateMachine(
             entry: S2EntryContext(handoff: handoff),
             initialPresentation: routeConfiguration.s2InitialPresentation,
-            parameters: routeConfiguration.s2Parameters,
-            imageRequestStrategy: routeConfiguration.s2ImageRequestStrategy,
+            parameters: resolvedParameters,
+            imageRequestStrategy:
+                s2Calibration.configuration.imageRequestStrategy,
             initialFavoriteAssetIDs: favoriteAssetIDs,
             initialRecentAlbum: nil,
             pendingDeletionDidChange: { [weak self] pendingAssetIDs in

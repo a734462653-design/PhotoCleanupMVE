@@ -46,6 +46,8 @@
 		200000000000000000000025 /* S2TemporaryPhotoImageStrategy.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* S2TemporaryPhotoImageStrategy.swift */; };
 		200000000000000000000026 /* FullFlowRoutingTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000029 /* FullFlowRoutingTests.swift */; };
 		200000000000000000000027 /* AlbumScopeWiringTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* AlbumScopeWiringTests.swift */; };
+		200000000000000000000028 /* S2Calibration.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002B /* S2Calibration.swift */; };
+		200000000000000000000029 /* S2CalibrationHarnessTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002C /* S2CalibrationHarnessTests.swift */; };
 /* PBXBuildFile 区段结束 */
 
 /* PBXContainerItemProxy 区段开始 */
@@ -101,6 +103,8 @@
 		100000000000000000000028 /* S2TemporaryPhotoImageStrategy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2TemporaryPhotoImageStrategy.swift; sourceTree = "<group>"; };
 		100000000000000000000029 /* FullFlowRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullFlowRoutingTests.swift; sourceTree = "<group>"; };
 		10000000000000000000002A /* AlbumScopeWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumScopeWiringTests.swift; sourceTree = "<group>"; };
+		10000000000000000000002B /* S2Calibration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2Calibration.swift; sourceTree = "<group>"; };
+		10000000000000000000002C /* S2CalibrationHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2CalibrationHarnessTests.swift; sourceTree = "<group>"; };
 /* PBXFileReference 区段结束 */
 
 /* PBXFrameworksBuildPhase 区段开始 */
@@ -204,6 +208,7 @@
 		30000000000000000000000D /* S2 */ = {
 			isa = PBXGroup;
 			children = (
+				10000000000000000000002B /* S2Calibration.swift */,
 				100000000000000000000026 /* S2View.swift */,
 				100000000000000000000028 /* S2TemporaryPhotoImageStrategy.swift */,
 			);
@@ -248,6 +253,7 @@
 				10000000000000000000002A /* AlbumScopeWiringTests.swift */,
 				100000000000000000000029 /* FullFlowRoutingTests.swift */,
 				100000000000000000000024 /* S1StateMachineTests.swift */,
+				10000000000000000000002C /* S2CalibrationHarnessTests.swift */,
 				100000000000000000000027 /* S2StateMachineTests.swift */,
 				100000000000000000000020 /* SessionStoreTests.swift */,
 				100000000000000000000021 /* S3ReturnRouteTests.swift */,
@@ -391,6 +397,7 @@
 				200000000000000000000018 /* FreeDiskSpaceReader.swift（源码） */,
 				200000000000000000000020 /* S1View.swift（源码） */,
 				200000000000000000000023 /* S2View.swift（源码） */,
+				200000000000000000000028 /* S2Calibration.swift（源码） */,
 				200000000000000000000025 /* S2TemporaryPhotoImageStrategy.swift（源码） */,
 				20000000000000000000000B /* S3View.swift（源码） */,
 				20000000000000000000000C /* S4View.swift（源码） */,
@@ -407,6 +414,7 @@
 				200000000000000000000027 /* AlbumScopeWiringTests.swift（测试源码） */,
 				200000000000000000000026 /* FullFlowRoutingTests.swift（测试源码） */,
 				200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */,
+				200000000000000000000029 /* S2CalibrationHarnessTests.swift（测试源码） */,
 				200000000000000000000024 /* S2StateMachineTests.swift（测试源码） */,
 				20000000000000000000001D /* SessionStoreTests.swift（测试源码） */,
 				20000000000000000000001E /* S3ReturnRouteTests.swift（测试源码） */,

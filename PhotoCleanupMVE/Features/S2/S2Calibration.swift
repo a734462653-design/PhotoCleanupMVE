@@ -1,0 +1,534 @@
+import Combine
+import CoreGraphics
+import Foundation
+import Security
+
+enum S2FitInsetScope: String, CaseIterable, Codable, Equatable {
+    case screenAspectOnly
+    case allPhotos
+}
+
+enum S2GestureExclusivityPolicy: String, CaseIterable, Codable, Equatable {
+    case pinchBeforeSingleDrag
+    case singleDragBeforePinch
+}
+
+struct S2CalibrationConfiguration: Codable, Equatable {
+    static let schemaVersion = 1
+
+    var pinchMaxScale: Double
+    var zoomSnapBackThreshold: Double
+    var aspectFillDegenerateTolerancePercent: Double
+    var aspectFillDegenerateTargetScale: Double
+    var doubleTapAnchorStrategy: S2DoubleTapAnchorStrategy
+    var edgePagingTriggerDistance: Double
+    var edgePagingTriggerVelocity: Double
+    var verticalSwipeDistance: Double
+    var verticalSwipeVelocity: Double
+    var verticalSwipeMaximumDurationMilliseconds: Double
+    var horizontalSwipeDistance: Double
+    var horizontalSwipeVelocity: Double
+    var horizontalSwipeMaximumDurationMilliseconds: Double
+    var pinchMinimumScaleDelta: Double
+    var pinchMinimumVelocityPerSecond: Double
+    var pinchMaximumDurationMilliseconds: Double
+    var mainDragMinimumDistance: Double
+    var mainDragMinimumVelocity: Double
+    var mainDragMaximumDurationMilliseconds: Double
+    var singleTapMaximumMovement: Double
+    var singleTapMaximumDurationMilliseconds: Double
+    var singleTapDecisionWindowMilliseconds: Double
+    var doubleTapDecisionWindowMilliseconds: Double
+    var singleTapTouchCount: Int
+    var doubleTapTouchCount: Int
+    var singleDragTouchCount: Int
+    var pinchTouchCount: Int
+    var gestureExclusivityPolicy: S2GestureExclusivityPolicy
+    var scaleChangeRequestPolicy: S2ScaleChangeImageRequestPolicy
+    var degradedPreviewPolicy: S2DegradedPreviewPolicy
+    var animationsEnabled: Bool
+    var animationDurationMilliseconds: Double
+    var fitInsetRatio: Double
+    var fitInsetScope: S2FitInsetScope
+    var bottomStripCurrentItemSize: Double
+    var bottomStripNeighborItemWidth: Double
+    var bottomStripNeighborItemHeight: Double
+    var bottomStripItemSpacing: Double
+    var bottomStripEdgeFadeWidth: Double
+    var bottomStripDragMinimumDistance: Double
+    var bottomStripSwitchDistance: Double
+
+    // 数值沿用现有 IC-048 与手势 Demo 的未标定夹具，仅 0 内缩及作用范围由本卡指定。
+    static let factoryPlaceholder = S2CalibrationConfiguration(
+        pinchMaxScale: 4,
+        zoomSnapBackThreshold: 1.1,
+        aspectFillDegenerateTolerancePercent: 1,
+        aspectFillDegenerateTargetScale: 2,
+        doubleTapAnchorStrategy: .touchPoint,
+        edgePagingTriggerDistance: 40,
+        edgePagingTriggerVelocity: 300,
+        verticalSwipeDistance: 40,
+        verticalSwipeVelocity: 100,
+        verticalSwipeMaximumDurationMilliseconds: 0,
+        horizontalSwipeDistance: 40,
+        horizontalSwipeVelocity: 100,
+        horizontalSwipeMaximumDurationMilliseconds: 0,
+        pinchMinimumScaleDelta: 0.01,
+        pinchMinimumVelocityPerSecond: 0,
+        pinchMaximumDurationMilliseconds: 0,
+        mainDragMinimumDistance: 8,
+        mainDragMinimumVelocity: 0,
+        mainDragMaximumDurationMilliseconds: 0,
+        singleTapMaximumMovement: 12,
+        singleTapMaximumDurationMilliseconds: 280,
+        singleTapDecisionWindowMilliseconds: 280,
+        doubleTapDecisionWindowMilliseconds: 320,
+        singleTapTouchCount: 1,
+        doubleTapTouchCount: 1,
+        singleDragTouchCount: 1,
+        pinchTouchCount: 2,
+        gestureExclusivityPolicy: .pinchBeforeSingleDrag,
+        scaleChangeRequestPolicy: .everyScaleChange,
+        degradedPreviewPolicy: .finalImageOnly,
+        animationsEnabled: false,
+        animationDurationMilliseconds: 0,
+        fitInsetRatio: 0,
+        fitInsetScope: .screenAspectOnly,
+        bottomStripCurrentItemSize: 72,
+        bottomStripNeighborItemWidth: 52,
+        bottomStripNeighborItemHeight: 44,
+        bottomStripItemSpacing: 8,
+        bottomStripEdgeFadeWidth: 24,
+        bottomStripDragMinimumDistance: 4,
+        bottomStripSwitchDistance: 44
+    )
+
+    var resolvedParameters: S2ResolvedParameters? {
+        S2ResolvedParameters(
+            pinchMaxScale: CGFloat(pinchMaxScale),
+            zoomSnapBackThreshold: CGFloat(zoomSnapBackThreshold),
+            aspectFillDegenerateTolerancePercent:
+                CGFloat(aspectFillDegenerateTolerancePercent),
+            aspectFillDegenerateTargetScale:
+                CGFloat(aspectFillDegenerateTargetScale),
+            doubleTapAnchorStrategy: doubleTapAnchorStrategy,
+            edgePagingTriggerDistance: CGFloat(edgePagingTriggerDistance),
+            edgePagingTriggerVelocity: CGFloat(edgePagingTriggerVelocity),
+            verticalSwipeDistance: CGFloat(verticalSwipeDistance),
+            verticalSwipeVelocity: CGFloat(verticalSwipeVelocity),
+            horizontalSwipeDistance: CGFloat(horizontalSwipeDistance),
+            horizontalSwipeVelocity: CGFloat(horizontalSwipeVelocity),
+            pinchMinimumScaleDelta: CGFloat(pinchMinimumScaleDelta),
+            mainDragMinimumDistance: CGFloat(mainDragMinimumDistance),
+            bottomStripMetrics: S2BottomStripMetrics(
+                currentItemSize: CGFloat(bottomStripCurrentItemSize),
+                neighborItemWidth: CGFloat(bottomStripNeighborItemWidth),
+                neighborItemHeight: CGFloat(bottomStripNeighborItemHeight),
+                itemSpacing: CGFloat(bottomStripItemSpacing),
+                edgeFadeWidth: CGFloat(bottomStripEdgeFadeWidth),
+                dragMinimumDistance: CGFloat(bottomStripDragMinimumDistance),
+                switchDistance: CGFloat(bottomStripSwitchDistance)
+            )
+        )
+    }
+
+    var imageRequestStrategy: S2ImageRequestStrategy {
+        S2ImageRequestStrategy(
+            scaleChangePolicy: scaleChangeRequestPolicy,
+            degradedPreviewPolicy: degradedPreviewPolicy
+        )
+    }
+
+    var isValid: Bool {
+        resolvedParameters != nil &&
+            verticalSwipeMaximumDurationMilliseconds >= 0 &&
+            horizontalSwipeMaximumDurationMilliseconds >= 0 &&
+            pinchMinimumVelocityPerSecond >= 0 &&
+            pinchMaximumDurationMilliseconds >= 0 &&
+            mainDragMinimumVelocity >= 0 &&
+            mainDragMaximumDurationMilliseconds >= 0 &&
+            singleTapMaximumMovement >= 0 &&
+            singleTapMaximumDurationMilliseconds >= 0 &&
+            singleTapDecisionWindowMilliseconds >= 0 &&
+            doubleTapDecisionWindowMilliseconds >= 0 &&
+            singleTapTouchCount > 0 &&
+            doubleTapTouchCount > 0 &&
+            singleDragTouchCount > 0 &&
+            pinchTouchCount > 0 &&
+            animationDurationMilliseconds >= 0 &&
+            fitInsetRatio >= 0 && fitInsetRatio < 0.5
+    }
+
+    func exportText() -> String {
+        let values: [(String, String)] = [
+            ("schemaVersion", String(Self.schemaVersion)),
+            ("taskID", "IC-20260815-054-s2-calibration-harness"),
+            ("valueStatus", L10n.text("s2.calibration.value_status")),
+            ("pinchMaxScale", formatted(pinchMaxScale)),
+            ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
+            ("aspectFillDegenerateTolerancePercent", formatted(aspectFillDegenerateTolerancePercent)),
+            ("aspectFillDegenerateTargetScale", formatted(aspectFillDegenerateTargetScale)),
+            ("doubleTapAnchorStrategy", doubleTapAnchorStrategy.rawValue),
+            ("edgePagingTriggerDistance", formatted(edgePagingTriggerDistance)),
+            ("edgePagingTriggerVelocity", formatted(edgePagingTriggerVelocity)),
+            ("verticalSwipeDistance", formatted(verticalSwipeDistance)),
+            ("verticalSwipeVelocity", formatted(verticalSwipeVelocity)),
+            ("verticalSwipeMaximumDurationMilliseconds", formatted(verticalSwipeMaximumDurationMilliseconds)),
+            ("horizontalSwipeDistance", formatted(horizontalSwipeDistance)),
+            ("horizontalSwipeVelocity", formatted(horizontalSwipeVelocity)),
+            ("horizontalSwipeMaximumDurationMilliseconds", formatted(horizontalSwipeMaximumDurationMilliseconds)),
+            ("pinchMinimumScaleDelta", formatted(pinchMinimumScaleDelta)),
+            ("pinchMinimumVelocityPerSecond", formatted(pinchMinimumVelocityPerSecond)),
+            ("pinchMaximumDurationMilliseconds", formatted(pinchMaximumDurationMilliseconds)),
+            ("mainDragMinimumDistance", formatted(mainDragMinimumDistance)),
+            ("mainDragMinimumVelocity", formatted(mainDragMinimumVelocity)),
+            ("mainDragMaximumDurationMilliseconds", formatted(mainDragMaximumDurationMilliseconds)),
+            ("singleTapMaximumMovement", formatted(singleTapMaximumMovement)),
+            ("singleTapMaximumDurationMilliseconds", formatted(singleTapMaximumDurationMilliseconds)),
+            ("singleTapDecisionWindowMilliseconds", formatted(singleTapDecisionWindowMilliseconds)),
+            ("doubleTapDecisionWindowMilliseconds", formatted(doubleTapDecisionWindowMilliseconds)),
+            ("singleTapTouchCount", String(singleTapTouchCount)),
+            ("doubleTapTouchCount", String(doubleTapTouchCount)),
+            ("singleDragTouchCount", String(singleDragTouchCount)),
+            ("pinchTouchCount", String(pinchTouchCount)),
+            ("gestureExclusivityPolicy", gestureExclusivityPolicy.rawValue),
+            ("scaleChangeRequestPolicy", scaleChangeRequestPolicy.rawValue),
+            ("degradedPreviewPolicy", degradedPreviewPolicy.rawValue),
+            ("animationsEnabled", String(animationsEnabled)),
+            ("animationDurationMilliseconds", formatted(animationDurationMilliseconds)),
+            ("fitInsetRatio", formatted(fitInsetRatio)),
+            ("fitInsetScope", fitInsetScope.rawValue),
+            ("bottomStripCurrentItemSize", formatted(bottomStripCurrentItemSize)),
+            ("bottomStripNeighborItemWidth", formatted(bottomStripNeighborItemWidth)),
+            ("bottomStripNeighborItemHeight", formatted(bottomStripNeighborItemHeight)),
+            ("bottomStripItemSpacing", formatted(bottomStripItemSpacing)),
+            ("bottomStripEdgeFadeWidth", formatted(bottomStripEdgeFadeWidth)),
+            ("bottomStripDragMinimumDistance", formatted(bottomStripDragMinimumDistance)),
+            ("bottomStripSwitchDistance", formatted(bottomStripSwitchDistance))
+        ]
+        return values.map { "\($0.0)=\($0.1)" }.joined(separator: "\n")
+    }
+
+    private func formatted(_ value: Double) -> String {
+        String(
+            format: "%.6f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            value
+        )
+    }
+}
+
+protocol S2CalibrationPersisting {
+    func load() throws -> Data?
+    func save(_ data: Data) throws
+}
+
+struct S2KeychainCalibrationPersistence: S2CalibrationPersisting {
+    private let service = "com.iphonephotomanagement.PhotoCleanupMVE.s2-calibration"
+    private let account = "current-parameters"
+
+    func load() throws -> Data? {
+        var query = baseQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound {
+            return nil
+        }
+        guard status == errSecSuccess else {
+            throw S2CalibrationPersistenceError.keychain(status)
+        }
+        return result as? Data
+    }
+
+    func save(_ data: Data) throws {
+        let updateStatus = SecItemUpdate(
+            baseQuery as CFDictionary,
+            [kSecValueData as String: data] as CFDictionary
+        )
+        if updateStatus == errSecSuccess {
+            return
+        }
+        guard updateStatus == errSecItemNotFound else {
+            throw S2CalibrationPersistenceError.keychain(updateStatus)
+        }
+
+        var insertion = baseQuery
+        insertion[kSecValueData as String] = data
+        insertion[kSecAttrAccessible as String] =
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let insertionStatus = SecItemAdd(insertion as CFDictionary, nil)
+        guard insertionStatus == errSecSuccess else {
+            throw S2CalibrationPersistenceError.keychain(insertionStatus)
+        }
+    }
+
+    private var baseQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+    }
+}
+
+struct S2DiscardingCalibrationPersistence: S2CalibrationPersisting {
+    func load() throws -> Data? {
+        nil
+    }
+
+    func save(_ data: Data) throws {}
+}
+
+enum S2CalibrationPersistenceError: Error {
+    case keychain(OSStatus)
+}
+
+final class S2CalibrationModel: ObservableObject {
+    @Published private(set) var configuration: S2CalibrationConfiguration
+    @Published private(set) var persistenceFailed = false
+
+    private let persistence: any S2CalibrationPersisting
+
+    init(
+        persistence: any S2CalibrationPersisting =
+            S2KeychainCalibrationPersistence()
+    ) {
+        self.persistence = persistence
+        if let data = try? persistence.load(),
+           let decoded = try? JSONDecoder().decode(
+               S2CalibrationConfiguration.self,
+               from: data
+           ),
+           decoded.isValid {
+            configuration = decoded
+        } else {
+            configuration = .factoryPlaceholder
+        }
+    }
+
+    @discardableResult
+    func update(
+        _ mutation: (inout S2CalibrationConfiguration) -> Void
+    ) -> Bool {
+        var next = configuration
+        mutation(&next)
+        guard next.isValid else {
+            return false
+        }
+        configuration = next
+        persist()
+        return true
+    }
+
+    func restoreFactoryPlaceholder() {
+        configuration = .factoryPlaceholder
+        persist()
+    }
+
+    func exportText() -> String {
+        configuration.exportText()
+    }
+
+    private func persist() {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            try persistence.save(encoder.encode(configuration))
+            persistenceFailed = false
+        } catch {
+            persistenceFailed = true
+        }
+    }
+}
+
+struct S2ViewportPresentationState: Equatable {
+    let interfaceVisibility: S2InterfaceVisibility
+    let bottomStripState: S2BottomStripState
+    let sheetState: S2SheetState
+}
+
+struct S2ViewportMetrics: Equatable {
+    let viewportSize: CGSize
+    let aspectFitSize: CGSize
+    let oneXDisplaySize: CGSize
+    let aspectFillMultiplier: CGFloat
+    let bottomStripHeight: CGFloat
+}
+
+enum S2ViewportLayout {
+    static func metrics(
+        physicalSize: CGSize,
+        presentationState _: S2ViewportPresentationState,
+        assetAspectRatio: CGFloat,
+        configuration: S2CalibrationConfiguration
+    ) -> S2ViewportMetrics {
+        let fitSize = S2Geometry.aspectFitSize(
+            viewportSize: physicalSize,
+            assetAspectRatio: assetAspectRatio
+        )
+        let applies = insetApplies(
+            assetAspectRatio: assetAspectRatio,
+            viewportAspectRatio: physicalSize.height > 0
+                ? physicalSize.width / physicalSize.height
+                : 0,
+            scope: configuration.fitInsetScope
+        )
+        let insetScale = applies
+            ? max(0, 1 - 2 * CGFloat(configuration.fitInsetRatio))
+            : 1
+        let displaySize = CGSize(
+            width: fitSize.width * insetScale,
+            height: fitSize.height * insetScale
+        )
+        let fillMultiplier: CGFloat
+        if displaySize.width > 0, displaySize.height > 0 {
+            fillMultiplier = max(
+                physicalSize.width / displaySize.width,
+                physicalSize.height / displaySize.height
+            )
+        } else {
+            fillMultiplier = 1
+        }
+        return S2ViewportMetrics(
+            viewportSize: physicalSize,
+            aspectFitSize: fitSize,
+            oneXDisplaySize: displaySize,
+            aspectFillMultiplier: fillMultiplier,
+            bottomStripHeight: max(
+                CGFloat(configuration.bottomStripCurrentItemSize),
+                CGFloat(configuration.bottomStripNeighborItemHeight)
+            )
+        )
+    }
+
+    static func insetApplies(
+        assetAspectRatio: CGFloat,
+        viewportAspectRatio: CGFloat,
+        scope: S2FitInsetScope
+    ) -> Bool {
+        switch scope {
+        case .allPhotos:
+            return true
+        case .screenAspectOnly:
+            guard assetAspectRatio > 0, viewportAspectRatio > 0 else {
+                return false
+            }
+            return abs(assetAspectRatio - viewportAspectRatio) /
+                viewportAspectRatio <= 0.01
+        }
+    }
+}
+
+enum S2AssetAspectCategory: String, CaseIterable, Codable, Equatable {
+    case screenAspect
+    case portrait
+    case landscape
+    case square
+    case extreme
+
+    func matches(
+        assetAspectRatio: CGFloat,
+        viewportAspectRatio: CGFloat
+    ) -> Bool {
+        guard assetAspectRatio > 0, viewportAspectRatio > 0 else {
+            return false
+        }
+        let screenDifference = abs(assetAspectRatio - viewportAspectRatio) /
+            viewportAspectRatio
+        switch self {
+        case .screenAspect:
+            return screenDifference <= 0.01
+        case .portrait:
+            return assetAspectRatio < 1 && screenDifference > 0.01
+        case .landscape:
+            return assetAspectRatio > 1
+        case .square:
+            return abs(assetAspectRatio - 1) <= 0.01
+        case .extreme:
+            return max(assetAspectRatio, 1 / assetAspectRatio) >= 2.5
+        }
+    }
+}
+
+enum S2AssetNavigationResult: Equatable {
+    case found(index: Int, assetID: String)
+    case empty
+}
+
+enum S2AssetAspectNavigator {
+    static func next(
+        in orderedAssetIDs: [String],
+        after currentIndex: Int,
+        category: S2AssetAspectCategory,
+        viewportAspectRatio: CGFloat,
+        assetAspectRatio: (String) -> CGFloat
+    ) -> S2AssetNavigationResult {
+        guard !orderedAssetIDs.isEmpty,
+              orderedAssetIDs.indices.contains(currentIndex) else {
+            return .empty
+        }
+        for distance in 1...orderedAssetIDs.count {
+            let index = (currentIndex + distance) % orderedAssetIDs.count
+            let assetID = orderedAssetIDs[index]
+            if category.matches(
+                assetAspectRatio: assetAspectRatio(assetID),
+                viewportAspectRatio: viewportAspectRatio
+            ) {
+                return .found(index: index, assetID: assetID)
+            }
+        }
+        return .empty
+    }
+}
+
+struct S2GestureReading: Equatable {
+    let displacementDistance: CGFloat
+    let peakVelocity: CGFloat
+    let duration: TimeInterval
+}
+
+enum S2ImageRequestTrigger: String, Equatable {
+    case initial
+    case assetChange
+    case viewportChange
+    case scaleChange
+    case pinchEnded
+    case strategyChange
+}
+
+enum S2ImageReturnType: String, Equatable {
+    case pending
+    case degradedPreview
+    case finalImage
+    case failure
+}
+
+struct S2ImageRequestReading: Equatable {
+    let trigger: S2ImageRequestTrigger
+    let returnType: S2ImageReturnType
+}
+
+enum S2ImageRequestDecision {
+    static func shouldRequest(
+        for trigger: S2ImageRequestTrigger,
+        strategy: S2ImageRequestStrategy
+    ) -> Bool {
+        switch trigger {
+        case .scaleChange:
+            return strategy.scaleChangePolicy == .everyScaleChange
+        case .pinchEnded:
+            return strategy.scaleChangePolicy == .pinchEnded
+        case .initial, .assetChange, .viewportChange, .strategyChange:
+            return true
+        }
+    }
+
+    static func shouldDisplay(
+        isDegraded: Bool,
+        strategy: S2ImageRequestStrategy
+    ) -> Bool {
+        !isDegraded || strategy.degradedPreviewPolicy == .display
+    }
+}

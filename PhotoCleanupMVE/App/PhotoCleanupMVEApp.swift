@@ -34,6 +34,7 @@ struct PhotoCleanupMVEApp: App {
                     if let machine = coordinator.s2Machine {
                         S2View(
                             machine: machine,
+                            calibration: coordinator.s2Calibration,
                             assetAspectRatio: coordinator.s2AssetAspectRatio,
                             photoContent: { context in
                                 AnyView(
@@ -42,7 +43,12 @@ struct PhotoCleanupMVEApp: App {
                                         assetID: context.assetID,
                                         requestedScale: context.scale,
                                         requestStrategy:
-                                            context.requestStrategy
+                                            context.requestStrategy,
+                                        requestRevision:
+                                            context.requestRevision,
+                                        showsOpaqueLoadingBackground: true,
+                                        onReading:
+                                            context.onRequestReading
                                     )
                                 )
                             },
@@ -52,8 +58,10 @@ struct PhotoCleanupMVEApp: App {
                                         strategy: s2PhotoImageStrategy,
                                         assetID: item.assetID,
                                         requestedScale: 1,
-                                        requestStrategy:
-                                            machine.imageRequestStrategy
+                                        requestStrategy: nil,
+                                        requestRevision: 0,
+                                        showsOpaqueLoadingBackground: false,
+                                        onReading: { _ in }
                                     )
                                 )
                             },
@@ -62,7 +70,6 @@ struct PhotoCleanupMVEApp: App {
                                     Button(L10n.text("s2.action.cancel")) {
                                         actions.cancel()
                                     }
-                                    .padding()
                                 )
                             },
                             onBack: { payload in
