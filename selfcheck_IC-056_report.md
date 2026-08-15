@@ -2,9 +2,16 @@
 
 ## 1. 结论
 
-IC-056 功能、D1～D8 XCTest 与专卡自验脚本已实现。本地结构门禁、用户可见硬编码
-扫描及静态检查已通过；完整 312 项 XCTest、Release IPA 与 SHA-256 须由 macOS CI
-生成，当前等待首次推送后的 CI 结果回填。
+IC-056 已完成。功能提交 `685b0155e17c68be2232dfa455d97333f269d626` 在 CI #39
+通过结构自验、用户可见硬编码扫描、312 项 XCTest、未签名 Release 应用构建及 IPA
+artifact 上传，结论为 `completed/success`。
+
+CI 全量测试结果为：
+
+```text
+Executed 312 tests, with 0 failures (0 unexpected)
+** TEST SUCCEEDED **
+```
 
 测试数量构成为：IC-055 交付 304 项 + 本卡 D1～D8 共 8 项 = 312 项，满足“不少于
 IC-055 交付总数 + 8”的门槛。
@@ -51,14 +58,14 @@ v13 第 107 条锁定“通常取实时填满倍数，仅在退化容差成立�
 
 | 编号 | XCTest 方法 | 当前状态 |
 |---|---|---|
-| D1 | `testD1ScreenAspectFitInsetRatioShrinksShortEdgeToNinetyTwoPercent` | 等待 CI |
-| D2 | `testD2ZeroFitInsetMatchesPureAspectFit` | 等待 CI |
-| D3 | `testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged` | 等待 CI |
-| D4 | `testD4ScreenAspectDoubleTapUsesMinimumScale` | 等待 CI |
-| D5 | `testD5DoubleTapUsesLargerAspectFillScale` | 等待 CI |
-| D6 | `testD6LeftEdgeDoubleTapAlignsLeftContentBoundary` | 等待 CI |
-| D7 | `testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary` | 等待 CI |
-| D8 | `testD8DoubleTapExitResetsScaleAndOffset` | 等待 CI |
+| D1 | `testD1ScreenAspectFitInsetRatioShrinksShortEdgeToNinetyTwoPercent` | 通过（CI #39） |
+| D2 | `testD2ZeroFitInsetMatchesPureAspectFit` | 通过（CI #39） |
+| D3 | `testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged` | 通过（CI #39） |
+| D4 | `testD4ScreenAspectDoubleTapUsesMinimumScale` | 通过（CI #39） |
+| D5 | `testD5DoubleTapUsesLargerAspectFillScale` | 通过（CI #39） |
+| D6 | `testD6LeftEdgeDoubleTapAlignsLeftContentBoundary` | 通过（CI #39） |
+| D7 | `testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary` | 通过（CI #39） |
+| D8 | `testD8DoubleTapExitResetsScaleAndOffset` | 通过（CI #39） |
 
 D6 在距左边 1 pt 处双击，直接计算缩放后内容帧并断言 `minX = 0`。D7 分别在距右、
 上、下边 1 pt 处双击，断言 `maxX = viewport.width`、`minY = 0`、
@@ -68,29 +75,29 @@ D6 在距左边 1 pt 处双击，直接计算缩放后内容帧并断言 `minX =
 
 | 编号 | XCTest 方法 | 当前状态 |
 |---|---|---|
-| V1 | `testV1InterfaceVisibilityKeepsViewportSizeEqual` | 等待 CI |
-| V2 | `testV2BottomStripStatesKeepViewportSizeAndHeightEqual` | 等待 CI |
-| V3 | `testV3SheetPresentationKeepsViewportSizeEqual` | 等待 CI |
-| V4 | `testV4AllPresentationStatesShareFitAndDoubleTapMultiplier` | 等待 CI |
-| V5 | `testV5ParametersSurviveProcessModelRestart` | 等待 CI |
-| V6 | `testV6AllFourImageRequestStrategiesTakeEffectImmediately` | 等待 CI |
-| V7 | `testV7MissingAspectCategoryReturnsExplicitEmptyResult` | 等待 CI |
-| V8 | `testV8FitInsetRatioGeometryAndScopeAreCorrect` | 等待 CI |
-| L1 | `testL1TopOverlayFramesRespectSafeAreaTop` | 等待 CI |
-| L2 | `testL2BottomOverlayFramesRespectHomeIndicator` | 等待 CI |
-| L3 | `testL3TopOverlayFramesDoNotIntersect` | 等待 CI |
-| L4 | `testL4ClickableOverlayControlsMeetMinimumTouchTarget` | 等待 CI |
-| L5 | `testL5CalibrationPanelsDoNotChangeViewportSize` | 等待 CI |
-| L6 | `testL6CalibrationPanelsStartHiddenWithoutVisibleEntry` | 等待 CI |
-| L7 | `testL7FactoryDefaultsMatchSystemParityDecision` | 等待 CI |
-| P1 | `testP1NxSingleFingerDragProducesNonzeroPan` | 等待 CI |
-| P2 | `testP2NxPanStopsAtContentBoundaryWithoutExtraMargin` | 等待 CI |
-| P3 | `testP3OneXSingleFingerDragDoesNotPanPhoto` | 等待 CI |
-| R1 | `testR1PinchRequestsExactlyOnceAfterPinchEnded` | 等待 CI |
-| R2 | `testR2PinchDoesNotReplaceWithDegradedPreview` | 等待 CI |
-| T1 | `testT1AdjacentPageTracksFingerWithSameSignAndMonotonicOffset` | 等待 CI |
-| T2 | `testT2BelowSnapThresholdReturnsToCurrentPage` | 等待 CI |
-| T3 | `testT3PagingKeepsPhotoSizeAndResetsScaleAfterSwitch` | 等待 CI |
+| V1 | `testV1InterfaceVisibilityKeepsViewportSizeEqual` | 通过（CI #39） |
+| V2 | `testV2BottomStripStatesKeepViewportSizeAndHeightEqual` | 通过（CI #39） |
+| V3 | `testV3SheetPresentationKeepsViewportSizeEqual` | 通过（CI #39） |
+| V4 | `testV4AllPresentationStatesShareFitAndDoubleTapMultiplier` | 通过（CI #39） |
+| V5 | `testV5ParametersSurviveProcessModelRestart` | 通过（CI #39） |
+| V6 | `testV6AllFourImageRequestStrategiesTakeEffectImmediately` | 通过（CI #39） |
+| V7 | `testV7MissingAspectCategoryReturnsExplicitEmptyResult` | 通过（CI #39） |
+| V8 | `testV8FitInsetRatioGeometryAndScopeAreCorrect` | 通过（CI #39） |
+| L1 | `testL1TopOverlayFramesRespectSafeAreaTop` | 通过（CI #39） |
+| L2 | `testL2BottomOverlayFramesRespectHomeIndicator` | 通过（CI #39） |
+| L3 | `testL3TopOverlayFramesDoNotIntersect` | 通过（CI #39） |
+| L4 | `testL4ClickableOverlayControlsMeetMinimumTouchTarget` | 通过（CI #39） |
+| L5 | `testL5CalibrationPanelsDoNotChangeViewportSize` | 通过（CI #39） |
+| L6 | `testL6CalibrationPanelsStartHiddenWithoutVisibleEntry` | 通过（CI #39） |
+| L7 | `testL7FactoryDefaultsMatchSystemParityDecision` | 通过（CI #39） |
+| P1 | `testP1NxSingleFingerDragProducesNonzeroPan` | 通过（CI #39） |
+| P2 | `testP2NxPanStopsAtContentBoundaryWithoutExtraMargin` | 通过（CI #39） |
+| P3 | `testP3OneXSingleFingerDragDoesNotPanPhoto` | 通过（CI #39） |
+| R1 | `testR1PinchRequestsExactlyOnceAfterPinchEnded` | 通过（CI #39） |
+| R2 | `testR2PinchDoesNotReplaceWithDegradedPreview` | 通过（CI #39） |
+| T1 | `testT1AdjacentPageTracksFingerWithSameSignAndMonotonicOffset` | 通过（CI #39） |
+| T2 | `testT2BelowSnapThresholdReturnsToCurrentPage` | 通过（CI #39） |
+| T3 | `testT3PagingKeepsPhotoSizeAndResetsScaleAfterSwitch` | 通过（CI #39） |
 
 ## 6. 参数导出样例
 
@@ -145,17 +152,26 @@ bottomStripSwitchDistance=44.000000
 
 ## 7. CI 与 IPA
 
-- CI run：等待首次推送
-- CI 结论：等待首次推送
-- CI 被测提交：等待首次推送
-- XCTest：静态总数 312；执行结果等待 CI
-- IPA artifact：等待首次推送
+- CI run：[iOS 构建与自验 #39](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31896453452)
+- CI job：[构建、XCTest 与未签名产物](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31896453452/job/95040399875)
+- CI 结论：`completed/success`
+- CI 被测提交：`685b0155e17c68be2232dfa455d97333f269d626`
+- XCTest：`Executed 312 tests, with 0 failures (0 unexpected)`
+- IPA artifact：[PhotoCleanupMVE-unsigned-685b0155e17c](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31896453452/artifacts/9249963168)
+- artifact ID：`9249963168`
+- artifact 外层归档字节数：`570924`
+- artifact 外层归档摘要：`sha256:87288ac724c48173e7aedd7f081143f90dd48782283273547f4a80a22a80dd5d`
+- artifact 到期时间：`2026-11-13T16:46:46Z`
 - IPA 文件：`PhotoCleanupMVE-unsigned.ipa`
-- IPA SHA-256：等待首次推送
+- IPA 字节数：`570754`
+- IPA SHA-256：`6a0bd4241fce4cd1106e7e2c2f42410f36d914442d8ddd2e888a4f4cf1958f76`
 
 CI workflow 未改动。既有流程只检出本仓库、执行仓库内结构自验与 XCTest、构建
 不含账号签名的 Release 应用，并用固定提交哈希的 GitHub 官方 artifact 动作上传。
 本卡没有新增外部依赖、网络地址、数据传输代码或账号操作。
+
+产物不包含开发者账号签名，可由侧载工具签名安装；本卡禁止账号操作，因此未生成绑定
+具体账号、设备或描述文件的签名包。
 
 ## 8. 变更文件清单
 
@@ -188,6 +204,7 @@ CI workflow 未改动。既有流程只检出本仓库、执行仓库内结构�
 
 - 开发基线：`d562f1a0248b110ed5da031618a36cd3a4331c50`
 - 开发分支：`feature/ic-056-doubletap-scale`
+- 功能提交：`685b0155e17c68be2232dfa455d97333f269d626`
 - push 目标：仅 `origin/feature/ic-056-doubletap-scale`
 - 合并 `main`：未执行
 - force push：未执行
