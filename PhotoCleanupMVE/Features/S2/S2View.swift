@@ -58,9 +58,7 @@ struct S2View: View {
     @State private var mainDragWasClaimedByPinch = false
     @State private var pageDragTranslation: CGFloat = 0
     @State private var pageTransitionInProgress = false
-    @State private var firstTapDate: Date?
-    @State private var firstTapLocation: CGPoint?
-    @State private var pendingSingleTap: DispatchWorkItem?
+    @State private var tapSequenceCoordinator = S2TapSequenceCoordinator()
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
     @State private var safeAreaInsets = S2OverlaySafeAreaInsets.zero
@@ -118,7 +116,6 @@ struct S2View: View {
 
                 calibrationOverlay(
                     metrics: viewportMetrics,
-                    assetAspectRatio: ratio,
                     safeAreaInsets: safeAreaInsets
                 )
 
@@ -174,10 +171,7 @@ struct S2View: View {
                 )
             }
             .onDisappear {
-                pendingSingleTap?.cancel()
-                pendingSingleTap = nil
-                firstTapDate = nil
-                firstTapLocation = nil
+                tapSequenceCoordinator.reset()
                 pageDragTranslation = 0
                 pageTransitionInProgress = false
             }
@@ -528,7 +522,6 @@ struct S2View: View {
 
     private func calibrationOverlay(
         metrics: S2ViewportMetrics,
-        assetAspectRatio: CGFloat,
         safeAreaInsets: S2OverlaySafeAreaInsets
     ) -> some View {
         Group {
@@ -573,10 +566,7 @@ struct S2View: View {
                     }
 
                     if calibrationOverlayState.readingsVisible {
-                        readingsPanel(
-                            metrics: metrics,
-                            assetAspectRatio: assetAspectRatio
-                        )
+                        readingsPanel(metrics: metrics)
                         .background(.regularMaterial)
                     }
                 }
@@ -720,10 +710,7 @@ struct S2View: View {
         }
     }
 
-    private func readingsPanel(
-        metrics: S2ViewportMetrics,
-        assetAspectRatio: CGFloat
-    ) -> some View {
+    private func readingsPanel(metrics: S2ViewportMetrics) -> some View {
         VStack(alignment: .leading) {
             Text(L10n.text(
                 "s2.calibration.reading.scale",
@@ -731,18 +718,19 @@ struct S2View: View {
             ))
             Text(L10n.text(
                 "s2.calibration.reading.asset_ratio",
-                replacing: ["value": decimal(assetAspectRatio)]
+                replacing: ["value": decimal(metrics.assetAspectRatio)]
             ))
-            let viewportRatio = metrics.viewportSize.height > 0
-                ? metrics.viewportSize.width / metrics.viewportSize.height
-                : 0
             Text(L10n.text(
                 "s2.calibration.reading.viewport_ratio",
-                replacing: ["value": decimal(viewportRatio)]
+                replacing: ["value": decimal(metrics.viewportAspectRatio)]
             ))
             Text(L10n.text(
                 "s2.calibration.reading.aspect_fill",
                 replacing: ["value": decimal(metrics.aspectFillMultiplier)]
+            ))
+            Text(L10n.text(
+                "s2.calibration.reading.double_tap_target",
+                replacing: ["value": decimal(metrics.doubleTapTargetScale)]
             ))
             Text(L10n.text(
                 "s2.calibration.reading.display_size",
@@ -1100,6 +1088,8 @@ struct S2View: View {
                 configuration.singleTapMaximumDurationMilliseconds {
                 registerTap(
                     at: value.location,
+                    arrivalDate: startedAt,
+                    completionDate: value.time,
                     viewportSize: viewportSize,
                     oneXDisplaySize: fittedSize,
                     assetAspectRatio: assetAspectRatio
@@ -1246,61 +1236,41 @@ struct S2View: View {
 
     private func registerTap(
         at location: CGPoint,
+        arrivalDate: Date,
+        completionDate: Date,
         viewportSize: CGSize,
         oneXDisplaySize: CGSize,
         assetAspectRatio: CGFloat
     ) {
-        let now = Date()
         let configuration = calibration.configuration
-        if let firstTapDate,
-           let firstTapLocation,
-           configuration.doubleTapTouchCount == 1 {
-            let interval = now.timeIntervalSince(firstTapDate) * 1_000
-            let movement = hypot(
-                location.x - firstTapLocation.x,
-                location.y - firstTapLocation.y
-            )
-            if interval <= configuration.doubleTapDecisionWindowMilliseconds,
-               movement <= CGFloat(configuration.singleTapMaximumMovement) {
-                pendingSingleTap?.cancel()
-                pendingSingleTap = nil
-                self.firstTapDate = nil
-                self.firstTapLocation = nil
-                performCalibratedAnimation {
-                    _ = machine.handleDoubleTap(
-                        at: location,
-                        viewportSize: viewportSize,
-                        assetAspectRatio: assetAspectRatio,
-                        oneXDisplaySize: oneXDisplaySize
-                    )
-                }
-                return
-            }
-            pendingSingleTap?.cancel()
-            performCalibratedAnimation {
-                _ = machine.handleSingleTap()
-            }
-        }
-
-        firstTapDate = now
-        firstTapLocation = location
-        let work = DispatchWorkItem {
-            guard self.firstTapDate == now else {
-                return
-            }
-            self.firstTapDate = nil
-            self.firstTapLocation = nil
-            self.pendingSingleTap = nil
-            self.performCalibratedAnimation {
-                _ = machine.handleSingleTap()
-            }
-        }
-        pendingSingleTap = work
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() +
-                configuration.singleTapDecisionWindowMilliseconds / 1_000,
-            execute: work
+        let action = tapSequenceCoordinator.registerTap(
+            at: location,
+            arrivalDate: arrivalDate,
+            completionDate: completionDate,
+            decisionWindowMilliseconds:
+                configuration.doubleTapDecisionWindowMilliseconds,
+            maximumMovement: CGFloat(configuration.singleTapMaximumMovement),
+            allowsDoubleTap: configuration.doubleTapTouchCount == 1
         )
+
+        switch action {
+        case .singleTap:
+            var applied = false
+            performCalibratedAnimation {
+                applied = machine.handleSingleTap()
+            }
+            tapSequenceCoordinator.recordImmediateSingleTapApplied(applied)
+        case let .doubleTap(revertImmediateSingleTap):
+            self.performCalibratedAnimation {
+                _ = machine.handleDoubleTap(
+                    at: location,
+                    viewportSize: viewportSize,
+                    assetAspectRatio: assetAspectRatio,
+                    oneXDisplaySize: oneXDisplaySize,
+                    revertingImmediateSingleTap: revertImmediateSingleTap
+                )
+            }
+        }
     }
 
     private func durationIsAllowed(

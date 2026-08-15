@@ -36,7 +36,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var mainDragMaximumDurationMilliseconds: Double
     var singleTapMaximumMovement: Double
     var singleTapMaximumDurationMilliseconds: Double
-    var singleTapDecisionWindowMilliseconds: Double
     var doubleTapDecisionWindowMilliseconds: Double
     var singleTapTouchCount: Int
     var doubleTapTouchCount: Int
@@ -57,7 +56,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDragMinimumDistance: Double
     var bottomStripSwitchDistance: Double
 
-    // IC-056 双击项目判断默认值；其余字段保持 IC-055 数值不变。
+    // IC-057 双击与响应项目判断默认值；其余字段保持 IC-055 数值不变。
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScale: 4,
         zoomSnapBackThreshold: 1.1,
@@ -79,7 +78,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         mainDragMaximumDurationMilliseconds: 0,
         singleTapMaximumMovement: 12,
         singleTapMaximumDurationMilliseconds: 280,
-        singleTapDecisionWindowMilliseconds: 280,
         doubleTapDecisionWindowMilliseconds: 320,
         singleTapTouchCount: 1,
         doubleTapTouchCount: 1,
@@ -144,7 +142,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             mainDragMaximumDurationMilliseconds >= 0 &&
             singleTapMaximumMovement >= 0 &&
             singleTapMaximumDurationMilliseconds >= 0 &&
-            singleTapDecisionWindowMilliseconds >= 0 &&
             doubleTapDecisionWindowMilliseconds >= 0 &&
             singleTapTouchCount > 0 &&
             doubleTapTouchCount > 0 &&
@@ -157,7 +154,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260815-056-doubletap-scale-and-anchor"),
+            ("taskID", "IC-20260815-057-doubletap-scale-anchor-and-response"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
@@ -179,7 +176,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("mainDragMaximumDurationMilliseconds", formatted(mainDragMaximumDurationMilliseconds)),
             ("singleTapMaximumMovement", formatted(singleTapMaximumMovement)),
             ("singleTapMaximumDurationMilliseconds", formatted(singleTapMaximumDurationMilliseconds)),
-            ("singleTapDecisionWindowMilliseconds", formatted(singleTapDecisionWindowMilliseconds)),
             ("doubleTapDecisionWindowMilliseconds", formatted(doubleTapDecisionWindowMilliseconds)),
             ("singleTapTouchCount", String(singleTapTouchCount)),
             ("doubleTapTouchCount", String(doubleTapTouchCount)),
@@ -393,6 +389,9 @@ struct S2CalibrationOverlayState: Equatable {
             return
         }
         parameterPanelVisible.toggle()
+        if parameterPanelVisible {
+            readingsVisible = false
+        }
     }
 
     mutating func toggleReadings() {
@@ -400,6 +399,9 @@ struct S2CalibrationOverlayState: Equatable {
             return
         }
         readingsVisible.toggle()
+        if readingsVisible {
+            parameterPanelVisible = false
+        }
     }
 }
 
@@ -569,9 +571,12 @@ struct S2ViewportPresentationState: Equatable {
 
 struct S2ViewportMetrics: Equatable {
     let viewportSize: CGSize
+    let assetAspectRatio: CGFloat
+    let viewportAspectRatio: CGFloat
     let aspectFitSize: CGSize
     let oneXDisplaySize: CGSize
     let aspectFillMultiplier: CGFloat
+    let doubleTapTargetScale: CGFloat
     let bottomStripHeight: CGFloat
 }
 
@@ -582,15 +587,16 @@ enum S2ViewportLayout {
         assetAspectRatio: CGFloat,
         configuration: S2CalibrationConfiguration
     ) -> S2ViewportMetrics {
+        let viewportAspectRatio = physicalSize.height > 0
+            ? physicalSize.width / physicalSize.height
+            : 0
         let fitSize = S2Geometry.aspectFitSize(
             viewportSize: physicalSize,
             assetAspectRatio: assetAspectRatio
         )
         let applies = insetApplies(
             assetAspectRatio: assetAspectRatio,
-            viewportAspectRatio: physicalSize.height > 0
-                ? physicalSize.width / physicalSize.height
-                : 0,
+            viewportAspectRatio: viewportAspectRatio,
             scope: configuration.fitInsetScope
         )
         let insetScale = applies
@@ -606,9 +612,15 @@ enum S2ViewportLayout {
         ) ?? 1
         return S2ViewportMetrics(
             viewportSize: physicalSize,
+            assetAspectRatio: assetAspectRatio,
+            viewportAspectRatio: viewportAspectRatio,
             aspectFitSize: fitSize,
             oneXDisplaySize: displaySize,
             aspectFillMultiplier: fillMultiplier,
+            doubleTapTargetScale: max(
+                fillMultiplier,
+                CGFloat(configuration.minDoubleTapScale)
+            ),
             bottomStripHeight: max(
                 CGFloat(configuration.bottomStripCurrentItemSize),
                 CGFloat(configuration.bottomStripNeighborItemHeight)
@@ -701,6 +713,66 @@ enum S2AssetAspectNavigator {
             }
         }
         return .empty
+    }
+}
+
+enum S2TapSequenceAction: Equatable {
+    case singleTap
+    case doubleTap(revertImmediateSingleTap: Bool)
+}
+
+struct S2TapSequenceCoordinator: Equatable {
+    private struct FirstTap: Equatable {
+        let completionDate: Date
+        let location: CGPoint
+        var immediateSingleTapApplied: Bool
+    }
+
+    private var firstTap: FirstTap?
+
+    mutating func registerTap(
+        at location: CGPoint,
+        arrivalDate: Date,
+        completionDate: Date,
+        decisionWindowMilliseconds: Double,
+        maximumMovement: CGFloat,
+        allowsDoubleTap: Bool
+    ) -> S2TapSequenceAction {
+        if allowsDoubleTap, let firstTap {
+            let intervalMilliseconds = arrivalDate.timeIntervalSince(
+                firstTap.completionDate
+            ) * 1_000
+            let movement = hypot(
+                location.x - firstTap.location.x,
+                location.y - firstTap.location.y
+            )
+            if intervalMilliseconds >= 0,
+               intervalMilliseconds <= decisionWindowMilliseconds,
+               movement <= maximumMovement {
+                self.firstTap = nil
+                return .doubleTap(
+                    revertImmediateSingleTap:
+                        firstTap.immediateSingleTapApplied
+                )
+            }
+        }
+
+        firstTap = allowsDoubleTap
+            ? FirstTap(
+                completionDate: completionDate,
+                location: location,
+                immediateSingleTapApplied: false
+            )
+            : nil
+        return .singleTap
+    }
+
+    mutating func recordImmediateSingleTapApplied(_ applied: Bool) {
+        firstTap?.immediateSingleTapApplied = applied
+    }
+
+    mutating func reset() {
+        firstTap = nil
     }
 }
 

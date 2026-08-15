@@ -1068,7 +1068,8 @@ final class S2StateMachine: ObservableObject {
         at location: CGPoint,
         viewportSize: CGSize,
         assetAspectRatio: CGFloat,
-        oneXDisplaySize: CGSize? = nil
+        oneXDisplaySize: CGSize? = nil,
+        revertingImmediateSingleTap: Bool = false
     ) -> Bool {
         guard receivesUnobscuredInput else {
             return false
@@ -1095,7 +1096,16 @@ final class S2StateMachine: ObservableObject {
             return false
         }
 
-        visibilityBeforeDoubleTapZoom = interfaceVisibility
+        let visibilityBeforeTapSequence: S2InterfaceVisibility
+        if revertingImmediateSingleTap {
+            visibilityBeforeTapSequence = interfaceVisibility == .visible
+                ? .hidden
+                : .visible
+            interfaceVisibility = visibilityBeforeTapSequence
+        } else {
+            visibilityBeforeTapSequence = interfaceVisibility
+        }
+        visibilityBeforeDoubleTapZoom = visibilityBeforeTapSequence
         scale = nextScale
         let fittedSize = oneXDisplaySize ?? S2Geometry.aspectFitSize(
             viewportSize: viewportSize,

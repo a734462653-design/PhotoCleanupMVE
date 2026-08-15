@@ -384,7 +384,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             mainDragMaximumDurationMilliseconds: 0,
             singleTapMaximumMovement: 12,
             singleTapMaximumDurationMilliseconds: 280,
-            singleTapDecisionWindowMilliseconds: 280,
             doubleTapDecisionWindowMilliseconds: 320,
             singleTapTouchCount: 1,
             doubleTapTouchCount: 1,
@@ -417,7 +416,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "taskID=IC-20260815-056-doubletap-scale-and-anchor"
+                "taskID=IC-20260815-057-doubletap-scale-anchor-and-response"
             )
         )
         XCTAssertTrue(
@@ -435,6 +434,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertFalse(
             actual.exportText().contains("aspectFillDegenerateTargetScale")
+        )
+        XCTAssertTrue(
+            actual.exportText().contains(
+                "doubleTapDecisionWindowMilliseconds=320.000000"
+            )
+        )
+        XCTAssertFalse(
+            actual.exportText().contains("singleTapDecisionWindowMilliseconds")
         )
         XCTAssertFalse(actual.exportText().contains("未标定"))
     }
@@ -668,6 +675,22 @@ final class S2CalibrationHarnessTests: XCTestCase {
             viewportAspectRatio: screenAspectRatio,
             scope: .screenAspectOnly
         ))
+        let oppositeOrientation = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: 1 / screenAspectRatio,
+            configuration: configuration
+        )
+        XCTAssertEqual(
+            oppositeOrientation.oneXDisplaySize.width,
+            oppositeOrientation.aspectFitSize.width * 0.92,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            oppositeOrientation.oneXDisplaySize.height,
+            oppositeOrientation.aspectFitSize.height * 0.92,
+            accuracy: 0.000_001
+        )
     }
 
     // D2：内缩比例为零时，1x 显示严格等于纯等比适配。
@@ -820,6 +843,152 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.viewportOffset, .zero)
     }
 
+    // E1：第一击抬起时立即产出单击动作，不等待双击判定窗口。
+    func testE1FirstTapProducesImmediateSingleTapAction() {
+        var coordinator = S2TapSequenceCoordinator()
+        let start = Date(timeIntervalSinceReferenceDate: 1_000)
+
+        let action = coordinator.registerTap(
+            at: CGPoint(x: 100, y: 200),
+            arrivalDate: start,
+            completionDate: start.addingTimeInterval(0.08),
+            decisionWindowMilliseconds: 320,
+            maximumMovement: 12,
+            allowsDoubleTap: true
+        )
+
+        XCTAssertEqual(action, .singleTap)
+        let machine = makeMachine()
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+    }
+
+    // E2：第二击在 320 毫秒窗口内到达时，撤销已生效单击并裁决为双击。
+    func testE2SecondTapWithinDecisionWindowRevertsAppliedSingleTap() {
+        var coordinator = S2TapSequenceCoordinator()
+        let start = Date(timeIntervalSinceReferenceDate: 2_000)
+        let firstCompletion = start.addingTimeInterval(0.08)
+        XCTAssertEqual(
+            coordinator.registerTap(
+                at: CGPoint(x: 100, y: 200),
+                arrivalDate: start,
+                completionDate: firstCompletion,
+                decisionWindowMilliseconds: 320,
+                maximumMovement: 12,
+                allowsDoubleTap: true
+            ),
+            .singleTap
+        )
+        coordinator.recordImmediateSingleTapApplied(true)
+
+        let action = coordinator.registerTap(
+            at: CGPoint(x: 108, y: 205),
+            arrivalDate: firstCompletion.addingTimeInterval(0.30),
+            completionDate: firstCompletion.addingTimeInterval(0.38),
+            decisionWindowMilliseconds: 320,
+            maximumMovement: 12,
+            allowsDoubleTap: true
+        )
+
+        XCTAssertEqual(
+            action,
+            .doubleTap(revertImmediateSingleTap: true)
+        )
+    }
+
+    // E3：超出双击窗口的下一击立即作为新的单击，不撤销上一击。
+    func testE3TapAfterDecisionWindowStartsNewImmediateSingleTap() {
+        var coordinator = S2TapSequenceCoordinator()
+        let start = Date(timeIntervalSinceReferenceDate: 3_000)
+        let firstCompletion = start.addingTimeInterval(0.08)
+        _ = coordinator.registerTap(
+            at: CGPoint(x: 100, y: 200),
+            arrivalDate: start,
+            completionDate: firstCompletion,
+            decisionWindowMilliseconds: 320,
+            maximumMovement: 12,
+            allowsDoubleTap: true
+        )
+        coordinator.recordImmediateSingleTapApplied(true)
+
+        let action = coordinator.registerTap(
+            at: CGPoint(x: 100, y: 200),
+            arrivalDate: firstCompletion.addingTimeInterval(0.321),
+            completionDate: firstCompletion.addingTimeInterval(0.40),
+            decisionWindowMilliseconds: 320,
+            maximumMovement: 12,
+            allowsDoubleTap: true
+        )
+
+        XCTAssertEqual(action, .singleTap)
+    }
+
+    // E4：立即单击后原子撤销再双击，最终状态与直接双击完全一致。
+    func testE4RevertedSingleTapThenDoubleTapMatchesDirectDoubleTap() {
+        let value = metrics()
+        let location = CGPoint(x: 1, y: physicalSize.height / 2)
+
+        for visibility in [
+            S2InterfaceVisibility.visible,
+            S2InterfaceVisibility.hidden
+        ] {
+            let direct = makeMachine(interfaceVisibility: visibility)
+            let coordinated = makeMachine(interfaceVisibility: visibility)
+            XCTAssertTrue(coordinated.handleSingleTap())
+
+            XCTAssertTrue(direct.handleDoubleTap(
+                at: location,
+                viewportSize: physicalSize,
+                assetAspectRatio: screenAspectRatio,
+                oneXDisplaySize: value.oneXDisplaySize
+            ))
+            XCTAssertTrue(coordinated.handleDoubleTap(
+                at: location,
+                viewportSize: physicalSize,
+                assetAspectRatio: screenAspectRatio,
+                oneXDisplaySize: value.oneXDisplaySize,
+                revertingImmediateSingleTap: true
+            ))
+
+            XCTAssertEqual(coordinated.interfaceVisibility, direct.interfaceVisibility)
+            XCTAssertEqual(coordinated.scale, direct.scale)
+            XCTAssertEqual(coordinated.viewportOffset, direct.viewportOffset)
+            XCTAssertEqual(coordinated.state, direct.state)
+        }
+    }
+
+    // E5：读数模型同时暴露照片、视口宽高比和实际双击目标倍数。
+    func testE5ReadingsExposeAspectRatiosAndDoubleTapTargetScale() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let value = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: 1.5,
+            configuration: configuration
+        )
+
+        XCTAssertEqual(value.assetAspectRatio, 1.5, accuracy: 0.000_001)
+        XCTAssertEqual(value.viewportAspectRatio, 0.5, accuracy: 0.000_001)
+        XCTAssertEqual(value.aspectFillMultiplier, 3, accuracy: 0.000_001)
+        XCTAssertEqual(value.doubleTapTargetScale, 3, accuracy: 0.000_001)
+    }
+
+    // E6：打开实时读数时关闭长参数面板，避免读数被挤出可见区域。
+    func testE6ReadingsAndParameterPanelsAreMutuallyExclusive() {
+        var state = S2CalibrationOverlayState.initial
+        state.toggleAccessControls()
+        state.toggleParameterPanel()
+        XCTAssertTrue(state.parameterPanelVisible)
+
+        state.toggleReadings()
+        XCTAssertFalse(state.parameterPanelVisible)
+        XCTAssertTrue(state.readingsVisible)
+
+        state.toggleParameterPanel()
+        XCTAssertTrue(state.parameterPanelVisible)
+        XCTAssertFalse(state.readingsVisible)
+    }
+
     // A1：统一策略在关闭开关时把显式时长归零。
     func testA1AnimationPolicyDisablesCalibratedAnimations() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -889,6 +1058,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
     private func makeMachine(
         scale: CGFloat = 1,
         viewportOffset: CGSize = .zero,
+        interfaceVisibility: S2InterfaceVisibility = .visible,
         configuration: S2CalibrationConfiguration = .factoryPlaceholder
     ) -> S2StateMachine {
         return S2StateMachine(
@@ -905,7 +1075,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 sessionMergedPendingDeletionCountProvider: { 0 }
             ),
             initialPresentation: S2InitialPresentation(
-                interfaceVisibility: .visible,
+                interfaceVisibility: interfaceVisibility,
                 scale: scale,
                 viewportOffset: viewportOffset
             ),

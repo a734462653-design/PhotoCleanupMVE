@@ -793,6 +793,17 @@
         }
       }
     },
+    "s2.calibration.reading.double_tap_target" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前双击目标倍数：{value}"
+          }
+        }
+      }
+    },
     "s2.calibration.reading.gesture" : {
       "extractionState" : "manual",
       "localizations" : {
