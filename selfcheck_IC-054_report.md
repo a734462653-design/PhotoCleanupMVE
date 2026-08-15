@@ -2,24 +2,27 @@
 
 ## 1. 当前结论
 
-本地静态自验已通过；Xcode 编译、全量 XCTest、CI run 与 IPA artifact 信息待首次推送后回填。
+IC-054 已完成。最终功能提交 `90b61c067b1a3e3cb93874cf6078e0438c3719ab` 在 CI #36
+完成全量编译、288 项 XCTest、未签名 Release 应用构建与 IPA artifact 上传，结论为
+`completed/success`。V1～V8 均在 CI 日志中逐项通过；IPA 已下载到内存核验结构并独立复算
+SHA-256，结果与 CI 输出一致。
 
 ## 2. V1～V8
 
 | 编号 | XCTest 方法 | 当前状态 |
 |---|---|---|
-| V1 | `testV1InterfaceVisibilityKeepsViewportSizeEqual` | 本地静态检查通过，CI 待回填 |
-| V2 | `testV2BottomStripStatesKeepViewportSizeAndHeightEqual` | 本地静态检查通过，CI 待回填 |
-| V3 | `testV3SheetPresentationKeepsViewportSizeEqual` | 本地静态检查通过，CI 待回填 |
-| V4 | `testV4AllPresentationStatesShareFitAndDoubleTapMultiplier` | 本地静态检查通过，CI 待回填 |
-| V5 | `testV5ParametersSurviveProcessModelRestart` | 本地静态检查通过，CI 待回填 |
-| V6 | `testV6AllFourImageRequestStrategiesTakeEffectImmediately` | 本地静态检查通过，CI 待回填 |
-| V7 | `testV7MissingAspectCategoryReturnsExplicitEmptyResult` | 本地静态检查通过，CI 待回填 |
-| V8 | `testV8FitInsetRatioGeometryAndScopeAreCorrect` | 本地静态检查通过，CI 待回填 |
+| V1 | `testV1InterfaceVisibilityKeepsViewportSizeEqual` | CI #36 通过 |
+| V2 | `testV2BottomStripStatesKeepViewportSizeAndHeightEqual` | CI #36 通过 |
+| V3 | `testV3SheetPresentationKeepsViewportSizeEqual` | CI #36 通过 |
+| V4 | `testV4AllPresentationStatesShareFitAndDoubleTapMultiplier` | CI #36 通过 |
+| V5 | `testV5ParametersSurviveProcessModelRestart` | CI #36 通过 |
+| V6 | `testV6AllFourImageRequestStrategiesTakeEffectImmediately` | CI #36 通过 |
+| V7 | `testV7MissingAspectCategoryReturnsExplicitEmptyResult` | CI #36 通过 |
+| V8 | `testV8FitInsetRatioGeometryAndScopeAreCorrect` | CI #36 通过 |
 
 - 上游基线 XCTest：280
 - 本卡新增 XCTest：8
-- 当前静态 XCTest 总数：288
+- CI 实际执行 XCTest 总数：288，失败 0，意外失败 0
 
 ## 3. 参数导出格式
 
@@ -93,20 +96,40 @@ bottomStripSwitchDistance=44.000000
 
 ## 5. CI 与 IPA
 
-- CI run：待回填
-- CI 结论：待回填
-- XCTest：待回填
-- IPA artifact：待回填
-- IPA SHA-256：待回填
+- CI run：[iOS 构建与自验 #36](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31880857763)
+- CI job：[构建、XCTest 与未签名产物](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31880857763/job/95003106144)
+- CI 结论：`completed/success`
+- CI 被测提交：`90b61c067b1a3e3cb93874cf6078e0438c3719ab`
+- XCTest 日志：`Executed 288 tests, with 0 failures (0 unexpected)`
+- IPA artifact：[PhotoCleanupMVE-unsigned-90b61c067b1a](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31880857763/artifacts/9246005472)
+- artifact ID：`9246005472`
+- artifact 外层归档字节数：`537471`
+- artifact 外层归档摘要：`sha256:0a8331d9e0dd4e270c5274e7ec1d21c810d1c9a752e635d95e485668a853ed8b`
+- IPA 文件：`PhotoCleanupMVE-unsigned.ipa`
+- IPA 字节数：`537301`
+- IPA SHA-256：`000f38c49dc2dbf389f370a0a2e117059be2bc939039349eef5b3f2c4287caf4`
+- artifact 到期时间：`2026-11-13T10:58:18Z`
+
+核验方式：认证只用于向 GitHub 官方 API 请求本次 run 的日志与 artifact；重定向下载不携带
+认证头。外层 ZIP 与内层 IPA 均仅在内存中读取，先拒绝绝对路径及 `..` 路径，再确认存在
+`Payload/PhotoCleanupMVE.app/` 载荷；未执行任何下载内容。独立复算的 IPA 字节数与 SHA-256
+均和 CI 构建日志一致。该产物为可供侧载工具签名安装的未签名 IPA。
+
+追溯说明：首次实现提交触发的 [CI #35](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31880698419)
+因中文显示映射漏掉既有枚举 `.touchPointToCenter` 而在编译阶段失败；修复提交 `90b61c0`
+补齐该分支后触发独立 CI #36 并全绿，没有重跑同一份失败代码。
 
 ## 6. 执行边界
 
 - 开发基线：`bccc2d2deadf37da470b9270f25ecb0312e6d4de`
 - 开发分支：`feature/ic-054-calibration-harness`
-- IC-054 commit 数：待最终回填
-- push 次数：待最终回填
+- IC-054 commit 数：3（实现提交、编译修复提交、报告回填提交）
+- 成功 push 次数：3，均为普通 push
+- 无远端写入的失败 push 尝试：4（沙箱内 TLS／凭据不可用）；不计入成功 push 次数
 - push 目标：仅 `origin/feature/ic-054-calibration-harness`
 - 合并 `main`：未执行
 - force push：未执行
 - 账号操作：未执行
 - `debugAssetLimit`：保持 `300`，未清理、未接回流程
+- 报告回填提交只修改本报告并带 `[skip ci]`；最终功能证据仍认 CI #36 的被测提交
+  `90b61c067b1a3e3cb93874cf6078e0438c3719ab`
