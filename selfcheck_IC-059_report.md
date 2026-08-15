@@ -263,7 +263,7 @@ Catalog 条目与产品源码引用均为 149；用户可见硬编码残留为 0
 - 开发基线：IC-058 交付提交 `cc95139`；未改写上游分支。
 - 开发分支与唯一 push 目标：`feature/ic-059-regression-and-framing`。
 - 代码验收提交：`91cf17ed851725dd5cf739219d425f4f3b9045b8`；其后仅回填本报告，并增加
-  “报告不得含待回填占位符”的自验门禁。
+  “报告不得含未替换占位标记”的自验门禁。
 - `main` 与 `origin/main` 均保持 `bccc2d2deadf37da470b9270f25ecb0312e6d4de`，未提交、未合并。
 - 未执行 force push、PR、账号设置、授权或签名操作。
 - 未修改 `SPEC-*.md`、`Decision_log.md`、S1、S3、S4、S5 或
