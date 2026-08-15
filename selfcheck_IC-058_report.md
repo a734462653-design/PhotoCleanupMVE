@@ -2,8 +2,10 @@
 
 ## 1. 结论
 
-IC-058 的代码、XCTest 与专用自验脚本已落位；当前等待 macOS CI 首次编译并实际执行
-XCTest。本节将在 CI 完成后回填最终结论、运行链接、测试日志原文与 IPA 摘要。
+IC-058 已完成。macOS CI #43 使用 Xcode 16.4 实际执行 326 个 XCTest，0 失败；随后
+Release 真机构建、未签名 IPA 生成与 artifact 上传全部成功。N1～N8、IC-057 E1～E6、
+IC-056 D1～D8 及本报告列出的全部指定回归均通过，自动验收 A～G 满足。原生动画与手感
+仍按任务边界留给产品负责人真机验收。
 
 ## 2. 实现摘要
 
@@ -12,7 +14,8 @@ XCTest。本节将在 CI 完成后回填最终结论、运行链接、测试日�
 - 双击进入 Nx 时按 `max(aspectFillMultiplier, minDoubleTapScale)` 构造触点中心目标矩形，
   直接调用 `zoom(to:animated:)`；状态机只接收原生结果，不参与活动视图的锚点或钳制。
 - 外层分页也是 `UIScrollView`，开启 `isPagingEnabled`。分页步长为物理视口宽度加
-  `pageSpacing`，分页单元本身始终保持物理视口尺寸，间隙显示既有黑色背景。
+  `pageSpacing`，分页单元本身始终保持物理视口尺寸，间隙显示既有黑色背景。内层到达
+  水平边界后的继续拖动由 UIKit 原生嵌套滚动转交父容器，不含手写边界公式或偏移锁定。
 - `pageSpacing` 新增为可持久化、可导出、面板可调参数，出厂值 20 pt；旧持久化数据
   缺少该字段时兼容回填 20，其余字段继续严格解码。
 - 1x 与 Nx 单击均切换界面显隐。Nx 单击路径只改显隐，不改 `zoomScale`、
@@ -26,66 +29,66 @@ XCTest。本节将在 CI 完成后回填最终结论、运行链接、测试日�
 
 | 编号 | XCTest 方法 | 状态 |
 |---|---|---|
-| N1 | `testN1NativeZoomContainerUsesConfiguredMinimumAndMaximumScale` | 待 CI |
-| N2 | `testN2DoubleTapInvokesNativeZoomWithResolvedTargetScale` | 待 CI |
-| N3 | `testN3NativePagingUsesConfiguredPageSpacing` | 待 CI |
-| N4 | `testN4PageSpacingFactoryDefaultIsTwentyPoints` | 待 CI |
-| N5 | `testN5NxSingleTapTogglesInterfaceWithoutChangingNativeViewport` | 待 CI |
-| N6 | `testN6OneXSingleTapTogglesInterfaceVisibility` | 待 CI |
-| N7 | `testN7NativePageChangeResetsZoomToOne` | 待 CI |
-| N8 | `testN8NativePinchRequestsZeroDuringGestureAndOnceAfterEnd` | 待 CI |
+| N1 | `testN1NativeZoomContainerUsesConfiguredMinimumAndMaximumScale` | 通过（CI #43） |
+| N2 | `testN2DoubleTapInvokesNativeZoomWithResolvedTargetScale` | 通过（CI #43） |
+| N3 | `testN3NativePagingUsesConfiguredPageSpacing` | 通过（CI #43） |
+| N4 | `testN4PageSpacingFactoryDefaultIsTwentyPoints` | 通过（CI #43） |
+| N5 | `testN5NxSingleTapTogglesInterfaceWithoutChangingNativeViewport` | 通过（CI #43） |
+| N6 | `testN6OneXSingleTapTogglesInterfaceVisibility` | 通过（CI #43） |
+| N7 | `testN7NativePageChangeResetsZoomToOne` | 通过（CI #43） |
+| N8 | `testN8NativePinchRequestsZeroDuringGestureAndOnceAfterEnd` | 通过（CI #43） |
 
 ## 4. IC-057 E1～E6
 
 | 编号 | XCTest 方法 | 状态 |
 |---|---|---|
-| E1 | `testE1FirstTapProducesImmediateSingleTapAction` | 待 CI |
-| E2 | `testE2SecondTapWithinDecisionWindowRevertsAppliedSingleTap` | 待 CI |
-| E3 | `testE3TapAfterDecisionWindowStartsNewImmediateSingleTap` | 待 CI |
-| E4 | `testE4RevertedSingleTapThenDoubleTapMatchesDirectDoubleTap` | 待 CI；改接原生双击状态入口 |
-| E5 | `testE5ReadingsExposeAspectRatiosAndDoubleTapTargetScale` | 待 CI |
-| E6 | `testE6ReadingsAndParameterPanelsAreMutuallyExclusive` | 待 CI |
+| E1 | `testE1FirstTapProducesImmediateSingleTapAction` | 通过（CI #43） |
+| E2 | `testE2SecondTapWithinDecisionWindowRevertsAppliedSingleTap` | 通过（CI #43） |
+| E3 | `testE3TapAfterDecisionWindowStartsNewImmediateSingleTap` | 通过（CI #43） |
+| E4 | `testE4RevertedSingleTapThenDoubleTapMatchesDirectDoubleTap` | 通过（CI #43）；改接原生双击状态入口 |
+| E5 | `testE5ReadingsExposeAspectRatiosAndDoubleTapTargetScale` | 通过（CI #43） |
+| E6 | `testE6ReadingsAndParameterPanelsAreMutuallyExclusive` | 通过（CI #43） |
 
 ## 5. IC-056 D1～D8
 
 | 编号 | XCTest 方法 | 状态 |
 |---|---|---|
-| D1 | `testD1ScreenAspectFitInsetRatioShrinksShortEdgeToNinetyTwoPercent` | 待 CI |
-| D2 | `testD2ZeroFitInsetMatchesPureAspectFit` | 待 CI |
-| D3 | `testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged` | 待 CI |
-| D4 | `testD4ScreenAspectDoubleTapUsesMinimumScale` | 待 CI；替代为原生目标矩形断言 |
-| D5 | `testD5DoubleTapUsesLargerAspectFillScale` | 待 CI；替代为原生目标矩形断言 |
-| D6 | `testD6LeftEdgeDoubleTapAlignsLeftContentBoundary` | 待 CI；替代为原生边界结果断言 |
-| D7 | `testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary` | 待 CI；替代为原生边界结果断言 |
-| D8 | `testD8DoubleTapExitResetsScaleAndOffset` | 待 CI；替代为原生容器与状态机同步归一断言 |
+| D1 | `testD1ScreenAspectFitInsetRatioShrinksShortEdgeToNinetyTwoPercent` | 通过（CI #43） |
+| D2 | `testD2ZeroFitInsetMatchesPureAspectFit` | 通过（CI #43） |
+| D3 | `testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged` | 通过（CI #43） |
+| D4 | `testD4ScreenAspectDoubleTapUsesMinimumScale` | 通过（CI #43）；替代为原生目标矩形断言 |
+| D5 | `testD5DoubleTapUsesLargerAspectFillScale` | 通过（CI #43）；替代为原生目标矩形断言 |
+| D6 | `testD6LeftEdgeDoubleTapAlignsLeftContentBoundary` | 通过（CI #43）；替代为原生边界结果断言 |
+| D7 | `testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary` | 通过（CI #43）；替代为原生边界结果断言 |
+| D8 | `testD8DoubleTapExitResetsScaleAndOffset` | 通过（CI #43）；替代为原生容器与状态机同步归一断言 |
 
 ## 6. IC-054 与 IC-055 指定回归
 
 | 编号 | XCTest 方法 | 状态 |
 |---|---|---|
-| V1 | `testV1InterfaceVisibilityKeepsViewportSizeEqual` | 待 CI |
-| V2 | `testV2BottomStripStatesKeepViewportSizeAndHeightEqual` | 待 CI |
-| V3 | `testV3SheetPresentationKeepsViewportSizeEqual` | 待 CI |
-| V4 | `testV4AllPresentationStatesShareFitAndDoubleTapMultiplier` | 待 CI |
-| V5 | `testV5ParametersSurviveProcessModelRestart` | 待 CI；增加 pageSpacing 持久化断言 |
-| V6 | `testV6AllFourImageRequestStrategiesTakeEffectImmediately` | 待 CI |
-| V7 | `testV7MissingAspectCategoryReturnsExplicitEmptyResult` | 待 CI |
-| V8 | `testV8FitInsetRatioGeometryAndScopeAreCorrect` | 待 CI |
-| L1 | `testL1TopOverlayFramesRespectSafeAreaTop` | 待 CI |
-| L2 | `testL2BottomOverlayFramesRespectHomeIndicator` | 待 CI |
-| L3 | `testL3TopOverlayFramesDoNotIntersect` | 待 CI |
-| L4 | `testL4ClickableOverlayControlsMeetMinimumTouchTarget` | 待 CI |
-| L5 | `testL5CalibrationPanelsDoNotChangeViewportSize` | 待 CI |
-| L6 | `testL6CalibrationPanelsStartHiddenWithoutVisibleEntry` | 待 CI |
-| L7 | `testL7FactoryDefaultsMatchSystemParityDecision` | 待 CI；增加 pageSpacing 出厂值与导出断言 |
-| P1 | `testP1NxSingleFingerDragProducesNonzeroPan` | 待 CI；使用替代断言 |
-| P2 | `testP2NxPanStopsAtContentBoundaryWithoutExtraMargin` | 待 CI；使用替代断言 |
-| P3 | `testP3OneXSingleFingerDragDoesNotPanPhoto` | 待 CI；使用替代断言 |
-| R1 | `testR1PinchRequestsExactlyOnceAfterPinchEnded` | 待 CI；使用替代断言 |
-| R2 | `testR2PinchDoesNotReplaceWithDegradedPreview` | 待 CI |
-| T1 | `testT1AdjacentPageTracksFingerWithSameSignAndMonotonicOffset` | 待 CI；使用替代断言 |
-| T2 | `testT2BelowSnapThresholdReturnsToCurrentPage` | 待 CI；使用替代断言 |
-| T3 | `testT3PagingKeepsPhotoSizeAndResetsScaleAfterSwitch` | 待 CI；使用替代断言 |
+| V1 | `testV1InterfaceVisibilityKeepsViewportSizeEqual` | 通过（CI #43） |
+| V2 | `testV2BottomStripStatesKeepViewportSizeAndHeightEqual` | 通过（CI #43） |
+| V3 | `testV3SheetPresentationKeepsViewportSizeEqual` | 通过（CI #43） |
+| V4 | `testV4AllPresentationStatesShareFitAndDoubleTapMultiplier` | 通过（CI #43） |
+| V5 | `testV5ParametersSurviveProcessModelRestart` | 通过（CI #43）；增加 pageSpacing 持久化断言 |
+| V6 | `testV6AllFourImageRequestStrategiesTakeEffectImmediately` | 通过（CI #43） |
+| V7 | `testV7MissingAspectCategoryReturnsExplicitEmptyResult` | 通过（CI #43） |
+| V8 | `testV8FitInsetRatioGeometryAndScopeAreCorrect` | 通过（CI #43） |
+| L1 | `testL1TopOverlayFramesRespectSafeAreaTop` | 通过（CI #43） |
+| L2 | `testL2BottomOverlayFramesRespectHomeIndicator` | 通过（CI #43） |
+| L3 | `testL3TopOverlayFramesDoNotIntersect` | 通过（CI #43） |
+| L4 | `testL4ClickableOverlayControlsMeetMinimumTouchTarget` | 通过（CI #43） |
+| L5 | `testL5CalibrationPanelsDoNotChangeViewportSize` | 通过（CI #43） |
+| L6 | `testL6CalibrationPanelsStartHiddenWithoutVisibleEntry` | 通过（CI #43） |
+| L7 | `testL7FactoryDefaultsMatchSystemParityDecision` | 通过（CI #43）；增加 pageSpacing 出厂值与导出断言 |
+| P1 | `testP1NxSingleFingerDragProducesNonzeroPan` | 通过（CI #43）；使用替代断言 |
+| P2 | `testP2NxPanStopsAtContentBoundaryWithoutExtraMargin` | 通过（CI #43）；使用替代断言 |
+| P3 | `testP3OneXSingleFingerDragDoesNotPanPhoto` | 通过（CI #43）；使用替代断言 |
+| R1 | `testR1PinchRequestsExactlyOnceAfterPinchEnded` | 通过（CI #43）；使用替代断言 |
+| R2 | `testR2PinchDoesNotReplaceWithDegradedPreview` | 通过（CI #43） |
+| T1 | `testT1AdjacentPageTracksFingerWithSameSignAndMonotonicOffset` | 通过（CI #43）；使用替代断言 |
+| T2 | `testT2BelowSnapThresholdReturnsToCurrentPage` | 通过（CI #43）；使用替代断言 |
+| T3 | `testT3PagingKeepsPhotoSizeAndResetsScaleAfterSwitch` | 通过（CI #43）；使用替代断言 |
 
 ## 7. 失效项清单与替代断言
 
@@ -105,6 +108,11 @@ XCTest。本节将在 CI 完成后回填最终结论、运行链接、测试日�
 补充迁移：D4～D8 与 E4 的旧断言直接调用自定义双击锚点／钳制入口，虽然不属于第 19 条
 指定的 V/L/P/R/T 清单，也已改为原生目标矩形、原生边界结果或原生双击状态入口断言，避免
 用失活路径冒充视图层验证。
+
+另有一项非视图重写失效项：历史 IC047-040
+`testIC047_040NxSingleTapDoesNothing` 与本卡明确采用的决策 17 冲突，已替换为
+`testIC058NxSingleTapTogglesVisibilityWithoutViewportOrDataChanges`，并由 N5 再次覆盖
+Nx 显隐切换且缩放、视口、`c`、`D` 不变；未修改规格或决策日志。
 
 未失效并继续保留原断言的项目：V1～V4、V6～V8、L1～L6、R2；V5 与 L7 只增加新参数
 断言，不删除旧断言。
@@ -161,22 +169,38 @@ bottomStripSwitchDistance=44.000000
 
 ## 9. 测试总数与 CI
 
-- 静态 XCTest 总数：326。
-- CI run：待回填。
-- CI job：待回填。
-- CI 被测提交：待回填。
-- CI 结论：待回填。
-- XCTest 日志原文：待回填。
+- XCTest 总数：326。
+- CI run：[iOS 构建与自验 #43](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31901203696)。
+- CI job：[构建、XCTest 与未签名产物](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31901203696/job/95052148456)。
+- CI 被测提交：`df61898a06ee963ba1c0427d7607f325d3b41f1e`。
+- CI 环境：`macos-15`、Xcode 16.4（Build 16F6）、iPhone 模拟器。
+- CI 结论：`success`；结构自验、硬编码扫描、XCTest、Release 真机构建、IPA 上传均成功。
+- XCTest 日志原文：
+
+```text
+Executed 326 tests, with 0 failures (0 unexpected) in 19.061 (41.538) seconds
+** TEST SUCCEEDED **
+```
+
+收敛记录：#40 首次发现 2 处 UIKit 编译 API 问题；#41 首次实际跑完 326 项并暴露 7 个
+迁移测试问题；#42 收敛至 D7 的 2 个坐标系断言；#43 全绿。所有失败均保留在 Actions
+历史中，没有以跳过测试、降低数量门槛或静默删除断言规避。
 
 ## 10. IPA artifact
 
-- artifact：待回填。
+- artifact：
+  [PhotoCleanupMVE-unsigned-df61898a06ee](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31901203696/artifacts/9251194712)。
+- artifact ID：`9251194712`；归档字节数：565694；到期时间：2026-11-13 18:28:12 UTC。
 - IPA 文件：`PhotoCleanupMVE-unsigned.ipa`。
-- IPA 字节数：待回填。
-- IPA SHA-256：待回填。
+- IPA 字节数：565524。
+- IPA SHA-256：`fcf7c4792651ecb4bd169aa7c51c20b0bc1db58f873024e1c7c3dedaf2f8eba5`。
+- 独立复核：下载后的 artifact 只含唯一预期 IPA；IPA 含
+  `Payload/PhotoCleanupMVE.app/Info.plist` 与主二进制，路径穿越条目为 0，签名目录或描述文件
+  为 0；本地重算 SHA-256 与 CI 构建日志完全一致。
 
 CI 产物按既有流程构建为未签名 IPA，不包含开发者账号、设备绑定或描述文件；任务禁止账号
-操作，因此不会生成绑定具体账号的签名包。
+操作，因此不会生成绑定具体账号的签名包。该 artifact 可下载且 IPA 结构有效；在普通未越狱
+真机上安装前仍需由用户既有签名／侧载链路签名，本任务不冒充已完成账号签名。
 
 ## 11. 变更文件清单
 
@@ -208,10 +232,10 @@ Windows 或 macOS PowerShell 静态自验：
 ./Scripts/verify-IC-20260815-058.ps1 -执行XCTest
 ```
 
-本次 Windows 本地结果：85 项专项静态检查全部通过；静态 XCTest 总数为 326；
+本次 Windows 本地结果：87 项专项静态检查全部通过；静态 XCTest 总数为 326；
 String Catalog 条目与产品源码引用均为 149；用户可见硬编码残留为 0；仓库结构门禁与
-`git diff --check` 通过。当前环境没有 Swift/Xcode 工具链，因此未执行、也不冒充执行过
-XCTest；实际编译和 XCTest 由下一节待回填的 macOS CI 判定。
+`git diff --check` 通过。当前环境没有 Swift/Xcode 工具链，因此本地未执行、也不冒充执行
+过 XCTest；实际编译和 XCTest 已由第 9 节 macOS CI 执行并通过。
 
 ## 13. 执行边界声明
 
@@ -219,6 +243,7 @@ XCTest；实际编译和 XCTest 由下一节待回填的 macOS CI 判定。
   单独形成继承提交 `5980c0b`；原 IC-057 分支引用与远端均未改动。
 - 开发分支：`feature/ic-058-native-zoom-paging`。
 - push 目标：仅 `origin/feature/ic-058-native-zoom-paging`。
+- 代码验收提交：`df61898a06ee963ba1c0427d7607f325d3b41f1e`；其后只回填本报告。
 - `main`：保持 `bccc2d2deadf37da470b9270f25ecb0312e6d4de`，不提交、不合并。
 - force push、PR、账号设置、授权与签名：均不执行。
 - `SPEC-*.md`、`Decision_log.md`、S1、S3、S4、S5：均不修改。
