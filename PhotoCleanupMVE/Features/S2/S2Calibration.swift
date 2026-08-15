@@ -58,7 +58,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDragMinimumDistance: Double
     var bottomStripSwitchDistance: Double
 
-    // IC-055 项目判断默认值；系统惯例项保持 IC-054 数值不变。
+    // IC-055 系统对齐项目判断默认值；其余字段保持 IC-054 数值不变。
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScale: 4,
         zoomSnapBackThreshold: 1.1,
@@ -88,11 +88,11 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         singleDragTouchCount: 1,
         pinchTouchCount: 2,
         gestureExclusivityPolicy: .pinchBeforeSingleDrag,
-        scaleChangeRequestPolicy: .everyScaleChange,
+        scaleChangeRequestPolicy: .pinchEnded,
         degradedPreviewPolicy: .finalImageOnly,
         animationsEnabled: true,
-        animationDurationMilliseconds: 220,
-        fitInsetRatio: 0.05,
+        animationDurationMilliseconds: 180,
+        fitInsetRatio: 0.08,
         fitInsetScope: .screenAspectOnly,
         bottomStripCurrentItemSize: 72,
         bottomStripNeighborItemWidth: 52,
@@ -162,7 +162,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260815-055-s2-usable-build"),
+            ("taskID", "IC-20260815-055-s2-system-parity"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
@@ -215,6 +215,24 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             locale: Locale(identifier: "en_US_POSIX"),
             value
         )
+    }
+}
+
+struct S2AnimationPolicy: Equatable {
+    let animationsEnabled: Bool
+    let durationMilliseconds: Double
+
+    init(configuration: S2CalibrationConfiguration) {
+        animationsEnabled = configuration.animationsEnabled
+        durationMilliseconds = configuration.animationDurationMilliseconds
+    }
+
+    var shouldAnimate: Bool {
+        animationsEnabled && durationMilliseconds > 0
+    }
+
+    var durationSeconds: TimeInterval {
+        shouldAnimate ? durationMilliseconds / 1_000 : 0
     }
 }
 

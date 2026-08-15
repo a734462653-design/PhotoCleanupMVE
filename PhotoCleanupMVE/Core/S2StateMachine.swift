@@ -332,6 +332,23 @@ enum S2PageDirection: Equatable {
     }
 }
 
+enum S2PageSnapDestination: Equatable {
+    case current
+    case previous
+    case next
+
+    var pageDirection: S2PageDirection? {
+        switch self {
+        case .current:
+            return nil
+        case .previous:
+            return .previous
+        case .next:
+            return .next
+        }
+    }
+}
+
 enum S2DragDirection: Equatable {
     case vertical
     case horizontal
@@ -555,6 +572,88 @@ enum S2Geometry {
     }
 }
 
+enum S2PagingInteraction {
+    static func pageOffset(
+        pageIndex: Int,
+        currentIndex: Int,
+        viewportWidth: CGFloat,
+        dragTranslation: CGFloat
+    ) -> CGFloat {
+        CGFloat(pageIndex - currentIndex) * max(0, viewportWidth) +
+            dragTranslation
+    }
+
+    static func interactiveTranslation(
+        _ translation: CGFloat,
+        currentIndex: Int,
+        itemCount: Int
+    ) -> CGFloat {
+        guard itemCount > 0, itemCount > currentIndex, currentIndex >= 0 else {
+            return 0
+        }
+        if translation < 0 {
+            return currentIndex + 1 < itemCount ? translation : 0
+        }
+        if translation > 0 {
+            return currentIndex > 0 ? translation : 0
+        }
+        return 0
+    }
+
+    static func startedAtPagingEdge(
+        translation: CGFloat,
+        startOffset: CGSize,
+        viewportSize: CGSize,
+        fittedSize: CGSize,
+        zoomScale: CGFloat
+    ) -> Bool {
+        let limits = S2Geometry.panLimits(
+            viewportSize: viewportSize,
+            fittedSize: fittedSize,
+            zoomScale: zoomScale
+        )
+        if translation < 0 {
+            return startOffset.width <= -limits.width
+        }
+        if translation > 0 {
+            return startOffset.width >= limits.width
+        }
+        return false
+    }
+
+    static func snapDestination(
+        translation: CGSize,
+        duration: TimeInterval,
+        dragDirection: S2DragDirection,
+        minimumDistance: CGFloat,
+        minimumVelocity: CGFloat,
+        startedAtPagingEdge: Bool,
+        requiresPagingEdge: Bool,
+        currentIndex: Int,
+        itemCount: Int
+    ) -> S2PageSnapDestination {
+        guard dragDirection == .horizontal,
+              (!requiresPagingEdge || startedAtPagingEdge) else {
+            return .current
+        }
+        let distance = abs(translation.width)
+        let velocity = duration > 0
+            ? distance / CGFloat(duration)
+            : CGFloat.infinity
+        guard distance >= minimumDistance,
+              velocity >= minimumVelocity else {
+            return .current
+        }
+        if translation.width < 0, currentIndex + 1 < itemCount {
+            return .next
+        }
+        if translation.width > 0, currentIndex > 0 {
+            return .previous
+        }
+        return .current
+    }
+}
+
 final class S2StateMachine: ObservableObject {
     let entry: S2EntryContext
     @Published private(set) var parameters: S2ResolvedParameters
@@ -575,6 +674,7 @@ final class S2StateMachine: ObservableObject {
     @Published private(set) var semanticNotice: S2SemanticNotice?
     @Published private(set) var pendingUndecidedItem: S2UndecidedItem?
     @Published private(set) var imageRequestRevision = 0
+    @Published private(set) var imageRequestAssetID: String?
     @Published private(set) var lastGestureReading: S2GestureReading?
     @Published private(set) var lastImageRequestReading: S2ImageRequestReading?
     @Published private(set) var assetNavigationResult: S2AssetNavigationResult?
@@ -1117,6 +1217,7 @@ final class S2StateMachine: ObservableObject {
         pinchStartScale = nil
         touchSequenceOwner = .none
         if imageRequestStrategy?.scaleChangePolicy == .pinchEnded {
+            imageRequestAssetID = currentAssetID
             imageRequestRevision += 1
         }
         return true
@@ -1141,6 +1242,7 @@ final class S2StateMachine: ObservableObject {
         self.pinchStartScale = nil
         touchSequenceOwner = .none
         if imageRequestStrategy?.scaleChangePolicy == .pinchEnded {
+            imageRequestAssetID = currentAssetID
             imageRequestRevision += 1
         }
         return true

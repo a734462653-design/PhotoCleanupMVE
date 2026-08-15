@@ -110,7 +110,10 @@ struct S2TemporaryPhotoImageView: View {
                 }
                 requestImageIfNeeded(for: newKey, trigger: trigger)
             }
-            .onChange(of: requestRevision) { _, _ in
+            .onChange(of: requestRevision) { oldRevision, newRevision in
+                guard newRevision > oldRevision else {
+                    return
+                }
                 requestImageIfNeeded(for: key, trigger: .pinchEnded)
             }
             .onChange(of: requestStrategy) { _, _ in

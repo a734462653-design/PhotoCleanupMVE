@@ -55,6 +55,9 @@ struct S2View: View {
     @State private var mainDragPreviousTime: Date?
     @State private var mainDragPreviousTranslation = CGSize.zero
     @State private var mainDragPeakVelocity: CGFloat = 0
+    @State private var mainDragWasClaimedByPinch = false
+    @State private var pageDragTranslation: CGFloat = 0
+    @State private var pageTransitionInProgress = false
     @State private var firstTapDate: Date?
     @State private var firstTapLocation: CGPoint?
     @State private var pendingSingleTap: DispatchWorkItem?
@@ -175,13 +178,24 @@ struct S2View: View {
                 pendingSingleTap = nil
                 firstTapDate = nil
                 firstTapLocation = nil
+                pageDragTranslation = 0
+                pageTransitionInProgress = false
             }
         }
         .ignoresSafeArea()
+        .transaction { transaction in
+            if !calibration.configuration.animationsEnabled {
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+        }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: albumSheetBinding) {
             albumSheet
+                .interactiveDismissDisabled(
+                    !calibration.configuration.animationsEnabled
+                )
         }
     }
 
@@ -199,22 +213,61 @@ struct S2View: View {
         fittedSize: CGSize,
         assetAspectRatio: CGFloat
     ) -> some View {
-        photoContent(
-            S2ImageContentContext(
-                assetID: machine.currentAssetID,
-                fittedSize: fittedSize,
-                scale: machine.scale,
-                requestStrategy: machine.imageRequestStrategy,
-                requestRevision: machine.imageRequestRevision,
-                onRequestReading: machine.recordImageRequestReading
-            )
+        let firstIndex = max(0, machine.currentIndex - 1)
+        let lastIndex = min(
+            machine.orderedAssetIDs.count - 1,
+            machine.currentIndex + 1
         )
-        .frame(width: fittedSize.width, height: fittedSize.height)
-        .scaleEffect(machine.scale)
-        .offset(machine.viewportOffset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        return ZStack {
+            ForEach(Array(firstIndex...lastIndex), id: \.self) { index in
+                let assetID = machine.orderedAssetIDs[index]
+                let isCurrent = index == machine.currentIndex
+                let pageMetrics = S2ViewportLayout.metrics(
+                    physicalSize: viewportSize,
+                    presentationState: viewportPresentationState,
+                    assetAspectRatio: self.assetAspectRatio(assetID),
+                    configuration: calibration.configuration
+                )
+                let scale = isCurrent ? machine.scale : 1
+                let requestRevision = machine.imageRequestAssetID == assetID
+                    ? machine.imageRequestRevision
+                    : 0
+
+                photoContent(
+                    S2ImageContentContext(
+                        assetID: assetID,
+                        fittedSize: pageMetrics.oneXDisplaySize,
+                        scale: scale,
+                        requestStrategy: machine.imageRequestStrategy,
+                        requestRevision: requestRevision,
+                        onRequestReading: { reading in
+                            if index == machine.currentIndex {
+                                machine.recordImageRequestReading(reading)
+                            }
+                        }
+                    )
+                )
+                .frame(
+                    width: pageMetrics.oneXDisplaySize.width,
+                    height: pageMetrics.oneXDisplaySize.height
+                )
+                .scaleEffect(scale)
+                .offset(isCurrent ? machine.viewportOffset : .zero)
+                .frame(width: viewportSize.width, height: viewportSize.height)
+                .clipped()
+                .offset(x: S2PagingInteraction.pageOffset(
+                    pageIndex: index,
+                    currentIndex: machine.currentIndex,
+                    viewportWidth: viewportSize.width,
+                    dragTranslation: pageDragTranslation
+                ))
+            }
+        }
+        .frame(width: viewportSize.width, height: viewportSize.height)
         .contentShape(Rectangle())
         .clipped()
+        .allowsHitTesting(!pageTransitionInProgress)
         .modifier(S2MainGestureModifier(
             pinchBeforeSingleDrag:
                 calibration.configuration.gestureExclusivityPolicy ==
@@ -286,7 +339,9 @@ struct S2View: View {
                 guard let payload = machine.makeExitPayload() else {
                     return
                 }
-                onBack(payload)
+                performCalibratedAnimation {
+                    onBack(payload)
+                }
             } label: {
                 Label(
                     L10n.text("s2.action.back"),
@@ -317,7 +372,9 @@ struct S2View: View {
                 guard let payload = machine.makeExitPayload() else {
                     return
                 }
-                onConfirmation(payload)
+                performCalibratedAnimation {
+                    onConfirmation(payload)
+                }
             } label: {
                 Image(systemName: "trash")
                     .overlay(alignment: .topTrailing) {
@@ -373,7 +430,9 @@ struct S2View: View {
             }
 
             Button {
-                _ = machine.presentAlbumPicker()
+                performCalibratedAnimation {
+                    _ = machine.presentAlbumPicker()
+                }
             } label: {
                 Label(
                     L10n.text("s2.action.add_album"),
@@ -430,7 +489,9 @@ struct S2View: View {
             get: { machine.sheetState == .presented },
             set: { isPresented in
                 if !isPresented {
-                    _ = machine.cancelAlbumPicker()
+                    performCalibratedAnimation {
+                        _ = machine.cancelAlbumPicker()
+                    }
                 }
             }
         )
@@ -443,16 +504,20 @@ struct S2View: View {
                 request,
                 S2AlbumPickerActions(
                     select: { album in
-                        _ = machine.completeAlbumPickerSelection(
-                            request,
-                            album: album
-                        )
+                        performCalibratedAnimation {
+                            _ = machine.completeAlbumPickerSelection(
+                                request,
+                                album: album
+                            )
+                        }
                     },
                     reportFailure: {
                         _ = machine.reportAlbumPickerFailure(request)
                     },
                     cancel: {
-                        _ = machine.cancelAlbumPicker()
+                        performCalibratedAnimation {
+                            _ = machine.cancelAlbumPicker()
+                        }
                     }
                 )
             )
@@ -590,6 +655,7 @@ struct S2View: View {
                     )
                 ) {
                     Text(verbatim: "0 ms").tag(Double(0))
+                    Text(verbatim: "180 ms").tag(Double(180))
                     Text(verbatim: "200 ms").tag(Double(200))
                     Text(verbatim: "220 ms").tag(Double(220))
                 }
@@ -830,6 +896,13 @@ struct S2View: View {
                         return
                     }
                     pinchIsActive = machine.beginPinch()
+                    if pinchIsActive {
+                        mainDragWasClaimedByPinch = true
+                        resetMainDragTracking(clearPinchClaim: false)
+                        performWithoutAnimation {
+                            pageDragTranslation = 0
+                        }
+                    }
                     let now = Date()
                     pinchStartTime = now
                     pinchPreviousTime = now
@@ -909,7 +982,15 @@ struct S2View: View {
             coordinateSpace: .local
         )
         .onChanged { value in
+            guard !pageTransitionInProgress else {
+                return
+            }
+            if pinchIsActive {
+                mainDragWasClaimedByPinch = true
+                return
+            }
             if mainDragStartTime == nil {
+                mainDragWasClaimedByPinch = false
                 mainDragStartTime = value.time
                 mainDragStartOffset = machine.viewportOffset
                 mainDragPreviousTime = value.time
@@ -932,19 +1013,57 @@ struct S2View: View {
                 mainDragPreviousTime = value.time
                 mainDragPreviousTranslation = value.translation
             }
-            guard calibration.configuration.singleDragTouchCount == 1,
+            guard S2MainGestureArbitration.singleDragMayUpdate(
+                    pinchIsActive: pinchIsActive,
+                    dragWasClaimedByPinch: mainDragWasClaimedByPinch
+                  ),
+                  calibration.configuration.singleDragTouchCount == 1,
                   hypot(value.translation.width, value.translation.height) >=
                     machine.parameters.mainDragMinimumDistance else {
                 return
             }
-            _ = machine.updateMainPan(
-                from: mainDragStartOffset,
-                translation: value.translation,
-                viewportSize: viewportSize,
-                fittedSize: fittedSize
+            let direction = S2StateMachine.dragDirection(
+                for: value.translation
             )
+            if machine.zoomState == .nX {
+                _ = machine.updateMainPan(
+                    from: mainDragStartOffset,
+                    translation: value.translation,
+                    viewportSize: viewportSize,
+                    fittedSize: fittedSize
+                )
+            }
+            let startedAtPagingEdge = machine.zoomState == .oneX ||
+                S2PagingInteraction.startedAtPagingEdge(
+                    translation: value.translation.width,
+                    startOffset: mainDragStartOffset,
+                    viewportSize: viewportSize,
+                    fittedSize: fittedSize,
+                    zoomScale: machine.scale
+                )
+            if direction == .horizontal, startedAtPagingEdge {
+                pageDragTranslation =
+                    S2PagingInteraction.interactiveTranslation(
+                        value.translation.width,
+                        currentIndex: machine.currentIndex,
+                        itemCount: machine.orderedAssetIDs.count
+                    )
+            } else {
+                pageDragTranslation = 0
+            }
         }
         .onEnded { value in
+            guard !pageTransitionInProgress else {
+                resetMainDragTracking()
+                return
+            }
+            guard S2MainGestureArbitration.singleDragMayUpdate(
+                pinchIsActive: pinchIsActive,
+                dragWasClaimedByPinch: mainDragWasClaimedByPinch
+            ), mainDragStartTime != nil else {
+                resetMainDragTracking()
+                return
+            }
             let startedAt = mainDragStartTime ?? value.time
             let duration = value.time.timeIntervalSince(startedAt)
             let distance = hypot(
@@ -978,6 +1097,7 @@ struct S2View: View {
                     oneXDisplaySize: fittedSize,
                     assetAspectRatio: assetAspectRatio
                 )
+                settleCurrentPage()
             } else if configuration.singleDragTouchCount == 1,
                       distance >= machine.parameters.mainDragMinimumDistance,
                       peakVelocity >=
@@ -991,21 +1111,129 @@ struct S2View: View {
                           duration,
                           maximumMilliseconds: directionalMaximumDuration
                       ) {
-                performCalibratedAnimation {
-                    _ = machine.completeMainDrag(
+                if direction == .horizontal {
+                    completeHorizontalPageDrag(
                         translation: value.translation,
                         duration: duration,
-                        startedOffset: mainDragStartOffset,
                         viewportSize: viewportSize,
                         fittedSize: fittedSize
                     )
+                } else {
+                    performWithoutAnimation {
+                        _ = machine.completeMainDrag(
+                            translation: value.translation,
+                            duration: duration,
+                            startedOffset: mainDragStartOffset,
+                            viewportSize: viewportSize,
+                            fittedSize: fittedSize
+                        )
+                        pageDragTranslation = 0
+                    }
                 }
+            } else {
+                settleCurrentPage()
             }
-            mainDragStartTime = nil
-            mainDragStartOffset = machine.viewportOffset
-            mainDragPreviousTime = nil
-            mainDragPreviousTranslation = .zero
-            mainDragPeakVelocity = 0
+            resetMainDragTracking()
+        }
+    }
+
+    private func completeHorizontalPageDrag(
+        translation: CGSize,
+        duration: TimeInterval,
+        viewportSize: CGSize,
+        fittedSize: CGSize
+    ) {
+        let isZoomed = machine.zoomState == .nX
+        let startedAtPagingEdge = !isZoomed ||
+            S2PagingInteraction.startedAtPagingEdge(
+                translation: translation.width,
+                startOffset: mainDragStartOffset,
+                viewportSize: viewportSize,
+                fittedSize: fittedSize,
+                zoomScale: machine.scale
+            )
+        let destination = S2PagingInteraction.snapDestination(
+            translation: translation,
+            duration: duration,
+            dragDirection: S2StateMachine.dragDirection(for: translation),
+            minimumDistance: isZoomed
+                ? machine.parameters.edgePagingTriggerDistance
+                : machine.parameters.horizontalSwipeDistance,
+            minimumVelocity: isZoomed
+                ? machine.parameters.edgePagingTriggerVelocity
+                : machine.parameters.horizontalSwipeVelocity,
+            startedAtPagingEdge: startedAtPagingEdge,
+            requiresPagingEdge: isZoomed,
+            currentIndex: machine.currentIndex,
+            itemCount: machine.orderedAssetIDs.count
+        )
+        guard let pageDirection = destination.pageDirection else {
+            settleCurrentPage()
+            return
+        }
+
+        let targetOffset = pageDirection == .next
+            ? -viewportSize.width
+            : viewportSize.width
+        let horizontalDistance = abs(translation.width)
+        let horizontalVelocity = duration > 0
+            ? horizontalDistance / CGFloat(duration)
+            : CGFloat.infinity
+        pageTransitionInProgress = true
+        animatePageTranslation(to: targetOffset) {
+            performWithoutAnimation {
+                _ = machine.handleHorizontalSwipe(
+                    direction: pageDirection,
+                    startedAtPagingEdge: startedAtPagingEdge,
+                    distance: horizontalDistance,
+                    velocity: horizontalVelocity
+                )
+                pageDragTranslation = 0
+                pageTransitionInProgress = false
+            }
+        }
+    }
+
+    private func settleCurrentPage() {
+        guard pageDragTranslation != 0 else {
+            return
+        }
+        pageTransitionInProgress = animationPolicy.shouldAnimate
+        animatePageTranslation(to: 0) {
+            pageTransitionInProgress = false
+        }
+    }
+
+    private func animatePageTranslation(
+        to target: CGFloat,
+        completion: @escaping () -> Void
+    ) {
+        let policy = animationPolicy
+        guard policy.shouldAnimate else {
+            performWithoutAnimation {
+                pageDragTranslation = target
+            }
+            completion()
+            return
+        }
+        withAnimation(
+            .easeOut(duration: policy.durationSeconds),
+            completionCriteria: .logicallyComplete
+        ) {
+            pageDragTranslation = target
+        } completion: {
+            completion()
+        }
+    }
+
+    private func resetMainDragTracking(clearPinchClaim: Bool = true) {
+        mainDragStartTime = nil
+        mainDragStartOffset = machine.viewportOffset
+        mainDragPreviousTime = nil
+        mainDragPreviousTranslation = .zero
+        mainDragPeakVelocity = 0
+        if clearPinchClaim {
+            mainDragWasClaimedByPinch = false
         }
     }
 
@@ -1075,21 +1303,28 @@ struct S2View: View {
         maximumMilliseconds == 0 || duration * 1_000 <= maximumMilliseconds
     }
 
+    private var animationPolicy: S2AnimationPolicy {
+        S2AnimationPolicy(configuration: calibration.configuration)
+    }
+
     private func performCalibratedAnimation(_ action: () -> Void) {
-        let configuration = calibration.configuration
-        if configuration.animationsEnabled,
-           configuration.animationDurationMilliseconds > 0 {
+        let policy = animationPolicy
+        if policy.shouldAnimate {
             withAnimation(.linear(
-                duration: configuration.animationDurationMilliseconds / 1_000
+                duration: policy.durationSeconds
             )) {
                 action()
             }
         } else {
-            var transaction = Transaction(animation: nil)
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                action()
-            }
+            performWithoutAnimation(action)
+        }
+    }
+
+    private func performWithoutAnimation(_ action: () -> Void) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            action()
         }
     }
 }
@@ -1205,6 +1440,15 @@ private extension View {
     }
 }
 
+enum S2MainGestureArbitration {
+    static func singleDragMayUpdate(
+        pinchIsActive: Bool,
+        dragWasClaimedByPinch: Bool
+    ) -> Bool {
+        !pinchIsActive && !dragWasClaimedByPinch
+    }
+}
+
 private struct S2MainGestureModifier<
     PinchGestureType: Gesture,
     SingleDragGestureType: Gesture
@@ -1216,13 +1460,13 @@ private struct S2MainGestureModifier<
     @ViewBuilder
     func body(content: Content) -> some View {
         if pinchBeforeSingleDrag {
-            content.gesture(
-                pinchGesture.exclusively(before: singleDragGesture)
-            )
+            content
+                .gesture(pinchGesture)
+                .simultaneousGesture(singleDragGesture)
         } else {
-            content.gesture(
-                singleDragGesture.exclusively(before: pinchGesture)
-            )
+            content
+                .gesture(singleDragGesture)
+                .simultaneousGesture(pinchGesture)
         }
     }
 }

@@ -362,7 +362,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // L7：完整出厂配置锁定 IC-055 指定值，避免系统惯例项漂移。
-    func testL7FactoryDefaultsMatchUsableBuildDecision() {
+    func testL7FactoryDefaultsMatchSystemParityDecision() {
         let expected = S2CalibrationConfiguration(
             pinchMaxScale: 4,
             zoomSnapBackThreshold: 1.1,
@@ -392,11 +392,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             singleDragTouchCount: 1,
             pinchTouchCount: 2,
             gestureExclusivityPolicy: .pinchBeforeSingleDrag,
-            scaleChangeRequestPolicy: .everyScaleChange,
+            scaleChangeRequestPolicy: .pinchEnded,
             degradedPreviewPolicy: .finalImageOnly,
             animationsEnabled: true,
-            animationDurationMilliseconds: 220,
-            fitInsetRatio: 0.05,
+            animationDurationMilliseconds: 180,
+            fitInsetRatio: 0.08,
             fitInsetScope: .screenAspectOnly,
             bottomStripCurrentItemSize: 72,
             bottomStripNeighborItemWidth: 52,
@@ -412,13 +412,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(
             actual.imageRequestStrategy,
             S2ImageRequestStrategy(
-                scaleChangePolicy: .everyScaleChange,
+                scaleChangePolicy: .pinchEnded,
                 degradedPreviewPolicy: .finalImageOnly
             )
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "taskID=IC-20260815-055-s2-usable-build"
+                "taskID=IC-20260815-055-s2-system-parity"
             )
         )
         XCTAssertTrue(
@@ -427,6 +427,231 @@ final class S2CalibrationHarnessTests: XCTestCase {
             )
         )
         XCTAssertFalse(actual.exportText().contains("未标定"))
+    }
+
+    // P1：默认手势仲裁允许单指拖动进入 Nx 平移，并产生非零位移。
+    func testP1NxSingleFingerDragProducesNonzeroPan() {
+        let machine = makeMachine(scale: 2)
+        let fittedSize = metrics().oneXDisplaySize
+
+        XCTAssertTrue(S2MainGestureArbitration.singleDragMayUpdate(
+            pinchIsActive: false,
+            dragWasClaimedByPinch: false
+        ))
+        XCTAssertTrue(machine.updateMainPan(
+            from: .zero,
+            translation: CGSize(width: 48, height: 32),
+            viewportSize: physicalSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertNotEqual(machine.viewportOffset, .zero)
+    }
+
+    // P2：Nx 平移严格停在缩放后内容边界，继续拖动也不增加余量。
+    func testP2NxPanStopsAtContentBoundaryWithoutExtraMargin() {
+        let machine = makeMachine(scale: 2)
+        let fittedSize = metrics().oneXDisplaySize
+        let limits = S2Geometry.panLimits(
+            viewportSize: physicalSize,
+            fittedSize: fittedSize,
+            zoomScale: machine.scale
+        )
+
+        XCTAssertGreaterThan(limits.width, 0)
+        XCTAssertGreaterThan(limits.height, 0)
+        XCTAssertTrue(machine.updateMainPan(
+            from: .zero,
+            translation: CGSize(width: 10_000, height: -10_000),
+            viewportSize: physicalSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(machine.viewportOffset.width, limits.width)
+        XCTAssertEqual(machine.viewportOffset.height, -limits.height)
+
+        let boundaryOffset = machine.viewportOffset
+        XCTAssertTrue(machine.updateMainPan(
+            from: boundaryOffset,
+            translation: CGSize(width: 500, height: -500),
+            viewportSize: physicalSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(machine.viewportOffset, boundaryOffset)
+    }
+
+    // P3：1x 继续拒绝主图平移，既有规则不回归。
+    func testP3OneXSingleFingerDragDoesNotPanPhoto() {
+        let machine = makeMachine(scale: 1)
+
+        XCTAssertFalse(machine.updateMainPan(
+            from: .zero,
+            translation: CGSize(width: 80, height: 60),
+            viewportSize: physicalSize,
+            fittedSize: metrics().oneXDisplaySize
+        ))
+        XCTAssertEqual(machine.viewportOffset, .zero)
+    }
+
+    // R1：捏合中的全部比例变化均不请求，只在结束时发出一次请求信号。
+    func testR1PinchRequestsExactlyOnceAfterPinchEnded() {
+        let machine = makeMachine()
+        let fittedSize = metrics().oneXDisplaySize
+        let strategy = S2CalibrationConfiguration.factoryPlaceholder
+            .imageRequestStrategy
+        let triggers: [S2ImageRequestTrigger] = [
+            .scaleChange,
+            .scaleChange,
+            .scaleChange,
+            .pinchEnded
+        ]
+        let requests = triggers.filter {
+            S2ImageRequestDecision.shouldRequest(for: $0, strategy: strategy)
+        }
+
+        XCTAssertEqual(requests, [.pinchEnded])
+        XCTAssertTrue(machine.beginPinch())
+        XCTAssertTrue(machine.updatePinch(
+            magnification: 1.2,
+            viewportSize: physicalSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertTrue(machine.updatePinch(
+            magnification: 1.6,
+            viewportSize: physicalSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(machine.imageRequestRevision, 0)
+        XCTAssertTrue(machine.endPinch(
+            viewportSize: physicalSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(machine.imageRequestRevision, 1)
+        XCTAssertEqual(machine.imageRequestAssetID, machine.currentAssetID)
+    }
+
+    // R2：降质回调不进入显示序列，只允许最终图一次性替换。
+    func testR2PinchDoesNotReplaceWithDegradedPreview() {
+        let strategy = S2CalibrationConfiguration.factoryPlaceholder
+            .imageRequestStrategy
+        let returns: [(S2ImageReturnType, Bool)] = [
+            (.degradedPreview, true),
+            (.finalImage, false)
+        ]
+        let displayed = returns.filter {
+            S2ImageRequestDecision.shouldDisplay(
+                isDegraded: $0.1,
+                strategy: strategy
+            )
+        }.map { $0.0 }
+
+        XCTAssertEqual(displayed, [.finalImage])
+    }
+
+    // T1：当前页与相邻页都按手指位移同号、等量且单调移动。
+    func testT1AdjacentPageTracksFingerWithSameSignAndMonotonicOffset() {
+        let translations: [CGFloat] = [-20, -60, -120]
+        let restingNeighborOffset = S2PagingInteraction.pageOffset(
+            pageIndex: 2,
+            currentIndex: 1,
+            viewportWidth: physicalSize.width,
+            dragTranslation: 0
+        )
+        let neighborDisplacements = translations.map { translation in
+            S2PagingInteraction.pageOffset(
+                pageIndex: 2,
+                currentIndex: 1,
+                viewportWidth: physicalSize.width,
+                dragTranslation: translation
+            ) - restingNeighborOffset
+        }
+
+        XCTAssertEqual(neighborDisplacements, translations)
+        XCTAssertTrue(neighborDisplacements.allSatisfy { $0 < 0 })
+        for index in 1..<neighborDisplacements.count {
+            XCTAssertLessThan(
+                neighborDisplacements[index],
+                neighborDisplacements[index - 1]
+            )
+        }
+    }
+
+    // T2：未达到距离阈值时吸附回当前页，当前索引不变。
+    func testT2BelowSnapThresholdReturnsToCurrentPage() {
+        let machine = makeMachine()
+        let originalIndex = machine.currentIndex
+        let destination = S2PagingInteraction.snapDestination(
+            translation: CGSize(width: -20, height: 0),
+            duration: 0.01,
+            dragDirection: .horizontal,
+            minimumDistance: machine.parameters.horizontalSwipeDistance,
+            minimumVelocity: machine.parameters.horizontalSwipeVelocity,
+            startedAtPagingEdge: true,
+            requiresPagingEdge: false,
+            currentIndex: machine.currentIndex,
+            itemCount: machine.orderedAssetIDs.count
+        )
+
+        XCTAssertEqual(destination, .current)
+        XCTAssertEqual(machine.currentIndex, originalIndex)
+        XCTAssertEqual(
+            S2PagingInteraction.pageOffset(
+                pageIndex: originalIndex,
+                currentIndex: originalIndex,
+                viewportWidth: physicalSize.width,
+                dragTranslation: 0
+            ),
+            0
+        )
+    }
+
+    // T3：跟手阶段只改页位移，不改主图尺寸；切页成功后缩放归一。
+    func testT3PagingKeepsPhotoSizeAndResetsScaleAfterSwitch() {
+        let machine = makeMachine(scale: 2)
+        let fittedSize = metrics().oneXDisplaySize
+        let initialDisplaySize = CGSize(
+            width: fittedSize.width * machine.scale,
+            height: fittedSize.height * machine.scale
+        )
+        let translations: [CGFloat] = [-20, -80, -160]
+
+        for translation in translations {
+            _ = S2PagingInteraction.pageOffset(
+                pageIndex: machine.currentIndex,
+                currentIndex: machine.currentIndex,
+                viewportWidth: physicalSize.width,
+                dragTranslation: translation
+            )
+            XCTAssertEqual(machine.scale, 2)
+            XCTAssertEqual(
+                CGSize(
+                    width: fittedSize.width * machine.scale,
+                    height: fittedSize.height * machine.scale
+                ),
+                initialDisplaySize
+            )
+        }
+
+        XCTAssertTrue(machine.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: true,
+            distance: machine.parameters.edgePagingTriggerDistance,
+            velocity: machine.parameters.edgePagingTriggerVelocity
+        ))
+        XCTAssertEqual(machine.currentIndex, 2)
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(machine.viewportOffset, .zero)
+    }
+
+    // A1：统一策略在关闭开关时把显式时长归零。
+    func testA1AnimationPolicyDisablesCalibratedAnimations() {
+        var configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let enabled = S2AnimationPolicy(configuration: configuration)
+        XCTAssertTrue(enabled.shouldAnimate)
+        XCTAssertEqual(enabled.durationSeconds, 0.18, accuracy: 0.000_001)
+
+        configuration.animationsEnabled = false
+        let disabled = S2AnimationPolicy(configuration: configuration)
+        XCTAssertFalse(disabled.shouldAnimate)
+        XCTAssertEqual(disabled.durationSeconds, 0)
     }
 
     private let physicalSize = CGSize(width: 300, height: 600)
@@ -482,7 +707,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    private func makeMachine() -> S2StateMachine {
+    private func makeMachine(
+        scale: CGFloat = 1,
+        viewportOffset: CGSize = .zero
+    ) -> S2StateMachine {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         return S2StateMachine(
             entry: S2EntryContext(
@@ -499,8 +727,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             ),
             initialPresentation: S2InitialPresentation(
                 interfaceVisibility: .visible,
-                scale: 1,
-                viewportOffset: .zero
+                scale: scale,
+                viewportOffset: viewportOffset
             ),
             parameters: tryUnwrap(configuration.resolvedParameters),
             imageRequestStrategy: configuration.imageRequestStrategy,
