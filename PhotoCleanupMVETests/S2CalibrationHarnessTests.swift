@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import PhotoCleanupMVE
 
 final class S2CalibrationHarnessTests: XCTestCase {
@@ -116,6 +117,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             $0.zoomSnapBackThreshold = 1.25
             $0.fitInsetRatio = 0.075
             $0.fitInsetScope = .allPhotos
+            $0.pageSpacing = 28
             $0.scaleChangeRequestPolicy = .pinchEnded
             $0.degradedPreviewPolicy = .display
             $0.animationDurationMilliseconds = 200
@@ -129,6 +131,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(restarted.configuration, first.configuration)
         XCTAssertTrue(restarted.exportText().contains("fitInsetRatio=0.075000"))
+        XCTAssertTrue(restarted.exportText().contains("pageSpacing=28.000000"))
         XCTAssertTrue(
             restarted.exportText().contains(
                 "valueStatus=④项目判断默认值，可修订"
@@ -396,6 +399,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             animationDurationMilliseconds: 180,
             fitInsetRatio: 0.08,
             fitInsetScope: .screenAspectOnly,
+            pageSpacing: 20,
             bottomStripCurrentItemSize: 72,
             bottomStripNeighborItemWidth: 52,
             bottomStripNeighborItemHeight: 44,
@@ -416,7 +420,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "taskID=IC-20260815-057-doubletap-scale-anchor-and-response"
+                "taskID=IC-20260815-058-s2-native-zoom-paging"
             )
         )
         XCTAssertTrue(
@@ -427,6 +431,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(
             actual.exportText().contains("minDoubleTapScale=2.500000")
         )
+        XCTAssertTrue(actual.exportText().contains("pageSpacing=20.000000"))
         XCTAssertFalse(
             actual.exportText().contains(
                 "aspectFillDegenerateTolerancePercent"
@@ -446,72 +451,51 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(actual.exportText().contains("未标定"))
     }
 
-    // P1：默认手势仲裁允许单指拖动进入 Nx 平移，并产生非零位移。
+    // P1 替代断言：Nx 平移由原生滚动容器接管并产生非零 contentOffset。
     func testP1NxSingleFingerDragProducesNonzeroPan() {
-        let machine = makeMachine(scale: 2)
-        let fittedSize = metrics().oneXDisplaySize
-
-        XCTAssertTrue(S2MainGestureArbitration.singleDragMayUpdate(
-            pinchIsActive: false,
-            dragWasClaimedByPinch: false
-        ))
-        XCTAssertTrue(machine.updateMainPan(
-            from: .zero,
-            translation: CGSize(width: 48, height: 32),
-            viewportSize: physicalSize,
-            fittedSize: fittedSize
-        ))
-        XCTAssertNotEqual(machine.viewportOffset, .zero)
-    }
-
-    // P2：Nx 平移严格停在缩放后内容边界，继续拖动也不增加余量。
-    func testP2NxPanStopsAtContentBoundaryWithoutExtraMargin() {
-        let machine = makeMachine(scale: 2)
-        let fittedSize = metrics().oneXDisplaySize
-        let limits = S2Geometry.panLimits(
-            viewportSize: physicalSize,
-            fittedSize: fittedSize,
-            zoomScale: machine.scale
+        let scrollView = makeNativeZoomScrollView()
+        scrollView.applyNativeState(
+            scale: 2,
+            viewportOffset: CGSize(width: 24, height: 16)
         )
 
-        XCTAssertGreaterThan(limits.width, 0)
-        XCTAssertGreaterThan(limits.height, 0)
-        XCTAssertTrue(machine.updateMainPan(
-            from: .zero,
-            translation: CGSize(width: 10_000, height: -10_000),
-            viewportSize: physicalSize,
-            fittedSize: fittedSize
-        ))
-        XCTAssertEqual(machine.viewportOffset.width, limits.width)
-        XCTAssertEqual(machine.viewportOffset.height, -limits.height)
-
-        let boundaryOffset = machine.viewportOffset
-        XCTAssertTrue(machine.updateMainPan(
-            from: boundaryOffset,
-            translation: CGSize(width: 500, height: -500),
-            viewportSize: physicalSize,
-            fittedSize: fittedSize
-        ))
-        XCTAssertEqual(machine.viewportOffset, boundaryOffset)
+        XCTAssertTrue(scrollView is UIScrollView)
+        XCTAssertTrue(scrollView.panGestureRecognizer.isEnabled)
+        XCTAssertNotEqual(scrollView.contentOffset, .zero)
+        XCTAssertNotEqual(scrollView.reportedViewportOffset(), .zero)
     }
 
-    // P3：1x 继续拒绝主图平移，既有规则不回归。
+    // P2 替代断言：边缘目标交给 UIScrollView 后由其原生边界钳制。
+    func testP2NxPanStopsAtContentBoundaryWithoutExtraMargin() {
+        let scrollView = makeNativeZoomScrollView()
+        _ = scrollView.performDoubleTapZoom(
+            at: CGPoint(x: 1, y: physicalSize.height / 2),
+            targetScale: 2.5,
+            animated: false
+        )
+        let frame = tryUnwrap(scrollView.visibleContentFrame())
+
+        XCTAssertEqual(frame.minX, 0, accuracy: 0.000_001)
+        XCTAssertFalse(scrollView.bounces)
+        XCTAssertFalse(scrollView.bouncesZoom)
+    }
+
+    // P3 替代断言：1x 时内层原生平移关闭，手势交给外层分页或竖滑语义。
     func testP3OneXSingleFingerDragDoesNotPanPhoto() {
-        let machine = makeMachine(scale: 1)
+        let scrollView = makeNativeZoomScrollView()
+        scrollView.applyNativeState(
+            scale: 1,
+            viewportOffset: CGSize(width: 80, height: 60)
+        )
 
-        XCTAssertFalse(machine.updateMainPan(
-            from: .zero,
-            translation: CGSize(width: 80, height: 60),
-            viewportSize: physicalSize,
-            fittedSize: metrics().oneXDisplaySize
-        ))
-        XCTAssertEqual(machine.viewportOffset, .zero)
+        XCTAssertFalse(scrollView.panGestureRecognizer.isEnabled)
+        XCTAssertEqual(scrollView.zoomScale, 1)
+        XCTAssertEqual(scrollView.reportedViewportOffset(), .zero)
     }
 
-    // R1：捏合中的全部比例变化均不请求，只在结束时发出一次请求信号。
+    // R1 替代断言：原生捏合上报期间请求倍率不变，结束后只发一次请求信号。
     func testR1PinchRequestsExactlyOnceAfterPinchEnded() {
         let machine = makeMachine()
-        let fittedSize = metrics().oneXDisplaySize
         let strategy = S2CalibrationConfiguration.factoryPlaceholder
             .imageRequestStrategy
         let triggers: [S2ImageRequestTrigger] = [
@@ -526,22 +510,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
         XCTAssertEqual(requests, [.pinchEnded])
         XCTAssertTrue(machine.beginPinch())
-        XCTAssertTrue(machine.updatePinch(
-            magnification: 1.2,
-            viewportSize: physicalSize,
-            fittedSize: fittedSize
-        ))
-        XCTAssertTrue(machine.updatePinch(
-            magnification: 1.6,
-            viewportSize: physicalSize,
-            fittedSize: fittedSize
-        ))
+        machine.reportNativeViewport(scale: 1.2, viewportOffset: .zero)
+        machine.reportNativeViewport(
+            scale: 1.6,
+            viewportOffset: CGSize(width: 20, height: 10)
+        )
         XCTAssertEqual(machine.imageRequestRevision, 0)
-        XCTAssertTrue(machine.endPinch(
-            viewportSize: physicalSize,
-            fittedSize: fittedSize
+        XCTAssertEqual(machine.imageRequestScale, 1)
+        let finalScale = tryUnwrap(machine.finishNativePinch(
+            scale: 1.6,
+            viewportOffset: CGSize(width: 20, height: 10),
+            accepted: true
         ))
+        XCTAssertEqual(finalScale, 1.6, accuracy: 0.000_001)
         XCTAssertEqual(machine.imageRequestRevision, 1)
+        XCTAssertEqual(machine.imageRequestScale, 1.6)
         XCTAssertEqual(machine.imageRequestAssetID, machine.currentAssetID)
     }
 
@@ -563,96 +546,58 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(displayed, [.finalImage])
     }
 
-    // T1：当前页与相邻页都按手指位移同号、等量且单调移动。
+    // T1 替代断言：原生 contentOffset 令当前页与相邻页等量、同向、单调跟手。
     func testT1AdjacentPageTracksFingerWithSameSignAndMonotonicOffset() {
-        let translations: [CGFloat] = [-20, -60, -120]
-        let restingNeighborOffset = S2PagingInteraction.pageOffset(
-            pageIndex: 2,
-            currentIndex: 1,
-            viewportWidth: physicalSize.width,
-            dragTranslation: 0
-        )
-        let neighborDisplacements = translations.map { translation in
-            S2PagingInteraction.pageOffset(
-                pageIndex: 2,
-                currentIndex: 1,
-                viewportWidth: physicalSize.width,
-                dragTranslation: translation
-            ) - restingNeighborOffset
+        let paging = makeNativePagingScrollView()
+        let restingCurrent = paging.visibleFrameForPage(at: 1).minX
+        let restingNeighbor = paging.visibleFrameForPage(at: 2).minX
+        let offsets: [CGFloat] = [20, 60, 120]
+        let displacements = offsets.map { offset -> (CGFloat, CGFloat) in
+            paging.contentOffset = CGPoint(
+                x: paging.contentOffsetForPage(at: 1).x + offset,
+                y: 0
+            )
+            return (
+                paging.visibleFrameForPage(at: 1).minX - restingCurrent,
+                paging.visibleFrameForPage(at: 2).minX - restingNeighbor
+            )
         }
 
-        XCTAssertEqual(neighborDisplacements, translations)
-        XCTAssertTrue(neighborDisplacements.allSatisfy { $0 < 0 })
-        for index in 1..<neighborDisplacements.count {
+        XCTAssertEqual(displacements.map { $0.0 }, offsets.map { -$0 })
+        XCTAssertEqual(displacements.map { $0.1 }, offsets.map { -$0 })
+        for index in 1..<displacements.count {
             XCTAssertLessThan(
-                neighborDisplacements[index],
-                neighborDisplacements[index - 1]
+                displacements[index].0,
+                displacements[index - 1].0
             )
         }
     }
 
-    // T2：未达到距离阈值时吸附回当前页，当前索引不变。
+    // T2 替代断言：原生分页已启用，未跨半页的落点仍报告当前分页单元。
     func testT2BelowSnapThresholdReturnsToCurrentPage() {
-        let machine = makeMachine()
-        let originalIndex = machine.currentIndex
-        let destination = S2PagingInteraction.snapDestination(
-            translation: CGSize(width: -20, height: 0),
-            duration: 0.01,
-            dragDirection: .horizontal,
-            minimumDistance: machine.parameters.horizontalSwipeDistance,
-            minimumVelocity: machine.parameters.horizontalSwipeVelocity,
-            startedAtPagingEdge: true,
-            requiresPagingEdge: false,
-            currentIndex: machine.currentIndex,
-            itemCount: machine.orderedAssetIDs.count
-        )
+        let paging = makeNativePagingScrollView()
+        let currentOffset = paging.contentOffsetForPage(at: 1).x
 
-        XCTAssertEqual(destination, .current)
-        XCTAssertEqual(machine.currentIndex, originalIndex)
+        XCTAssertTrue(paging.isPagingEnabled)
         XCTAssertEqual(
-            S2PagingInteraction.pageOffset(
-                pageIndex: originalIndex,
-                currentIndex: originalIndex,
-                viewportWidth: physicalSize.width,
-                dragTranslation: 0
+            paging.pageIndex(
+                forContentOffsetX: currentOffset + paging.pageStride * 0.49
             ),
-            0
+            1
         )
     }
 
-    // T3：跟手阶段只改页位移，不改主图尺寸；切页成功后缩放归一。
+    // T3 替代断言：分页单元尺寸固定；原生落页上报后缩放归一。
     func testT3PagingKeepsPhotoSizeAndResetsScaleAfterSwitch() {
         let machine = makeMachine(scale: 2)
-        let fittedSize = metrics().oneXDisplaySize
-        let initialDisplaySize = CGSize(
-            width: fittedSize.width * machine.scale,
-            height: fittedSize.height * machine.scale
+        let paging = makeNativePagingScrollView()
+
+        XCTAssertEqual(
+            paging.frameForPage(at: 1).size,
+            paging.frameForPage(at: 2).size
         )
-        let translations: [CGFloat] = [-20, -80, -160]
-
-        for translation in translations {
-            _ = S2PagingInteraction.pageOffset(
-                pageIndex: machine.currentIndex,
-                currentIndex: machine.currentIndex,
-                viewportWidth: physicalSize.width,
-                dragTranslation: translation
-            )
-            XCTAssertEqual(machine.scale, 2)
-            XCTAssertEqual(
-                CGSize(
-                    width: fittedSize.width * machine.scale,
-                    height: fittedSize.height * machine.scale
-                ),
-                initialDisplaySize
-            )
-        }
-
-        XCTAssertTrue(machine.handleHorizontalSwipe(
-            direction: .next,
-            startedAtPagingEdge: true,
-            distance: machine.parameters.edgePagingTriggerDistance,
-            velocity: machine.parameters.edgePagingTriggerVelocity
-        ))
+        XCTAssertEqual(paging.frameForPage(at: 1).size, physicalSize)
+        XCTAssertTrue(machine.handleNativePageChange(to: 2))
         XCTAssertEqual(machine.currentIndex, 2)
         XCTAssertEqual(machine.scale, 1)
         XCTAssertEqual(machine.viewportOffset, .zero)
@@ -717,26 +662,34 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(value.oneXDisplaySize, value.aspectFitSize)
     }
 
-    // D4：屏幕比例照片的填满倍数为一，双击改用最小目标倍数 2.5。
+    // D4 替代断言：屏幕比例照片的原生目标矩形采用最小目标倍数 2.5。
     func testD4ScreenAspectDoubleTapUsesMinimumScale() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let value = metrics(configuration: configuration)
         let machine = makeMachine(configuration: configuration)
-
-        XCTAssertTrue(machine.handleDoubleTap(
+        let scrollView = makeNativeZoomScrollView(configuration: configuration)
+        let targetRect = tryUnwrap(scrollView.performDoubleTapZoom(
             at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
-            viewportSize: physicalSize,
-            assetAspectRatio: screenAspectRatio,
-            oneXDisplaySize: value.oneXDisplaySize
+            targetScale: value.doubleTapTargetScale,
+            animated: false
+        ))
+
+        XCTAssertTrue(machine.handleNativeDoubleTap(
+            targetScale: value.doubleTapTargetScale
         ))
         XCTAssertEqual(
             machine.scale,
             CGFloat(configuration.minDoubleTapScale),
             accuracy: 0.000_001
         )
+        XCTAssertEqual(
+            tryUnwrap(scrollView.requestedScale(for: targetRect)),
+            CGFloat(configuration.minDoubleTapScale),
+            accuracy: 0.000_001
+        )
     }
 
-    // D5：填满倍数较大时采用该倍数，并且不受 1x 内缩尺寸影响。
+    // D5 替代断言：填满倍数较大时原生目标矩形采用该倍数，且不受 1x 内缩影响。
     func testD5DoubleTapUsesLargerAspectFillScale() {
         let assetAspectRatio: CGFloat = 1.5
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -753,40 +706,38 @@ final class S2CalibrationHarnessTests: XCTestCase {
             assetAspectRatio: assetAspectRatio
         ))
         let machine = makeMachine(configuration: configuration)
+        let scrollView = makeNativeZoomScrollView(configuration: configuration)
+        let targetRect = tryUnwrap(scrollView.performDoubleTapZoom(
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
+            targetScale: value.doubleTapTargetScale,
+            animated: false
+        ))
 
         XCTAssertGreaterThan(expected, CGFloat(configuration.minDoubleTapScale))
-        XCTAssertTrue(machine.handleDoubleTap(
-            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
-            viewportSize: physicalSize,
-            assetAspectRatio: assetAspectRatio,
-            oneXDisplaySize: value.oneXDisplaySize
-        ))
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: expected))
         XCTAssertEqual(machine.scale, expected, accuracy: 0.000_001)
+        XCTAssertEqual(
+            tryUnwrap(scrollView.requestedScale(for: targetRect)),
+            expected,
+            accuracy: 0.000_001
+        )
     }
 
-    // D6：左边缘附近双击后，内容左边界与视口左边严格重合。
+    // D6 替代断言：左边缘双击交给原生 zoom 后，内容左边界贴齐视口。
     func testD6LeftEdgeDoubleTapAlignsLeftContentBoundary() {
-        let value = metrics()
-        let machine = makeMachine()
+        let scrollView = makeNativeZoomScrollView()
 
-        XCTAssertTrue(machine.handleDoubleTap(
+        XCTAssertNotNil(scrollView.performDoubleTapZoom(
             at: CGPoint(x: 1, y: physicalSize.height / 2),
-            viewportSize: physicalSize,
-            assetAspectRatio: screenAspectRatio,
-            oneXDisplaySize: value.oneXDisplaySize
+            targetScale: metrics().doubleTapTargetScale,
+            animated: false
         ))
-        let frame = contentFrame(
-            viewportSize: physicalSize,
-            fittedSize: value.oneXDisplaySize,
-            scale: machine.scale,
-            offset: machine.viewportOffset
-        )
+        let frame = tryUnwrap(scrollView.visibleContentFrame())
         XCTAssertEqual(frame.minX, 0, accuracy: 0.000_001)
     }
 
-    // D7：右、上、下边缘附近双击后，对应内容边界均与视口边重合。
+    // D7 替代断言：右、上、下边缘双击均由原生边界钳制贴齐视口。
     func testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary() {
-        let value = metrics()
         let locationsAndAssertions: [(CGPoint, (CGRect) -> CGFloat)] = [
             (
                 CGPoint(x: physicalSize.width - 1, y: physicalSize.height / 2),
@@ -803,44 +754,43 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ]
 
         for (location, boundaryDifference) in locationsAndAssertions {
-            let machine = makeMachine()
-            XCTAssertTrue(machine.handleDoubleTap(
+            let scrollView = makeNativeZoomScrollView()
+            XCTAssertNotNil(scrollView.performDoubleTapZoom(
                 at: location,
-                viewportSize: physicalSize,
-                assetAspectRatio: screenAspectRatio,
-                oneXDisplaySize: value.oneXDisplaySize
+                targetScale: metrics().doubleTapTargetScale,
+                animated: false
             ))
-            let frame = contentFrame(
-                viewportSize: physicalSize,
-                fittedSize: value.oneXDisplaySize,
-                scale: machine.scale,
-                offset: machine.viewportOffset
-            )
+            let frame = tryUnwrap(scrollView.visibleContentFrame())
             XCTAssertEqual(boundaryDifference(frame), 0, accuracy: 0.000_001)
         }
     }
 
-    // D8：双击退出 Nx 后缩放严格归一，平移偏移同时清零。
+    // D8 替代断言：原生双击退出 Nx 后 scrollView 与状态机同时归一。
     func testD8DoubleTapExitResetsScaleAndOffset() {
         let value = metrics()
         let machine = makeMachine()
+        let scrollView = makeNativeZoomScrollView()
         let location = CGPoint(x: 1, y: physicalSize.height / 2)
 
-        XCTAssertTrue(machine.handleDoubleTap(
-            at: location,
-            viewportSize: physicalSize,
-            assetAspectRatio: screenAspectRatio,
-            oneXDisplaySize: value.oneXDisplaySize
+        XCTAssertTrue(machine.handleNativeDoubleTap(
+            targetScale: value.doubleTapTargetScale
         ))
-        XCTAssertNotEqual(machine.viewportOffset, .zero)
-        XCTAssertTrue(machine.handleDoubleTap(
+        XCTAssertNotNil(scrollView.performDoubleTapZoom(
             at: location,
-            viewportSize: physicalSize,
-            assetAspectRatio: screenAspectRatio,
-            oneXDisplaySize: value.oneXDisplaySize
+            targetScale: value.doubleTapTargetScale,
+            animated: false
         ))
+        machine.reportNativeViewport(
+            scale: scrollView.zoomScale,
+            viewportOffset: scrollView.reportedViewportOffset()
+        )
+        XCTAssertTrue(machine.handleNativeDoubleTap(
+            targetScale: value.doubleTapTargetScale
+        ))
+        scrollView.setZoomScale(1, animated: false)
         XCTAssertEqual(machine.scale, 1)
         XCTAssertEqual(machine.viewportOffset, .zero)
+        XCTAssertEqual(scrollView.zoomScale, 1)
     }
 
     // E1：第一击抬起时立即产出单击动作，不等待双击判定窗口。
@@ -926,7 +876,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // E4：立即单击后原子撤销再双击，最终状态与直接双击完全一致。
     func testE4RevertedSingleTapThenDoubleTapMatchesDirectDoubleTap() {
         let value = metrics()
-        let location = CGPoint(x: 1, y: physicalSize.height / 2)
 
         for visibility in [
             S2InterfaceVisibility.visible,
@@ -936,17 +885,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             let coordinated = makeMachine(interfaceVisibility: visibility)
             XCTAssertTrue(coordinated.handleSingleTap())
 
-            XCTAssertTrue(direct.handleDoubleTap(
-                at: location,
-                viewportSize: physicalSize,
-                assetAspectRatio: screenAspectRatio,
-                oneXDisplaySize: value.oneXDisplaySize
+            XCTAssertTrue(direct.handleNativeDoubleTap(
+                targetScale: value.doubleTapTargetScale
             ))
-            XCTAssertTrue(coordinated.handleDoubleTap(
-                at: location,
-                viewportSize: physicalSize,
-                assetAspectRatio: screenAspectRatio,
-                oneXDisplaySize: value.oneXDisplaySize,
+            XCTAssertTrue(coordinated.handleNativeDoubleTap(
+                targetScale: value.doubleTapTargetScale,
                 revertingImmediateSingleTap: true
             ))
 
@@ -987,6 +930,140 @@ final class S2CalibrationHarnessTests: XCTestCase {
         state.toggleParameterPanel()
         XCTAssertTrue(state.parameterPanelVisible)
         XCTAssertFalse(state.readingsVisible)
+    }
+
+    // N1：主图使用原生可缩放容器，倍率上下限分别为 1 与 pinchMaxScale。
+    func testN1NativeZoomContainerUsesConfiguredMinimumAndMaximumScale() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let scrollView = makeNativeZoomScrollView(configuration: configuration)
+
+        XCTAssertTrue(scrollView is UIScrollView)
+        XCTAssertEqual(scrollView.minimumZoomScale, 1)
+        XCTAssertEqual(
+            scrollView.maximumZoomScale,
+            CGFloat(configuration.pinchMaxScale),
+            accuracy: 0.000_001
+        )
+    }
+
+    // N2：双击调用原生 zoom(to:)，目标矩形对应填满倍数与最小倍数的较大值。
+    func testN2DoubleTapInvokesNativeZoomWithResolvedTargetScale() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let value = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: 1.5,
+            configuration: configuration
+        )
+        let expected = max(
+            value.aspectFillMultiplier,
+            CGFloat(configuration.minDoubleTapScale)
+        )
+        let scrollView = makeNativeZoomScrollView(configuration: configuration)
+        let rect = tryUnwrap(scrollView.performDoubleTapZoom(
+            at: CGPoint(x: 40, y: 80),
+            targetScale: expected,
+            animated: false
+        ))
+
+        XCTAssertEqual(scrollView.nativeZoomInvocationCount, 1)
+        XCTAssertEqual(scrollView.lastNativeZoomRect, rect)
+        XCTAssertEqual(
+            tryUnwrap(scrollView.requestedScale(for: rect)),
+            expected,
+            accuracy: 0.000_001
+        )
+    }
+
+    // N3：原生分页已开启，相邻分页单元间距等于 pageSpacing。
+    func testN3NativePagingUsesConfiguredPageSpacing() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let paging = makeNativePagingScrollView(configuration: configuration)
+        let first = paging.frameForPage(at: 0)
+        let second = paging.frameForPage(at: 1)
+
+        XCTAssertTrue(paging is UIScrollView)
+        XCTAssertTrue(paging.isPagingEnabled)
+        XCTAssertEqual(
+            second.minX - first.maxX,
+            CGFloat(configuration.pageSpacing),
+            accuracy: 0.000_001
+        )
+    }
+
+    // N4：pageSpacing 出厂值与参数导出均为 20。
+    func testN4PageSpacingFactoryDefaultIsTwentyPoints() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+
+        XCTAssertEqual(configuration.pageSpacing, 20)
+        XCTAssertTrue(
+            configuration.exportText().contains("pageSpacing=20.000000")
+        )
+    }
+
+    // N5：Nx 单击只切换显隐，不改变原生或状态机视口。
+    func testN5NxSingleTapTogglesInterfaceWithoutChangingNativeViewport() {
+        let originalOffset = CGSize(width: 24, height: 16)
+        let machine = makeMachine(scale: 2, viewportOffset: originalOffset)
+        let scrollView = makeNativeZoomScrollView()
+        scrollView.applyNativeState(scale: 2, viewportOffset: originalOffset)
+        let nativeScale = scrollView.zoomScale
+        let nativeOffset = scrollView.contentOffset
+
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        XCTAssertEqual(machine.scale, 2)
+        XCTAssertEqual(machine.viewportOffset, originalOffset)
+        XCTAssertEqual(scrollView.zoomScale, nativeScale)
+        XCTAssertEqual(scrollView.contentOffset, nativeOffset)
+    }
+
+    // N6：1x 单击继续切换界面显隐。
+    func testN6OneXSingleTapTogglesInterfaceVisibility() {
+        let machine = makeMachine(scale: 1)
+
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(machine.viewportOffset, .zero)
+    }
+
+    // N7：原生分页落到新照片时，状态机缩放与偏移归一。
+    func testN7NativePageChangeResetsZoomToOne() {
+        let machine = makeMachine(
+            scale: 2,
+            viewportOffset: CGSize(width: 24, height: 16)
+        )
+
+        XCTAssertTrue(machine.handleNativePageChange(to: 2))
+        XCTAssertEqual(machine.currentIndex, 2)
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(machine.viewportOffset, .zero)
+        XCTAssertEqual(machine.imageRequestScale, 1)
+    }
+
+    // N8：原生捏合过程中不请求，结束后只发出一次请求修订。
+    func testN8NativePinchRequestsZeroDuringGestureAndOnceAfterEnd() {
+        let machine = makeMachine()
+
+        XCTAssertTrue(machine.beginPinch())
+        machine.reportNativeViewport(scale: 1.2, viewportOffset: .zero)
+        machine.reportNativeViewport(
+            scale: 1.8,
+            viewportOffset: CGSize(width: 20, height: 10)
+        )
+        XCTAssertEqual(machine.imageRequestRevision, 0)
+        XCTAssertEqual(machine.imageRequestScale, 1)
+
+        let finalScale = tryUnwrap(machine.finishNativePinch(
+            scale: 1.8,
+            viewportOffset: CGSize(width: 20, height: 10),
+            accepted: true
+        ))
+        XCTAssertEqual(finalScale, 1.8, accuracy: 0.000_001)
+        XCTAssertEqual(machine.imageRequestRevision, 1)
+        XCTAssertEqual(machine.imageRequestAssetID, machine.currentAssetID)
+        XCTAssertEqual(machine.imageRequestScale, 1.8, accuracy: 0.000_001)
     }
 
     // A1：统一策略在关闭开关时把显式时长归零。
@@ -1087,22 +1164,36 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )!
     }
 
-    private func contentFrame(
-        viewportSize: CGSize,
-        fittedSize: CGSize,
-        scale: CGFloat,
-        offset: CGSize
-    ) -> CGRect {
-        let scaledSize = CGSize(
-            width: fittedSize.width * scale,
-            height: fittedSize.height * scale
+    private func makeNativeZoomScrollView(
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder
+    ) -> S2NativeZoomScrollView {
+        let scrollView = S2NativeZoomScrollView(
+            frame: CGRect(origin: .zero, size: physicalSize)
         )
-        return CGRect(
-            x: (viewportSize.width - scaledSize.width) / 2 + offset.width,
-            y: (viewportSize.height - scaledSize.height) / 2 + offset.height,
-            width: scaledSize.width,
-            height: scaledSize.height
+        let contentView = UIView()
+        scrollView.configure(
+            contentView: contentView,
+            fittedSize: metrics(
+                configuration: configuration
+            ).oneXDisplaySize,
+            maximumZoomScale: CGFloat(configuration.pinchMaxScale)
         )
+        scrollView.layoutIfNeeded()
+        scrollView.applyNativeState(scale: 1, viewportOffset: .zero)
+        return scrollView
+    }
+
+    private func makeNativePagingScrollView(
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder
+    ) -> S2NativePagingScrollView {
+        let scrollView = S2NativePagingScrollView()
+        scrollView.configure(
+            viewportSize: physicalSize,
+            itemCount: 3,
+            pageSpacing: CGFloat(configuration.pageSpacing)
+        )
+        scrollView.contentOffset = scrollView.contentOffsetForPage(at: 1)
+        return scrollView
     }
 
     private func tryUnwrap<T>(

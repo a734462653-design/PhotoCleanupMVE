@@ -48,6 +48,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var animationDurationMilliseconds: Double
     var fitInsetRatio: Double
     var fitInsetScope: S2FitInsetScope
+    var pageSpacing: Double
     var bottomStripCurrentItemSize: Double
     var bottomStripNeighborItemWidth: Double
     var bottomStripNeighborItemHeight: Double
@@ -90,6 +91,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         animationDurationMilliseconds: 180,
         fitInsetRatio: 0.08,
         fitInsetScope: .screenAspectOnly,
+        pageSpacing: 20,
         bottomStripCurrentItemSize: 72,
         bottomStripNeighborItemWidth: 52,
         bottomStripNeighborItemHeight: 44,
@@ -148,13 +150,14 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             singleDragTouchCount > 0 &&
             pinchTouchCount > 0 &&
             animationDurationMilliseconds >= 0 &&
-            fitInsetRatio >= 0 && fitInsetRatio < 0.5
+            fitInsetRatio >= 0 && fitInsetRatio < 0.5 &&
+            pageSpacing >= 0
     }
 
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260815-057-doubletap-scale-anchor-and-response"),
+            ("taskID", "IC-20260815-058-s2-native-zoom-paging"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
@@ -188,6 +191,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("animationDurationMilliseconds", formatted(animationDurationMilliseconds)),
             ("fitInsetRatio", formatted(fitInsetRatio)),
             ("fitInsetScope", fitInsetScope.rawValue),
+            ("pageSpacing", formatted(pageSpacing)),
             ("bottomStripCurrentItemSize", formatted(bottomStripCurrentItemSize)),
             ("bottomStripNeighborItemWidth", formatted(bottomStripNeighborItemWidth)),
             ("bottomStripNeighborItemHeight", formatted(bottomStripNeighborItemHeight)),
@@ -205,6 +209,142 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             locale: Locale(identifier: "en_US_POSIX"),
             value
         )
+    }
+}
+
+extension S2CalibrationConfiguration {
+    private enum CodingKeys: String, CodingKey {
+        case pinchMaxScale
+        case zoomSnapBackThreshold
+        case minDoubleTapScale
+        case doubleTapAnchorStrategy
+        case edgePagingTriggerDistance
+        case edgePagingTriggerVelocity
+        case verticalSwipeDistance
+        case verticalSwipeVelocity
+        case verticalSwipeMaximumDurationMilliseconds
+        case horizontalSwipeDistance
+        case horizontalSwipeVelocity
+        case horizontalSwipeMaximumDurationMilliseconds
+        case pinchMinimumScaleDelta
+        case pinchMinimumVelocityPerSecond
+        case pinchMaximumDurationMilliseconds
+        case mainDragMinimumDistance
+        case mainDragMinimumVelocity
+        case mainDragMaximumDurationMilliseconds
+        case singleTapMaximumMovement
+        case singleTapMaximumDurationMilliseconds
+        case doubleTapDecisionWindowMilliseconds
+        case singleTapTouchCount
+        case doubleTapTouchCount
+        case singleDragTouchCount
+        case pinchTouchCount
+        case gestureExclusivityPolicy
+        case scaleChangeRequestPolicy
+        case degradedPreviewPolicy
+        case animationsEnabled
+        case animationDurationMilliseconds
+        case fitInsetRatio
+        case fitInsetScope
+        case pageSpacing
+        case bottomStripCurrentItemSize
+        case bottomStripNeighborItemWidth
+        case bottomStripNeighborItemHeight
+        case bottomStripItemSpacing
+        case bottomStripEdgeFadeWidth
+        case bottomStripDragMinimumDistance
+        case bottomStripSwitchDistance
+    }
+
+    // 旧版持久化数据没有 pageSpacing；其余字段仍按原契约严格解码。
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            pinchMaxScale: try values.decode(Double.self, forKey: .pinchMaxScale),
+            zoomSnapBackThreshold: try values.decode(Double.self, forKey: .zoomSnapBackThreshold),
+            minDoubleTapScale: try values.decode(Double.self, forKey: .minDoubleTapScale),
+            doubleTapAnchorStrategy: try values.decode(S2DoubleTapAnchorStrategy.self, forKey: .doubleTapAnchorStrategy),
+            edgePagingTriggerDistance: try values.decode(Double.self, forKey: .edgePagingTriggerDistance),
+            edgePagingTriggerVelocity: try values.decode(Double.self, forKey: .edgePagingTriggerVelocity),
+            verticalSwipeDistance: try values.decode(Double.self, forKey: .verticalSwipeDistance),
+            verticalSwipeVelocity: try values.decode(Double.self, forKey: .verticalSwipeVelocity),
+            verticalSwipeMaximumDurationMilliseconds: try values.decode(Double.self, forKey: .verticalSwipeMaximumDurationMilliseconds),
+            horizontalSwipeDistance: try values.decode(Double.self, forKey: .horizontalSwipeDistance),
+            horizontalSwipeVelocity: try values.decode(Double.self, forKey: .horizontalSwipeVelocity),
+            horizontalSwipeMaximumDurationMilliseconds: try values.decode(Double.self, forKey: .horizontalSwipeMaximumDurationMilliseconds),
+            pinchMinimumScaleDelta: try values.decode(Double.self, forKey: .pinchMinimumScaleDelta),
+            pinchMinimumVelocityPerSecond: try values.decode(Double.self, forKey: .pinchMinimumVelocityPerSecond),
+            pinchMaximumDurationMilliseconds: try values.decode(Double.self, forKey: .pinchMaximumDurationMilliseconds),
+            mainDragMinimumDistance: try values.decode(Double.self, forKey: .mainDragMinimumDistance),
+            mainDragMinimumVelocity: try values.decode(Double.self, forKey: .mainDragMinimumVelocity),
+            mainDragMaximumDurationMilliseconds: try values.decode(Double.self, forKey: .mainDragMaximumDurationMilliseconds),
+            singleTapMaximumMovement: try values.decode(Double.self, forKey: .singleTapMaximumMovement),
+            singleTapMaximumDurationMilliseconds: try values.decode(Double.self, forKey: .singleTapMaximumDurationMilliseconds),
+            doubleTapDecisionWindowMilliseconds: try values.decode(Double.self, forKey: .doubleTapDecisionWindowMilliseconds),
+            singleTapTouchCount: try values.decode(Int.self, forKey: .singleTapTouchCount),
+            doubleTapTouchCount: try values.decode(Int.self, forKey: .doubleTapTouchCount),
+            singleDragTouchCount: try values.decode(Int.self, forKey: .singleDragTouchCount),
+            pinchTouchCount: try values.decode(Int.self, forKey: .pinchTouchCount),
+            gestureExclusivityPolicy: try values.decode(S2GestureExclusivityPolicy.self, forKey: .gestureExclusivityPolicy),
+            scaleChangeRequestPolicy: try values.decode(S2ScaleChangeImageRequestPolicy.self, forKey: .scaleChangeRequestPolicy),
+            degradedPreviewPolicy: try values.decode(S2DegradedPreviewPolicy.self, forKey: .degradedPreviewPolicy),
+            animationsEnabled: try values.decode(Bool.self, forKey: .animationsEnabled),
+            animationDurationMilliseconds: try values.decode(Double.self, forKey: .animationDurationMilliseconds),
+            fitInsetRatio: try values.decode(Double.self, forKey: .fitInsetRatio),
+            fitInsetScope: try values.decode(S2FitInsetScope.self, forKey: .fitInsetScope),
+            pageSpacing: try values.decodeIfPresent(Double.self, forKey: .pageSpacing) ?? 20,
+            bottomStripCurrentItemSize: try values.decode(Double.self, forKey: .bottomStripCurrentItemSize),
+            bottomStripNeighborItemWidth: try values.decode(Double.self, forKey: .bottomStripNeighborItemWidth),
+            bottomStripNeighborItemHeight: try values.decode(Double.self, forKey: .bottomStripNeighborItemHeight),
+            bottomStripItemSpacing: try values.decode(Double.self, forKey: .bottomStripItemSpacing),
+            bottomStripEdgeFadeWidth: try values.decode(Double.self, forKey: .bottomStripEdgeFadeWidth),
+            bottomStripDragMinimumDistance: try values.decode(Double.self, forKey: .bottomStripDragMinimumDistance),
+            bottomStripSwitchDistance: try values.decode(Double.self, forKey: .bottomStripSwitchDistance)
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(pinchMaxScale, forKey: .pinchMaxScale)
+        try values.encode(zoomSnapBackThreshold, forKey: .zoomSnapBackThreshold)
+        try values.encode(minDoubleTapScale, forKey: .minDoubleTapScale)
+        try values.encode(doubleTapAnchorStrategy, forKey: .doubleTapAnchorStrategy)
+        try values.encode(edgePagingTriggerDistance, forKey: .edgePagingTriggerDistance)
+        try values.encode(edgePagingTriggerVelocity, forKey: .edgePagingTriggerVelocity)
+        try values.encode(verticalSwipeDistance, forKey: .verticalSwipeDistance)
+        try values.encode(verticalSwipeVelocity, forKey: .verticalSwipeVelocity)
+        try values.encode(verticalSwipeMaximumDurationMilliseconds, forKey: .verticalSwipeMaximumDurationMilliseconds)
+        try values.encode(horizontalSwipeDistance, forKey: .horizontalSwipeDistance)
+        try values.encode(horizontalSwipeVelocity, forKey: .horizontalSwipeVelocity)
+        try values.encode(horizontalSwipeMaximumDurationMilliseconds, forKey: .horizontalSwipeMaximumDurationMilliseconds)
+        try values.encode(pinchMinimumScaleDelta, forKey: .pinchMinimumScaleDelta)
+        try values.encode(pinchMinimumVelocityPerSecond, forKey: .pinchMinimumVelocityPerSecond)
+        try values.encode(pinchMaximumDurationMilliseconds, forKey: .pinchMaximumDurationMilliseconds)
+        try values.encode(mainDragMinimumDistance, forKey: .mainDragMinimumDistance)
+        try values.encode(mainDragMinimumVelocity, forKey: .mainDragMinimumVelocity)
+        try values.encode(mainDragMaximumDurationMilliseconds, forKey: .mainDragMaximumDurationMilliseconds)
+        try values.encode(singleTapMaximumMovement, forKey: .singleTapMaximumMovement)
+        try values.encode(singleTapMaximumDurationMilliseconds, forKey: .singleTapMaximumDurationMilliseconds)
+        try values.encode(doubleTapDecisionWindowMilliseconds, forKey: .doubleTapDecisionWindowMilliseconds)
+        try values.encode(singleTapTouchCount, forKey: .singleTapTouchCount)
+        try values.encode(doubleTapTouchCount, forKey: .doubleTapTouchCount)
+        try values.encode(singleDragTouchCount, forKey: .singleDragTouchCount)
+        try values.encode(pinchTouchCount, forKey: .pinchTouchCount)
+        try values.encode(gestureExclusivityPolicy, forKey: .gestureExclusivityPolicy)
+        try values.encode(scaleChangeRequestPolicy, forKey: .scaleChangeRequestPolicy)
+        try values.encode(degradedPreviewPolicy, forKey: .degradedPreviewPolicy)
+        try values.encode(animationsEnabled, forKey: .animationsEnabled)
+        try values.encode(animationDurationMilliseconds, forKey: .animationDurationMilliseconds)
+        try values.encode(fitInsetRatio, forKey: .fitInsetRatio)
+        try values.encode(fitInsetScope, forKey: .fitInsetScope)
+        try values.encode(pageSpacing, forKey: .pageSpacing)
+        try values.encode(bottomStripCurrentItemSize, forKey: .bottomStripCurrentItemSize)
+        try values.encode(bottomStripNeighborItemWidth, forKey: .bottomStripNeighborItemWidth)
+        try values.encode(bottomStripNeighborItemHeight, forKey: .bottomStripNeighborItemHeight)
+        try values.encode(bottomStripItemSpacing, forKey: .bottomStripItemSpacing)
+        try values.encode(bottomStripEdgeFadeWidth, forKey: .bottomStripEdgeFadeWidth)
+        try values.encode(bottomStripDragMinimumDistance, forKey: .bottomStripDragMinimumDistance)
+        try values.encode(bottomStripSwitchDistance, forKey: .bottomStripSwitchDistance)
     }
 }
 

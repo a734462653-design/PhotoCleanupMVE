@@ -19,13 +19,13 @@ final class S2StateMachineTests: XCTestCase {
         )
     }
 
-    // IC047-003：迁移表的单击事件逐格符合显隐与 Nx 不响应规则。
+    // IC058：迁移表的单击事件在 1x 与 Nx 均切换显隐。
     func testIC047_003TransitionRowSingleTap() {
         assertTransitionRow(
             .singleTapMainImage,
             [unavailable, availableState(.hiddenOneX), unavailable,
-             availableState(.visibleOneXIdle), ignoredSame, unavailable,
-             ignoredSame]
+             availableState(.visibleOneXIdle), availableState(.hiddenNx),
+             unavailable, availableState(.visibleNxIdle)]
         )
 
         let visible = makeMachine(state: .visibleOneXIdle)
@@ -33,8 +33,8 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertEqual(visible.state, .hiddenOneX)
 
         let zoomed = makeMachine(state: .visibleNxIdle)
-        XCTAssertFalse(zoomed.handleSingleTap())
-        XCTAssertEqual(zoomed.state, .visibleNxIdle)
+        XCTAssertTrue(zoomed.handleSingleTap())
+        XCTAssertEqual(zoomed.state, .hiddenNx)
     }
 
     // IC047-004：迁移表的双击事件逐格进入或退出对应显隐层。
@@ -418,7 +418,7 @@ final class S2StateMachineTests: XCTestCase {
         assertGestureRow(
             .singleTapMainImage,
             [gesture(.available, .toggleInterface),
-             gesture(.ignored, .none), blocked]
+             gesture(.available, .toggleInterface), blocked]
         )
     }
 

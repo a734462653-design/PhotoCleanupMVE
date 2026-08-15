@@ -48,6 +48,7 @@
 		200000000000000000000027 /* AlbumScopeWiringTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* AlbumScopeWiringTests.swift */; };
 		200000000000000000000028 /* S2Calibration.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002B /* S2Calibration.swift */; };
 		200000000000000000000029 /* S2CalibrationHarnessTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002C /* S2CalibrationHarnessTests.swift */; };
+		20000000000000000000002A /* S2NativePhotoPager.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002D /* S2NativePhotoPager.swift */; };
 /* PBXBuildFile 区段结束 */
 
 /* PBXContainerItemProxy 区段开始 */
@@ -105,6 +106,7 @@
 		10000000000000000000002A /* AlbumScopeWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumScopeWiringTests.swift; sourceTree = "<group>"; };
 		10000000000000000000002B /* S2Calibration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2Calibration.swift; sourceTree = "<group>"; };
 		10000000000000000000002C /* S2CalibrationHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2CalibrationHarnessTests.swift; sourceTree = "<group>"; };
+		10000000000000000000002D /* S2NativePhotoPager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2NativePhotoPager.swift; sourceTree = "<group>"; };
 /* PBXFileReference 区段结束 */
 
 /* PBXFrameworksBuildPhase 区段开始 */
@@ -209,6 +211,7 @@
 			isa = PBXGroup;
 			children = (
 				10000000000000000000002B /* S2Calibration.swift */,
+				10000000000000000000002D /* S2NativePhotoPager.swift */,
 				100000000000000000000026 /* S2View.swift */,
 				100000000000000000000028 /* S2TemporaryPhotoImageStrategy.swift */,
 			);
@@ -398,6 +401,7 @@
 				200000000000000000000020 /* S1View.swift（源码） */,
 				200000000000000000000023 /* S2View.swift（源码） */,
 				200000000000000000000028 /* S2Calibration.swift（源码） */,
+				20000000000000000000002A /* S2NativePhotoPager.swift（源码） */,
 				200000000000000000000025 /* S2TemporaryPhotoImageStrategy.swift（源码） */,
 				20000000000000000000000B /* S3View.swift（源码） */,
 				20000000000000000000000C /* S4View.swift（源码） */,

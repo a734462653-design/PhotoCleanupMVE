@@ -323,23 +323,6 @@ enum S2PageDirection: Equatable {
     }
 }
 
-enum S2PageSnapDestination: Equatable {
-    case current
-    case previous
-    case next
-
-    var pageDirection: S2PageDirection? {
-        switch self {
-        case .current:
-            return nil
-        case .previous:
-            return .previous
-        case .next:
-            return .next
-        }
-    }
-}
-
 enum S2DragDirection: Equatable {
     case vertical
     case horizontal
@@ -551,88 +534,6 @@ enum S2Geometry {
     }
 }
 
-enum S2PagingInteraction {
-    static func pageOffset(
-        pageIndex: Int,
-        currentIndex: Int,
-        viewportWidth: CGFloat,
-        dragTranslation: CGFloat
-    ) -> CGFloat {
-        CGFloat(pageIndex - currentIndex) * max(0, viewportWidth) +
-            dragTranslation
-    }
-
-    static func interactiveTranslation(
-        _ translation: CGFloat,
-        currentIndex: Int,
-        itemCount: Int
-    ) -> CGFloat {
-        guard itemCount > 0, itemCount > currentIndex, currentIndex >= 0 else {
-            return 0
-        }
-        if translation < 0 {
-            return currentIndex + 1 < itemCount ? translation : 0
-        }
-        if translation > 0 {
-            return currentIndex > 0 ? translation : 0
-        }
-        return 0
-    }
-
-    static func startedAtPagingEdge(
-        translation: CGFloat,
-        startOffset: CGSize,
-        viewportSize: CGSize,
-        fittedSize: CGSize,
-        zoomScale: CGFloat
-    ) -> Bool {
-        let limits = S2Geometry.panLimits(
-            viewportSize: viewportSize,
-            fittedSize: fittedSize,
-            zoomScale: zoomScale
-        )
-        if translation < 0 {
-            return startOffset.width <= -limits.width
-        }
-        if translation > 0 {
-            return startOffset.width >= limits.width
-        }
-        return false
-    }
-
-    static func snapDestination(
-        translation: CGSize,
-        duration: TimeInterval,
-        dragDirection: S2DragDirection,
-        minimumDistance: CGFloat,
-        minimumVelocity: CGFloat,
-        startedAtPagingEdge: Bool,
-        requiresPagingEdge: Bool,
-        currentIndex: Int,
-        itemCount: Int
-    ) -> S2PageSnapDestination {
-        guard dragDirection == .horizontal,
-              (!requiresPagingEdge || startedAtPagingEdge) else {
-            return .current
-        }
-        let distance = abs(translation.width)
-        let velocity = duration > 0
-            ? distance / CGFloat(duration)
-            : CGFloat.infinity
-        guard distance >= minimumDistance,
-              velocity >= minimumVelocity else {
-            return .current
-        }
-        if translation.width < 0, currentIndex + 1 < itemCount {
-            return .next
-        }
-        if translation.width > 0, currentIndex > 0 {
-            return .previous
-        }
-        return .current
-    }
-}
-
 final class S2StateMachine: ObservableObject {
     let entry: S2EntryContext
     @Published private(set) var parameters: S2ResolvedParameters
@@ -657,6 +558,7 @@ final class S2StateMachine: ObservableObject {
     @Published private(set) var lastGestureReading: S2GestureReading?
     @Published private(set) var lastImageRequestReading: S2ImageRequestReading?
     @Published private(set) var assetNavigationResult: S2AssetNavigationResult?
+    private(set) var imageRequestScale: CGFloat
 
     private let pendingDeletionDidChange: (Set<String>) -> Void
     private var visibilityBeforeDoubleTapZoom: S2InterfaceVisibility?
@@ -695,6 +597,7 @@ final class S2StateMachine: ObservableObject {
         self.imageRequestStrategy = imageRequestStrategy
         interfaceVisibility = initialPresentation.interfaceVisibility
         scale = initialPresentation.scale
+        imageRequestScale = initialPresentation.scale
         viewportOffset = initialPresentation.scale == 1
             ? .zero
             : initialPresentation.viewportOffset
@@ -794,8 +697,10 @@ final class S2StateMachine: ObservableObject {
                 return .unavailable
             case .state(.hiddenOneX):
                 return .available(.state(.visibleOneXIdle))
-            case .state(.visibleNxIdle), .state(.hiddenNx):
-                return .ignored(.sameState)
+            case .state(.visibleNxIdle):
+                return .available(.state(.hiddenNx))
+            case .state(.hiddenNx):
+                return .available(.state(.visibleNxIdle))
             }
 
         case .doubleTapMainImage:
@@ -960,12 +865,10 @@ final class S2StateMachine: ObservableObject {
 
         switch input {
         case .singleTapMainImage:
-            return context == .oneX
-                ? S2GestureRule(
-                    availability: .available,
-                    effect: .toggleInterface
-                )
-                : S2GestureRule(availability: .ignored, effect: .none)
+            return S2GestureRule(
+                availability: .available,
+                effect: .toggleInterface
+            )
 
         case .doubleTapMainImage:
             return S2GestureRule(
@@ -1054,7 +957,7 @@ final class S2StateMachine: ObservableObject {
 
     @discardableResult
     func handleSingleTap() -> Bool {
-        guard receivesUnobscuredInput, zoomState == .oneX else {
+        guard receivesUnobscuredInput else {
             return false
         }
         interfaceVisibility = interfaceVisibility == .visible
@@ -1077,6 +980,7 @@ final class S2StateMachine: ObservableObject {
 
         if zoomState == .nX {
             scale = 1
+            imageRequestScale = 1
             viewportOffset = .zero
             if let visibilityBeforeDoubleTapZoom {
                 interfaceVisibility = visibilityBeforeDoubleTapZoom
@@ -1107,6 +1011,7 @@ final class S2StateMachine: ObservableObject {
         }
         visibilityBeforeDoubleTapZoom = visibilityBeforeTapSequence
         scale = nextScale
+        imageRequestScale = nextScale
         let fittedSize = oneXDisplaySize ?? S2Geometry.aspectFitSize(
             viewportSize: viewportSize,
             assetAspectRatio: assetAspectRatio
@@ -1122,6 +1027,106 @@ final class S2StateMachine: ObservableObject {
             fittedSize: fittedSize,
             zoomScale: scale
         )
+        return true
+    }
+
+    // 原生容器只向状态机上报结果；触点锚定与边界钳制由 UIScrollView 完成。
+    @discardableResult
+    func handleNativeDoubleTap(
+        targetScale: CGFloat,
+        revertingImmediateSingleTap: Bool = false
+    ) -> Bool {
+        guard receivesUnobscuredInput else {
+            return false
+        }
+
+        if zoomState == .nX {
+            scale = 1
+            imageRequestScale = 1
+            viewportOffset = .zero
+            if let visibilityBeforeDoubleTapZoom {
+                interfaceVisibility = visibilityBeforeDoubleTapZoom
+            }
+            self.visibilityBeforeDoubleTapZoom = nil
+            return true
+        }
+
+        guard targetScale.isFinite, targetScale > 1 else {
+            return false
+        }
+        let visibilityBeforeTapSequence: S2InterfaceVisibility
+        if revertingImmediateSingleTap {
+            visibilityBeforeTapSequence = interfaceVisibility == .visible
+                ? .hidden
+                : .visible
+            interfaceVisibility = visibilityBeforeTapSequence
+        } else {
+            visibilityBeforeTapSequence = interfaceVisibility
+        }
+        let resolvedScale = min(parameters.pinchMaxScale, targetScale)
+        guard resolvedScale > 1 else {
+            return false
+        }
+        visibilityBeforeDoubleTapZoom = visibilityBeforeTapSequence
+        scale = resolvedScale
+        imageRequestScale = resolvedScale
+        viewportOffset = .zero
+        return true
+    }
+
+    func reportNativeViewport(
+        scale: CGFloat,
+        viewportOffset: CGSize
+    ) {
+        guard scale.isFinite,
+              viewportOffset.width.isFinite,
+              viewportOffset.height.isFinite else {
+            return
+        }
+        self.scale = min(parameters.pinchMaxScale, max(1, scale))
+        self.viewportOffset = self.scale == 1 ? .zero : viewportOffset
+    }
+
+    @discardableResult
+    func finishNativePinch(
+        scale: CGFloat,
+        viewportOffset: CGSize,
+        accepted: Bool
+    ) -> CGFloat? {
+        guard touchSequenceOwner == .pinch,
+              let pinchStartScale else {
+            return nil
+        }
+
+        reportNativeViewport(
+            scale: accepted ? scale : pinchStartScale,
+            viewportOffset: viewportOffset
+        )
+        if self.scale < parameters.zoomSnapBackThreshold {
+            self.scale = 1
+            self.viewportOffset = .zero
+            visibilityBeforeDoubleTapZoom = nil
+        }
+        imageRequestScale = self.scale
+        self.pinchStartScale = nil
+        touchSequenceOwner = .none
+        if imageRequestStrategy?.scaleChangePolicy == .pinchEnded {
+            imageRequestAssetID = currentAssetID
+            imageRequestRevision += 1
+        }
+        return self.scale
+    }
+
+    @discardableResult
+    func handleNativePageChange(to index: Int) -> Bool {
+        guard receivesUnobscuredInput,
+              orderedAssetIDs.indices.contains(index),
+              index != currentIndex else {
+            return false
+        }
+        currentIndex = index
+        farthestIndex = max(farthestIndex, index)
+        resetZoomAfterPhotoChange()
         return true
     }
 
@@ -1186,6 +1191,7 @@ final class S2StateMachine: ObservableObject {
         }
         pinchStartScale = nil
         touchSequenceOwner = .none
+        imageRequestScale = scale
         if imageRequestStrategy?.scaleChangePolicy == .pinchEnded {
             imageRequestAssetID = currentAssetID
             imageRequestRevision += 1
@@ -1211,6 +1217,7 @@ final class S2StateMachine: ObservableObject {
         )
         self.pinchStartScale = nil
         touchSequenceOwner = .none
+        imageRequestScale = scale
         if imageRequestStrategy?.scaleChangePolicy == .pinchEnded {
             imageRequestAssetID = currentAssetID
             imageRequestRevision += 1
@@ -1565,6 +1572,7 @@ final class S2StateMachine: ObservableObject {
         imageRequestStrategy = configuration.imageRequestStrategy
         if scale > resolvedParameters.pinchMaxScale {
             scale = resolvedParameters.pinchMaxScale
+            imageRequestScale = scale
         }
         return true
     }
@@ -1623,6 +1631,7 @@ final class S2StateMachine: ObservableObject {
 
     private func resetZoomAfterPhotoChange() {
         scale = 1
+        imageRequestScale = 1
         viewportOffset = .zero
         visibilityBeforeDoubleTapZoom = nil
     }
