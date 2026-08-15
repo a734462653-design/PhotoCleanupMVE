@@ -5,8 +5,50 @@ struct S2NativePageContent {
     let index: Int
     let assetID: String
     let fittedSize: CGSize
+    let cornerRadius: CGFloat
     let doubleTapTargetScale: CGFloat
     let content: AnyView
+}
+
+struct S2NxEdgePagingProjection: Equatable {
+    let direction: S2PageDirection?
+    let overflowDistance: CGFloat
+    let pagingContentOffsetX: CGFloat
+}
+
+struct S2NxEdgePagingInteraction: Equatable {
+    let restingPagingOffsetX: CGFloat
+    let pageStride: CGFloat
+    let translationOriginX: CGFloat
+    let distanceToPreviousBoundary: CGFloat
+    let distanceToNextBoundary: CGFloat
+
+    func projection(translationX: CGFloat) -> S2NxEdgePagingProjection {
+        let translation = translationX - translationOriginX
+        guard translation != 0 else {
+            return S2NxEdgePagingProjection(
+                direction: nil,
+                overflowDistance: 0,
+                pagingContentOffsetX: restingPagingOffsetX
+            )
+        }
+        let direction: S2PageDirection = translation < 0
+            ? .next
+            : .previous
+        let distanceToBoundary = direction == .next
+            ? distanceToNextBoundary
+            : distanceToPreviousBoundary
+        let overflow = max(0, abs(translation) - distanceToBoundary)
+        let boundedOverflow = min(max(0, pageStride), overflow)
+        let offset = direction == .next
+            ? restingPagingOffsetX + boundedOverflow
+            : restingPagingOffsetX - boundedOverflow
+        return S2NxEdgePagingProjection(
+            direction: direction,
+            overflowDistance: overflow,
+            pagingContentOffsetX: offset
+        )
+    }
 }
 
 struct S2NativePhotoPager: UIViewControllerRepresentable {
@@ -15,6 +57,7 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
     let viewportSize: CGSize
     let pages: [S2NativePageContent]
     let onLongPress: () -> Void
+    let onPhotoSwitch: () -> Void
 
     func makeUIViewController(context _: Context) -> S2NativePagerViewController {
         S2NativePagerViewController()
@@ -29,7 +72,8 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
             configuration: configuration,
             viewportSize: viewportSize,
             pages: pages,
-            onLongPress: onLongPress
+            onLongPress: onLongPress,
+            onPhotoSwitch: onPhotoSwitch
         )
     }
 
@@ -161,6 +205,10 @@ final class S2NativeZoomScrollView: UIScrollView {
             height: max(0, fittedSize.height)
         )
         guard self.fittedSize != nextSize else {
+            enforceOneXContentGeometry(
+                contentView: contentView,
+                fittedSize: nextSize
+            )
             if zoomScale > nextMaximumScale {
                 setZoomScale(nextMaximumScale, animated: false)
             }
@@ -291,6 +339,20 @@ final class S2NativeZoomScrollView: UIScrollView {
         }
     }
 
+    private func enforceOneXContentGeometry(
+        contentView: UIView,
+        fittedSize: CGSize
+    ) {
+        guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
+            return
+        }
+        contentView.transform = .identity
+        contentView.frame = CGRect(origin: .zero, size: fittedSize)
+        contentSize = fittedSize
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+
     private func configureNativeZoom() {
         minimumZoomScale = 1
         maximumZoomScale = 1
@@ -307,28 +369,26 @@ final class S2NativeZoomScrollView: UIScrollView {
     }
 }
 
-final class S2ImmediateTapGestureRecognizer: UITapGestureRecognizer {
-    private(set) var arrivalDate = Date()
-
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-        arrivalDate = Date()
-        super.touchesBegan(touches, with: event)
-    }
-}
-
 final class S2NativeZoomPageController: UIViewController,
-    UIScrollViewDelegate {
+    UIScrollViewDelegate,
+    UIGestureRecognizerDelegate {
     let index: Int
     let zoomScrollView = S2NativeZoomScrollView()
+    let singleTapRecognizer = UITapGestureRecognizer()
+    let doubleTapRecognizer = UITapGestureRecognizer()
+    let verticalSwipeRecognizer = UIPanGestureRecognizer()
     private let hostingController: UIHostingController<AnyView>
-    private let tapRecognizer = S2ImmediateTapGestureRecognizer()
     private weak var owner: S2NativePagerViewController?
     private(set) var fittedSize: CGSize
+    private(set) var cornerRadius: CGFloat
     private(set) var doubleTapTargetScale: CGFloat
     private var pinchIsActive = false
     private var pinchStartDate: Date?
     private var pinchStartScale: CGFloat = 1
     private var pinchPeakVelocity: CGFloat = 0
+    private var verticalSwipeStartDate: Date?
+    private var immediateSingleTapWasApplied = false
+    private(set) var nativeScrollPriorityIsConfigured = false
 
     init(
         page: S2NativePageContent,
@@ -336,6 +396,7 @@ final class S2NativeZoomPageController: UIViewController,
     ) {
         index = page.index
         fittedSize = page.fittedSize
+        cornerRadius = page.cornerRadius
         doubleTapTargetScale = page.doubleTapTargetScale
         hostingController = UIHostingController(rootView: page.content)
         self.owner = owner
@@ -360,10 +421,39 @@ final class S2NativeZoomPageController: UIViewController,
             fittedSize: fittedSize,
             maximumZoomScale: 1
         )
+        applyCornerMask()
         hostingController.didMove(toParent: self)
-        tapRecognizer.addTarget(self, action: #selector(handleTap(_:)))
-        tapRecognizer.cancelsTouchesInView = false
-        zoomScrollView.addGestureRecognizer(tapRecognizer)
+
+        singleTapRecognizer.addTarget(
+            self,
+            action: #selector(handleSingleTap(_:))
+        )
+        singleTapRecognizer.numberOfTapsRequired = 1
+        singleTapRecognizer.cancelsTouchesInView = false
+        singleTapRecognizer.delegate = self
+
+        doubleTapRecognizer.addTarget(
+            self,
+            action: #selector(handleDoubleTap(_:))
+        )
+        doubleTapRecognizer.numberOfTapsRequired = 2
+        doubleTapRecognizer.cancelsTouchesInView = false
+        doubleTapRecognizer.delegate = self
+
+        verticalSwipeRecognizer.addTarget(
+            self,
+            action: #selector(handleVerticalSwipe(_:))
+        )
+        verticalSwipeRecognizer.cancelsTouchesInView = true
+        verticalSwipeRecognizer.delegate = self
+
+        zoomScrollView.addGestureRecognizer(singleTapRecognizer)
+        zoomScrollView.addGestureRecognizer(doubleTapRecognizer)
+        zoomScrollView.addGestureRecognizer(verticalSwipeRecognizer)
+        zoomScrollView.panGestureRecognizer.addTarget(
+            self,
+            action: #selector(handleNativePan(_:))
+        )
     }
 
     func update(
@@ -375,12 +465,24 @@ final class S2NativeZoomPageController: UIViewController,
     ) {
         loadViewIfNeeded()
         fittedSize = page.fittedSize
+        cornerRadius = page.cornerRadius
         doubleTapTargetScale = page.doubleTapTargetScale
         hostingController.rootView = page.content
-        tapRecognizer.numberOfTouchesRequired = max(
+        applyCornerMask()
+        singleTapRecognizer.numberOfTouchesRequired = max(
             1,
             configuration.singleTapTouchCount
         )
+        doubleTapRecognizer.numberOfTouchesRequired = max(
+            1,
+            configuration.doubleTapTouchCount
+        )
+        let verticalTouchCount = max(
+            1,
+            configuration.singleDragTouchCount
+        )
+        verticalSwipeRecognizer.minimumNumberOfTouches = verticalTouchCount
+        verticalSwipeRecognizer.maximumNumberOfTouches = verticalTouchCount
         zoomScrollView.configure(
             contentView: hostingController.view,
             fittedSize: fittedSize,
@@ -402,6 +504,45 @@ final class S2NativeZoomPageController: UIViewController,
     func resetZoom() {
         pinchIsActive = false
         zoomScrollView.applyNativeState(scale: 1, viewportOffset: .zero)
+    }
+
+    func resetTapState() {
+        immediateSingleTapWasApplied = false
+    }
+
+    func prioritizeVerticalSwipe(
+        over pagingPanGestureRecognizer: UIPanGestureRecognizer
+    ) {
+        guard !nativeScrollPriorityIsConfigured else {
+            return
+        }
+        zoomScrollView.panGestureRecognizer.require(
+            toFail: verticalSwipeRecognizer
+        )
+        pagingPanGestureRecognizer.require(
+            toFail: verticalSwipeRecognizer
+        )
+        nativeScrollPriorityIsConfigured = true
+    }
+
+    @discardableResult
+    func applyRecognizedSingleTap() -> Bool {
+        let applied = owner?.handleSingleTap(on: self) == true
+        immediateSingleTapWasApplied = applied
+        return applied
+    }
+
+    @discardableResult
+    func applyRecognizedDoubleTap(at location: CGPoint) -> Bool {
+        let shouldRevert = immediateSingleTapWasApplied &&
+            singleTapRecognizer.numberOfTouchesRequired ==
+                doubleTapRecognizer.numberOfTouchesRequired
+        immediateSingleTapWasApplied = false
+        return owner?.handleDoubleTap(
+            on: self,
+            at: location,
+            revertingImmediateSingleTap: shouldRevert
+        ) == true
     }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? {
@@ -470,8 +611,74 @@ final class S2NativeZoomPageController: UIViewController,
         pinchPeakVelocity = 0
     }
 
-    @objc private func handleTap(_ recognizer: S2ImmediateTapGestureRecognizer) {
-        owner?.handleTap(on: self, recognizer: recognizer)
+    func gestureRecognizerShouldBegin(
+        _ gestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        guard gestureRecognizer === verticalSwipeRecognizer else {
+            return true
+        }
+        let velocity = verticalSwipeRecognizer.velocity(in: zoomScrollView)
+        return abs(velocity.y) > abs(velocity.x)
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer:
+            UIGestureRecognizer
+    ) -> Bool {
+        let recognizers = [gestureRecognizer, otherGestureRecognizer]
+        return recognizers.contains { $0 === singleTapRecognizer } &&
+            recognizers.contains { $0 === doubleTapRecognizer }
+    }
+
+    private func applyCornerMask() {
+        hostingController.view.layer.cornerRadius = max(0, cornerRadius)
+        hostingController.view.layer.cornerCurve = .continuous
+        hostingController.view.layer.masksToBounds = cornerRadius > 0
+    }
+
+    @objc private func handleSingleTap(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended else {
+            return
+        }
+        _ = applyRecognizedSingleTap()
+    }
+
+    @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended else {
+            return
+        }
+        _ = applyRecognizedDoubleTap(
+            at: recognizer.location(in: zoomScrollView)
+        )
+    }
+
+    @objc private func handleVerticalSwipe(_ recognizer: UIPanGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
+            verticalSwipeStartDate = Date()
+        case .ended:
+            let duration = Date().timeIntervalSince(
+                verticalSwipeStartDate ?? Date()
+            )
+            verticalSwipeStartDate = nil
+            _ = owner?.finishVerticalSwipe(
+                on: self,
+                translation: CGSize(
+                    width: recognizer.translation(in: zoomScrollView).x,
+                    height: recognizer.translation(in: zoomScrollView).y
+                ),
+                duration: duration
+            )
+        case .cancelled, .failed:
+            verticalSwipeStartDate = nil
+        default:
+            break
+        }
+    }
+
+    @objc private func handleNativePan(_ recognizer: UIPanGestureRecognizer) {
+        owner?.handleNativePan(on: self, recognizer: recognizer)
     }
 }
 
@@ -482,14 +689,16 @@ final class S2NativePagerViewController: UIViewController,
     private weak var machine: S2StateMachine?
     private var configuration = S2CalibrationConfiguration.factoryPlaceholder
     private var viewportSize = CGSize.zero
-    private var tapSequenceCoordinator = S2TapSequenceCoordinator()
     private var onLongPress: (() -> Void)?
+    private var onPhotoSwitch: (() -> Void)?
     private var isApplyingSnapshot = false
     private var settledIndex = 0
     private var outerDragStartDate: Date?
     private var lastOuterTranslation = CGSize.zero
     private var lastOuterVelocity: CGFloat = 0
     private var lastOuterDuration: TimeInterval = 0
+    private var nXEdgePagingInteraction: S2NxEdgePagingInteraction?
+    private var lastNXEdgePagingProjection: S2NxEdgePagingProjection?
 
     override func loadView() {
         let rootView = UIView()
@@ -525,13 +734,15 @@ final class S2NativePagerViewController: UIViewController,
         configuration: S2CalibrationConfiguration,
         viewportSize: CGSize,
         pages: [S2NativePageContent],
-        onLongPress: @escaping () -> Void
+        onLongPress: @escaping () -> Void,
+        onPhotoSwitch: @escaping () -> Void
     ) {
         loadViewIfNeeded()
         self.machine = machine
         self.configuration = configuration
         self.viewportSize = viewportSize
         self.onLongPress = onLongPress
+        self.onPhotoSwitch = onPhotoSwitch
         isApplyingSnapshot = true
 
         let pageIndices = Set(pages.map(\.index))
@@ -559,6 +770,9 @@ final class S2NativePagerViewController: UIViewController,
                 )
                 addChild(controller)
                 pagingScrollView.addSubview(controller.view)
+                controller.prioritizeVerticalSwipe(
+                    over: pagingScrollView.panGestureRecognizer
+                )
                 controller.didMove(toParent: self)
                 pageControllers[page.index] = controller
             }
@@ -585,56 +799,54 @@ final class S2NativePagerViewController: UIViewController,
     }
 
     func resetInteractionState() {
-        tapSequenceCoordinator.reset()
+        pageControllers.values.forEach { $0.resetTapState() }
         outerDragStartDate = nil
         lastOuterTranslation = .zero
+        nXEdgePagingInteraction = nil
+        lastNXEdgePagingProjection = nil
         onLongPress = nil
+        onPhotoSwitch = nil
     }
 
-    func handleTap(
-        on page: S2NativeZoomPageController,
-        recognizer: S2ImmediateTapGestureRecognizer
-    ) {
+    @discardableResult
+    func handleSingleTap(on page: S2NativeZoomPageController) -> Bool {
         guard let machine,
               page.index == machine.currentIndex else {
-            return
+            return false
         }
-        let completionDate = Date()
-        let action = tapSequenceCoordinator.registerTap(
-            at: recognizer.location(in: page.zoomScrollView),
-            arrivalDate: recognizer.arrivalDate,
-            completionDate: completionDate,
-            decisionWindowMilliseconds:
-                configuration.doubleTapDecisionWindowMilliseconds,
-            maximumMovement: CGFloat(configuration.singleTapMaximumMovement),
-            allowsDoubleTap: configuration.doubleTapTouchCount == 1
-        )
+        return machine.handleSingleTap()
+    }
 
-        switch action {
-        case .singleTap:
-            let applied = machine.handleSingleTap()
-            tapSequenceCoordinator.recordImmediateSingleTapApplied(applied)
-        case let .doubleTap(revertImmediateSingleTap):
-            let wasZoomed = machine.zoomState == .nX
-            guard machine.handleNativeDoubleTap(
-                targetScale: page.doubleTapTargetScale,
-                revertingImmediateSingleTap: revertImmediateSingleTap
-            ) else {
-                return
-            }
-            if wasZoomed {
-                page.zoomScrollView.setZoomScale(
-                    1,
-                    animated: configuration.animationsEnabled
-                )
-            } else {
-                _ = page.zoomScrollView.performDoubleTapZoom(
-                    at: recognizer.location(in: page.zoomScrollView),
-                    targetScale: page.doubleTapTargetScale,
-                    animated: configuration.animationsEnabled
-                )
-            }
+    @discardableResult
+    func handleDoubleTap(
+        on page: S2NativeZoomPageController,
+        at location: CGPoint,
+        revertingImmediateSingleTap: Bool
+    ) -> Bool {
+        guard let machine,
+              page.index == machine.currentIndex else {
+            return false
         }
+        let wasZoomed = machine.zoomState == .nX
+        guard machine.handleNativeDoubleTap(
+            targetScale: page.doubleTapTargetScale,
+            revertingImmediateSingleTap: revertingImmediateSingleTap
+        ) else {
+            return false
+        }
+        if wasZoomed {
+            page.zoomScrollView.setZoomScale(
+                1,
+                animated: configuration.animationsEnabled
+            )
+        } else {
+            _ = page.zoomScrollView.performDoubleTapZoom(
+                at: location,
+                targetScale: page.doubleTapTargetScale,
+                animated: configuration.animationsEnabled
+            )
+        }
+        return true
     }
 
     func beginNativePinch(on page: S2NativeZoomPageController) -> Bool {
@@ -694,6 +906,165 @@ final class S2NativePagerViewController: UIViewController,
             )
         }
         page.zoomScrollView.updatePanAvailability()
+    }
+
+    @discardableResult
+    func finishVerticalSwipe(
+        on page: S2NativeZoomPageController,
+        translation: CGSize,
+        duration: TimeInterval
+    ) -> Bool {
+        guard let machine, page.index == machine.currentIndex else {
+            return false
+        }
+        let distance = hypot(translation.width, translation.height)
+        let velocity = duration > 0
+            ? distance / CGFloat(duration)
+            : CGFloat.infinity
+        machine.recordGestureReading(S2GestureReading(
+            displacementDistance: distance,
+            peakVelocity: velocity,
+            duration: duration
+        ))
+        let previousIndex = machine.currentIndex
+        let handled = machine.completeMainDrag(
+            translation: translation,
+            duration: duration,
+            startedOffset: machine.viewportOffset,
+            viewportSize: viewportSize,
+            fittedSize: page.fittedSize
+        )
+        if machine.currentIndex != previousIndex {
+            settledIndex = machine.currentIndex
+            pageControllers.values.forEach { $0.resetTapState() }
+            synchronizeNativeStateToMachine(animatedPaging: false)
+        }
+        return handled
+    }
+
+    func handleNativePan(
+        on page: S2NativeZoomPageController,
+        recognizer: UIPanGestureRecognizer
+    ) {
+        guard let machine,
+              page.index == machine.currentIndex,
+              machine.zoomState == .nX else {
+            resetNXEdgePaging(animated: false)
+            return
+        }
+        switch recognizer.state {
+        case .began:
+            beginNXEdgePaging(on: page, recognizer: recognizer)
+        case .changed:
+            updateNXEdgePaging(recognizer: recognizer)
+        case .ended:
+            updateNXEdgePaging(recognizer: recognizer)
+            finishNXEdgePaging(
+                velocity: abs(recognizer.velocity(
+                    in: page.zoomScrollView
+                ).x)
+            )
+        case .cancelled, .failed:
+            resetNXEdgePaging(
+                animated: configuration.animationsEnabled
+            )
+        default:
+            break
+        }
+    }
+
+    private func beginNXEdgePaging(
+        on page: S2NativeZoomPageController,
+        recognizer: UIPanGestureRecognizer
+    ) {
+        guard let machine,
+              let contentFrame = page.zoomScrollView.visibleContentFrame()
+        else {
+            return
+        }
+        let bounds = page.zoomScrollView.bounds
+        nXEdgePagingInteraction = S2NxEdgePagingInteraction(
+            restingPagingOffsetX: pagingScrollView
+                .contentOffsetForPage(at: machine.currentIndex).x,
+            pageStride: pagingScrollView.pageStride,
+            translationOriginX: recognizer.translation(
+                in: page.zoomScrollView
+            ).x,
+            distanceToPreviousBoundary: max(
+                0,
+                bounds.minX - contentFrame.minX
+            ),
+            distanceToNextBoundary: max(
+                0,
+                contentFrame.maxX - bounds.maxX
+            )
+        )
+        lastNXEdgePagingProjection = nil
+    }
+
+    private func updateNXEdgePaging(recognizer: UIPanGestureRecognizer) {
+        guard let machine, let interaction = nXEdgePagingInteraction else {
+            return
+        }
+        let projection = interaction.projection(
+            translationX: recognizer.translation(in: pagingScrollView).x
+        )
+        lastNXEdgePagingProjection = projection
+        guard let direction = projection.direction,
+              machine.orderedAssetIDs.indices.contains(
+                machine.currentIndex + direction.indexOffset
+              ) else {
+            pagingScrollView.setContentOffset(
+                CGPoint(
+                    x: interaction.restingPagingOffsetX,
+                    y: pagingScrollView.contentOffset.y
+                ),
+                animated: false
+            )
+            return
+        }
+        pagingScrollView.setContentOffset(
+            CGPoint(
+                x: projection.pagingContentOffsetX,
+                y: pagingScrollView.contentOffset.y
+            ),
+            animated: false
+        )
+    }
+
+    private func finishNXEdgePaging(velocity: CGFloat) {
+        guard let machine,
+              let projection = lastNXEdgePagingProjection,
+              let direction = projection.direction else {
+            resetNXEdgePaging(animated: configuration.animationsEnabled)
+            return
+        }
+        let switched = machine.handleHorizontalSwipe(
+            direction: direction,
+            startedAtPagingEdge: projection.overflowDistance > 0,
+            distance: projection.overflowDistance,
+            velocity: velocity
+        )
+        if switched {
+            onPhotoSwitch?()
+            pageControllers.values.forEach { $0.resetTapState() }
+        }
+        settledIndex = machine.currentIndex
+        nXEdgePagingInteraction = nil
+        lastNXEdgePagingProjection = nil
+        synchronizeNativeStateToMachine(
+            animatedPaging: configuration.animationsEnabled
+        )
+    }
+
+    private func resetNXEdgePaging(animated: Bool) {
+        guard nXEdgePagingInteraction != nil ||
+                lastNXEdgePagingProjection != nil else {
+            return
+        }
+        nXEdgePagingInteraction = nil
+        lastNXEdgePagingProjection = nil
+        synchronizeNativeStateToMachine(animatedPaging: animated)
     }
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
@@ -806,7 +1177,7 @@ final class S2NativePagerViewController: UIViewController,
             fittedSize: page.fittedSize
         )
         if machine.currentIndex != previousIndex {
-            synchronizeNativeStateToMachine()
+            synchronizeNativeStateToMachine(animatedPaging: false)
         }
         return true
     }
@@ -820,17 +1191,19 @@ final class S2NativePagerViewController: UIViewController,
         )
         let previousIndex = machine.currentIndex
         if targetIndex != previousIndex {
-            _ = machine.handleNativePageChange(to: targetIndex)
-            tapSequenceCoordinator.reset()
+            if machine.handleNativePageChange(to: targetIndex) {
+                onPhotoSwitch?()
+                pageControllers.values.forEach { $0.resetTapState() }
+            }
         } else if targetIndex == previousIndex {
             reportSequenceBoundaryAttemptIfNeeded()
         }
         settledIndex = machine.currentIndex
-        synchronizeNativeStateToMachine()
+        synchronizeNativeStateToMachine(animatedPaging: false)
         outerDragStartDate = nil
     }
 
-    private func synchronizeNativeStateToMachine() {
+    private func synchronizeNativeStateToMachine(animatedPaging: Bool) {
         guard let machine else {
             return
         }
@@ -845,7 +1218,7 @@ final class S2NativePagerViewController: UIViewController,
         }
         pagingScrollView.setContentOffset(
             pagingScrollView.contentOffsetForPage(at: machine.currentIndex),
-            animated: false
+            animated: animatedPaging
         )
         isApplyingSnapshot = false
     }

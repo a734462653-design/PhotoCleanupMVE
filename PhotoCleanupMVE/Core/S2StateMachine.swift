@@ -731,7 +731,20 @@ final class S2StateMachine: ObservableObject {
                 return .conditional(.dynamic)
             }
 
-        case .swipeUpMainImage, .swipeDownMainImage:
+        case .swipeUpMainImage:
+            switch origin {
+            case .pageOutside:
+                return .unavailable
+            case .state(.visibleOneXStripDragging),
+                 .state(.visibleNxStripDragging):
+                return .unavailable
+            case .state(.visibleOneXIdle), .state(.hiddenOneX):
+                return .conditional(.sameState)
+            case .state(.visibleNxIdle), .state(.hiddenNx):
+                return .conditional(.dynamic)
+            }
+
+        case .swipeDownMainImage:
             switch origin {
             case .pageOutside:
                 return .unavailable
@@ -883,15 +896,10 @@ final class S2StateMachine: ObservableObject {
             )
 
         case .swipeUpMainImage:
-            return context == .oneX
-                ? S2GestureRule(
-                    availability: .available,
-                    effect: .markCurrent
-                )
-                : S2GestureRule(
-                    availability: .conditional,
-                    effect: .panOnly
-                )
+            return S2GestureRule(
+                availability: .available,
+                effect: .markCurrent
+            )
 
         case .swipeDownMainImage:
             return context == .oneX
@@ -1227,7 +1235,7 @@ final class S2StateMachine: ObservableObject {
 
     @discardableResult
     func handleSwipeUp() -> Bool {
-        guard receivesUnobscuredInput, zoomState == .oneX else {
+        guard receivesUnobscuredInput else {
             return false
         }
         let assetID = currentAssetID
@@ -1324,6 +1332,17 @@ final class S2StateMachine: ObservableObject {
             : CGFloat.infinity
         let direction = Self.dragDirection(for: translation)
 
+        if direction == .vertical,
+           verticalDistance >= parameters.verticalSwipeDistance,
+           verticalVelocity >= parameters.verticalSwipeVelocity {
+            if translation.height < 0 {
+                return handleSwipeUp()
+            }
+            return zoomState == .oneX
+                ? handleSwipeDown()
+                : false
+        }
+
         if zoomState == .nX {
             guard direction == .horizontal else {
                 return false
@@ -1348,14 +1367,6 @@ final class S2StateMachine: ObservableObject {
                 distance: horizontalDistance,
                 velocity: horizontalVelocity
             )
-        }
-
-        if direction == .vertical,
-           verticalDistance >= parameters.verticalSwipeDistance,
-           verticalVelocity >= parameters.verticalSwipeVelocity {
-            return translation.height < 0
-                ? handleSwipeUp()
-                : handleSwipeDown()
         }
 
         if direction == .horizontal,

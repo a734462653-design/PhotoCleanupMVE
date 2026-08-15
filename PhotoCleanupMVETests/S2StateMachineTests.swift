@@ -76,12 +76,12 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertEqual(machine.state, .hiddenNx)
     }
 
-    // IC047-006：迁移表的上滑事件只在 1x 执行标记语义。
+    // IC059：迁移表的上滑事件在 1x 标记，并在 Nx 标记后归一。
     func testIC047_006TransitionRowSwipeUp() {
         assertTransitionRow(
             .swipeUpMainImage,
             [unavailable, conditionalSame, unavailable, conditionalSame,
-             conditionalSame, unavailable, conditionalSame]
+             conditionalDynamic, unavailable, conditionalDynamic]
         )
 
         let machine = makeMachine(state: .visibleOneXIdle)
@@ -440,12 +440,12 @@ final class S2StateMachineTests: XCTestCase {
         )
     }
 
-    // IC047-026：手势矩阵的上滑行逐格覆盖标记、平移限定与遮挡。
+    // IC059：手势矩阵的上滑行在 1x 与 Nx 都执行标记语义。
     func testIC047_026GestureMatrixSwipeUpRow() {
         assertGestureRow(
             .swipeUpMainImage,
             [gesture(.available, .markCurrent),
-             gesture(.conditional, .panOnly), blocked]
+             gesture(.available, .markCurrent), blocked]
         )
     }
 
@@ -631,20 +631,16 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertEqual(stripPaging.state, .visibleOneXStripDragging)
     }
 
-    // IC047-039：Nx 的上滑与下滑不执行标记或取消标记。
-    func testIC047_039NxVerticalMarkingSemanticsAreDisabled() {
-        let machine = makeMachine(
-            state: .visibleNxIdle,
-            pendingDeletionAssetIDs: ["asset-2"]
-        )
-        let originalPending = machine.pendingDeletionAssetIDs
-        let originalCurrent = machine.currentAssetID
+    // IC059：Nx 上滑标记当前照片，切到下一张后按决策归一为 1x。
+    func testIC059NxSwipeUpMarksAndResetsAfterPhotoChange() {
+        let machine = makeMachine(state: .visibleNxIdle)
 
-        XCTAssertFalse(machine.handleSwipeUp())
-        XCTAssertFalse(machine.handleSwipeDown())
-        XCTAssertEqual(machine.pendingDeletionAssetIDs, originalPending)
-        XCTAssertEqual(machine.currentAssetID, originalCurrent)
-        XCTAssertEqual(machine.state, .visibleNxIdle)
+        XCTAssertTrue(machine.handleSwipeUp())
+        XCTAssertTrue(machine.pendingDeletionAssetIDs.contains("asset-2"))
+        XCTAssertEqual(machine.currentAssetID, "asset-3")
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(machine.viewportOffset, .zero)
+        XCTAssertEqual(machine.state, .visibleOneXIdle)
     }
 
     // IC047-040 已由决策 17 改写：Nx 单击切换显隐，但不改变视口、c 或 D。

@@ -2,6 +2,40 @@ import Foundation
 import SwiftUI
 import UIKit
 
+struct S2PhotoSwitchHapticFeedback {
+    let selectionChanged: () -> Void
+
+    static let live = S2PhotoSwitchHapticFeedback {
+        let generator = UISelectionFeedbackGenerator()
+        generator.prepare()
+        generator.selectionChanged()
+    }
+
+    func notify(isEnabled: Bool) {
+        guard isEnabled else {
+            return
+        }
+        selectionChanged()
+    }
+}
+
+enum S2BottomStripPhotoSwitcher {
+    @discardableResult
+    static func switchPhoto(
+        machine: S2StateMachine,
+        by offset: Int,
+        onPhotoSwitch: () -> Void
+    ) -> Bool {
+        guard machine.changeCurrentPhotoDuringBottomStripDrag(
+            by: offset
+        ) else {
+            return false
+        }
+        onPhotoSwitch()
+        return true
+    }
+}
+
 struct S2ImageContentContext {
     let assetID: String
     let fittedSize: CGSize
@@ -44,6 +78,7 @@ struct S2View: View {
     private let onConfirmation: (S2ExitPayload) -> Void
     private let onFavoriteRequest: (S2AssetActionRequest) -> Void
     private let onRecentAlbumRequest: (S2AlbumActionRequest) -> Void
+    private let photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
@@ -59,7 +94,8 @@ struct S2View: View {
         onBack: @escaping (S2ExitPayload) -> Void = { _ in },
         onConfirmation: @escaping (S2ExitPayload) -> Void = { _ in },
         onFavoriteRequest: @escaping (S2AssetActionRequest) -> Void = { _ in },
-        onRecentAlbumRequest: @escaping (S2AlbumActionRequest) -> Void = { _ in }
+        onRecentAlbumRequest: @escaping (S2AlbumActionRequest) -> Void = { _ in },
+        photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback = .live
     ) {
         self.machine = machine
         self.calibration = calibration
@@ -71,6 +107,7 @@ struct S2View: View {
         self.onConfirmation = onConfirmation
         self.onFavoriteRequest = onFavoriteRequest
         self.onRecentAlbumRequest = onRecentAlbumRequest
+        self.photoSwitchHapticFeedback = photoSwitchHapticFeedback
     }
 
     var body: some View {
@@ -178,6 +215,7 @@ struct S2View: View {
                 index: index,
                 assetID: assetID,
                 fittedSize: pageMetrics.oneXDisplaySize,
+                cornerRadius: pageMetrics.oneXCornerRadius,
                 doubleTapTargetScale: pageMetrics.doubleTapTargetScale,
                 content: AnyView(content.frame(
                     width: pageMetrics.oneXDisplaySize.width,
@@ -193,6 +231,12 @@ struct S2View: View {
             pages: pages,
             onLongPress: {
                 calibrationOverlayState.toggleAccessControls()
+            },
+            onPhotoSwitch: {
+                photoSwitchHapticFeedback.notify(
+                    isEnabled:
+                        calibration.configuration.hapticOnPhotoSwitch
+                )
             }
         )
         .frame(width: viewportSize.width, height: viewportSize.height)
@@ -230,7 +274,13 @@ struct S2View: View {
                 S2BottomStripView(
                     machine: machine,
                     metrics: machine.parameters.bottomStripMetrics,
-                    itemContent: stripItemContent
+                    itemContent: stripItemContent,
+                    onPhotoSwitch: {
+                        photoSwitchHapticFeedback.notify(
+                            isEnabled: calibration.configuration
+                                .hapticOnPhotoSwitch
+                        )
+                    }
                 )
                 .frame(height: bottomStripHeight)
                 .background(.regularMaterial)
@@ -586,6 +636,13 @@ struct S2View: View {
                     step: 0.005
                 )
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                S2CalibrationSliderRow(
+                    title: "fitCornerRadius",
+                    value: calibrationBinding(\.fitCornerRadius),
+                    range: 0...120,
+                    step: 1
+                )
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
                 Picker(
                     "fitInsetScope",
                     selection: calibrationBinding(\.fitInsetScope)
@@ -593,6 +650,12 @@ struct S2View: View {
                     ForEach(S2FitInsetScope.allCases, id: \.self) {
                         Text(fitInsetScopeTitle($0)).tag($0)
                     }
+                }
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                Toggle(
+                    isOn: calibrationBinding(\.hapticOnPhotoSwitch)
+                ) {
+                    Text(verbatim: "hapticOnPhotoSwitch")
                 }
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
 
@@ -964,6 +1027,7 @@ struct S2BottomStripView: View {
 
     let metrics: S2BottomStripMetrics
     let itemContent: S2View.StripItemContent
+    let onPhotoSwitch: () -> Void
 
     @State private var residualTranslation: CGFloat = 0
     @State private var previousTranslation: CGFloat?
@@ -1084,7 +1148,11 @@ struct S2BottomStripView: View {
 
     private func applyStripSwitches() {
         while residualTranslation <= -metrics.switchDistance {
-            if machine.changeCurrentPhotoDuringBottomStripDrag(by: 1) {
+            if S2BottomStripPhotoSwitcher.switchPhoto(
+                machine: machine,
+                by: 1,
+                onPhotoSwitch: onPhotoSwitch
+            ) {
                 residualTranslation += metrics.switchDistance
             } else {
                 residualTranslation = -metrics.switchDistance
@@ -1093,7 +1161,11 @@ struct S2BottomStripView: View {
         }
 
         while residualTranslation >= metrics.switchDistance {
-            if machine.changeCurrentPhotoDuringBottomStripDrag(by: -1) {
+            if S2BottomStripPhotoSwitcher.switchPhoto(
+                machine: machine,
+                by: -1,
+                onPhotoSwitch: onPhotoSwitch
+            ) {
                 residualTranslation -= metrics.switchDistance
             } else {
                 residualTranslation = metrics.switchDistance

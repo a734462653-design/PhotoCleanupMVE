@@ -47,8 +47,10 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var animationsEnabled: Bool
     var animationDurationMilliseconds: Double
     var fitInsetRatio: Double
+    var fitCornerRadius: Double
     var fitInsetScope: S2FitInsetScope
     var pageSpacing: Double
+    var hapticOnPhotoSwitch: Bool
     var bottomStripCurrentItemSize: Double
     var bottomStripNeighborItemWidth: Double
     var bottomStripNeighborItemHeight: Double
@@ -57,7 +59,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDragMinimumDistance: Double
     var bottomStripSwitchDistance: Double
 
-    // IC-057 双击与响应项目判断默认值；其余字段保持 IC-055 数值不变。
+    // IC-059 手机框与切片反馈项目判断默认值；其余字段保持既有数值不变。
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScale: 4,
         zoomSnapBackThreshold: 1.1,
@@ -89,9 +91,11 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         degradedPreviewPolicy: .finalImageOnly,
         animationsEnabled: true,
         animationDurationMilliseconds: 180,
-        fitInsetRatio: 0.08,
+        fitInsetRatio: 0.30,
+        fitCornerRadius: 28,
         fitInsetScope: .screenAspectOnly,
         pageSpacing: 20,
+        hapticOnPhotoSwitch: true,
         bottomStripCurrentItemSize: 72,
         bottomStripNeighborItemWidth: 52,
         bottomStripNeighborItemHeight: 44,
@@ -151,13 +155,14 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             pinchTouchCount > 0 &&
             animationDurationMilliseconds >= 0 &&
             fitInsetRatio >= 0 && fitInsetRatio < 0.5 &&
+            fitCornerRadius >= 0 &&
             pageSpacing >= 0
     }
 
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260815-058-s2-native-zoom-paging"),
+            ("taskID", "IC-20260815-059-s2-regression-and-framing"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
@@ -190,8 +195,10 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("animationsEnabled", String(animationsEnabled)),
             ("animationDurationMilliseconds", formatted(animationDurationMilliseconds)),
             ("fitInsetRatio", formatted(fitInsetRatio)),
+            ("fitCornerRadius", formatted(fitCornerRadius)),
             ("fitInsetScope", fitInsetScope.rawValue),
             ("pageSpacing", formatted(pageSpacing)),
+            ("hapticOnPhotoSwitch", String(hapticOnPhotoSwitch)),
             ("bottomStripCurrentItemSize", formatted(bottomStripCurrentItemSize)),
             ("bottomStripNeighborItemWidth", formatted(bottomStripNeighborItemWidth)),
             ("bottomStripNeighborItemHeight", formatted(bottomStripNeighborItemHeight)),
@@ -245,8 +252,10 @@ extension S2CalibrationConfiguration {
         case animationsEnabled
         case animationDurationMilliseconds
         case fitInsetRatio
+        case fitCornerRadius
         case fitInsetScope
         case pageSpacing
+        case hapticOnPhotoSwitch
         case bottomStripCurrentItemSize
         case bottomStripNeighborItemWidth
         case bottomStripNeighborItemHeight
@@ -256,7 +265,7 @@ extension S2CalibrationConfiguration {
         case bottomStripSwitchDistance
     }
 
-    // 旧版持久化数据没有 pageSpacing；其余字段仍按原契约严格解码。
+    // 旧版持久化数据没有本卡新增字段；其余字段仍按原契约严格解码。
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
@@ -291,8 +300,10 @@ extension S2CalibrationConfiguration {
             animationsEnabled: try values.decode(Bool.self, forKey: .animationsEnabled),
             animationDurationMilliseconds: try values.decode(Double.self, forKey: .animationDurationMilliseconds),
             fitInsetRatio: try values.decode(Double.self, forKey: .fitInsetRatio),
+            fitCornerRadius: try values.decodeIfPresent(Double.self, forKey: .fitCornerRadius) ?? 28,
             fitInsetScope: try values.decode(S2FitInsetScope.self, forKey: .fitInsetScope),
             pageSpacing: try values.decodeIfPresent(Double.self, forKey: .pageSpacing) ?? 20,
+            hapticOnPhotoSwitch: try values.decodeIfPresent(Bool.self, forKey: .hapticOnPhotoSwitch) ?? true,
             bottomStripCurrentItemSize: try values.decode(Double.self, forKey: .bottomStripCurrentItemSize),
             bottomStripNeighborItemWidth: try values.decode(Double.self, forKey: .bottomStripNeighborItemWidth),
             bottomStripNeighborItemHeight: try values.decode(Double.self, forKey: .bottomStripNeighborItemHeight),
@@ -336,8 +347,10 @@ extension S2CalibrationConfiguration {
         try values.encode(animationsEnabled, forKey: .animationsEnabled)
         try values.encode(animationDurationMilliseconds, forKey: .animationDurationMilliseconds)
         try values.encode(fitInsetRatio, forKey: .fitInsetRatio)
+        try values.encode(fitCornerRadius, forKey: .fitCornerRadius)
         try values.encode(fitInsetScope, forKey: .fitInsetScope)
         try values.encode(pageSpacing, forKey: .pageSpacing)
+        try values.encode(hapticOnPhotoSwitch, forKey: .hapticOnPhotoSwitch)
         try values.encode(bottomStripCurrentItemSize, forKey: .bottomStripCurrentItemSize)
         try values.encode(bottomStripNeighborItemWidth, forKey: .bottomStripNeighborItemWidth)
         try values.encode(bottomStripNeighborItemHeight, forKey: .bottomStripNeighborItemHeight)
@@ -715,6 +728,7 @@ struct S2ViewportMetrics: Equatable {
     let viewportAspectRatio: CGFloat
     let aspectFitSize: CGSize
     let oneXDisplaySize: CGSize
+    let oneXCornerRadius: CGFloat
     let aspectFillMultiplier: CGFloat
     let doubleTapTargetScale: CGFloat
     let bottomStripHeight: CGFloat
@@ -756,11 +770,13 @@ enum S2ViewportLayout {
             viewportAspectRatio: viewportAspectRatio,
             aspectFitSize: fitSize,
             oneXDisplaySize: displaySize,
+            oneXCornerRadius: applies
+                ? CGFloat(configuration.fitCornerRadius)
+                : 0,
             aspectFillMultiplier: fillMultiplier,
-            doubleTapTargetScale: max(
-                fillMultiplier,
-                CGFloat(configuration.minDoubleTapScale)
-            ),
+            doubleTapTargetScale: applies
+                ? CGFloat(configuration.minDoubleTapScale)
+                : fillMultiplier,
             bottomStripHeight: max(
                 CGFloat(configuration.bottomStripCurrentItemSize),
                 CGFloat(configuration.bottomStripNeighborItemHeight)
@@ -853,66 +869,6 @@ enum S2AssetAspectNavigator {
             }
         }
         return .empty
-    }
-}
-
-enum S2TapSequenceAction: Equatable {
-    case singleTap
-    case doubleTap(revertImmediateSingleTap: Bool)
-}
-
-struct S2TapSequenceCoordinator: Equatable {
-    private struct FirstTap: Equatable {
-        let completionDate: Date
-        let location: CGPoint
-        var immediateSingleTapApplied: Bool
-    }
-
-    private var firstTap: FirstTap?
-
-    mutating func registerTap(
-        at location: CGPoint,
-        arrivalDate: Date,
-        completionDate: Date,
-        decisionWindowMilliseconds: Double,
-        maximumMovement: CGFloat,
-        allowsDoubleTap: Bool
-    ) -> S2TapSequenceAction {
-        if allowsDoubleTap, let firstTap {
-            let intervalMilliseconds = arrivalDate.timeIntervalSince(
-                firstTap.completionDate
-            ) * 1_000
-            let movement = hypot(
-                location.x - firstTap.location.x,
-                location.y - firstTap.location.y
-            )
-            if intervalMilliseconds >= 0,
-               intervalMilliseconds <= decisionWindowMilliseconds,
-               movement <= maximumMovement {
-                self.firstTap = nil
-                return .doubleTap(
-                    revertImmediateSingleTap:
-                        firstTap.immediateSingleTapApplied
-                )
-            }
-        }
-
-        firstTap = allowsDoubleTap
-            ? FirstTap(
-                completionDate: completionDate,
-                location: location,
-                immediateSingleTapApplied: false
-            )
-            : nil
-        return .singleTap
-    }
-
-    mutating func recordImmediateSingleTapApplied(_ applied: Bool) {
-        firstTap?.immediateSingleTapApplied = applied
-    }
-
-    mutating func reset() {
-        firstTap = nil
     }
 }
 

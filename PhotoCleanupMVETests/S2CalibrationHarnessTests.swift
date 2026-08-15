@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import UIKit
 @testable import PhotoCleanupMVE
 
@@ -135,8 +136,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
             $0.pinchMaxScale = 5.5
             $0.zoomSnapBackThreshold = 1.25
             $0.fitInsetRatio = 0.075
+            $0.fitCornerRadius = 36
             $0.fitInsetScope = .allPhotos
             $0.pageSpacing = 28
+            $0.hapticOnPhotoSwitch = false
             $0.scaleChangeRequestPolicy = .pinchEnded
             $0.degradedPreviewPolicy = .display
             $0.animationDurationMilliseconds = 200
@@ -150,7 +153,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(restarted.configuration, first.configuration)
         XCTAssertTrue(restarted.exportText().contains("fitInsetRatio=0.075000"))
+        XCTAssertTrue(restarted.exportText().contains("fitCornerRadius=36.000000"))
         XCTAssertTrue(restarted.exportText().contains("pageSpacing=28.000000"))
+        XCTAssertTrue(restarted.exportText().contains("hapticOnPhotoSwitch=false"))
         XCTAssertTrue(
             restarted.exportText().contains(
                 "valueStatus=④项目判断默认值，可修订"
@@ -416,9 +421,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             degradedPreviewPolicy: .finalImageOnly,
             animationsEnabled: true,
             animationDurationMilliseconds: 180,
-            fitInsetRatio: 0.08,
+            fitInsetRatio: 0.30,
+            fitCornerRadius: 28,
             fitInsetScope: .screenAspectOnly,
             pageSpacing: 20,
+            hapticOnPhotoSwitch: true,
             bottomStripCurrentItemSize: 72,
             bottomStripNeighborItemWidth: 52,
             bottomStripNeighborItemHeight: 44,
@@ -439,7 +446,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "taskID=IC-20260815-058-s2-native-zoom-paging"
+                "taskID=IC-20260815-059-s2-regression-and-framing"
             )
         )
         XCTAssertTrue(
@@ -450,7 +457,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(
             actual.exportText().contains("minDoubleTapScale=2.500000")
         )
+        XCTAssertTrue(actual.exportText().contains("fitInsetRatio=0.300000"))
+        XCTAssertTrue(actual.exportText().contains("fitCornerRadius=28.000000"))
         XCTAssertTrue(actual.exportText().contains("pageSpacing=20.000000"))
+        XCTAssertTrue(actual.exportText().contains("hapticOnPhotoSwitch=true"))
         XCTAssertFalse(
             actual.exportText().contains(
                 "aspectFillDegenerateTolerancePercent"
@@ -622,16 +632,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.viewportOffset, .zero)
     }
 
-    // D1：屏幕比例照片的 1x 短边按 0.08 内缩为视口短边的 0.92。
-    func testD1ScreenAspectFitInsetRatioShrinksShortEdgeToNinetyTwoPercent() {
+    // D1 替代断言：屏幕比例照片按新出厂值内缩为视口短边的 0.70。
+    func testD1ReplacementScreenAspectFitInsetShrinksShortEdgeToSeventyPercent() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
-        configuration.fitInsetRatio = 0.08
+        configuration.fitInsetRatio = 0.30
         configuration.fitInsetScope = .screenAspectOnly
         let value = metrics(configuration: configuration)
 
         XCTAssertEqual(
             min(value.oneXDisplaySize.width, value.oneXDisplaySize.height),
-            min(value.viewportSize.width, value.viewportSize.height) * 0.92,
+            min(value.viewportSize.width, value.viewportSize.height) * 0.70,
             accuracy: 1
         )
         XCTAssertTrue(S2ViewportLayout.insetApplies(
@@ -647,12 +657,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(
             oppositeOrientation.oneXDisplaySize.width,
-            oppositeOrientation.aspectFitSize.width * 0.92,
+            oppositeOrientation.aspectFitSize.width * 0.70,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
             oppositeOrientation.oneXDisplaySize.height,
-            oppositeOrientation.aspectFitSize.height * 0.92,
+            oppositeOrientation.aspectFitSize.height * 0.70,
             accuracy: 0.000_001
         )
     }
@@ -669,7 +679,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // D3：仅屏幕比例作用域不会改变非屏幕比例照片的 1x 显示。
     func testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
-        configuration.fitInsetRatio = 0.08
+        configuration.fitInsetRatio = 0.30
         configuration.fitInsetScope = .screenAspectOnly
         let value = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
@@ -708,12 +718,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // D5 替代断言：填满倍数较大时原生目标矩形采用该倍数，且不受 1x 内缩影响。
-    func testD5DoubleTapUsesLargerAspectFillScale() {
+    // D5 替代断言：非屏幕比例照片只采用填满倍数，不再与最小倍数取大。
+    func testD5ReplacementNonScreenDoubleTapUsesAspectFillScale() {
         let assetAspectRatio: CGFloat = 1.5
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
-        configuration.fitInsetRatio = 0.08
-        configuration.fitInsetScope = .allPhotos
+        configuration.fitInsetRatio = 0.30
+        configuration.fitInsetScope = .screenAspectOnly
         let value = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
@@ -733,6 +743,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ))
 
         XCTAssertGreaterThan(expected, CGFloat(configuration.minDoubleTapScale))
+        XCTAssertEqual(value.doubleTapTargetScale, expected, accuracy: 0.000_001)
         XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: expected))
         XCTAssertEqual(machine.scale, expected, accuracy: 0.000_001)
         XCTAssertEqual(
@@ -824,87 +835,53 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(scrollView.zoomScale, 1)
     }
 
-    // E1：第一击抬起时立即产出单击动作，不等待双击判定窗口。
+    // E1 替代断言：原生单击识别器在自身回调中立即切换显隐。
     func testE1FirstTapProducesImmediateSingleTapAction() {
-        var coordinator = S2TapSequenceCoordinator()
-        let start = Date(timeIntervalSinceReferenceDate: 1_000)
-
-        let action = coordinator.registerTap(
-            at: CGPoint(x: 100, y: 200),
-            arrivalDate: start,
-            completionDate: start.addingTimeInterval(0.08),
-            decisionWindowMilliseconds: 320,
-            maximumMovement: 12,
-            allowsDoubleTap: true
-        )
-
-        XCTAssertEqual(action, .singleTap)
         let machine = makeMachine()
-        XCTAssertTrue(machine.handleSingleTap())
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        XCTAssertEqual(page.singleTapRecognizer.numberOfTapsRequired, 1)
+        XCTAssertTrue(page.applyRecognizedSingleTap())
         XCTAssertEqual(machine.interfaceVisibility, .hidden)
     }
 
-    // E2：第二击在 320 毫秒窗口内到达时，撤销已生效单击并裁决为双击。
+    // E2 替代断言：原生双击回调撤销首击显隐并执行缩放。
     func testE2SecondTapWithinDecisionWindowRevertsAppliedSingleTap() {
-        var coordinator = S2TapSequenceCoordinator()
-        let start = Date(timeIntervalSinceReferenceDate: 2_000)
-        let firstCompletion = start.addingTimeInterval(0.08)
-        XCTAssertEqual(
-            coordinator.registerTap(
-                at: CGPoint(x: 100, y: 200),
-                arrivalDate: start,
-                completionDate: firstCompletion,
-                decisionWindowMilliseconds: 320,
-                maximumMovement: 12,
-                allowsDoubleTap: true
-            ),
-            .singleTap
-        )
-        coordinator.recordImmediateSingleTapApplied(true)
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
 
-        let action = coordinator.registerTap(
-            at: CGPoint(x: 108, y: 205),
-            arrivalDate: firstCompletion.addingTimeInterval(0.30),
-            completionDate: firstCompletion.addingTimeInterval(0.38),
-            decisionWindowMilliseconds: 320,
-            maximumMovement: 12,
-            allowsDoubleTap: true
-        )
-
+        XCTAssertEqual(page.doubleTapRecognizer.numberOfTapsRequired, 2)
+        XCTAssertTrue(page.gestureRecognizer(
+            page.singleTapRecognizer,
+            shouldRecognizeSimultaneouslyWith: page.doubleTapRecognizer
+        ))
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        XCTAssertTrue(page.applyRecognizedDoubleTap(
+            at: CGPoint(x: 150, y: 300)
+        ))
         XCTAssertEqual(
-            action,
-            .doubleTap(revertImmediateSingleTap: true)
+            machine.scale,
+            metrics().doubleTapTargetScale,
+            accuracy: 0.000_001
         )
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
     }
 
-    // E3：超出双击窗口的下一击立即作为新的单击，不撤销上一击。
+    // E3 替代断言：原生双击未裁决时，两次独立单击各自立即生效。
     func testE3TapAfterDecisionWindowStartsNewImmediateSingleTap() {
-        var coordinator = S2TapSequenceCoordinator()
-        let start = Date(timeIntervalSinceReferenceDate: 3_000)
-        let firstCompletion = start.addingTimeInterval(0.08)
-        _ = coordinator.registerTap(
-            at: CGPoint(x: 100, y: 200),
-            arrivalDate: start,
-            completionDate: firstCompletion,
-            decisionWindowMilliseconds: 320,
-            maximumMovement: 12,
-            allowsDoubleTap: true
-        )
-        coordinator.recordImmediateSingleTapApplied(true)
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
 
-        let action = coordinator.registerTap(
-            at: CGPoint(x: 100, y: 200),
-            arrivalDate: firstCompletion.addingTimeInterval(0.321),
-            completionDate: firstCompletion.addingTimeInterval(0.40),
-            decisionWindowMilliseconds: 320,
-            maximumMovement: 12,
-            allowsDoubleTap: true
-        )
-
-        XCTAssertEqual(action, .singleTap)
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertEqual(machine.scale, 1)
     }
 
-    // E4：立即单击后原子撤销再双击，最终状态与直接双击完全一致。
+    // E4 替代断言：原生回调撤销后的结果与直接双击完全一致。
     func testE4RevertedSingleTapThenDoubleTapMatchesDirectDoubleTap() {
         let value = metrics()
 
@@ -914,14 +891,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ] {
             let direct = makeMachine(interfaceVisibility: visibility)
             let coordinated = makeMachine(interfaceVisibility: visibility)
-            XCTAssertTrue(coordinated.handleSingleTap())
+            let controller = makeNativePagerController(machine: coordinated)
+            let page = tryUnwrap(
+                controller.pageControllers[coordinated.currentIndex]
+            )
 
             XCTAssertTrue(direct.handleNativeDoubleTap(
                 targetScale: value.doubleTapTargetScale
             ))
-            XCTAssertTrue(coordinated.handleNativeDoubleTap(
-                targetScale: value.doubleTapTargetScale,
-                revertingImmediateSingleTap: true
+            XCTAssertTrue(page.applyRecognizedSingleTap())
+            XCTAssertTrue(page.applyRecognizedDoubleTap(
+                at: CGPoint(x: 150, y: 300)
             ))
 
             XCTAssertEqual(coordinated.interfaceVisibility, direct.interfaceVisibility)
@@ -977,7 +957,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // N2：双击调用原生 zoom(to:)，目标矩形对应填满倍数与最小倍数的较大值。
+    // N2 替代断言：双击调用原生 zoom(to:)，目标矩形采用分类后的目标倍数。
     func testN2DoubleTapInvokesNativeZoomWithResolvedTargetScale() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let value = S2ViewportLayout.metrics(
@@ -986,10 +966,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             assetAspectRatio: 1.5,
             configuration: configuration
         )
-        let expected = max(
-            value.aspectFillMultiplier,
-            CGFloat(configuration.minDoubleTapScale)
-        )
+        let expected = value.aspectFillMultiplier
+        XCTAssertEqual(value.doubleTapTargetScale, expected, accuracy: 0.000_001)
         let scrollView = makeNativeZoomScrollView(configuration: configuration)
         let rect = tryUnwrap(scrollView.performDoubleTapZoom(
             at: CGPoint(x: 40, y: 80),
@@ -1095,6 +1073,358 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.imageRequestRevision, 1)
         XCTAssertEqual(machine.imageRequestAssetID, machine.currentAssetID)
         XCTAssertEqual(machine.imageRequestScale, 1.8, accuracy: 0.000_001)
+    }
+
+    // G1：1x 上滑达到既有阈值后标记触摸开始时的当前资产。
+    func testG1OneXSwipeUpMarksCurrentAsset() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let originalAssetID = machine.currentAssetID
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        XCTAssertEqual(configuration.verticalSwipeDistance, 40)
+        XCTAssertEqual(configuration.verticalSwipeVelocity, 100)
+        XCTAssertTrue(page.nativeScrollPriorityIsConfigured)
+        XCTAssertTrue(controller.finishVerticalSwipe(
+            on: page,
+            translation: CGSize(width: 0, height: -40),
+            duration: 0.4
+        ))
+        XCTAssertTrue(machine.pendingDeletionAssetIDs.contains(originalAssetID))
+    }
+
+    // G2：Nx 上滑采用同一阈值，标记后切片并归一为 1x。
+    func testG2NxSwipeUpMarksCurrentAsset() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(scale: 2, configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let originalAssetID = machine.currentAssetID
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        XCTAssertTrue(controller.finishVerticalSwipe(
+            on: page,
+            translation: CGSize(width: 0, height: -40),
+            duration: 0.4
+        ))
+        XCTAssertTrue(machine.pendingDeletionAssetIDs.contains(originalAssetID))
+        XCTAssertEqual(machine.scale, 1)
+    }
+
+    // G3：原生第二击裁决为双击后，撤销首击并匹配直接双击状态。
+    func testG3NativeSecondTapRevertsSingleAndMatchesDirectDoubleTap() {
+        let targetScale = metrics().doubleTapTargetScale
+        let direct = makeMachine()
+        let resolved = makeMachine()
+        let controller = makeNativePagerController(machine: resolved)
+        let page = tryUnwrap(controller.pageControllers[resolved.currentIndex])
+
+        XCTAssertEqual(page.singleTapRecognizer.numberOfTapsRequired, 1)
+        XCTAssertEqual(page.doubleTapRecognizer.numberOfTapsRequired, 2)
+        XCTAssertTrue(page.gestureRecognizer(
+            page.singleTapRecognizer,
+            shouldRecognizeSimultaneouslyWith: page.doubleTapRecognizer
+        ))
+        XCTAssertTrue(direct.handleNativeDoubleTap(targetScale: targetScale))
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        XCTAssertTrue(page.applyRecognizedDoubleTap(
+            at: CGPoint(x: 150, y: 300)
+        ))
+        XCTAssertEqual(resolved.scale, direct.scale)
+        XCTAssertEqual(resolved.interfaceVisibility, direct.interfaceVisibility)
+        XCTAssertEqual(resolved.state, direct.state)
+    }
+
+    // G4：没有原生双击回调时，两次独立单击切换两次且不改倍率。
+    func testG4TwoNativeSingleTapsOutsideWindowToggleTwiceWithoutZoom() {
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertEqual(machine.scale, 1)
+    }
+
+    // M1：命中屏幕比例内缩判定时，双击只采用最小目标倍数。
+    func testM1ScreenAspectDoubleTapUsesMinimumScale() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let value = metrics(configuration: configuration)
+        let machine = makeMachine(configuration: configuration)
+
+        XCTAssertTrue(machine.handleNativeDoubleTap(
+            targetScale: value.doubleTapTargetScale
+        ))
+        XCTAssertEqual(
+            machine.scale,
+            CGFloat(configuration.minDoubleTapScale),
+            accuracy: 0.000_001
+        )
+    }
+
+    // M2：未命中屏幕比例判定时，双击只采用填满视口倍数。
+    func testM2NonScreenPhotoDoubleTapUsesAspectFillScale() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let value = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: 1.5,
+            configuration: configuration
+        )
+        let machine = makeMachine(configuration: configuration)
+
+        XCTAssertTrue(machine.handleNativeDoubleTap(
+            targetScale: value.doubleTapTargetScale
+        ))
+        XCTAssertEqual(
+            machine.scale,
+            value.aspectFillMultiplier,
+            accuracy: 0.000_001
+        )
+        XCTAssertNotEqual(
+            machine.scale,
+            CGFloat(configuration.minDoubleTapScale),
+            accuracy: 0.000_001
+        )
+    }
+
+    // F1：0.30 内缩令屏幕比例照片的 1x 短边等于视口短边的 0.70。
+    func testF1FactoryInsetShrinksShortEdgeToSeventyPercent() {
+        let value = metrics()
+
+        XCTAssertEqual(
+            min(value.oneXDisplaySize.width, value.oneXDisplaySize.height),
+            min(value.viewportSize.width, value.viewportSize.height) * 0.70,
+            accuracy: 1
+        )
+    }
+
+    // F2：命中内缩时应用参数圆角，未命中时圆角严格为零。
+    func testF2CornerRadiusAppliesOnlyToInsetPhotos() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let matching = metrics(configuration: configuration)
+        let nonMatching = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: 1,
+            configuration: configuration
+        )
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        XCTAssertEqual(
+            matching.oneXCornerRadius,
+            CGFloat(configuration.fitCornerRadius)
+        )
+        XCTAssertEqual(nonMatching.oneXCornerRadius, 0)
+        XCTAssertEqual(
+            page.zoomScrollView.zoomContentView?.layer.cornerRadius,
+            CGFloat(configuration.fitCornerRadius)
+        )
+    }
+
+    // F3：界面显隐更新后，原生内容 frame 与圆角保持完全一致。
+    func testF3InterfaceVisibilityKeepsOneXFrameAndCornerRadiusEqual() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let visibleSize = page.zoomScrollView.zoomContentView?.frame.size
+        let visibleRadius = page.zoomScrollView.zoomContentView?
+            .layer.cornerRadius
+
+        page.zoomScrollView.zoomContentView?.frame = CGRect(
+            origin: .zero,
+            size: physicalSize
+        )
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        let hiddenPage = tryUnwrap(
+            controller.pageControllers[machine.currentIndex]
+        )
+
+        XCTAssertEqual(
+            hiddenPage.zoomScrollView.zoomContentView?.frame.size,
+            visibleSize
+        )
+        XCTAssertEqual(
+            hiddenPage.zoomScrollView.zoomContentView?.layer.cornerRadius,
+            visibleRadius
+        )
+    }
+
+    // F4：内缩只改变 1x 显示尺寸，不改变视口或填满倍数基准。
+    func testF4InsetDoesNotChangeViewportOrAspectFillMultiplier() {
+        var withoutInset = S2CalibrationConfiguration.factoryPlaceholder
+        withoutInset.fitInsetRatio = 0
+        let plain = metrics(configuration: withoutInset)
+        let inset = metrics()
+
+        XCTAssertNotEqual(plain.oneXDisplaySize, inset.oneXDisplaySize)
+        XCTAssertEqual(plain.viewportSize, inset.viewportSize)
+        XCTAssertEqual(
+            plain.aspectFillMultiplier,
+            inset.aspectFillMultiplier,
+            accuracy: 0.000_001
+        )
+    }
+
+    // B1：Nx 内容到边界后，继续拖动的溢出量等量带动外层分页。
+    func testB1NxBoundaryContinuationProducesPagingDisplacement() {
+        let interaction = S2NxEdgePagingInteraction(
+            restingPagingOffsetX: 320,
+            pageStride: 320,
+            translationOriginX: 0,
+            distanceToPreviousBoundary: 0,
+            distanceToNextBoundary: 0
+        )
+        let projection = interaction.projection(translationX: -60)
+
+        XCTAssertEqual(projection.direction, .next)
+        XCTAssertEqual(projection.overflowDistance, 60)
+        XCTAssertEqual(projection.pagingContentOffsetX, 380)
+    }
+
+    // B2：Nx 边界翻页未同时达到距离与速度阈值时回弹且 c 不变。
+    func testB2NxBoundaryPagingBelowThresholdKeepsCurrentIndex() {
+        let machine = makeMachine(scale: 2)
+        let originalIndex = machine.currentIndex
+
+        XCTAssertFalse(machine.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: true,
+            distance: 39,
+            velocity: 299
+        ))
+        XCTAssertEqual(machine.currentIndex, originalIndex)
+        XCTAssertEqual(machine.scale, 2)
+    }
+
+    // B3：Nx 边界翻页完成后，新照片倍率严格归一为 1。
+    func testB3NxBoundaryPagingCompletionResetsNewPhotoScale() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(scale: 2, configuration: configuration)
+
+        XCTAssertTrue(machine.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: true,
+            distance: CGFloat(configuration.edgePagingTriggerDistance),
+            velocity: CGFloat(configuration.edgePagingTriggerVelocity)
+        ))
+        XCTAssertEqual(machine.currentIndex, 2)
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(machine.viewportOffset, .zero)
+    }
+
+    // H1：缩略图与左右分页每次成功换片各发一次，重复落页不补发。
+    func testH1EnabledPhotoSwitchHapticFiresOncePerSuccessfulSwitch() {
+        var hapticCount = 0
+        let feedback = S2PhotoSwitchHapticFeedback {
+            hapticCount += 1
+        }
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+
+        let stripMachine = makeMachine(configuration: configuration)
+        XCTAssertTrue(stripMachine.beginBottomStripDrag())
+        XCTAssertTrue(S2BottomStripPhotoSwitcher.switchPhoto(
+            machine: stripMachine,
+            by: 1,
+            onPhotoSwitch: {
+                feedback.notify(
+                    isEnabled: configuration.hapticOnPhotoSwitch
+                )
+            }
+        ))
+        XCTAssertEqual(hapticCount, 1)
+
+        let pagingMachine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: pagingMachine,
+            configuration: configuration,
+            onPhotoSwitch: {
+                feedback.notify(
+                    isEnabled: configuration.hapticOnPhotoSwitch
+                )
+            }
+        )
+        controller.pagingScrollView.contentOffset = controller
+            .pagingScrollView.contentOffsetForPage(at: 2)
+        controller.scrollViewDidEndDecelerating(
+            controller.pagingScrollView
+        )
+        XCTAssertEqual(hapticCount, 2)
+        controller.scrollViewDidEndDecelerating(
+            controller.pagingScrollView
+        )
+        XCTAssertEqual(hapticCount, 2)
+
+        controller.pagingScrollView.contentOffset = controller
+            .pagingScrollView.contentOffsetForPage(at: 1)
+        controller.scrollViewDidEndDecelerating(
+            controller.pagingScrollView
+        )
+        XCTAssertEqual(hapticCount, 3)
+        controller.scrollViewDidEndDecelerating(
+            controller.pagingScrollView
+        )
+        XCTAssertEqual(hapticCount, 3)
+    }
+
+    // H2：关闭参数后，缩略图与分页成功换片都不发触觉。
+    func testH2DisabledPhotoSwitchHapticDoesNotFire() {
+        var configuration = S2CalibrationConfiguration.factoryPlaceholder
+        configuration.hapticOnPhotoSwitch = false
+        var hapticCount = 0
+        let feedback = S2PhotoSwitchHapticFeedback {
+            hapticCount += 1
+        }
+
+        let stripMachine = makeMachine(configuration: configuration)
+        XCTAssertTrue(stripMachine.beginBottomStripDrag())
+        XCTAssertTrue(S2BottomStripPhotoSwitcher.switchPhoto(
+            machine: stripMachine,
+            by: 1,
+            onPhotoSwitch: {
+                feedback.notify(
+                    isEnabled: configuration.hapticOnPhotoSwitch
+                )
+            }
+        ))
+
+        let pagingMachine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: pagingMachine,
+            configuration: configuration,
+            onPhotoSwitch: {
+                feedback.notify(
+                    isEnabled: configuration.hapticOnPhotoSwitch
+                )
+            }
+        )
+        controller.pagingScrollView.contentOffset = controller
+            .pagingScrollView.contentOffsetForPage(at: 2)
+        controller.scrollViewDidEndDecelerating(
+            controller.pagingScrollView
+        )
+        XCTAssertEqual(hapticCount, 0)
     }
 
     // A1：统一策略在关闭开关时把显式时长归零。
@@ -1215,6 +1545,67 @@ final class S2CalibrationHarnessTests: XCTestCase {
         scrollView.layoutIfNeeded()
         scrollView.applyNativeState(scale: 1, viewportOffset: .zero)
         return scrollView
+    }
+
+    private func makeNativePagerController(
+        machine: S2StateMachine,
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder,
+        onPhotoSwitch: @escaping () -> Void = {}
+    ) -> S2NativePagerViewController {
+        let controller = S2NativePagerViewController()
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(origin: .zero, size: physicalSize)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            onPhotoSwitch: onPhotoSwitch
+        )
+        return controller
+    }
+
+    private func applyNativePagerController(
+        _ controller: S2NativePagerViewController,
+        machine: S2StateMachine,
+        configuration: S2CalibrationConfiguration,
+        onPhotoSwitch: @escaping () -> Void = {}
+    ) {
+        let state = S2ViewportPresentationState(
+            interfaceVisibility: machine.interfaceVisibility,
+            bottomStripState: machine.bottomStripState,
+            sheetState: machine.sheetState
+        )
+        let pages = machine.orderedAssetIDs.enumerated().map { index, assetID in
+            let value = S2ViewportLayout.metrics(
+                physicalSize: physicalSize,
+                presentationState: state,
+                assetAspectRatio: screenAspectRatio,
+                configuration: configuration
+            )
+            return S2NativePageContent(
+                index: index,
+                assetID: assetID,
+                fittedSize: value.oneXDisplaySize,
+                cornerRadius: value.oneXCornerRadius,
+                doubleTapTargetScale: value.doubleTapTargetScale,
+                content: AnyView(
+                    Color.clear.frame(
+                        width: value.oneXDisplaySize.width,
+                        height: value.oneXDisplaySize.height
+                    )
+                )
+            )
+        }
+        controller.apply(
+            machine: machine,
+            configuration: configuration,
+            viewportSize: physicalSize,
+            pages: pages,
+            onLongPress: {},
+            onPhotoSwitch: onPhotoSwitch
+        )
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
     }
 
     private func makeNativePagingScrollView(
