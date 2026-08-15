@@ -116,7 +116,7 @@ final class S2NativePagingScrollView: UIScrollView {
         isPagingEnabled = true
         showsHorizontalScrollIndicator = false
         showsVerticalScrollIndicator = false
-        directionalLockEnabled = true
+        isDirectionalLockEnabled = true
         decelerationRate = .fast
         contentInsetAdjustmentBehavior = .never
         backgroundColor = .clear
@@ -394,9 +394,6 @@ final class S2NativeZoomPageController: UIViewController,
         tapRecognizer.numberOfTouchesRequired = max(
             1,
             configuration.singleTapTouchCount
-        )
-        tapRecognizer.allowableMovement = CGFloat(
-            configuration.singleTapMaximumMovement
         )
         zoomScrollView.configure(
             contentView: hostingController.view,
