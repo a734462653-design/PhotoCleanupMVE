@@ -114,11 +114,7 @@ final class CleanupCoordinator: ObservableObject {
     func readS1Ranges(
         groupedBy groupingDimension: S1GroupingDimension
     ) -> Result<[S1Range], S1RangeReadFailure> {
-        // 相册纳入范围仍是 SPEC-S1 未定项；空集合只保证默认按月路径可接线。
-        photoLibrary.s1Ranges(
-            groupedBy: groupingDimension,
-            albumCollections: []
-        )
+        photoLibrary.s1Ranges(groupedBy: groupingDimension)
     }
 
     @discardableResult
