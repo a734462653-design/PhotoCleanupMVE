@@ -129,7 +129,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(restarted.configuration, first.configuration)
         XCTAssertTrue(restarted.exportText().contains("fitInsetRatio=0.075000"))
-        XCTAssertTrue(restarted.exportText().contains("valueStatus=未标定"))
+        XCTAssertTrue(
+            restarted.exportText().contains(
+                "valueStatus=④项目判断默认值，可修订"
+            )
+        )
 
         restarted.restoreFactoryPlaceholder()
         let resetRestart = S2CalibrationModel(persistence: persistence)
@@ -260,7 +264,179 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(global.viewportSize, scoped.viewportSize)
     }
 
+    // L1：顶部四个元素全部从系统顶部安全区下沿开始布局。
+    func testL1TopOverlayFramesRespectSafeAreaTop() {
+        let snapshot = overlaySnapshot()
+
+        XCTAssertEqual(snapshot.topElementFrames.count, 4)
+        for frame in snapshot.topElementFrames {
+            XCTAssertGreaterThanOrEqual(frame.minY, overlaySafeAreaInsets.top)
+        }
+    }
+
+    // L2：底部操作与照片横栏都不进入主屏幕指示条区域。
+    func testL2BottomOverlayFramesRespectHomeIndicator() {
+        let snapshot = overlaySnapshot()
+        let safeBottom = overlayPhysicalSize.height -
+            overlaySafeAreaInsets.bottom
+
+        XCTAssertEqual(snapshot.bottomElementFrames.count, 4)
+        for frame in snapshot.bottomElementFrames {
+            XCTAssertLessThanOrEqual(frame.maxY, safeBottom)
+        }
+    }
+
+    // L3：返回、范围、状态与确认四个顶部元素之间均保留间距。
+    func testL3TopOverlayFramesDoNotIntersect() {
+        let frames = overlaySnapshot().topElementFrames
+
+        for firstIndex in frames.indices {
+            for secondIndex in frames.indices where secondIndex > firstIndex {
+                XCTAssertFalse(
+                    frames[firstIndex].intersects(frames[secondIndex]),
+                    "顶部元素 \(firstIndex) 与 \(secondIndex) 不应相交"
+                )
+            }
+        }
+    }
+
+    // L4：产品浮层、横栏与后台控制条的全部触控区域至少为 44 pt。
+    func testL4ClickableOverlayControlsMeetMinimumTouchTarget() {
+        let state = S2CalibrationOverlayState(
+            controlsVisible: true,
+            parameterPanelVisible: true,
+            readingsVisible: true
+        )
+        let frames = overlaySnapshot(
+            calibrationState: state
+        ).clickableControlFrames
+
+        XCTAssertEqual(frames.count, 8)
+        for frame in frames {
+            XCTAssertGreaterThanOrEqual(
+                frame.width,
+                S2OverlayLayout.minimumTouchTarget
+            )
+            XCTAssertGreaterThanOrEqual(
+                frame.height,
+                S2OverlayLayout.minimumTouchTarget
+            )
+        }
+    }
+
+    // L5：两个后台面板分别打开、关闭及同时打开都不改变视口。
+    func testL5CalibrationPanelsDoNotChangeViewportSize() {
+        var state = S2CalibrationOverlayState.initial
+        let initial = metrics(calibrationState: state).viewportSize
+
+        state.toggleAccessControls()
+        state.toggleParameterPanel()
+        XCTAssertEqual(metrics(calibrationState: state).viewportSize, initial)
+
+        state.toggleParameterPanel()
+        state.toggleReadings()
+        XCTAssertEqual(metrics(calibrationState: state).viewportSize, initial)
+
+        state.toggleParameterPanel()
+        XCTAssertEqual(metrics(calibrationState: state).viewportSize, initial)
+
+        state.toggleReadings()
+        XCTAssertEqual(metrics(calibrationState: state).viewportSize, initial)
+    }
+
+    // L6：首次启动无面板、无控制条，也没有占据主界面的入口帧。
+    func testL6CalibrationPanelsStartHiddenWithoutVisibleEntry() {
+        let state = S2CalibrationOverlayState.initial
+        let snapshot = overlaySnapshot(calibrationState: state)
+
+        XCTAssertFalse(state.controlsVisible)
+        XCTAssertFalse(state.parameterPanelVisible)
+        XCTAssertFalse(state.readingsVisible)
+        XCTAssertNil(snapshot.calibrationEntryFrame)
+
+        var revealed = state
+        revealed.toggleAccessControls()
+        XCTAssertTrue(revealed.controlsVisible)
+        XCTAssertFalse(revealed.parameterPanelVisible)
+        XCTAssertFalse(revealed.readingsVisible)
+    }
+
+    // L7：完整出厂配置锁定 IC-055 指定值，避免系统惯例项漂移。
+    func testL7FactoryDefaultsMatchUsableBuildDecision() {
+        let expected = S2CalibrationConfiguration(
+            pinchMaxScale: 4,
+            zoomSnapBackThreshold: 1.1,
+            aspectFillDegenerateTolerancePercent: 1,
+            aspectFillDegenerateTargetScale: 2,
+            doubleTapAnchorStrategy: .touchPoint,
+            edgePagingTriggerDistance: 40,
+            edgePagingTriggerVelocity: 300,
+            verticalSwipeDistance: 40,
+            verticalSwipeVelocity: 100,
+            verticalSwipeMaximumDurationMilliseconds: 0,
+            horizontalSwipeDistance: 40,
+            horizontalSwipeVelocity: 100,
+            horizontalSwipeMaximumDurationMilliseconds: 0,
+            pinchMinimumScaleDelta: 0.01,
+            pinchMinimumVelocityPerSecond: 0,
+            pinchMaximumDurationMilliseconds: 0,
+            mainDragMinimumDistance: 8,
+            mainDragMinimumVelocity: 0,
+            mainDragMaximumDurationMilliseconds: 0,
+            singleTapMaximumMovement: 12,
+            singleTapMaximumDurationMilliseconds: 280,
+            singleTapDecisionWindowMilliseconds: 280,
+            doubleTapDecisionWindowMilliseconds: 320,
+            singleTapTouchCount: 1,
+            doubleTapTouchCount: 1,
+            singleDragTouchCount: 1,
+            pinchTouchCount: 2,
+            gestureExclusivityPolicy: .pinchBeforeSingleDrag,
+            scaleChangeRequestPolicy: .everyScaleChange,
+            degradedPreviewPolicy: .finalImageOnly,
+            animationsEnabled: true,
+            animationDurationMilliseconds: 220,
+            fitInsetRatio: 0.05,
+            fitInsetScope: .screenAspectOnly,
+            bottomStripCurrentItemSize: 72,
+            bottomStripNeighborItemWidth: 52,
+            bottomStripNeighborItemHeight: 44,
+            bottomStripItemSpacing: 8,
+            bottomStripEdgeFadeWidth: 24,
+            bottomStripDragMinimumDistance: 4,
+            bottomStripSwitchDistance: 44
+        )
+        let actual = S2CalibrationConfiguration.factoryPlaceholder
+
+        XCTAssertEqual(actual, expected)
+        XCTAssertEqual(
+            actual.imageRequestStrategy,
+            S2ImageRequestStrategy(
+                scaleChangePolicy: .everyScaleChange,
+                degradedPreviewPolicy: .finalImageOnly
+            )
+        )
+        XCTAssertTrue(
+            actual.exportText().contains(
+                "taskID=IC-20260815-055-s2-usable-build"
+            )
+        )
+        XCTAssertTrue(
+            actual.exportText().contains(
+                "valueStatus=④项目判断默认值，可修订"
+            )
+        )
+        XCTAssertFalse(actual.exportText().contains("未标定"))
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
+    private let overlayPhysicalSize = CGSize(width: 393, height: 852)
+    private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(
+        top: 59,
+        leading: 0,
+        bottom: 34,
+        trailing: 0
+    )
 
     private var screenAspectRatio: CGFloat {
         physicalSize.width / physicalSize.height
@@ -278,6 +454,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         visibility: S2InterfaceVisibility = .visible,
         strip: S2BottomStripState = .idle,
         sheet: S2SheetState = .closed,
+        calibrationState: S2CalibrationOverlayState = .initial,
         configuration: S2CalibrationConfiguration = .factoryPlaceholder
     ) -> S2ViewportMetrics {
         S2ViewportLayout.metrics(
@@ -285,10 +462,23 @@ final class S2CalibrationHarnessTests: XCTestCase {
             presentationState: S2ViewportPresentationState(
                 interfaceVisibility: visibility,
                 bottomStripState: strip,
-                sheetState: sheet
+                sheetState: sheet,
+                calibrationState: calibrationState
             ),
             assetAspectRatio: screenAspectRatio,
             configuration: configuration
+        )
+    }
+
+    private func overlaySnapshot(
+        calibrationState: S2CalibrationOverlayState = .initial
+    ) -> S2OverlayLayoutSnapshot {
+        S2OverlayLayout.snapshot(
+            physicalSize: overlayPhysicalSize,
+            safeAreaInsets: overlaySafeAreaInsets,
+            bottomStripHeight: 72,
+            showsRecentAlbumAction: true,
+            calibrationState: calibrationState
         )
     }
 

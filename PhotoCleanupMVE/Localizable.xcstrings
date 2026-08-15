@@ -562,6 +562,17 @@
         }
       }
     },
+    "s2.calibration.core_gesture_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核心手感参数，优先调整"
+          }
+        }
+      }
+    },
     "s2.calibration.export" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -650,50 +661,6 @@
         }
       }
     },
-    "s2.calibration.option.anchor.previous_touch_point" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "上次触点"
-          }
-        }
-      }
-    },
-    "s2.calibration.option.anchor.screen_center" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "屏幕中心"
-          }
-        }
-      }
-    },
-    "s2.calibration.option.anchor.touch_point" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前触点"
-          }
-        }
-      }
-    },
-    "s2.calibration.option.anchor.touch_point_to_center" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前触点移至屏幕中心"
-          }
-        }
-      }
-    },
     "s2.calibration.option.fit_scope.all_photos" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -712,28 +679,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仅对屏幕比例照片生效"
-          }
-        }
-      }
-    },
-    "s2.calibration.option.gesture.drag_first" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "单指拖动优先于捏合"
-          }
-        }
-      }
-    },
-    "s2.calibration.option.gesture.pinch_first" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "捏合优先于单指拖动"
           }
         }
       }
@@ -1052,7 +997,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "恢复出厂占位值"
+            "value" : "恢复项目判断默认值"
           }
         }
       }
@@ -1063,7 +1008,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未标定：以下值均为出厂占位值或人工调参值，不是推荐默认值"
+            "value" : "④项目判断默认值，可修订"
           }
         }
       }

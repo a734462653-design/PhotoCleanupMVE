@@ -58,7 +58,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDragMinimumDistance: Double
     var bottomStripSwitchDistance: Double
 
-    // 数值沿用现有 IC-048 与手势 Demo 的未标定夹具，仅 0 内缩及作用范围由本卡指定。
+    // IC-055 项目判断默认值；系统惯例项保持 IC-054 数值不变。
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScale: 4,
         zoomSnapBackThreshold: 1.1,
@@ -90,9 +90,9 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         gestureExclusivityPolicy: .pinchBeforeSingleDrag,
         scaleChangeRequestPolicy: .everyScaleChange,
         degradedPreviewPolicy: .finalImageOnly,
-        animationsEnabled: false,
-        animationDurationMilliseconds: 0,
-        fitInsetRatio: 0,
+        animationsEnabled: true,
+        animationDurationMilliseconds: 220,
+        fitInsetRatio: 0.05,
         fitInsetScope: .screenAspectOnly,
         bottomStripCurrentItemSize: 72,
         bottomStripNeighborItemWidth: 52,
@@ -162,7 +162,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260815-054-s2-calibration-harness"),
+            ("taskID", "IC-20260815-055-s2-usable-build"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
@@ -343,10 +343,216 @@ final class S2CalibrationModel: ObservableObject {
     }
 }
 
+struct S2OverlaySafeAreaInsets: Equatable {
+    let top: CGFloat
+    let leading: CGFloat
+    let bottom: CGFloat
+    let trailing: CGFloat
+
+    static let zero = S2OverlaySafeAreaInsets(
+        top: 0,
+        leading: 0,
+        bottom: 0,
+        trailing: 0
+    )
+}
+
+struct S2CalibrationOverlayState: Equatable {
+    var controlsVisible: Bool
+    var parameterPanelVisible: Bool
+    var readingsVisible: Bool
+
+    static let initial = S2CalibrationOverlayState(
+        controlsVisible: false,
+        parameterPanelVisible: false,
+        readingsVisible: false
+    )
+
+    mutating func toggleAccessControls() {
+        if controlsVisible {
+            self = .initial
+        } else {
+            controlsVisible = true
+        }
+    }
+
+    mutating func toggleParameterPanel() {
+        guard controlsVisible else {
+            return
+        }
+        parameterPanelVisible.toggle()
+    }
+
+    mutating func toggleReadings() {
+        guard controlsVisible else {
+            return
+        }
+        readingsVisible.toggle()
+    }
+}
+
+struct S2OverlayLayoutSnapshot: Equatable {
+    let viewportFrame: CGRect
+    let topElementFrames: [CGRect]
+    let bottomElementFrames: [CGRect]
+    let clickableControlFrames: [CGRect]
+    let calibrationEntryFrame: CGRect?
+}
+
+enum S2OverlayLayout {
+    static let minimumTouchTarget: CGFloat = 44
+    static let minimumSpacing: CGFloat = 8
+    static let horizontalPadding: CGFloat = 8
+    static let topBarHeight: CGFloat = 48
+    static let topLeadingControlWidth: CGFloat = 88
+    static let topTextLineHeight: CGFloat = 22
+    static let calibrationTopClearance: CGFloat = 108
+
+    static func snapshot(
+        physicalSize: CGSize,
+        safeAreaInsets: S2OverlaySafeAreaInsets,
+        bottomStripHeight: CGFloat,
+        showsRecentAlbumAction: Bool,
+        calibrationState: S2CalibrationOverlayState
+    ) -> S2OverlayLayoutSnapshot {
+        let viewportFrame = CGRect(origin: .zero, size: physicalSize)
+        let safeFrame = CGRect(
+            x: safeAreaInsets.leading,
+            y: safeAreaInsets.top,
+            width: max(
+                0,
+                physicalSize.width - safeAreaInsets.leading -
+                    safeAreaInsets.trailing
+            ),
+            height: max(
+                0,
+                physicalSize.height - safeAreaInsets.top -
+                    safeAreaInsets.bottom
+            )
+        )
+        let topBounds = CGRect(
+            x: safeFrame.minX,
+            y: safeFrame.minY,
+            width: safeFrame.width,
+            height: topBarHeight
+        )
+        let topFrames = topElementFrames(in: topBounds)
+
+        let stripHeight = max(minimumTouchTarget, bottomStripHeight)
+        let stripFrame = CGRect(
+            x: safeFrame.minX,
+            y: safeFrame.maxY - stripHeight,
+            width: safeFrame.width,
+            height: stripHeight
+        )
+        let actionCount = showsRecentAlbumAction ? 3 : 2
+        let actionContentWidth = max(
+            0,
+            safeFrame.width - 2 * horizontalPadding
+        )
+        let actionWidth = max(
+            minimumTouchTarget,
+            (actionContentWidth -
+                CGFloat(actionCount - 1) * minimumSpacing) /
+                CGFloat(actionCount)
+        )
+        let actionY = stripFrame.minY - minimumSpacing - minimumTouchTarget
+        let actionFrames = (0..<actionCount).map { index in
+            CGRect(
+                x: safeFrame.minX + horizontalPadding +
+                    CGFloat(index) * (actionWidth + minimumSpacing),
+                y: actionY,
+                width: actionWidth,
+                height: minimumTouchTarget
+            )
+        }
+        let bottomFrames = actionFrames + [stripFrame]
+
+        var clickableFrames = [topFrames[0], topFrames[3]] +
+            actionFrames + [stripFrame]
+        if calibrationState.controlsVisible {
+            let secondX = safeFrame.maxX - horizontalPadding -
+                minimumTouchTarget
+            let firstX = secondX - minimumSpacing - minimumTouchTarget
+            let controlY = safeFrame.minY + calibrationTopClearance
+            clickableFrames.append(contentsOf: [
+                CGRect(
+                    x: firstX,
+                    y: controlY,
+                    width: minimumTouchTarget,
+                    height: minimumTouchTarget
+                ),
+                CGRect(
+                    x: secondX,
+                    y: controlY,
+                    width: minimumTouchTarget,
+                    height: minimumTouchTarget
+                )
+            ])
+        }
+
+        return S2OverlayLayoutSnapshot(
+            viewportFrame: viewportFrame,
+            topElementFrames: topFrames,
+            bottomElementFrames: bottomFrames,
+            clickableControlFrames: clickableFrames,
+            calibrationEntryFrame: nil
+        )
+    }
+
+    static func topElementFrames(in bounds: CGRect) -> [CGRect] {
+        let controlY = bounds.minY +
+            (topBarHeight - minimumTouchTarget) / 2
+        let leadingFrame = CGRect(
+            x: bounds.minX + horizontalPadding,
+            y: controlY,
+            width: topLeadingControlWidth,
+            height: minimumTouchTarget
+        )
+        let trailingFrame = CGRect(
+            x: bounds.maxX - horizontalPadding - minimumTouchTarget,
+            y: controlY,
+            width: minimumTouchTarget,
+            height: minimumTouchTarget
+        )
+        let textX = leadingFrame.maxX + minimumSpacing
+        let textWidth = max(
+            0,
+            trailingFrame.minX - minimumSpacing - textX
+        )
+        let rangeFrame = CGRect(
+            x: textX,
+            y: bounds.minY,
+            width: textWidth,
+            height: topTextLineHeight
+        )
+        let statusFrame = CGRect(
+            x: textX,
+            y: rangeFrame.maxY + 4,
+            width: textWidth,
+            height: topTextLineHeight
+        )
+        return [leadingFrame, rangeFrame, statusFrame, trailingFrame]
+    }
+}
+
 struct S2ViewportPresentationState: Equatable {
     let interfaceVisibility: S2InterfaceVisibility
     let bottomStripState: S2BottomStripState
     let sheetState: S2SheetState
+    let calibrationState: S2CalibrationOverlayState
+
+    init(
+        interfaceVisibility: S2InterfaceVisibility,
+        bottomStripState: S2BottomStripState,
+        sheetState: S2SheetState,
+        calibrationState: S2CalibrationOverlayState = .initial
+    ) {
+        self.interfaceVisibility = interfaceVisibility
+        self.bottomStripState = bottomStripState
+        self.sheetState = sheetState
+        self.calibrationState = calibrationState
+    }
 }
 
 struct S2ViewportMetrics: Equatable {
