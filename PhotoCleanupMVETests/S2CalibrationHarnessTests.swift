@@ -883,21 +883,23 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // E4 替代断言：原生回调撤销后的结果与直接双击完全一致。
     func testE4RevertedSingleTapThenDoubleTapMatchesDirectDoubleTap() {
-        let value = metrics()
-
         for visibility in [
             S2InterfaceVisibility.visible,
             S2InterfaceVisibility.hidden
         ] {
             let direct = makeMachine(interfaceVisibility: visibility)
             let coordinated = makeMachine(interfaceVisibility: visibility)
+            let directController = makeNativePagerController(machine: direct)
+            let directPage = tryUnwrap(
+                directController.pageControllers[direct.currentIndex]
+            )
             let controller = makeNativePagerController(machine: coordinated)
             let page = tryUnwrap(
                 controller.pageControllers[coordinated.currentIndex]
             )
 
-            XCTAssertTrue(direct.handleNativeDoubleTap(
-                targetScale: value.doubleTapTargetScale
+            XCTAssertTrue(directPage.applyRecognizedDoubleTap(
+                at: CGPoint(x: 150, y: 300)
             ))
             XCTAssertTrue(page.applyRecognizedSingleTap())
             XCTAssertTrue(page.applyRecognizedDoubleTap(
