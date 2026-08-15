@@ -757,18 +757,26 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // D7 替代断言：右、上、下边缘双击均由原生边界钳制贴齐视口。
     func testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary() {
-        let locationsAndAssertions: [(CGPoint, (CGRect) -> CGFloat)] = [
+        let locationsAndAssertions: [
+            (CGPoint, (CGRect, CGRect) -> CGFloat)
+        ] = [
             (
                 CGPoint(x: physicalSize.width - 1, y: physicalSize.height / 2),
-                { $0.maxX - self.physicalSize.width }
+                { contentFrame, viewportBounds in
+                    contentFrame.maxX - viewportBounds.maxX
+                }
             ),
             (
                 CGPoint(x: physicalSize.width / 2, y: 1),
-                { $0.minY }
+                { contentFrame, viewportBounds in
+                    contentFrame.minY - viewportBounds.minY
+                }
             ),
             (
                 CGPoint(x: physicalSize.width / 2, y: physicalSize.height - 1),
-                { $0.maxY - self.physicalSize.height }
+                { contentFrame, viewportBounds in
+                    contentFrame.maxY - viewportBounds.maxY
+                }
             )
         ]
 
@@ -780,7 +788,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 animated: false
             ))
             let frame = tryUnwrap(scrollView.visibleContentFrame())
-            XCTAssertEqual(boundaryDifference(frame), 0, accuracy: 0.000_001)
+            XCTAssertEqual(
+                boundaryDifference(frame, scrollView.bounds),
+                0,
+                accuracy: 0.000_001
+            )
         }
     }
 
