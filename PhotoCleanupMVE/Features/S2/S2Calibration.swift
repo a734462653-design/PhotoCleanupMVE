@@ -18,8 +18,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
 
     var pinchMaxScale: Double
     var zoomSnapBackThreshold: Double
-    var aspectFillDegenerateTolerancePercent: Double
-    var aspectFillDegenerateTargetScale: Double
+    var minDoubleTapScale: Double
     var doubleTapAnchorStrategy: S2DoubleTapAnchorStrategy
     var edgePagingTriggerDistance: Double
     var edgePagingTriggerVelocity: Double
@@ -58,12 +57,11 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDragMinimumDistance: Double
     var bottomStripSwitchDistance: Double
 
-    // IC-055 系统对齐项目判断默认值；其余字段保持 IC-054 数值不变。
+    // IC-056 双击项目判断默认值；其余字段保持 IC-055 数值不变。
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScale: 4,
         zoomSnapBackThreshold: 1.1,
-        aspectFillDegenerateTolerancePercent: 1,
-        aspectFillDegenerateTargetScale: 2,
+        minDoubleTapScale: 2.5,
         doubleTapAnchorStrategy: .touchPoint,
         edgePagingTriggerDistance: 40,
         edgePagingTriggerVelocity: 300,
@@ -107,10 +105,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         S2ResolvedParameters(
             pinchMaxScale: CGFloat(pinchMaxScale),
             zoomSnapBackThreshold: CGFloat(zoomSnapBackThreshold),
-            aspectFillDegenerateTolerancePercent:
-                CGFloat(aspectFillDegenerateTolerancePercent),
-            aspectFillDegenerateTargetScale:
-                CGFloat(aspectFillDegenerateTargetScale),
+            minDoubleTapScale: CGFloat(minDoubleTapScale),
             doubleTapAnchorStrategy: doubleTapAnchorStrategy,
             edgePagingTriggerDistance: CGFloat(edgePagingTriggerDistance),
             edgePagingTriggerVelocity: CGFloat(edgePagingTriggerVelocity),
@@ -162,12 +157,11 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260815-055-s2-system-parity"),
+            ("taskID", "IC-20260815-056-doubletap-scale-and-anchor"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
-            ("aspectFillDegenerateTolerancePercent", formatted(aspectFillDegenerateTolerancePercent)),
-            ("aspectFillDegenerateTargetScale", formatted(aspectFillDegenerateTargetScale)),
+            ("minDoubleTapScale", formatted(minDoubleTapScale)),
             ("doubleTapAnchorStrategy", doubleTapAnchorStrategy.rawValue),
             ("edgePagingTriggerDistance", formatted(edgePagingTriggerDistance)),
             ("edgePagingTriggerVelocity", formatted(edgePagingTriggerVelocity)),
@@ -600,21 +594,16 @@ enum S2ViewportLayout {
             scope: configuration.fitInsetScope
         )
         let insetScale = applies
-            ? max(0, 1 - 2 * CGFloat(configuration.fitInsetRatio))
+            ? max(0, 1 - CGFloat(configuration.fitInsetRatio))
             : 1
         let displaySize = CGSize(
             width: fitSize.width * insetScale,
             height: fitSize.height * insetScale
         )
-        let fillMultiplier: CGFloat
-        if displaySize.width > 0, displaySize.height > 0 {
-            fillMultiplier = max(
-                physicalSize.width / displaySize.width,
-                physicalSize.height / displaySize.height
-            )
-        } else {
-            fillMultiplier = 1
-        }
+        let fillMultiplier = S2Geometry.aspectFillMultiplier(
+            viewportSize: physicalSize,
+            assetAspectRatio: assetAspectRatio
+        ) ?? 1
         return S2ViewportMetrics(
             viewportSize: physicalSize,
             aspectFitSize: fitSize,
@@ -639,8 +628,16 @@ enum S2ViewportLayout {
             guard assetAspectRatio > 0, viewportAspectRatio > 0 else {
                 return false
             }
-            return abs(assetAspectRatio - viewportAspectRatio) /
-                viewportAspectRatio <= 0.01
+            let normalizedAssetRatio = min(
+                assetAspectRatio,
+                1 / assetAspectRatio
+            )
+            let normalizedViewportRatio = min(
+                viewportAspectRatio,
+                1 / viewportAspectRatio
+            )
+            return abs(normalizedAssetRatio - normalizedViewportRatio) /
+                normalizedViewportRatio <= 0.01
         }
     }
 }

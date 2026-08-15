@@ -231,12 +231,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 insetMetrics.oneXDisplaySize.height) /
             2 / insetMetrics.viewportSize.height
 
-        XCTAssertEqual(horizontalMarginRatio, 0.1, accuracy: 0.000_001)
-        XCTAssertEqual(verticalMarginRatio, 0.1, accuracy: 0.000_001)
+        XCTAssertEqual(horizontalMarginRatio, 0.05, accuracy: 0.000_001)
+        XCTAssertEqual(verticalMarginRatio, 0.05, accuracy: 0.000_001)
         XCTAssertEqual(zeroMetrics.viewportSize, insetMetrics.viewportSize)
         XCTAssertEqual(
             insetMetrics.aspectFillMultiplier,
-            1.25,
+            1,
             accuracy: 0.000_001
         )
 
@@ -258,7 +258,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(
             global.oneXDisplaySize.width,
-            global.aspectFitSize.width * 0.8,
+            global.aspectFitSize.width * 0.9,
             accuracy: 0.000_001
         )
         XCTAssertEqual(global.viewportSize, scoped.viewportSize)
@@ -366,8 +366,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let expected = S2CalibrationConfiguration(
             pinchMaxScale: 4,
             zoomSnapBackThreshold: 1.1,
-            aspectFillDegenerateTolerancePercent: 1,
-            aspectFillDegenerateTargetScale: 2,
+            minDoubleTapScale: 2.5,
             doubleTapAnchorStrategy: .touchPoint,
             edgePagingTriggerDistance: 40,
             edgePagingTriggerVelocity: 300,
@@ -418,13 +417,24 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "taskID=IC-20260815-055-s2-system-parity"
+                "taskID=IC-20260815-056-doubletap-scale-and-anchor"
             )
         )
         XCTAssertTrue(
             actual.exportText().contains(
                 "valueStatus=④项目判断默认值，可修订"
             )
+        )
+        XCTAssertTrue(
+            actual.exportText().contains("minDoubleTapScale=2.500000")
+        )
+        XCTAssertFalse(
+            actual.exportText().contains(
+                "aspectFillDegenerateTolerancePercent"
+            )
+        )
+        XCTAssertFalse(
+            actual.exportText().contains("aspectFillDegenerateTargetScale")
         )
         XCTAssertFalse(actual.exportText().contains("未标定"))
     }
@@ -641,6 +651,175 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.viewportOffset, .zero)
     }
 
+    // D1：屏幕比例照片的 1x 短边按 0.08 内缩为视口短边的 0.92。
+    func testD1ScreenAspectFitInsetRatioShrinksShortEdgeToNinetyTwoPercent() {
+        var configuration = S2CalibrationConfiguration.factoryPlaceholder
+        configuration.fitInsetRatio = 0.08
+        configuration.fitInsetScope = .screenAspectOnly
+        let value = metrics(configuration: configuration)
+
+        XCTAssertEqual(
+            min(value.oneXDisplaySize.width, value.oneXDisplaySize.height),
+            min(value.viewportSize.width, value.viewportSize.height) * 0.92,
+            accuracy: 1
+        )
+        XCTAssertTrue(S2ViewportLayout.insetApplies(
+            assetAspectRatio: 1 / screenAspectRatio,
+            viewportAspectRatio: screenAspectRatio,
+            scope: .screenAspectOnly
+        ))
+    }
+
+    // D2：内缩比例为零时，1x 显示严格等于纯等比适配。
+    func testD2ZeroFitInsetMatchesPureAspectFit() {
+        var configuration = S2CalibrationConfiguration.factoryPlaceholder
+        configuration.fitInsetRatio = 0
+        let value = metrics(configuration: configuration)
+
+        XCTAssertEqual(value.oneXDisplaySize, value.aspectFitSize)
+    }
+
+    // D3：仅屏幕比例作用域不会改变非屏幕比例照片的 1x 显示。
+    func testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged() {
+        var configuration = S2CalibrationConfiguration.factoryPlaceholder
+        configuration.fitInsetRatio = 0.08
+        configuration.fitInsetScope = .screenAspectOnly
+        let value = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: 1,
+            configuration: configuration
+        )
+
+        XCTAssertEqual(value.oneXDisplaySize, value.aspectFitSize)
+    }
+
+    // D4：屏幕比例照片的填满倍数为一，双击改用最小目标倍数 2.5。
+    func testD4ScreenAspectDoubleTapUsesMinimumScale() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let value = metrics(configuration: configuration)
+        let machine = makeMachine(configuration: configuration)
+
+        XCTAssertTrue(machine.handleDoubleTap(
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
+            viewportSize: physicalSize,
+            assetAspectRatio: screenAspectRatio,
+            oneXDisplaySize: value.oneXDisplaySize
+        ))
+        XCTAssertEqual(
+            machine.scale,
+            CGFloat(configuration.minDoubleTapScale),
+            accuracy: 0.000_001
+        )
+    }
+
+    // D5：填满倍数较大时采用该倍数，并且不受 1x 内缩尺寸影响。
+    func testD5DoubleTapUsesLargerAspectFillScale() {
+        let assetAspectRatio: CGFloat = 1.5
+        var configuration = S2CalibrationConfiguration.factoryPlaceholder
+        configuration.fitInsetRatio = 0.08
+        configuration.fitInsetScope = .allPhotos
+        let value = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: assetAspectRatio,
+            configuration: configuration
+        )
+        let expected = tryUnwrap(S2Geometry.aspectFillMultiplier(
+            viewportSize: physicalSize,
+            assetAspectRatio: assetAspectRatio
+        ))
+        let machine = makeMachine(configuration: configuration)
+
+        XCTAssertGreaterThan(expected, CGFloat(configuration.minDoubleTapScale))
+        XCTAssertTrue(machine.handleDoubleTap(
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
+            viewportSize: physicalSize,
+            assetAspectRatio: assetAspectRatio,
+            oneXDisplaySize: value.oneXDisplaySize
+        ))
+        XCTAssertEqual(machine.scale, expected, accuracy: 0.000_001)
+    }
+
+    // D6：左边缘附近双击后，内容左边界与视口左边严格重合。
+    func testD6LeftEdgeDoubleTapAlignsLeftContentBoundary() {
+        let value = metrics()
+        let machine = makeMachine()
+
+        XCTAssertTrue(machine.handleDoubleTap(
+            at: CGPoint(x: 1, y: physicalSize.height / 2),
+            viewportSize: physicalSize,
+            assetAspectRatio: screenAspectRatio,
+            oneXDisplaySize: value.oneXDisplaySize
+        ))
+        let frame = contentFrame(
+            viewportSize: physicalSize,
+            fittedSize: value.oneXDisplaySize,
+            scale: machine.scale,
+            offset: machine.viewportOffset
+        )
+        XCTAssertEqual(frame.minX, 0, accuracy: 0.000_001)
+    }
+
+    // D7：右、上、下边缘附近双击后，对应内容边界均与视口边重合。
+    func testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary() {
+        let value = metrics()
+        let locationsAndAssertions: [(CGPoint, (CGRect) -> CGFloat)] = [
+            (
+                CGPoint(x: physicalSize.width - 1, y: physicalSize.height / 2),
+                { $0.maxX - self.physicalSize.width }
+            ),
+            (
+                CGPoint(x: physicalSize.width / 2, y: 1),
+                { $0.minY }
+            ),
+            (
+                CGPoint(x: physicalSize.width / 2, y: physicalSize.height - 1),
+                { $0.maxY - self.physicalSize.height }
+            )
+        ]
+
+        for (location, boundaryDifference) in locationsAndAssertions {
+            let machine = makeMachine()
+            XCTAssertTrue(machine.handleDoubleTap(
+                at: location,
+                viewportSize: physicalSize,
+                assetAspectRatio: screenAspectRatio,
+                oneXDisplaySize: value.oneXDisplaySize
+            ))
+            let frame = contentFrame(
+                viewportSize: physicalSize,
+                fittedSize: value.oneXDisplaySize,
+                scale: machine.scale,
+                offset: machine.viewportOffset
+            )
+            XCTAssertEqual(boundaryDifference(frame), 0, accuracy: 0.000_001)
+        }
+    }
+
+    // D8：双击退出 Nx 后缩放严格归一，平移偏移同时清零。
+    func testD8DoubleTapExitResetsScaleAndOffset() {
+        let value = metrics()
+        let machine = makeMachine()
+        let location = CGPoint(x: 1, y: physicalSize.height / 2)
+
+        XCTAssertTrue(machine.handleDoubleTap(
+            at: location,
+            viewportSize: physicalSize,
+            assetAspectRatio: screenAspectRatio,
+            oneXDisplaySize: value.oneXDisplaySize
+        ))
+        XCTAssertNotEqual(machine.viewportOffset, .zero)
+        XCTAssertTrue(machine.handleDoubleTap(
+            at: location,
+            viewportSize: physicalSize,
+            assetAspectRatio: screenAspectRatio,
+            oneXDisplaySize: value.oneXDisplaySize
+        ))
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(machine.viewportOffset, .zero)
+    }
+
     // A1：统一策略在关闭开关时把显式时长归零。
     func testA1AnimationPolicyDisablesCalibratedAnimations() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -709,9 +888,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     private func makeMachine(
         scale: CGFloat = 1,
-        viewportOffset: CGSize = .zero
+        viewportOffset: CGSize = .zero,
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder
     ) -> S2StateMachine {
-        let configuration = S2CalibrationConfiguration.factoryPlaceholder
         return S2StateMachine(
             entry: S2EntryContext(
                 sessionID: "session-054",
@@ -736,6 +915,24 @@ final class S2CalibrationHarnessTests: XCTestCase {
             initialRecentAlbum: nil,
             pendingDeletionDidChange: { _ in }
         )!
+    }
+
+    private func contentFrame(
+        viewportSize: CGSize,
+        fittedSize: CGSize,
+        scale: CGFloat,
+        offset: CGSize
+    ) -> CGRect {
+        let scaledSize = CGSize(
+            width: fittedSize.width * scale,
+            height: fittedSize.height * scale
+        )
+        return CGRect(
+            x: (viewportSize.width - scaledSize.width) / 2 + offset.width,
+            y: (viewportSize.height - scaledSize.height) / 2 + offset.height,
+            width: scaledSize.width,
+            height: scaledSize.height
+        )
     }
 
     private func tryUnwrap<T>(

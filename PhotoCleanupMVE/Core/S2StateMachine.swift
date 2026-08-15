@@ -114,10 +114,7 @@ struct S2ImageRequestStrategy: Codable, Equatable {
 }
 
 enum S2DoubleTapAnchorStrategy: String, CaseIterable, Codable, Equatable {
-    case screenCenter
     case touchPoint
-    case previousTouchPoint
-    case touchPointToCenter
 }
 
 struct S2BottomStripMetrics: Equatable {
@@ -148,8 +145,7 @@ struct S2BottomStripMetrics: Equatable {
 struct S2ResolvedParameters: Equatable {
     let pinchMaxScale: CGFloat
     let zoomSnapBackThreshold: CGFloat
-    let aspectFillDegenerateTolerancePercent: CGFloat
-    let aspectFillDegenerateTargetScale: CGFloat
+    let minDoubleTapScale: CGFloat
     let doubleTapAnchorStrategy: S2DoubleTapAnchorStrategy
     let edgePagingTriggerDistance: CGFloat
     let edgePagingTriggerVelocity: CGFloat
@@ -164,8 +160,7 @@ struct S2ResolvedParameters: Equatable {
     init?(
         pinchMaxScale: CGFloat,
         zoomSnapBackThreshold: CGFloat,
-        aspectFillDegenerateTolerancePercent: CGFloat,
-        aspectFillDegenerateTargetScale: CGFloat,
+        minDoubleTapScale: CGFloat,
         doubleTapAnchorStrategy: S2DoubleTapAnchorStrategy,
         edgePagingTriggerDistance: CGFloat,
         edgePagingTriggerVelocity: CGFloat,
@@ -180,9 +175,7 @@ struct S2ResolvedParameters: Equatable {
         guard pinchMaxScale > 1,
               zoomSnapBackThreshold >= 1,
               zoomSnapBackThreshold <= pinchMaxScale,
-              aspectFillDegenerateTolerancePercent >= 0,
-              aspectFillDegenerateTargetScale > 1,
-              aspectFillDegenerateTargetScale <= pinchMaxScale,
+              minDoubleTapScale > 1,
               edgePagingTriggerDistance >= 0,
               edgePagingTriggerVelocity >= 0,
               verticalSwipeDistance >= 0,
@@ -197,9 +190,7 @@ struct S2ResolvedParameters: Equatable {
 
         self.pinchMaxScale = pinchMaxScale
         self.zoomSnapBackThreshold = zoomSnapBackThreshold
-        self.aspectFillDegenerateTolerancePercent =
-            aspectFillDegenerateTolerancePercent
-        self.aspectFillDegenerateTargetScale = aspectFillDegenerateTargetScale
+        self.minDoubleTapScale = minDoubleTapScale
         self.doubleTapAnchorStrategy = doubleTapAnchorStrategy
         self.edgePagingTriggerDistance = edgePagingTriggerDistance
         self.edgePagingTriggerVelocity = edgePagingTriggerVelocity
@@ -505,11 +496,10 @@ enum S2Geometry {
         return calculatedMultiplier
     }
 
-    // 函数来源：IC-20260812-007 与 IC-20260813-033；四种锚点公式保持原实现。
+    // IC-056 仅保留触点锚定：缩放前后的触点对应同一照片位置。
     static func doubleTapAnchorOffset(
         strategy: S2DoubleTapAnchorStrategy,
         location: CGPoint,
-        previousLocation: CGPoint?,
         viewportSize: CGSize,
         zoomScale: CGFloat
     ) -> CGSize {
@@ -517,25 +507,14 @@ enum S2Geometry {
             x: viewportSize.width / 2,
             y: viewportSize.height / 2
         )
-        let anchor: CGPoint
         switch strategy {
-        case .screenCenter:
-            anchor = center
         case .touchPoint:
-            anchor = location
-        case .previousTouchPoint:
-            anchor = previousLocation ?? center
-        case .touchPointToCenter:
+            let scaleDelta = zoomScale - 1
             return CGSize(
-                width: -(location.x - center.x) * zoomScale,
-                height: -(location.y - center.y) * zoomScale
+                width: (center.x - location.x) * scaleDelta,
+                height: (center.y - location.y) * scaleDelta
             )
         }
-        let scaleDelta = zoomScale - 1
-        return CGSize(
-            width: (center.x - anchor.x) * scaleDelta,
-            height: (center.y - anchor.y) * scaleDelta
-        )
     }
 
     // 函数来源：IC-20260812-007；v13 将余量锁为零，因此签名不保留余量参数。
@@ -681,7 +660,6 @@ final class S2StateMachine: ObservableObject {
 
     private let pendingDeletionDidChange: (Set<String>) -> Void
     private var visibilityBeforeDoubleTapZoom: S2InterfaceVisibility?
-    private var previousDoubleTapLocation: CGPoint?
     private var pinchStartScale: CGFloat?
     private var albumPickerTargetAssetID: String?
 
@@ -1106,29 +1084,13 @@ final class S2StateMachine: ObservableObject {
             return true
         }
 
-        let calculatedMultiplier: CGFloat
-        if let oneXDisplaySize,
-           oneXDisplaySize.width > 0,
-           oneXDisplaySize.height > 0 {
-            calculatedMultiplier = max(
-                viewportSize.width / oneXDisplaySize.width,
-                viewportSize.height / oneXDisplaySize.height
-            )
-        } else {
-            guard let multiplier = S2Geometry.aspectFillMultiplier(
-                viewportSize: viewportSize,
-                assetAspectRatio: assetAspectRatio
-            ) else {
-                return false
-            }
-            calculatedMultiplier = multiplier
+        guard let calculatedMultiplier = S2Geometry.aspectFillMultiplier(
+            viewportSize: viewportSize,
+            assetAspectRatio: assetAspectRatio
+        ) else {
+            return false
         }
-        let differencePercent = abs(calculatedMultiplier - 1) * 100
-        let requestedScale = differencePercent <
-            parameters.aspectFillDegenerateTolerancePercent
-            ? parameters.aspectFillDegenerateTargetScale
-            : calculatedMultiplier
-        let nextScale = min(parameters.pinchMaxScale, max(1, requestedScale))
+        let nextScale = max(calculatedMultiplier, parameters.minDoubleTapScale)
         guard nextScale > 1 else {
             return false
         }
@@ -1143,7 +1105,6 @@ final class S2StateMachine: ObservableObject {
             S2Geometry.doubleTapAnchorOffset(
                 strategy: parameters.doubleTapAnchorStrategy,
                 location: location,
-                previousLocation: previousDoubleTapLocation,
                 viewportSize: viewportSize,
                 zoomScale: scale
             ),
@@ -1151,7 +1112,6 @@ final class S2StateMachine: ObservableObject {
             fittedSize: fittedSize,
             zoomScale: scale
         )
-        previousDoubleTapLocation = location
         return true
     }
 

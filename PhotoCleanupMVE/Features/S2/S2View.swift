@@ -609,6 +609,13 @@ struct S2View: View {
                 Text(L10n.text("s2.calibration.core_gesture_hint"))
 
                 S2CalibrationSliderRow(
+                    title: "minDoubleTapScale",
+                    value: calibrationBinding(\.minDoubleTapScale),
+                    range: 1.1...4,
+                    step: 0.1
+                )
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                S2CalibrationSliderRow(
                     title: "verticalSwipeDistance",
                     value: calibrationBinding(\.verticalSwipeDistance),
                     range: 0...300,

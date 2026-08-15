@@ -692,43 +692,12 @@ final class S2StateMachineTests: XCTestCase {
         let location = CGPoint(x: 50, y: 25)
         XCTAssertEqual(
             S2Geometry.doubleTapAnchorOffset(
-                strategy: .screenCenter,
-                location: location,
-                previousLocation: nil,
-                viewportSize: anchorViewport,
-                zoomScale: 3
-            ),
-            .zero
-        )
-        XCTAssertEqual(
-            S2Geometry.doubleTapAnchorOffset(
                 strategy: .touchPoint,
                 location: location,
-                previousLocation: nil,
                 viewportSize: anchorViewport,
                 zoomScale: 3
             ),
             CGSize(width: 100, height: 50)
-        )
-        XCTAssertEqual(
-            S2Geometry.doubleTapAnchorOffset(
-                strategy: .previousTouchPoint,
-                location: location,
-                previousLocation: CGPoint(x: 80, y: 40),
-                viewportSize: anchorViewport,
-                zoomScale: 3
-            ),
-            CGSize(width: 40, height: 20)
-        )
-        XCTAssertEqual(
-            S2Geometry.doubleTapAnchorOffset(
-                strategy: .touchPointToCenter,
-                location: location,
-                previousLocation: nil,
-                viewportSize: anchorViewport,
-                zoomScale: 3
-            ),
-            CGSize(width: 150, height: 75)
         )
 
         XCTAssertEqual(
@@ -765,8 +734,7 @@ final class S2StateMachineTests: XCTestCase {
         S2ResolvedParameters(
             pinchMaxScale: 4,
             zoomSnapBackThreshold: 1.2,
-            aspectFillDegenerateTolerancePercent: 1,
-            aspectFillDegenerateTargetScale: 2,
+            minDoubleTapScale: 2.5,
             doubleTapAnchorStrategy: .touchPoint,
             edgePagingTriggerDistance: 40,
             edgePagingTriggerVelocity: 300,
