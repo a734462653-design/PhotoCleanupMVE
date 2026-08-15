@@ -111,6 +111,8 @@ try {
     检查 ($标定文本.Contains('("fitCornerRadius", formatted(fitCornerRadius))')) "参数导出缺少 fitCornerRadius"
     检查 ($标定文本.Contains('("hapticOnPhotoSwitch", String(hapticOnPhotoSwitch))')) "参数导出缺少 hapticOnPhotoSwitch"
     检查 ($标定文本.Contains('? CGFloat(configuration.minDoubleTapScale)') -and $标定文本.Contains(': fillMultiplier')) "双击目标未按类别二选一"
+    检查 (-not $状态机文本.Contains("max(calculatedMultiplier, parameters.minDoubleTapScale)")) "状态机残留双击一刀切规则"
+    检查 ($标定文本.Contains("S2Geometry.isScreenAspectMatch")) "布局未复用方向归一的屏幕比例判定"
     检查 ($标定文本.Contains("let oneXCornerRadius: CGFloat")) "布局读数缺少圆角半径"
 
     检查 ($原生容器文本.Contains("let singleTapRecognizer = UITapGestureRecognizer()")) "缺少原生单击识别器"

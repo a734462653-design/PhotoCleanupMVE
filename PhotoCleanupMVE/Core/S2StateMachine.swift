@@ -479,6 +479,26 @@ enum S2Geometry {
         return calculatedMultiplier
     }
 
+    // IC-056 的方向归一屏幕比例判定；所有双击与内缩路径共用同一容差。
+    static func isScreenAspectMatch(
+        assetAspectRatio: CGFloat,
+        viewportAspectRatio: CGFloat
+    ) -> Bool {
+        guard assetAspectRatio > 0, viewportAspectRatio > 0 else {
+            return false
+        }
+        let normalizedAssetRatio = min(
+            assetAspectRatio,
+            1 / assetAspectRatio
+        )
+        let normalizedViewportRatio = min(
+            viewportAspectRatio,
+            1 / viewportAspectRatio
+        )
+        return abs(normalizedAssetRatio - normalizedViewportRatio) /
+            normalizedViewportRatio <= 0.01
+    }
+
     // IC-056 仅保留触点锚定：缩放前后的触点对应同一照片位置。
     static func doubleTapAnchorOffset(
         strategy: S2DoubleTapAnchorStrategy,
@@ -1003,7 +1023,13 @@ final class S2StateMachine: ObservableObject {
         ) else {
             return false
         }
-        let nextScale = max(calculatedMultiplier, parameters.minDoubleTapScale)
+        let viewportAspectRatio = viewportSize.width / viewportSize.height
+        let nextScale = S2Geometry.isScreenAspectMatch(
+            assetAspectRatio: assetAspectRatio,
+            viewportAspectRatio: viewportAspectRatio
+        )
+            ? parameters.minDoubleTapScale
+            : calculatedMultiplier
         guard nextScale > 1 else {
             return false
         }

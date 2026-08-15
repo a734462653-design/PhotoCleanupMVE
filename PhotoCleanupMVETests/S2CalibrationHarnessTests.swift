@@ -720,7 +720,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // D5 替代断言：非屏幕比例照片只采用填满倍数，不再与最小倍数取大。
     func testD5ReplacementNonScreenDoubleTapUsesAspectFillScale() {
-        let assetAspectRatio: CGFloat = 1.5
+        let assetAspectRatio: CGFloat = 1
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitInsetRatio = 0.30
         configuration.fitInsetScope = .screenAspectOnly
@@ -742,7 +742,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             animated: false
         ))
 
-        XCTAssertGreaterThan(expected, CGFloat(configuration.minDoubleTapScale))
+        XCTAssertLessThan(expected, CGFloat(configuration.minDoubleTapScale))
         XCTAssertEqual(value.doubleTapTargetScale, expected, accuracy: 0.000_001)
         XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: expected))
         XCTAssertEqual(machine.scale, expected, accuracy: 0.000_001)
@@ -1164,12 +1164,23 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let value = metrics(configuration: configuration)
         let machine = makeMachine(configuration: configuration)
+        let legacyMachine = makeMachine(configuration: configuration)
 
         XCTAssertTrue(machine.handleNativeDoubleTap(
             targetScale: value.doubleTapTargetScale
         ))
         XCTAssertEqual(
             machine.scale,
+            CGFloat(configuration.minDoubleTapScale),
+            accuracy: 0.000_001
+        )
+        XCTAssertTrue(legacyMachine.handleDoubleTap(
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
+            viewportSize: physicalSize,
+            assetAspectRatio: screenAspectRatio
+        ))
+        XCTAssertEqual(
+            legacyMachine.scale,
             CGFloat(configuration.minDoubleTapScale),
             accuracy: 0.000_001
         )
@@ -1181,10 +1192,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let value = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
-            assetAspectRatio: 1.5,
+            assetAspectRatio: 1,
             configuration: configuration
         )
         let machine = makeMachine(configuration: configuration)
+        let legacyMachine = makeMachine(configuration: configuration)
 
         XCTAssertTrue(machine.handleNativeDoubleTap(
             targetScale: value.doubleTapTargetScale
@@ -1197,6 +1209,20 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNotEqual(
             machine.scale,
             CGFloat(configuration.minDoubleTapScale),
+            accuracy: 0.000_001
+        )
+        XCTAssertLessThan(
+            value.aspectFillMultiplier,
+            CGFloat(configuration.minDoubleTapScale)
+        )
+        XCTAssertTrue(legacyMachine.handleDoubleTap(
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
+            viewportSize: physicalSize,
+            assetAspectRatio: 1
+        ))
+        XCTAssertEqual(
+            legacyMachine.scale,
+            value.aspectFillMultiplier,
             accuracy: 0.000_001
         )
     }

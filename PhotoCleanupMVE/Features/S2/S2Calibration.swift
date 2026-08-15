@@ -793,19 +793,10 @@ enum S2ViewportLayout {
         case .allPhotos:
             return true
         case .screenAspectOnly:
-            guard assetAspectRatio > 0, viewportAspectRatio > 0 else {
-                return false
-            }
-            let normalizedAssetRatio = min(
-                assetAspectRatio,
-                1 / assetAspectRatio
+            return S2Geometry.isScreenAspectMatch(
+                assetAspectRatio: assetAspectRatio,
+                viewportAspectRatio: viewportAspectRatio
             )
-            let normalizedViewportRatio = min(
-                viewportAspectRatio,
-                1 / viewportAspectRatio
-            )
-            return abs(normalizedAssetRatio - normalizedViewportRatio) /
-                normalizedViewportRatio <= 0.01
         }
     }
 }
