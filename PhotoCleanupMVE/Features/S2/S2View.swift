@@ -3,6 +3,11 @@ import SwiftUI
 import UIKit
 
 struct S2PhotoSwitchHapticFeedback {
+    enum Source: Equatable {
+        case bottomStripDrag
+        case nativePaging
+    }
+
     let selectionChanged: () -> Void
 
     static let live = S2PhotoSwitchHapticFeedback {
@@ -11,8 +16,8 @@ struct S2PhotoSwitchHapticFeedback {
         generator.selectionChanged()
     }
 
-    func notify(isEnabled: Bool) {
-        guard isEnabled else {
+    func notify(isEnabled: Bool, source: Source) {
+        guard isEnabled, source == .bottomStripDrag else {
             return
         }
         selectionChanged()
@@ -214,6 +219,8 @@ struct S2View: View {
             return S2NativePageContent(
                 index: index,
                 assetID: assetID,
+                interfaceVisibility: machine.interfaceVisibility,
+                isFramedPhoto: pageMetrics.isFramedPhoto,
                 fittedSize: pageMetrics.oneXDisplaySize,
                 cornerRadius: pageMetrics.oneXCornerRadius,
                 doubleTapTargetScale: pageMetrics.doubleTapTargetScale,
@@ -231,12 +238,6 @@ struct S2View: View {
             pages: pages,
             onLongPress: {
                 calibrationOverlayState.toggleAccessControls()
-            },
-            onPhotoSwitch: {
-                photoSwitchHapticFeedback.notify(
-                    isEnabled:
-                        calibration.configuration.hapticOnPhotoSwitch
-                )
             }
         )
         .frame(width: viewportSize.width, height: viewportSize.height)
@@ -278,7 +279,8 @@ struct S2View: View {
                     onPhotoSwitch: {
                         photoSwitchHapticFeedback.notify(
                             isEnabled: calibration.configuration
-                                .hapticOnPhotoSwitch
+                                .hapticOnPhotoSwitch,
+                            source: .bottomStripDrag
                         )
                     }
                 )
@@ -571,6 +573,15 @@ struct S2View: View {
                 )
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
                 S2CalibrationSliderRow(
+                    title: "doubleTapDecisionWindowMilliseconds",
+                    value: calibrationBinding(
+                        \.doubleTapDecisionWindowMilliseconds
+                    ),
+                    range: 0...600,
+                    step: 10
+                )
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                S2CalibrationSliderRow(
                     title: "pageSpacing",
                     value: calibrationBinding(\.pageSpacing),
                     range: 0...80,
@@ -650,6 +661,12 @@ struct S2View: View {
                     ForEach(S2FitInsetScope.allCases, id: \.self) {
                         Text(fitInsetScopeTitle($0)).tag($0)
                     }
+                }
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                Toggle(
+                    isOn: calibrationBinding(\.screenshotImmersiveOnHide)
+                ) {
+                    Text(verbatim: "screenshotImmersiveOnHide")
                 }
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
                 Toggle(
@@ -735,6 +752,18 @@ struct S2View: View {
                 ))
             } else {
                 Text(L10n.text("s2.calibration.reading.gesture_empty"))
+            }
+            if let reading = machine.lastTapDecisionReading {
+                Text(verbatim:
+                    "singleTapDecisionLatencyMilliseconds=" +
+                        decimal(reading.latencyMilliseconds)
+                )
+                Text(verbatim:
+                    "doubleTapDecisionWindowMilliseconds=" +
+                        decimal(reading.targetMilliseconds) +
+                        ",targetMet=" +
+                        String(reading.metConfiguredTarget)
+                )
             }
             if let reading = machine.lastImageRequestReading {
                 Text(L10n.text(

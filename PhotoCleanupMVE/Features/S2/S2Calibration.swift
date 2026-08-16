@@ -49,6 +49,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var fitInsetRatio: Double
     var fitCornerRadius: Double
     var fitInsetScope: S2FitInsetScope
+    var screenshotImmersiveOnHide: Bool
     var pageSpacing: Double
     var hapticOnPhotoSwitch: Bool
     var bottomStripCurrentItemSize: Double
@@ -59,7 +60,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDragMinimumDistance: Double
     var bottomStripSwitchDistance: Double
 
-    // IC-059 手机框与切片反馈项目判断默认值；其余字段保持既有数值不变。
+    // IC-060 点击裁决与截图沉浸项目判断默认值；其余字段保持既有数值不变。
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScale: 4,
         zoomSnapBackThreshold: 1.1,
@@ -81,7 +82,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         mainDragMaximumDurationMilliseconds: 0,
         singleTapMaximumMovement: 12,
         singleTapMaximumDurationMilliseconds: 280,
-        doubleTapDecisionWindowMilliseconds: 320,
+        doubleTapDecisionWindowMilliseconds: 200,
         singleTapTouchCount: 1,
         doubleTapTouchCount: 1,
         singleDragTouchCount: 1,
@@ -94,6 +95,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         fitInsetRatio: 0.30,
         fitCornerRadius: 28,
         fitInsetScope: .screenAspectOnly,
+        screenshotImmersiveOnHide: true,
         pageSpacing: 20,
         hapticOnPhotoSwitch: true,
         bottomStripCurrentItemSize: 72,
@@ -162,7 +164,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260815-059-s2-regression-and-framing"),
+            ("taskID", "IC-20260815-060-tap-arbitration-and-screenshot-immersive"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
@@ -197,6 +199,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("fitInsetRatio", formatted(fitInsetRatio)),
             ("fitCornerRadius", formatted(fitCornerRadius)),
             ("fitInsetScope", fitInsetScope.rawValue),
+            ("screenshotImmersiveOnHide", String(screenshotImmersiveOnHide)),
             ("pageSpacing", formatted(pageSpacing)),
             ("hapticOnPhotoSwitch", String(hapticOnPhotoSwitch)),
             ("bottomStripCurrentItemSize", formatted(bottomStripCurrentItemSize)),
@@ -254,6 +257,7 @@ extension S2CalibrationConfiguration {
         case fitInsetRatio
         case fitCornerRadius
         case fitInsetScope
+        case screenshotImmersiveOnHide
         case pageSpacing
         case hapticOnPhotoSwitch
         case bottomStripCurrentItemSize
@@ -302,6 +306,7 @@ extension S2CalibrationConfiguration {
             fitInsetRatio: try values.decode(Double.self, forKey: .fitInsetRatio),
             fitCornerRadius: try values.decodeIfPresent(Double.self, forKey: .fitCornerRadius) ?? 28,
             fitInsetScope: try values.decode(S2FitInsetScope.self, forKey: .fitInsetScope),
+            screenshotImmersiveOnHide: try values.decodeIfPresent(Bool.self, forKey: .screenshotImmersiveOnHide) ?? true,
             pageSpacing: try values.decodeIfPresent(Double.self, forKey: .pageSpacing) ?? 20,
             hapticOnPhotoSwitch: try values.decodeIfPresent(Bool.self, forKey: .hapticOnPhotoSwitch) ?? true,
             bottomStripCurrentItemSize: try values.decode(Double.self, forKey: .bottomStripCurrentItemSize),
@@ -349,6 +354,7 @@ extension S2CalibrationConfiguration {
         try values.encode(fitInsetRatio, forKey: .fitInsetRatio)
         try values.encode(fitCornerRadius, forKey: .fitCornerRadius)
         try values.encode(fitInsetScope, forKey: .fitInsetScope)
+        try values.encode(screenshotImmersiveOnHide, forKey: .screenshotImmersiveOnHide)
         try values.encode(pageSpacing, forKey: .pageSpacing)
         try values.encode(hapticOnPhotoSwitch, forKey: .hapticOnPhotoSwitch)
         try values.encode(bottomStripCurrentItemSize, forKey: .bottomStripCurrentItemSize)
@@ -376,6 +382,32 @@ struct S2AnimationPolicy: Equatable {
 
     var durationSeconds: TimeInterval {
         shouldAnimate ? durationMilliseconds / 1_000 : 0
+    }
+}
+
+struct S2TapDecisionReading: Equatable {
+    let latencyMilliseconds: Double
+    let targetMilliseconds: Double
+    let metConfiguredTarget: Bool
+}
+
+struct S2TapDecisionDiagnosticPolicy: Equatable {
+    let targetMilliseconds: Double
+
+    init(configuration: S2CalibrationConfiguration) {
+        targetMilliseconds = max(
+            0,
+            configuration.doubleTapDecisionWindowMilliseconds
+        )
+    }
+
+    func reading(latencyMilliseconds: Double) -> S2TapDecisionReading {
+        let latency = max(0, latencyMilliseconds)
+        return S2TapDecisionReading(
+            latencyMilliseconds: latency,
+            targetMilliseconds: targetMilliseconds,
+            metConfiguredTarget: latency <= targetMilliseconds
+        )
     }
 }
 
@@ -727,6 +759,7 @@ struct S2ViewportMetrics: Equatable {
     let assetAspectRatio: CGFloat
     let viewportAspectRatio: CGFloat
     let aspectFitSize: CGSize
+    let isFramedPhoto: Bool
     let oneXDisplaySize: CGSize
     let oneXCornerRadius: CGFloat
     let aspectFillMultiplier: CGFloat
@@ -737,7 +770,7 @@ struct S2ViewportMetrics: Equatable {
 enum S2ViewportLayout {
     static func metrics(
         physicalSize: CGSize,
-        presentationState _: S2ViewportPresentationState,
+        presentationState: S2ViewportPresentationState,
         assetAspectRatio: CGFloat,
         configuration: S2CalibrationConfiguration
     ) -> S2ViewportMetrics {
@@ -753,7 +786,11 @@ enum S2ViewportLayout {
             viewportAspectRatio: viewportAspectRatio,
             scope: configuration.fitInsetScope
         )
-        let insetScale = applies
+        let keepsFrame = applies && !(
+            presentationState.interfaceVisibility == .hidden &&
+                configuration.screenshotImmersiveOnHide
+        )
+        let insetScale = keepsFrame
             ? max(0, 1 - CGFloat(configuration.fitInsetRatio))
             : 1
         let displaySize = CGSize(
@@ -769,8 +806,9 @@ enum S2ViewportLayout {
             assetAspectRatio: assetAspectRatio,
             viewportAspectRatio: viewportAspectRatio,
             aspectFitSize: fitSize,
+            isFramedPhoto: applies,
             oneXDisplaySize: displaySize,
-            oneXCornerRadius: applies
+            oneXCornerRadius: keepsFrame
                 ? CGFloat(configuration.fitCornerRadius)
                 : 0,
             aspectFillMultiplier: fillMultiplier,

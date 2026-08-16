@@ -576,12 +576,12 @@ final class S2StateMachine: ObservableObject {
     @Published private(set) var imageRequestRevision = 0
     @Published private(set) var imageRequestAssetID: String?
     @Published private(set) var lastGestureReading: S2GestureReading?
+    @Published private(set) var lastTapDecisionReading: S2TapDecisionReading?
     @Published private(set) var lastImageRequestReading: S2ImageRequestReading?
     @Published private(set) var assetNavigationResult: S2AssetNavigationResult?
     private(set) var imageRequestScale: CGFloat
 
     private let pendingDeletionDidChange: (Set<String>) -> Void
-    private var visibilityBeforeDoubleTapZoom: S2InterfaceVisibility?
     private var pinchStartScale: CGFloat?
     private var albumPickerTargetAssetID: String?
 
@@ -994,13 +994,16 @@ final class S2StateMachine: ObservableObject {
         return true
     }
 
+    func recordTapDecisionReading(_ reading: S2TapDecisionReading) {
+        lastTapDecisionReading = reading
+    }
+
     @discardableResult
     func handleDoubleTap(
         at location: CGPoint,
         viewportSize: CGSize,
         assetAspectRatio: CGFloat,
-        oneXDisplaySize: CGSize? = nil,
-        revertingImmediateSingleTap: Bool = false
+        oneXDisplaySize: CGSize? = nil
     ) -> Bool {
         guard receivesUnobscuredInput else {
             return false
@@ -1010,10 +1013,6 @@ final class S2StateMachine: ObservableObject {
             scale = 1
             imageRequestScale = 1
             viewportOffset = .zero
-            if let visibilityBeforeDoubleTapZoom {
-                interfaceVisibility = visibilityBeforeDoubleTapZoom
-            }
-            self.visibilityBeforeDoubleTapZoom = nil
             return true
         }
 
@@ -1034,16 +1033,6 @@ final class S2StateMachine: ObservableObject {
             return false
         }
 
-        let visibilityBeforeTapSequence: S2InterfaceVisibility
-        if revertingImmediateSingleTap {
-            visibilityBeforeTapSequence = interfaceVisibility == .visible
-                ? .hidden
-                : .visible
-            interfaceVisibility = visibilityBeforeTapSequence
-        } else {
-            visibilityBeforeTapSequence = interfaceVisibility
-        }
-        visibilityBeforeDoubleTapZoom = visibilityBeforeTapSequence
         scale = nextScale
         imageRequestScale = nextScale
         let fittedSize = oneXDisplaySize ?? S2Geometry.aspectFitSize(
@@ -1067,8 +1056,7 @@ final class S2StateMachine: ObservableObject {
     // 原生容器只向状态机上报结果；触点锚定与边界钳制由 UIScrollView 完成。
     @discardableResult
     func handleNativeDoubleTap(
-        targetScale: CGFloat,
-        revertingImmediateSingleTap: Bool = false
+        targetScale: CGFloat
     ) -> Bool {
         guard receivesUnobscuredInput else {
             return false
@@ -1078,30 +1066,16 @@ final class S2StateMachine: ObservableObject {
             scale = 1
             imageRequestScale = 1
             viewportOffset = .zero
-            if let visibilityBeforeDoubleTapZoom {
-                interfaceVisibility = visibilityBeforeDoubleTapZoom
-            }
-            self.visibilityBeforeDoubleTapZoom = nil
             return true
         }
 
         guard targetScale.isFinite, targetScale > 1 else {
             return false
         }
-        let visibilityBeforeTapSequence: S2InterfaceVisibility
-        if revertingImmediateSingleTap {
-            visibilityBeforeTapSequence = interfaceVisibility == .visible
-                ? .hidden
-                : .visible
-            interfaceVisibility = visibilityBeforeTapSequence
-        } else {
-            visibilityBeforeTapSequence = interfaceVisibility
-        }
         let resolvedScale = min(parameters.pinchMaxScale, targetScale)
         guard resolvedScale > 1 else {
             return false
         }
-        visibilityBeforeDoubleTapZoom = visibilityBeforeTapSequence
         scale = resolvedScale
         imageRequestScale = resolvedScale
         viewportOffset = .zero
@@ -1139,7 +1113,6 @@ final class S2StateMachine: ObservableObject {
         if self.scale < parameters.zoomSnapBackThreshold {
             self.scale = 1
             self.viewportOffset = .zero
-            visibilityBeforeDoubleTapZoom = nil
         }
         imageRequestScale = self.scale
         self.pinchStartScale = nil
@@ -1214,7 +1187,6 @@ final class S2StateMachine: ObservableObject {
         if scale < parameters.zoomSnapBackThreshold {
             scale = 1
             viewportOffset = .zero
-            visibilityBeforeDoubleTapZoom = nil
         } else {
             viewportOffset = S2Geometry.clampedOffset(
                 viewportOffset,
@@ -1670,7 +1642,6 @@ final class S2StateMachine: ObservableObject {
         scale = 1
         imageRequestScale = 1
         viewportOffset = .zero
-        visibilityBeforeDoubleTapZoom = nil
     }
 
     private func replacePendingDeletionAssetIDs(with nextValue: Set<String>) {
