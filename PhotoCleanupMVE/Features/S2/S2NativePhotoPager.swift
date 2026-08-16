@@ -413,12 +413,16 @@ final class S2NativeZoomScrollView: UIScrollView {
             return nil
         }
         let anchorPoint = presentationContentView.layer.anchorPoint
-        return presentationContentView.convert(
+        let anchorInScrollCoordinates = presentationContentView.convert(
             CGPoint(
                 x: presentationContentView.bounds.width * anchorPoint.x,
                 y: presentationContentView.bounds.height * anchorPoint.y
             ),
             to: self
+        )
+        return CGPoint(
+            x: anchorInScrollCoordinates.x - bounds.minX,
+            y: anchorInScrollCoordinates.y - bounds.minY
         )
     }
 
@@ -634,9 +638,12 @@ final class S2NativeZoomPageController: UIViewController,
         if scale > 1.000_001 || nativeZoomIsAboveOne {
             if presentationChanged {
                 pendingPresentationPage = page
-            } else if sameAsset &&
-                        fittedSize == page.fittedSize &&
-                        cornerRadius == page.cornerRadius {
+                lastPresentationTransitionDuration = 0
+                return
+            }
+            if sameAsset &&
+                fittedSize == page.fittedSize &&
+                cornerRadius == page.cornerRadius {
                 pendingPresentationPage = nil
                 applyPhotoContent(
                     page,
@@ -644,6 +651,22 @@ final class S2NativeZoomPageController: UIViewController,
                 )
             }
             lastPresentationTransitionDuration = 0
+            let interactionIsActive = pinchIsActive ||
+                zoomScrollView.isTracking ||
+                zoomScrollView.isDragging ||
+                zoomScrollView.isDecelerating ||
+                zoomScrollView.isZooming
+            if !interactionIsActive {
+                zoomScrollView.configure(
+                    contentView: hostingController.view,
+                    fittedSize: fittedSize,
+                    maximumZoomScale: CGFloat(configuration.pinchMaxScale)
+                )
+                zoomScrollView.applyNativeState(
+                    scale: isCurrent ? scale : 1,
+                    viewportOffset: isCurrent ? viewportOffset : .zero
+                )
+            }
             return
         }
 

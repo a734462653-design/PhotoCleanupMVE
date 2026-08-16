@@ -1931,6 +1931,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let fittedSize = page.fittedSize
         let cornerRadius = page.cornerRadius
 
+        XCTAssertGreaterThan(zoomScale, 1)
         XCTAssertTrue(machine.handleSingleTap())
         applyNativePagerController(
             controller,
@@ -1981,6 +1982,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             machine: machine,
             configuration: configuration
         )
+        XCTAssertGreaterThan(page.zoomScrollView.zoomScale, 1)
         XCTAssertTrue(page.hasDeferredPresentation)
         XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
 
