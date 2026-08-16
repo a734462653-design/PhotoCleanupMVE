@@ -1540,6 +1540,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // 内置诊断：自动完成八类时机采样并输出可复制报告。
     func testIC063AutomaticGeometryDiagnosticsExportsAllRequiredStages() {
+        let screenBounds = UIScreen.main.bounds
+        let diagnosticAspectRatio = screenBounds.width / screenBounds.height
         let machine = makeMachine()
         let calibration = S2CalibrationModel(
             persistence: S2DiscardingCalibrationPersistence()
@@ -1548,19 +1550,30 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let view = S2View(
             machine: machine,
             calibration: calibration,
-            assetAspectRatio: { _ in self.screenAspectRatio },
-            assetPixelSize: { _ in CGSize(width: 1_500, height: 3_000) },
+            assetAspectRatio: { _ in diagnosticAspectRatio },
+            assetPixelSize: { _ in
+                CGSize(width: diagnosticAspectRatio * 3_000, height: 3_000)
+            },
             photoContent: { _ in AnyView(Color.gray) },
             stripItemContent: { _ in AnyView(Color.clear) },
             albumPickerContent: { _, _ in AnyView(EmptyView()) },
             geometryDiagnostics: diagnostics
         )
         let hostingController = UIHostingController(rootView: view)
-        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        let window: UIWindow
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first {
+            window = UIWindow(windowScene: windowScene)
+            window.frame = screenBounds
+        } else {
+            window = UIWindow(frame: screenBounds)
+        }
         window.rootViewController = hostingController
-        window.isHidden = false
+        window.makeKeyAndVisible()
         defer { window.isHidden = true }
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertNotNil(hostingController.view.window)
 
         diagnostics.export()
         let deadline = Date(timeIntervalSinceNow: 10)
