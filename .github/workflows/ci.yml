@@ -74,6 +74,21 @@ jobs:
         id: package
         run: |
           set -euo pipefail
+          package_log="$(mktemp -t PhotoCleanupMVE-package.XXXXXX)"
+          exec > >(tee "$package_log") 2>&1
+          report_package_failure() {
+            local package_status="$?"
+            if [ "$package_status" -ne 0 ]; then
+              local failure_line
+              failure_line="$(
+                /usr/bin/grep -E '(^| )error:|BUILD FAILED|错误：' "$package_log" |
+                  tail -n 1 || true
+              )"
+              echo "::error title=IPA 构建失败::${failure_line:-未找到具体错误行。}"
+              exit "$package_status"
+            fi
+          }
+          trap report_package_failure EXIT
           mkdir -p BuildArtifacts
           xcodebuild \
             build \
