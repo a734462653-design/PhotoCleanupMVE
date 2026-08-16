@@ -1031,6 +1031,13 @@ final class S2NativeZoomPageController: UIViewController,
             return true
         }
         let velocity = verticalSwipeRecognizer.velocity(in: zoomScrollView)
+        return shouldBeginVerticalSwipe(for: velocity)
+    }
+
+    func shouldBeginVerticalSwipe(for velocity: CGPoint) -> Bool {
+        guard owner?.allowsVerticalSwipeRecognition(on: self) == true else {
+            return false
+        }
         return abs(velocity.y) > abs(velocity.x)
     }
 
@@ -1231,6 +1238,16 @@ final class S2NativePagerViewController: UIViewController,
 
     func recordTapDecisionReading(_ reading: S2TapDecisionReading) {
         machine?.recordTapDecisionReading(reading)
+    }
+
+    func allowsVerticalSwipeRecognition(
+        on page: S2NativeZoomPageController
+    ) -> Bool {
+        guard let machine,
+              page.index == machine.currentIndex else {
+            return false
+        }
+        return machine.scale == 1
     }
 
     @discardableResult

@@ -1128,24 +1128,125 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(machine.pendingDeletionAssetIDs.contains(originalAssetID))
     }
 
-    // G2：Nx 上滑采用同一阈值，标记后切片并归一为 1x。
-    func testG2NxSwipeUpMarksCurrentAsset() {
+    // G2 替代断言：Nx 竖向滑动由原生平移接管，不进入标记识别器。
+    func testG2NxVerticalSwipeRecognizerYieldsToNativePan() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(scale: 2, configuration: configuration)
         let controller = makeNativePagerController(
             machine: machine,
             configuration: configuration
         )
-        let originalAssetID = machine.currentAssetID
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
 
+        XCTAssertFalse(page.shouldBeginVerticalSwipe(
+            for: CGPoint(x: 0, y: -100)
+        ))
+        XCTAssertTrue(page.zoomScrollView.panGestureRecognizer.isEnabled)
+        XCTAssertEqual(machine.scale, 2)
+    }
+
+    // G9：Nx 上滑不得改变待删集合 D 或当前序号 c。
+    func testG9NxSwipeUpLeavesDeletionSetAndCurrentIndexUnchanged() {
+        let machine = makeMachine(scale: 2)
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let originalDeletionSet = machine.pendingDeletionAssetIDs
+        let originalIndex = machine.currentIndex
+
+        XCTAssertFalse(page.shouldBeginVerticalSwipe(
+            for: CGPoint(x: 0, y: -100)
+        ))
+        XCTAssertEqual(machine.pendingDeletionAssetIDs, originalDeletionSet)
+        XCTAssertEqual(machine.currentIndex, originalIndex)
+    }
+
+    // G10：Nx 下滑不得改变待删集合 D 或当前序号 c。
+    func testG10NxSwipeDownLeavesDeletionSetAndCurrentIndexUnchanged() {
+        let machine = makeMachine(
+            scale: 2,
+            pendingDeletionAssetIDs: ["asset-2"]
+        )
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let originalDeletionSet = machine.pendingDeletionAssetIDs
+        let originalIndex = machine.currentIndex
+
+        XCTAssertFalse(page.shouldBeginVerticalSwipe(
+            for: CGPoint(x: 0, y: 100)
+        ))
+        XCTAssertEqual(machine.pendingDeletionAssetIDs, originalDeletionSet)
+        XCTAssertEqual(machine.currentIndex, originalIndex)
+    }
+
+    // G11：Nx 竖向拖动由 UIScrollView 改变 y 偏移，且结果留在内容边界内。
+    func testG11NxVerticalPanChangesContentOffsetWithinNativeBounds() {
+        let machine = makeMachine(scale: 2)
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let scrollView = page.zoomScrollView
+        let originalOffsetY = scrollView.contentOffset.y
+        let minimumOffsetY = -scrollView.adjustedContentInset.top
+        let maximumOffsetY = max(
+            minimumOffsetY,
+            scrollView.contentSize.height +
+                scrollView.adjustedContentInset.bottom -
+                scrollView.bounds.height
+        )
+        let targetOffsetY = min(maximumOffsetY, originalOffsetY + 24)
+
+        XCTAssertFalse(page.shouldBeginVerticalSwipe(
+            for: CGPoint(x: 0, y: -100)
+        ))
+        XCTAssertTrue(scrollView.panGestureRecognizer.isEnabled)
+        XCTAssertGreaterThan(targetOffsetY, originalOffsetY)
+        scrollView.setContentOffset(
+            CGPoint(x: scrollView.contentOffset.x, y: targetOffsetY),
+            animated: false
+        )
+        XCTAssertGreaterThan(scrollView.contentOffset.y, originalOffsetY)
+        XCTAssertGreaterThanOrEqual(
+            scrollView.contentOffset.y,
+            minimumOffsetY - 0.000_001
+        )
+        XCTAssertLessThanOrEqual(
+            scrollView.contentOffset.y,
+            maximumOffsetY + 0.000_001
+        )
+    }
+
+    // G12：捏合吸附回严格 1x 后，竖向标记语义立即恢复。
+    func testG12PinchSnapBackImmediatelyRestoresSwipeUpMarking() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(
+            scale: 1.05,
+            configuration: configuration
+        )
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let originalAssetID = machine.currentAssetID
+
+        XCTAssertTrue(machine.beginPinch())
+        controller.finishNativePinch(
+            on: page,
+            scale: 1.05,
+            displacement: 0.01,
+            peakVelocity: 0,
+            duration: 0.05
+        )
+
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertTrue(page.shouldBeginVerticalSwipe(
+            for: CGPoint(x: 0, y: -100)
+        ))
         XCTAssertTrue(controller.finishVerticalSwipe(
             on: page,
             translation: CGSize(width: 0, height: -40),
             duration: 0.4
         ))
         XCTAssertTrue(machine.pendingDeletionAssetIDs.contains(originalAssetID))
-        XCTAssertEqual(machine.scale, 1)
     }
 
     // G3 替代断言：原生双击不执行也不撤销任何单击显隐动作。
@@ -2618,7 +2719,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         interfaceVisibility: S2InterfaceVisibility = .visible,
         configuration: S2CalibrationConfiguration = .factoryPlaceholder,
         orderedAssetIDs: [String] = ["asset-1", "asset-2", "asset-3"],
-        currentIndex: Int = 1
+        currentIndex: Int = 1,
+        pendingDeletionAssetIDs: Set<String> = []
     ) -> S2StateMachine {
         let resolvedCurrentIndex = min(
             max(0, currentIndex),
@@ -2634,7 +2736,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 ),
                 orderedAssetIDs: orderedAssetIDs,
                 currentAssetID: orderedAssetIDs[resolvedCurrentIndex],
-                pendingDeletionAssetIDs: [],
+                pendingDeletionAssetIDs: pendingDeletionAssetIDs,
                 sessionMergedPendingDeletionCountProvider: { 0 }
             ),
             initialPresentation: S2InitialPresentation(
