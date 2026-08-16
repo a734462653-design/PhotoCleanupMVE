@@ -53,14 +53,13 @@ jobs:
             test_status=$?
           fi
 
-          {
-            echo "### XCTest 原始摘要"
-            echo '```text'
-            /usr/bin/grep -E \
-              '(^| )error:|failed|Executed [0-9]+ tests|TEST (SUCCEEDED|FAILED)' \
-              "$test_log" | tail -n 200 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          executed_line="$(
+            /usr/bin/grep -E 'Executed [0-9]+ tests' "$test_log" |
+              tail -n 1 || true
+          )"
+          if [ -n "$executed_line" ]; then
+            echo "::notice title=XCTest 执行摘要::$executed_line"
+          fi
 
           if [ "$test_status" -ne 0 ]; then
             failure_line="$(
@@ -128,6 +127,7 @@ jobs:
             echo "- SHA-256：$ipa_sha256"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "未签名 IPA 已生成：$ipa_size 字节，SHA-256=$ipa_sha256"
+          echo "::notice title=未签名 IPA 校验::文件=PhotoCleanupMVE-unsigned.ipa，字节数=$ipa_size，SHA-256=$ipa_sha256"
 
       - name: 上传可下载的未签名 IPA
         id: upload_unsigned_ipa

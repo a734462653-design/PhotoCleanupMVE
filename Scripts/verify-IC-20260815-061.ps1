@@ -38,7 +38,7 @@ try {
 
     $测试文件 = Get-ChildItem -LiteralPath (Join-Path $项目根 "PhotoCleanupMVETests") -Filter "*.swift" -File
     $全部测试 = @(Select-String -LiteralPath $测试文件.FullName -Pattern '^\s*func\s+test')
-    检查 ($全部测试.Count -eq 362) "XCTest 静态总数应为 362，实际为 $($全部测试.Count)"
+    检查 ($全部测试.Count -eq 363) "XCTest 静态总数应为 363，实际为 $($全部测试.Count)"
 
     $专项测试 = 读取 "PhotoCleanupMVETests/S2CalibrationHarnessTests.swift"
     $八项 = @(
@@ -55,6 +55,7 @@ try {
         检查 ($专项测试.Contains("func $测试名(")) "缺少 IC-061 XCTest：$测试名"
     }
     检查 (([regex]::Matches($专项测试, '(?m)^\s*func\s+testX[1-8]')).Count -eq 8) "X1 至 X8 数量不正确"
+    检查 ($专项测试.Contains("func testIC061NxPinchEndedStillUpdatesImageRequestWithoutPresentationChange(")) "缺少 Nx 图像请求策略回归 XCTest"
 
     $上游测试 = @(
         "testK1SingleTapRequiresDoubleTapRecognizerToFail",
@@ -142,6 +143,7 @@ try {
     检查 ($原生容器文本.Contains("presentationContentView.transform = CGAffineTransform")) "沉浸尺寸变化未由缩放变换承担"
     检查 ($原生容器文本.Contains("viewportAnchor: CGPoint(")) "未记录视口中心锚点"
     检查 ($原生容器文本.Contains("presentationContentView.layer.cornerRadius")) "圆角未进入同段动画"
+    检查 ($原生容器文本.Contains("layerCornerRadius(at progress:")) "缩小方向未校正屏幕空间圆角终点"
     检查 ($原生容器文本.Contains("S2AnimationPolicy(configuration: configuration)")) "动画未使用统一开关与时长"
     检查 ($原生容器文本.Contains("UIView.performWithoutAnimation")) "关闭动画时没有直接切换路径"
     检查 ($原生容器文本.Contains("pendingPresentationPage")) "缺少 Nx 延迟呈现目标"
@@ -149,10 +151,17 @@ try {
     检查 ($原生容器文本.Contains("applyDeferredPresentationIfPossible")) "缺少回到 1x 后的延迟应用"
     检查 ($原生容器文本.Contains("presentationGeometryCommitCount")) "缺少一次性几何提交诊断"
     检查 (([regex]::Matches($原生容器文本, 'hostingController\.rootView\s*=')).Count -eq 1) "照片内容在动画提交路径之外被替换"
+    检查 ($原生容器文本.Contains("onlyIfVersionChanged: true")) "Nx 普通图像请求版本更新被错误延迟"
+
+    $CI文本 = 读取 ".github/workflows/ci.yml"
+    检查 ($CI文本.Contains("::notice title=XCTest 执行摘要::")) "CI 未公开记录 XCTest 执行原文"
+    检查 ($CI文本.Contains("::notice title=未签名 IPA 校验::")) "CI 未公开记录 IPA 字节数与 SHA-256"
 
     $允许文件 = @(
+        ".github/workflows/ci.yml",
         "PhotoCleanupMVE/Features/S2/S2Calibration.swift",
         "PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift",
+        "PhotoCleanupMVE/Features/S2/S2View.swift",
         "PhotoCleanupMVETests/S2CalibrationHarnessTests.swift",
         "Scripts/verify-IC-20260815-061.ps1",
         "selfcheck_IC-061_report.md"

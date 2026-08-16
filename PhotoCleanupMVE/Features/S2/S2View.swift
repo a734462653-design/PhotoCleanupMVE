@@ -224,6 +224,13 @@ struct S2View: View {
                 fittedSize: pageMetrics.oneXDisplaySize,
                 cornerRadius: pageMetrics.oneXCornerRadius,
                 doubleTapTargetScale: pageMetrics.doubleTapTargetScale,
+                contentVersion: S2NativePhotoContentVersion(
+                    requestedScale: index == machine.currentIndex
+                        ? machine.imageRequestScale
+                        : 1,
+                    requestStrategy: machine.imageRequestStrategy,
+                    requestRevision: requestRevision
+                ),
                 content: AnyView(content.frame(
                     width: pageMetrics.oneXDisplaySize.width,
                     height: pageMetrics.oneXDisplaySize.height

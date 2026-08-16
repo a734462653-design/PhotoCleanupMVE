@@ -1,6 +1,12 @@
 import SwiftUI
 import UIKit
 
+struct S2NativePhotoContentVersion: Equatable {
+    let requestedScale: CGFloat
+    let requestStrategy: S2ImageRequestStrategy?
+    let requestRevision: Int
+}
+
 struct S2NativePageContent {
     let index: Int
     let assetID: String
@@ -9,6 +15,7 @@ struct S2NativePageContent {
     let fittedSize: CGSize
     let cornerRadius: CGFloat
     let doubleTapTargetScale: CGFloat
+    let contentVersion: S2NativePhotoContentVersion
     let content: AnyView
 }
 
@@ -41,6 +48,14 @@ struct S2ImmersiveTransition: Equatable {
             cornerRadius: sourceCornerRadius +
                 (targetCornerRadius - sourceCornerRadius) * boundedProgress
         )
+    }
+
+    func layerCornerRadius(at progress: CGFloat) -> CGFloat {
+        let frame = frame(at: progress)
+        guard frame.scale > 0 else {
+            return frame.cornerRadius
+        }
+        return frame.cornerRadius / frame.scale
     }
 }
 
@@ -475,6 +490,7 @@ final class S2NativeZoomPageController: UIViewController,
     private var assetID: String
     private var interfaceVisibility: S2InterfaceVisibility
     private var isFramedPhoto: Bool
+    private var contentVersion: S2NativePhotoContentVersion
     private(set) var fittedSize: CGSize
     private(set) var cornerRadius: CGFloat
     private(set) var doubleTapTargetScale: CGFloat
@@ -512,6 +528,7 @@ final class S2NativeZoomPageController: UIViewController,
         assetID = page.assetID
         interfaceVisibility = page.interfaceVisibility
         isFramedPhoto = page.isFramedPhoto
+        contentVersion = page.contentVersion
         fittedSize = page.fittedSize
         cornerRadius = page.cornerRadius
         doubleTapTargetScale = page.doubleTapTargetScale
@@ -621,6 +638,10 @@ final class S2NativeZoomPageController: UIViewController,
                         fittedSize == page.fittedSize &&
                         cornerRadius == page.cornerRadius {
                 pendingPresentationPage = nil
+                applyPhotoContent(
+                    page,
+                    onlyIfVersionChanged: true
+                )
             }
             lastPresentationTransitionDuration = 0
             return
@@ -718,6 +739,7 @@ final class S2NativeZoomPageController: UIViewController,
         presentationTransitionGeneration += 1
         let generation = presentationTransitionGeneration
         let targetFrame = transition.frame(at: 1)
+        let targetLayerCornerRadius = transition.layerCornerRadius(at: 1)
         presentationContentView.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         presentationContentView.layer.cornerCurve = .continuous
         presentationContentView.layer.masksToBounds =
@@ -739,9 +761,9 @@ final class S2NativeZoomPageController: UIViewController,
                     y: targetFrame.scale
                 )
                 presentationContentView.layer.cornerRadius =
-                    targetFrame.cornerRadius
+                    targetLayerCornerRadius
                 self.zoomScrollView.zoomContentView?.layer.cornerRadius =
-                    targetFrame.cornerRadius
+                    targetLayerCornerRadius
             },
             completion: { [weak self] finished in
                 guard finished,
@@ -813,7 +835,7 @@ final class S2NativeZoomPageController: UIViewController,
         isFramedPhoto = page.isFramedPhoto
         fittedSize = page.fittedSize
         cornerRadius = page.cornerRadius
-        hostingController.rootView = page.content
+        applyPhotoContent(page, onlyIfVersionChanged: false)
         zoomScrollView.configure(
             contentView: hostingController.view,
             fittedSize: fittedSize,
@@ -824,6 +846,18 @@ final class S2NativeZoomPageController: UIViewController,
         if countsAsPresentationCommit {
             presentationGeometryCommitCount += 1
         }
+    }
+
+    private func applyPhotoContent(
+        _ page: S2NativePageContent,
+        onlyIfVersionChanged: Bool
+    ) {
+        if onlyIfVersionChanged,
+           contentVersion == page.contentVersion {
+            return
+        }
+        contentVersion = page.contentVersion
+        hostingController.rootView = page.content
     }
 
     func prioritizeVerticalSwipe(

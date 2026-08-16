@@ -1865,6 +1865,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
             CGFloat(configuration.fitCornerRadius),
             accuracy: 0.000_001
         )
+        XCTAssertEqual(
+            page.zoomScrollView.presentationContentView?.layer.cornerRadius ?? 0,
+            showing.layerCornerRadius(at: 1),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            showing.layerCornerRadius(at: 1) * showing.targetScale,
+            CGFloat(configuration.fitCornerRadius),
+            accuracy: 0.000_001
+        )
         page.finishActivePresentationTransition()
     }
 
@@ -2049,14 +2059,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let controller = makeNativePagerController(
             machine: machine,
             configuration: configuration,
-            photoContent: { assetID, size in
+            photoContent: { assetID, size, requestedScale, requestRevision in
                 AnyView(
                     S2TemporaryPhotoImageView(
                         strategy: requestCounter,
                         assetID: assetID,
-                        requestedScale: 1,
+                        requestedScale: requestedScale,
                         requestStrategy: configuration.imageRequestStrategy,
-                        requestRevision: 0,
+                        requestRevision: requestRevision,
                         showsOpaqueLoadingBackground: true,
                         onReading: { _ in }
                     )
@@ -2076,14 +2086,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
             controller,
             machine: machine,
             configuration: configuration,
-            photoContent: { assetID, size in
+            photoContent: { assetID, size, requestedScale, requestRevision in
                 AnyView(
                     S2TemporaryPhotoImageView(
                         strategy: requestCounter,
                         assetID: assetID,
-                        requestedScale: 1,
+                        requestedScale: requestedScale,
                         requestStrategy: configuration.imageRequestStrategy,
-                        requestRevision: 0,
+                        requestRevision: requestRevision,
                         showsOpaqueLoadingBackground: true,
                         onReading: { _ in }
                     )
@@ -2099,6 +2109,58 @@ final class S2CalibrationHarnessTests: XCTestCase {
         controller.pageControllers.values.forEach {
             $0.finishActivePresentationTransition()
         }
+        window.isHidden = true
+    }
+
+    // 图像请求回归：Nx 无显隐几何变化时，捏合结束请求仍按既有策略执行。
+    func testIC061NxPinchEndedStillUpdatesImageRequestWithoutPresentationChange() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let requestCounter = S2ImageRequestCounter()
+        let machine = makeMachine(scale: 2, configuration: configuration)
+        let content: (String, CGSize, CGFloat, Int) -> AnyView = {
+            assetID,
+            size,
+            requestedScale,
+            requestRevision in
+            AnyView(
+                S2TemporaryPhotoImageView(
+                    strategy: requestCounter,
+                    assetID: assetID,
+                    requestedScale: requestedScale,
+                    requestStrategy: configuration.imageRequestStrategy,
+                    requestRevision: requestRevision,
+                    showsOpaqueLoadingBackground: true,
+                    onReading: { _ in }
+                )
+                .frame(width: size.width, height: size.height)
+            )
+        }
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration,
+            photoContent: content
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        requestCounter.reset()
+
+        XCTAssertTrue(machine.beginPinch())
+        XCTAssertNotNil(machine.finishNativePinch(
+            scale: 2,
+            viewportOffset: CGSize(width: 24, height: 16),
+            accepted: true
+        ))
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            photoContent: content
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+
+        XCTAssertEqual(requestCounter.requestCount, 1)
         window.isHidden = true
     }
 
@@ -2326,7 +2388,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
     private func makeNativePagerController(
         machine: S2StateMachine,
         configuration: S2CalibrationConfiguration = .factoryPlaceholder,
-        photoContent: ((String, CGSize) -> AnyView)? = nil
+        photoContent: ((String, CGSize, CGFloat, Int) -> AnyView)? = nil
     ) -> S2NativePagerViewController {
         let controller = S2NativePagerViewController()
         controller.loadViewIfNeeded()
@@ -2344,7 +2406,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         _ controller: S2NativePagerViewController,
         machine: S2StateMachine,
         configuration: S2CalibrationConfiguration,
-        photoContent: ((String, CGSize) -> AnyView)? = nil
+        photoContent: ((String, CGSize, CGFloat, Int) -> AnyView)? = nil
     ) {
         let state = S2ViewportPresentationState(
             interfaceVisibility: machine.interfaceVisibility,
@@ -2358,7 +2420,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 assetAspectRatio: screenAspectRatio,
                 configuration: configuration
             )
-            let content = photoContent?(assetID, value.oneXDisplaySize) ??
+            let requestedScale = index == machine.currentIndex
+                ? machine.imageRequestScale
+                : 1
+            let requestRevision = machine.imageRequestAssetID == assetID
+                ? machine.imageRequestRevision
+                : 0
+            let content = photoContent?(
+                assetID,
+                value.oneXDisplaySize,
+                requestedScale,
+                requestRevision
+            ) ??
                 AnyView(
                     Color.clear.frame(
                         width: value.oneXDisplaySize.width,
@@ -2373,6 +2446,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 fittedSize: value.oneXDisplaySize,
                 cornerRadius: value.oneXCornerRadius,
                 doubleTapTargetScale: value.doubleTapTargetScale,
+                contentVersion: S2NativePhotoContentVersion(
+                    requestedScale: requestedScale,
+                    requestStrategy: configuration.imageRequestStrategy,
+                    requestRevision: requestRevision
+                ),
                 content: content
             )
         }
