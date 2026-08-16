@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-代码与静态门禁已完成；模拟器 XCTest、自动诊断样例和 CI 证据等待目标分支首次推送后回填。本报告中的占位符不作为完成证据。
+代码、静态门禁、模拟器 XCTest、自动诊断与未签名 IPA 均已完成验证。GitHub Actions CI #67 在被测提交 `3bb744f4b462d670dce07185ce143f1a59064997` 上执行 383 项测试，0 失败，真实退出码为 0；人工项 H0、H1、H2 仍保留给产品负责人真机判定。
 
 ## 输入与边界
 
@@ -35,18 +35,18 @@
 
 | 编号 | XCTest | CI 状态 |
 |---|---|---|
-| G1 | `testIC063G1HiddenMatchedPhotoWindowFrameEqualsScreenBounds` | __G1_STATUS__ |
-| G2 | `testIC063G2VisibleMatchedPhotoUsesInsetLayoutAndIsCentered` | __G2_STATUS__ |
-| G3 | `testIC063G3DoubleTapTargetUsesTwoOnlyForMatchedPhotos` | __G3_STATUS__ |
-| G4 | `testIC063G4DoubleTapSynchronizationPreservesWindowFrameBothWays` | __G4_STATUS__ |
-| G5 | `testIC063G5NxVisibilityTogglePreservesNativeGeometryAndCorner` | __G5_STATUS__ |
-| G6 | `testIC063G6NxDeferredPresentationCommitsExactlyOnceOnExit` | __G6_STATUS__ |
-| G7 | `testIC063G7AllPhotoScrollViewsReadBackNeverAdjustment` | __G7_STATUS__ |
-| G8 | 完整 XCTest 与数量门禁 | __G8_STATUS__ |
-| G9 | `testG9NxSwipeUpLeavesDeletionSetAndCurrentIndexUnchanged` | __G9_STATUS__ |
-| G10 | `testG10NxSwipeDownLeavesDeletionSetAndCurrentIndexUnchanged` | __G10_STATUS__ |
-| G11 | `testG11NxVerticalPanChangesContentOffsetWithinNativeBounds` | __G11_STATUS__ |
-| G12 | `testG12PinchSnapBackImmediatelyRestoresSwipeUpMarking` | __G12_STATUS__ |
+| G1 | `testIC063G1HiddenMatchedPhotoWindowFrameEqualsScreenBounds` | CI #67：通过 |
+| G2 | `testIC063G2VisibleMatchedPhotoUsesInsetLayoutAndIsCentered` | CI #67：通过 |
+| G3 | `testIC063G3DoubleTapTargetUsesTwoOnlyForMatchedPhotos` | CI #67：通过 |
+| G4 | `testIC063G4DoubleTapSynchronizationPreservesWindowFrameBothWays` | CI #67：通过 |
+| G5 | `testIC063G5NxVisibilityTogglePreservesNativeGeometryAndCorner` | CI #67：通过 |
+| G6 | `testIC063G6NxDeferredPresentationCommitsExactlyOnceOnExit` | CI #67：通过 |
+| G7 | `testIC063G7AllPhotoScrollViewsReadBackNeverAdjustment` | CI #67：通过 |
+| G8 | 完整 XCTest 与数量门禁 | CI #67：383 项，0 失败，通过 |
+| G9 | `testG9NxSwipeUpLeavesDeletionSetAndCurrentIndexUnchanged` | CI #67：通过 |
+| G10 | `testG10NxSwipeDownLeavesDeletionSetAndCurrentIndexUnchanged` | CI #67：通过 |
+| G11 | `testG11NxVerticalPanChangesContentOffsetWithinNativeBounds` | CI #67：通过 |
+| G12 | `testG12PinchSnapBackImmediatelyRestoresSwipeUpMarking` | CI #67：通过 |
 
 自动诊断另由 `testIC063AutomaticGeometryDiagnosticsExportsAllRequiredStages` 实跑并把完整样例写入 XCTest 日志。
 
@@ -55,23 +55,35 @@
 - Windows 静态 XCTest 数量：383（要求不少于 363）。
 - `Scripts/selfcheck.ps1`：通过。
 - `git diff --check`：通过。
-- `pwsh -NoProfile -File Scripts/verify-IC-20260816-063.ps1 -允许待回填CI`：通过，共 66 项检查。
+- `pwsh -NoProfile -File Scripts/verify-IC-20260816-063.ps1`：通过，共 70 项检查，未使用待回填开关。
 - Windows 没有 Xcode，因此本地不声称执行 UIKit XCTest。
 
 ## CI 与真实退出码
 
-- CI：#__CI_NUMBER__
-- 被测提交：`__TESTED_COMMIT__`
-- XCTest 总数：__TEST_COUNT__
-- 真实退出码：__REAL_EXIT_CODE__
-- 原文：`Executed __TEST_COUNT__ tests, with 0 failures (0 unexpected)`
-- 构建：__BUILD_STATUS__
-- IPA：__IPA_STATUS__
+- CI：[GitHub Actions #67](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31959782992)，作业 `95195885102`
+- 被测提交：`3bb744f4b462d670dce07185ce143f1a59064997`
+- XCTest 总数：383
+- 真实退出码：0。工作流启用 `pipefail`，保存测试命令状态并以该状态退出；XCTest 步骤结论为成功，因此日志管道未吞掉失败码。
+- 原文：`Executed 383 tests, with 0 failures (0 unexpected) in 23.543 (43.890) seconds`
+- 测试结论：`TEST SUCCEEDED`
+- 构建：`BUILD SUCCEEDED`
+- IPA：产物 `PhotoCleanupMVE-unsigned-3bb744f4b462`（产物编号 `9266983632`）上传成功，并绑定运行 `31959782992` 与上述被测提交。
+
+### IPA 下载复核
+
+- 外层产物压缩包：639848 字节，SHA-256 `55C2689A1935C3FDD45412DEC2EC1F66949F5CE318BA99154A2EAD30242B5D04`。
+- 内层 `PhotoCleanupMVE-unsigned.ipa`：639678 字节，SHA-256 `47CB3BA5BCFF83F90F3C6CC4B07E418A1084258A021957CC499281357252FD99`，与 CI 生成日志一致。
+- IPA 共 8 个条目，全部可读取；仅有一个 `Payload/PhotoCleanupMVE.app/` 根目录，`Info.plist` 与 64 位 Mach-O 可执行文件均存在。
+- 未发现 `_CodeSignature`、嵌入式描述文件或不安全路径，符合未签名 IPA 预期。
 
 ## 诊断假设核对
 
-- Nx 竖向识别器缺少分层门控：已由源码和第 0 项断言确认。
-- 顶部黑边、安全区与双击退出轨迹：等待模拟器导出样例后，以 `diagnostics-sample.md` 的 Q1～Q4 为准；当前不按目测下结论。
+- Nx 竖向识别器缺少分层门控：源码与 G9～G12 确认根因假设成立；IC-059 的条件是缺失，不是存在但写错。
+- Q1：`V=隐藏`、`s=1` 时顶部空白为 `0.000000px`；`contentInset`、安全区与 aspectFit 贡献均为 `0.000000px`，加和与实测一致。
+- Q2：全部 Nx 样本的内层 `transform` 恒等，稳定态原生 `zoomScale=2.000000`；动画期间原生倍率恒定，缩放仅由专用过渡层承载，不存在原生倍率与内层变换同时非默认。
+- Q3：退出动画 5 个中间帧的原生 `contentOffset` 均为 `(196.666667, 426.000000)`，内层变换恒等；专用过渡层六元组分量单调，无偏移跳变，终点仅执行一次无动画同步。
+- Q4：`V=显示` 时状态栏实际隐藏值为 `false`，`V=隐藏` 时为 `true`。
+- 15 组完整采样见 `diagnostics-sample.md`；诊断数据没有推翻任务卡中的根因假设。
 
 ## 变更清单
 
