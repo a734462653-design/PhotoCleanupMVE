@@ -2,9 +2,11 @@
 
 ## 1. 当前结论
 
-IC-063 已在独立分支 `feature/ic-063-immersive-fullscreen` 完成代码与 6 项专项 XCTest。
-Windows 本地静态门禁已通过；XCTest、Release 真机目标构建、可下载 IPA 与哈希等待 CI
-实际执行后回填。本报告当前测试总数目标为 369 项，最终结论以无占位符版本为准。
+IC-063 已完成并推送到独立分支。最终验收运行 [CI #62](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31949114411)
+在 macOS 15、Xcode 16.4、iPhone 模拟器上实际执行 369 项 XCTest，零失败；Y1～Y6、
+IC-061 X1～X8 与全部更早指定回归均通过。Release 真机目标构建成功，未签名 IPA artifact
+已上传并可下载，包内 IPA 的 SHA-256 为
+`2ba22f9902acd1cc10f365304eda17cb17f9df75fd8dea5218c59bc5d53b26b8`。
 
 ## 2. 第 2 条根因诊断
 
@@ -36,12 +38,12 @@ Windows 本地静态门禁已通过；XCTest、Release 真机目标构建、可�
 
 | 编号 | XCTest 方法 | 状态 |
 |---|---|---|
-| Y1 | `testY1StatusBarTracksHiddenAndVisibleInterfaceStates` | __CI_STATUS__ |
-| Y2 | `testY2MatchedPhotoHiddenDisplayStrictlyEqualsViewportAndHasZeroRadius` | __CI_STATUS__ |
-| Y3 | `testY3NonMatchingPhotoGeometryRemainsUnchangedInBothVisibilityStates` | __CI_STATUS__ |
-| Y4 | `testY4DoubleTapExitUsesSingleNativeMinimumZoomAnimationWithoutOffsetWrite` | __CI_STATUS__ |
-| Y5 | `testY5PinchSnapBackUsesSameSingleNativeMinimumZoomAnimationPath` | __CI_STATUS__ |
-| Y6 | `testY6ZoomExitCompletionNormalizesStateAndAppliesCurrentPresentation` | __CI_STATUS__ |
+| Y1 | `testY1StatusBarTracksHiddenAndVisibleInterfaceStates` | CI #62 通过 |
+| Y2 | `testY2MatchedPhotoHiddenDisplayStrictlyEqualsViewportAndHasZeroRadius` | CI #62 通过 |
+| Y3 | `testY3NonMatchingPhotoGeometryRemainsUnchangedInBothVisibilityStates` | CI #62 通过 |
+| Y4 | `testY4DoubleTapExitUsesSingleNativeMinimumZoomAnimationWithoutOffsetWrite` | CI #62 通过 |
+| Y5 | `testY5PinchSnapBackUsesSameSingleNativeMinimumZoomAnimationPath` | CI #62 通过 |
+| Y6 | `testY6ZoomExitCompletionNormalizesStateAndAppliesCurrentPresentation` | CI #62 通过 |
 
 ## 5. IC-061 X1～X8 回归
 
@@ -50,76 +52,76 @@ fixture 的中心锚点、布局延迟提交与圆角连续断言仍成立。
 
 | 编号 | XCTest 方法 | 状态 |
 |---|---|---|
-| X1 | `testX1ImmersiveTransitionUsesViewportCenterAnchoredScaleTransform` | __CI_STATUS__ |
-| X2 | `testX2ImmersiveTransitionKeepsLayoutSizeAndUsesTransform` | __CI_STATUS__ |
-| X3 | `testX3CornerRadiusInterpolatesContinuouslyInBothDirections` | __CI_STATUS__ |
-| X4 | `testX4DisabledAnimationsReachEndpointWithoutTransition` | __CI_STATUS__ |
-| X5 | `testX5NxVisibilityTogglePreservesAllNativeGeometry` | __CI_STATUS__ |
-| X6 | `testX6NxDeferredPresentationAppliesOnceAfterReturningToOneX` | __CI_STATUS__ |
-| X7 | `testX7NxExitWithoutVisibilityToggleKeepsExistingBehavior` | __CI_STATUS__ |
-| X8 | `testX8ImmersiveAnimationIssuesZeroImageRequests` | __CI_STATUS__ |
-| 补充 | `testIC061NxPinchEndedStillUpdatesImageRequestWithoutPresentationChange` | __CI_STATUS__ |
+| X1 | `testX1ImmersiveTransitionUsesViewportCenterAnchoredScaleTransform` | CI #62 通过 |
+| X2 | `testX2ImmersiveTransitionKeepsLayoutSizeAndUsesTransform` | CI #62 通过 |
+| X3 | `testX3CornerRadiusInterpolatesContinuouslyInBothDirections` | CI #62 通过 |
+| X4 | `testX4DisabledAnimationsReachEndpointWithoutTransition` | CI #62 通过 |
+| X5 | `testX5NxVisibilityTogglePreservesAllNativeGeometry` | CI #62 通过 |
+| X6 | `testX6NxDeferredPresentationAppliesOnceAfterReturningToOneX` | CI #62 通过 |
+| X7 | `testX7NxExitWithoutVisibilityToggleKeepsExistingBehavior` | CI #62 通过 |
+| X8 | `testX8ImmersiveAnimationIssuesZeroImageRequests` | CI #62 通过 |
+| 补充 | `testIC061NxPinchEndedStillUpdatesImageRequestWithoutPresentationChange` | CI #62 通过 |
 
 ## 6. IC-060 指定回归
 
 | 编号 | XCTest 方法 | 状态 |
 |---|---|---|
-| K1 | `testK1SingleTapRequiresDoubleTapRecognizerToFail` | __CI_STATUS__ |
-| K2 | `testK2DoubleTapNeverChangesInterfaceVisibilityAndReachesTargetScale` | __CI_STATUS__ |
-| K3 | `testK3SingleTapAfterDoubleTapFailureTogglesVisibilityExactlyOnce` | __CI_STATUS__ |
-| K4 | `testK4DoubleTapDecisionWindowFactoryDefaultIsTwoHundredMilliseconds` | __CI_STATUS__ |
-| S1 | `testS1FramedPhotoVisibleStateUsesSeventyPercentShortEdgeAndRadiusTwentyEight` | __CI_STATUS__ |
-| S2 | `testS2FramedPhotoHiddenStateFitsViewportWithoutCroppingAndHasZeroRadius` | __CI_STATUS__（替代断言） |
-| S3 | `testS3NonFramedPhotoGeometryIsEqualAcrossVisibilityStates` | __CI_STATUS__ |
-| S4 | `testS4ImmersiveTogglePreservesViewportFillMultiplierAndDoubleTapTarget` | __CI_STATUS__ |
-| S5 | `testS5DisabledScreenshotImmersiveKeepsPhoneFrameWhenHidden` | __CI_STATUS__ |
-| S6 | `testS6ScreenshotImmersiveFactoryDefaultIsTrue` | __CI_STATUS__ |
-| A1 | `testA1NativePagingPhotoSwitchProducesNoHaptic` | __CI_STATUS__ |
-| A2 | `testA2BottomStripCurrentItemChangesProduceExactlyNHaptics` | __CI_STATUS__ |
-| A3 | `testA3DisabledPhotoSwitchHapticProducesNoHaptic` | __CI_STATUS__ |
+| K1 | `testK1SingleTapRequiresDoubleTapRecognizerToFail` | CI #62 通过 |
+| K2 | `testK2DoubleTapNeverChangesInterfaceVisibilityAndReachesTargetScale` | CI #62 通过 |
+| K3 | `testK3SingleTapAfterDoubleTapFailureTogglesVisibilityExactlyOnce` | CI #62 通过 |
+| K4 | `testK4DoubleTapDecisionWindowFactoryDefaultIsTwoHundredMilliseconds` | CI #62 通过 |
+| S1 | `testS1FramedPhotoVisibleStateUsesSeventyPercentShortEdgeAndRadiusTwentyEight` | CI #62 通过 |
+| S2 | `testS2FramedPhotoHiddenStateFitsViewportWithoutCroppingAndHasZeroRadius` | CI #62 通过（替代断言） |
+| S3 | `testS3NonFramedPhotoGeometryIsEqualAcrossVisibilityStates` | CI #62 通过 |
+| S4 | `testS4ImmersiveTogglePreservesViewportFillMultiplierAndDoubleTapTarget` | CI #62 通过 |
+| S5 | `testS5DisabledScreenshotImmersiveKeepsPhoneFrameWhenHidden` | CI #62 通过 |
+| S6 | `testS6ScreenshotImmersiveFactoryDefaultIsTrue` | CI #62 通过 |
+| A1 | `testA1NativePagingPhotoSwitchProducesNoHaptic` | CI #62 通过 |
+| A2 | `testA2BottomStripCurrentItemChangesProduceExactlyNHaptics` | CI #62 通过 |
+| A3 | `testA3DisabledPhotoSwitchHapticProducesNoHaptic` | CI #62 通过 |
 
 ## 7. 更早指定回归
 
 | 来源 | XCTest 方法 | 状态 |
 |---|---|---|
-| IC-059 G1 | `testG1OneXSwipeUpMarksCurrentAsset` | __CI_STATUS__ |
-| IC-059 G2 | `testG2NxSwipeUpMarksCurrentAsset` | __CI_STATUS__ |
-| IC-059 G3 | `testG3ReplacementNativeDoubleTapDoesNotApplyOrRevertSingleTap` | __CI_STATUS__ |
-| IC-059 G4 | `testG4ReplacementTwoUIKitResolvedSingleTapsToggleTwiceWithoutZoom` | __CI_STATUS__ |
-| IC-059 M1 | `testM1ScreenAspectDoubleTapUsesMinimumScale` | __CI_STATUS__ |
-| IC-059 M2 | `testM2NonScreenPhotoDoubleTapUsesAspectFillScale` | __CI_STATUS__ |
-| IC-059 F1 | `testF1FactoryInsetShrinksShortEdgeToSeventyPercent` | __CI_STATUS__ |
-| IC-059 F2 | `testF2CornerRadiusAppliesOnlyToInsetPhotos` | __CI_STATUS__ |
-| IC-059 F3 | `testF3ReplacementNonFramedPhotoKeepsGeometryAcrossVisibility` | __CI_STATUS__ |
-| IC-059 F4 | `testF4InsetDoesNotChangeViewportOrAspectFillMultiplier` | __CI_STATUS__ |
-| IC-059 B1 | `testB1NxBoundaryContinuationProducesPagingDisplacement` | __CI_STATUS__ |
-| IC-059 B2 | `testB2NxBoundaryPagingBelowThresholdKeepsCurrentIndex` | __CI_STATUS__ |
-| IC-059 B3 | `testB3NxBoundaryPagingCompletionResetsNewPhotoScale` | __CI_STATUS__ |
-| IC-059 H1 | `testH1ReplacementEnabledHapticFiresOnlyForBottomStripChanges` | __CI_STATUS__ |
-| IC-059 H2 | `testH2ReplacementDisabledPhotoSwitchHapticDoesNotFire` | __CI_STATUS__ |
-| IC-058 N1 | `testN1NativeZoomContainerUsesConfiguredMinimumAndMaximumScale` | __CI_STATUS__ |
-| IC-058 N2 | `testN2DoubleTapInvokesNativeZoomWithResolvedTargetScale` | __CI_STATUS__ |
-| IC-058 N3 | `testN3NativePagingUsesConfiguredPageSpacing` | __CI_STATUS__ |
-| IC-058 N4 | `testN4PageSpacingFactoryDefaultIsTwentyPoints` | __CI_STATUS__ |
-| IC-058 N5 | `testN5NxSingleTapTogglesInterfaceWithoutChangingNativeViewport` | __CI_STATUS__ |
-| IC-058 N6 | `testN6OneXSingleTapTogglesInterfaceVisibility` | __CI_STATUS__ |
-| IC-058 N7 | `testN7NativePageChangeResetsZoomToOne` | __CI_STATUS__ |
-| IC-058 N8 | `testN8NativePinchRequestsZeroDuringGestureAndOnceAfterEnd` | __CI_STATUS__ |
-| IC-057 E1 | `testE1ReplacementSingleTapRunsAfterDoubleTapFailure` | __CI_STATUS__ |
-| IC-057 E2 | `testE2ReplacementDoubleTapSuppressesSingleTapAction` | __CI_STATUS__ |
-| IC-057 E3 | `testE3ReplacementTwoResolvedSingleTapsToggleTwice` | __CI_STATUS__ |
-| IC-057 E4 | `testE4ReplacementRecognizedDoubleTapMatchesDirectDoubleTap` | __CI_STATUS__ |
-| IC-057 E5 | `testE5ReadingsExposeAspectRatiosAndDoubleTapTargetScale` | __CI_STATUS__ |
-| IC-057 E6 | `testE6ReadingsAndParameterPanelsAreMutuallyExclusive` | __CI_STATUS__ |
-| IC-056 D1 | `testD1ReplacementScreenAspectFitInsetShrinksShortEdgeToSeventyPercent` | __CI_STATUS__ |
-| IC-056 D2 | `testD2ZeroFitInsetMatchesPureAspectFit` | __CI_STATUS__ |
-| IC-056 D3 | `testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged` | __CI_STATUS__ |
-| IC-056 D4 | `testD4ScreenAspectDoubleTapUsesMinimumScale` | __CI_STATUS__ |
-| IC-056 D5 | `testD5ReplacementNonScreenDoubleTapUsesAspectFillScale` | __CI_STATUS__ |
-| IC-056 D6 | `testD6LeftEdgeDoubleTapAlignsLeftContentBoundary` | __CI_STATUS__ |
-| IC-056 D7 | `testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary` | __CI_STATUS__ |
-| IC-056 D8 | `testD8DoubleTapExitResetsScaleAndOffset` | __CI_STATUS__ |
-| 既有 V4 | `testV4ReplacementPresentationStatesPreserveViewportAndZoomBaselines` | __CI_STATUS__ |
+| IC-059 G1 | `testG1OneXSwipeUpMarksCurrentAsset` | CI #62 通过 |
+| IC-059 G2 | `testG2NxSwipeUpMarksCurrentAsset` | CI #62 通过 |
+| IC-059 G3 | `testG3ReplacementNativeDoubleTapDoesNotApplyOrRevertSingleTap` | CI #62 通过 |
+| IC-059 G4 | `testG4ReplacementTwoUIKitResolvedSingleTapsToggleTwiceWithoutZoom` | CI #62 通过 |
+| IC-059 M1 | `testM1ScreenAspectDoubleTapUsesMinimumScale` | CI #62 通过 |
+| IC-059 M2 | `testM2NonScreenPhotoDoubleTapUsesAspectFillScale` | CI #62 通过 |
+| IC-059 F1 | `testF1FactoryInsetShrinksShortEdgeToSeventyPercent` | CI #62 通过 |
+| IC-059 F2 | `testF2CornerRadiusAppliesOnlyToInsetPhotos` | CI #62 通过 |
+| IC-059 F3 | `testF3ReplacementNonFramedPhotoKeepsGeometryAcrossVisibility` | CI #62 通过 |
+| IC-059 F4 | `testF4InsetDoesNotChangeViewportOrAspectFillMultiplier` | CI #62 通过 |
+| IC-059 B1 | `testB1NxBoundaryContinuationProducesPagingDisplacement` | CI #62 通过 |
+| IC-059 B2 | `testB2NxBoundaryPagingBelowThresholdKeepsCurrentIndex` | CI #62 通过 |
+| IC-059 B3 | `testB3NxBoundaryPagingCompletionResetsNewPhotoScale` | CI #62 通过 |
+| IC-059 H1 | `testH1ReplacementEnabledHapticFiresOnlyForBottomStripChanges` | CI #62 通过 |
+| IC-059 H2 | `testH2ReplacementDisabledPhotoSwitchHapticDoesNotFire` | CI #62 通过 |
+| IC-058 N1 | `testN1NativeZoomContainerUsesConfiguredMinimumAndMaximumScale` | CI #62 通过 |
+| IC-058 N2 | `testN2DoubleTapInvokesNativeZoomWithResolvedTargetScale` | CI #62 通过 |
+| IC-058 N3 | `testN3NativePagingUsesConfiguredPageSpacing` | CI #62 通过 |
+| IC-058 N4 | `testN4PageSpacingFactoryDefaultIsTwentyPoints` | CI #62 通过 |
+| IC-058 N5 | `testN5NxSingleTapTogglesInterfaceWithoutChangingNativeViewport` | CI #62 通过 |
+| IC-058 N6 | `testN6OneXSingleTapTogglesInterfaceVisibility` | CI #62 通过 |
+| IC-058 N7 | `testN7NativePageChangeResetsZoomToOne` | CI #62 通过 |
+| IC-058 N8 | `testN8NativePinchRequestsZeroDuringGestureAndOnceAfterEnd` | CI #62 通过 |
+| IC-057 E1 | `testE1ReplacementSingleTapRunsAfterDoubleTapFailure` | CI #62 通过 |
+| IC-057 E2 | `testE2ReplacementDoubleTapSuppressesSingleTapAction` | CI #62 通过 |
+| IC-057 E3 | `testE3ReplacementTwoResolvedSingleTapsToggleTwice` | CI #62 通过 |
+| IC-057 E4 | `testE4ReplacementRecognizedDoubleTapMatchesDirectDoubleTap` | CI #62 通过 |
+| IC-057 E5 | `testE5ReadingsExposeAspectRatiosAndDoubleTapTargetScale` | CI #62 通过 |
+| IC-057 E6 | `testE6ReadingsAndParameterPanelsAreMutuallyExclusive` | CI #62 通过 |
+| IC-056 D1 | `testD1ReplacementScreenAspectFitInsetShrinksShortEdgeToSeventyPercent` | CI #62 通过 |
+| IC-056 D2 | `testD2ZeroFitInsetMatchesPureAspectFit` | CI #62 通过 |
+| IC-056 D3 | `testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged` | CI #62 通过 |
+| IC-056 D4 | `testD4ScreenAspectDoubleTapUsesMinimumScale` | CI #62 通过 |
+| IC-056 D5 | `testD5ReplacementNonScreenDoubleTapUsesAspectFillScale` | CI #62 通过 |
+| IC-056 D6 | `testD6LeftEdgeDoubleTapAlignsLeftContentBoundary` | CI #62 通过 |
+| IC-056 D7 | `testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary` | CI #62 通过 |
+| IC-056 D8 | `testD8DoubleTapExitResetsScaleAndOffset` | CI #62 通过 |
+| 既有 V4 | `testV4ReplacementPresentationStatesPreserveViewportAndZoomBaselines` | CI #62 通过 |
 
 CI 将实际执行全部 369 项 XCTest，以覆盖其余既有回归。
 
@@ -143,40 +145,46 @@ CI 将实际执行全部 369 项 XCTest，以覆盖其余既有回归。
 执行命令：
 
 ```powershell
-.\Scripts\verify-IC-20260816-063.ps1 -允许待回填CI
+.\Scripts\verify-IC-20260816-063.ps1
 ```
 
-Windows 本地专项脚本 107 项检查全部通过，静态 XCTest 总数 369；仓库结构门禁、String
+Windows 本地专项脚本 111 项检查全部通过，静态 XCTest 总数 369；仓库结构门禁、String
 Catalog 扫描、用户可见硬编码扫描和 `git diff --check` 均通过，硬编码残留为 0。
 
 Windows 环境没有 Xcode，因此本地不声称执行了 XCTest；XCTest 只以 CI 的真实日志为准。
 
 ## 11. CI、XCTest 与 IPA
 
-- 工作流：__CI_RUN_LINK__
-- 作业：__CI_JOB_LINK__
-- 被测提交：`__CI_COMMIT__`
+- 工作流：[CI #62](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31949114411)
+- 作业：[构建、XCTest 与未签名产物](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31949114411/job/95169700409)
+- 被测提交：`b5a6811a8e63a936ff56e54d7097a324f192c31e`
 - 环境：macOS 15、Xcode 16.4、iPhone 模拟器、iOS SDK 18.5
-- 结论：__CI_CONCLUSION__
+- 结论：9 个 CI 步骤全部成功；结构门禁、硬编码门禁、369 项 XCTest、Release 真机目标
+  构建、IPA 校验与 artifact 上传均通过。
 
 原始作业日志：
 
 ```text
-__EXECUTED_LINE__
-__TEST_SUCCEEDED_LINE__
-__BUILD_SUCCEEDED_LINE__
+2026-08-16T13:14:04.0074900Z 	 Executed 369 tests, with 0 failures (0 unexpected) in 13.744 (36.064) seconds
+2026-08-16T13:14:04.0880900Z ** TEST SUCCEEDED **
+2026-08-16T13:14:35.4155910Z ** BUILD SUCCEEDED **
 ```
 
 IPA artifact：
 
-- 下载：__IPA_ARTIFACT_LINK__
-- artifact ID：`__IPA_ARTIFACT_ID__`
-- artifact ZIP 字节数：__ARTIFACT_ZIP_SIZE__
-- artifact ZIP SHA-256：`__ARTIFACT_ZIP_SHA256__`
+- 下载：[PhotoCleanupMVE-unsigned-b5a6811a8e63](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31949114411/artifacts/9264165613)
+- artifact ID：`9264165613`
+- artifact ZIP 字节数：583611
+- artifact ZIP SHA-256：`7a0dd7e5c016528af0922425341e19f0e74eb26d3531bdd72a211b937256c22b`
 - 包内文件：`PhotoCleanupMVE-unsigned.ipa`
-- IPA 字节数：__IPA_SIZE__
-- IPA SHA-256：`__IPA_SHA256__`
-- 结构校验：__IPA_STRUCTURE_RESULT__
+- IPA 字节数：583441
+- IPA SHA-256：`2ba22f9902acd1cc10f365304eda17cb17f9df75fd8dea5218c59bc5d53b26b8`
+- 结构校验：通过。IPA 共 8 个 ZIP 条目，包含 `Payload/PhotoCleanupMVE.app/Info.plist`
+  和应用可执行文件；没有绝对路径、路径穿越、反斜线、符号链接、签名目录或描述文件。
+
+已把 artifact 下载到本地并独立复算 ZIP 与 IPA 两层哈希；结果与 CI 公布的 IPA 字节数和
+SHA-256 完全一致。由于本卡禁止操作账号，产物沿用 IC-061 的未签名约定，可交给既有
+签名／侧载流程安装，不能在未签名状态下直接安装到普通真机。
 
 ## 12. 变更文件清单
 
@@ -200,6 +208,8 @@ v14 明确锁定“主图视口为含安全区在内的全屏物理边界”和�
 
 - 基线：`456c93d1ccc0e8a91b8188a9322614ea0205b156`（IC-061 交付分支头）。
 - 独立分支：`feature/ic-063-immersive-fullscreen`。
+- CI #62 实际测试的业务与测试提交为 `b5a6811a8e63a936ff56e54d7097a324f192c31e`；
+  此后的报告回填提交只修改本报告并使用 `[skip ci]`，不改变验收源码。
 - `main` 与 `origin/main` 均保持 `bccc2d2deadf37da470b9270f25ecb0312e6d4de`。
 - 未修改规格、决策日志、S1/S3/S4/S5、上滑标记、下滑取消、翻页、触觉语义与阈值、任何
   参数出厂值、视频或 Live Photo 行为、账号或 `debugAssetLimit`。
