@@ -475,7 +475,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "taskID=IC-20260815-061-immersive-transition-and-nx-stability"
+                "taskID=IC-20260816-063-immersive-fullscreen-and-zoomout"
             )
         )
         XCTAssertTrue(
@@ -1588,7 +1588,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(value.oneXCornerRadius, 28, accuracy: 0.000_001)
     }
 
-    // S2：框显照片隐藏后等比适配到视口边界、无裁切且圆角归零。
+    // S2 替代断言：框显照片隐藏后两轴严格填满视口且圆角归零。
     func testS2FramedPhotoHiddenStateFitsViewportWithoutCroppingAndHasZeroRadius() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let hidden = metrics(
@@ -1597,20 +1597,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
 
         XCTAssertTrue(hidden.isFramedPhoto)
-        XCTAssertEqual(hidden.oneXDisplaySize, hidden.aspectFitSize)
-        XCTAssertLessThanOrEqual(
+        XCTAssertEqual(
             hidden.oneXDisplaySize.width,
-            hidden.viewportSize.width
+            hidden.viewportSize.width,
+            accuracy: 1
         )
-        XCTAssertLessThanOrEqual(
+        XCTAssertEqual(
             hidden.oneXDisplaySize.height,
-            hidden.viewportSize.height
-        )
-        XCTAssertTrue(
-            abs(hidden.oneXDisplaySize.width - hidden.viewportSize.width) <
-                0.000_001 ||
-                abs(hidden.oneXDisplaySize.height - hidden.viewportSize.height) <
-                0.000_001
+            hidden.viewportSize.height,
+            accuracy: 1
         )
         XCTAssertEqual(hidden.oneXCornerRadius, 0)
 
@@ -2114,6 +2109,296 @@ final class S2CalibrationHarnessTests: XCTestCase {
         window.isHidden = true
     }
 
+    // Y1：系统状态栏随界面隐藏态隐藏、随显示态恢复，并共用显隐时长。
+    func testY1StatusBarTracksHiddenAndVisibleInterfaceStates() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let visibleAppearance = S2StatusBarAppearance(
+            interfaceVisibility: .visible,
+            configuration: configuration
+        )
+        let hiddenAppearance = S2StatusBarAppearance(
+            interfaceVisibility: .hidden,
+            configuration: configuration
+        )
+
+        XCTAssertFalse(visibleAppearance.isHidden)
+        XCTAssertTrue(hiddenAppearance.isHidden)
+        XCTAssertEqual(
+            hiddenAppearance.transitionDuration,
+            S2AnimationPolicy(configuration: configuration).durationSeconds,
+            accuracy: 0.000_001
+        )
+
+        let machine = makeMachine(configuration: configuration)
+        let calibration = S2CalibrationModel(
+            persistence: S2DiscardingCalibrationPersistence()
+        )
+        let view = S2View(
+            machine: machine,
+            calibration: calibration,
+            assetAspectRatio: { _ in self.screenAspectRatio },
+            photoContent: { context in
+                AnyView(Color.clear.frame(
+                    width: context.fittedSize.width,
+                    height: context.fittedSize.height
+                ))
+            },
+            stripItemContent: { _ in AnyView(Color.clear) },
+            albumPickerContent: { _, _ in AnyView(EmptyView()) }
+        )
+        let controller = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+
+        XCTAssertFalse(controller.prefersStatusBarHidden)
+        XCTAssertTrue(machine.handleSingleTap())
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertTrue(controller.prefersStatusBarHidden)
+        XCTAssertTrue(machine.handleSingleTap())
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertFalse(controller.prefersStatusBarHidden)
+        window.isHidden = true
+    }
+
+    // Y2：容差内命中但比例不完全相等时，隐藏态仍严格填满两轴且圆角为零。
+    func testY2MatchedPhotoHiddenDisplayStrictlyEqualsViewportAndHasZeroRadius() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let assetAspectRatio = screenAspectRatio * 1.008
+        let visible = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: S2ViewportPresentationState(
+                interfaceVisibility: .visible,
+                bottomStripState: .idle,
+                sheetState: .closed
+            ),
+            assetAspectRatio: assetAspectRatio,
+            configuration: configuration
+        )
+        let hidden = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: S2ViewportPresentationState(
+                interfaceVisibility: .hidden,
+                bottomStripState: .idle,
+                sheetState: .closed
+            ),
+            assetAspectRatio: assetAspectRatio,
+            configuration: configuration
+        )
+
+        XCTAssertTrue(hidden.isFramedPhoto)
+        XCTAssertNotEqual(hidden.aspectFitSize, hidden.viewportSize)
+        XCTAssertEqual(
+            hidden.oneXDisplaySize.width,
+            hidden.viewportSize.width,
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            hidden.oneXDisplaySize.height,
+            hidden.viewportSize.height,
+            accuracy: 1
+        )
+        XCTAssertEqual(hidden.oneXCornerRadius, 0)
+
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration,
+            assetAspectRatio: assetAspectRatio
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            assetAspectRatio: assetAspectRatio
+        )
+
+        let targetFrame = tryUnwrap(page.lastPresentationTransition).frame(at: 1)
+        XCTAssertEqual(
+            visible.oneXDisplaySize.width * targetFrame.scaleX,
+            hidden.viewportSize.width,
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            visible.oneXDisplaySize.height * targetFrame.scaleY,
+            hidden.viewportSize.height,
+            accuracy: 1
+        )
+        page.finishActivePresentationTransition()
+        XCTAssertEqual(page.fittedSize.width, physicalSize.width, accuracy: 1)
+        XCTAssertEqual(page.fittedSize.height, physicalSize.height, accuracy: 1)
+        XCTAssertEqual(page.cornerRadius, 0)
+    }
+
+    // Y3：未命中照片在两种界面状态下的尺寸和圆角均保持不变。
+    func testY3NonMatchingPhotoGeometryRemainsUnchangedInBothVisibilityStates() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let assetAspectRatio: CGFloat = 1
+        let visible = nonFramedMetrics(
+            visibility: .visible,
+            configuration: configuration
+        )
+        let hidden = nonFramedMetrics(
+            visibility: .hidden,
+            configuration: configuration
+        )
+
+        XCTAssertFalse(visible.isFramedPhoto)
+        XCTAssertFalse(hidden.isFramedPhoto)
+        XCTAssertEqual(hidden.oneXDisplaySize, visible.oneXDisplaySize)
+        XCTAssertEqual(hidden.oneXCornerRadius, visible.oneXCornerRadius)
+
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration,
+            assetAspectRatio: assetAspectRatio
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let initialSize = page.fittedSize
+        let initialRadius = page.cornerRadius
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            assetAspectRatio: assetAspectRatio
+        )
+
+        XCTAssertFalse(page.isPresentationTransitionActive)
+        XCTAssertEqual(page.fittedSize, initialSize)
+        XCTAssertEqual(page.cornerRadius, initialRadius)
+    }
+
+    // Y4：双击退出只发出一次原生最小倍率动画，不先独立写入偏移。
+    func testY4DoubleTapExitUsesSingleNativeMinimumZoomAnimationWithoutOffsetWrite() {
+        let machine = makeMachine(
+            scale: 2,
+            viewportOffset: CGSize(width: 24, height: 16)
+        )
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let initialOffsetWriteCount = page.zoomScrollView
+            .independentContentOffsetWriteCount
+
+        XCTAssertTrue(page.applyRecognizedDoubleTap(
+            at: CGPoint(x: 150, y: 300)
+        ))
+
+        XCTAssertEqual(controller.nativeZoomReturnInvocationCount, 1)
+        XCTAssertEqual(
+            page.zoomScrollView.minimumZoomScaleAnimationInvocationCount,
+            1
+        )
+        XCTAssertEqual(
+            page.zoomScrollView.lastMinimumZoomScaleAnimationTarget,
+            page.zoomScrollView.minimumZoomScale
+        )
+        XCTAssertEqual(
+            page.zoomScrollView.lastMinimumZoomScaleAnimationWasAnimated,
+            true
+        )
+        XCTAssertEqual(
+            page.zoomScrollView.independentContentOffsetWriteCount,
+            initialOffsetWriteCount
+        )
+    }
+
+    // Y5：低于吸附阈值的捏合归位复用 Y4 的同一原生退出入口。
+    func testY5PinchSnapBackUsesSameSingleNativeMinimumZoomAnimationPath() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(
+            scale: 1.05,
+            viewportOffset: CGSize(width: 8, height: 4),
+            configuration: configuration
+        )
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let initialOffsetWriteCount = page.zoomScrollView
+            .independentContentOffsetWriteCount
+
+        XCTAssertTrue(machine.beginPinch())
+        controller.finishNativePinch(
+            on: page,
+            scale: 1.05,
+            displacement: 0.01,
+            peakVelocity: 0,
+            duration: 0.05
+        )
+
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(controller.nativeZoomReturnInvocationCount, 1)
+        XCTAssertEqual(
+            page.zoomScrollView.minimumZoomScaleAnimationInvocationCount,
+            1
+        )
+        XCTAssertEqual(
+            page.zoomScrollView.lastMinimumZoomScaleAnimationTarget,
+            page.zoomScrollView.minimumZoomScale
+        )
+        XCTAssertEqual(
+            page.zoomScrollView.lastMinimumZoomScaleAnimationWasAnimated,
+            true
+        )
+        XCTAssertEqual(
+            page.zoomScrollView.independentContentOffsetWriteCount,
+            initialOffsetWriteCount
+        )
+    }
+
+    // Y6：原生退出完成后归一倍率与偏移，并按当前隐藏态提交沉浸终点。
+    func testY6ZoomExitCompletionNormalizesStateAndAppliesCurrentPresentation() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(
+            scale: 2,
+            viewportOffset: CGSize(width: 24, height: 16),
+            configuration: configuration
+        )
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let hidden = metrics(
+            visibility: .hidden,
+            configuration: configuration
+        )
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        XCTAssertTrue(page.hasDeferredPresentation)
+        XCTAssertTrue(page.applyRecognizedDoubleTap(
+            at: CGPoint(x: 150, y: 300)
+        ))
+
+        page.zoomScrollView.setZoomScale(
+            page.zoomScrollView.minimumZoomScale,
+            animated: false
+        )
+        controller.reportNativeViewport(from: page)
+        page.scrollViewDidEndScrollingAnimation(page.zoomScrollView)
+        XCTAssertTrue(page.isPresentationTransitionActive)
+        page.finishActivePresentationTransition()
+
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(machine.viewportOffset, .zero)
+        XCTAssertEqual(page.zoomScrollView.zoomScale, 1)
+        XCTAssertEqual(page.zoomScrollView.reportedViewportOffset(), .zero)
+        XCTAssertEqual(page.fittedSize, hidden.oneXDisplaySize)
+        XCTAssertEqual(page.cornerRadius, hidden.oneXCornerRadius)
+        XCTAssertEqual(page.presentationGeometryCommitCount, 1)
+    }
+
     // 图像请求回归：Nx 无显隐几何变化时，捏合结束请求仍按既有策略执行。
     func testIC061NxPinchEndedStillUpdatesImageRequestWithoutPresentationChange() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -2390,7 +2675,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     private func makeNativePagerController(
         machine: S2StateMachine,
         configuration: S2CalibrationConfiguration = .factoryPlaceholder,
-        photoContent: ((String, CGSize, CGFloat, Int) -> AnyView)? = nil
+        photoContent: ((String, CGSize, CGFloat, Int) -> AnyView)? = nil,
+        assetAspectRatio: CGFloat? = nil
     ) -> S2NativePagerViewController {
         let controller = S2NativePagerViewController()
         controller.loadViewIfNeeded()
@@ -2399,7 +2685,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             controller,
             machine: machine,
             configuration: configuration,
-            photoContent: photoContent
+            photoContent: photoContent,
+            assetAspectRatio: assetAspectRatio
         )
         return controller
     }
@@ -2408,7 +2695,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         _ controller: S2NativePagerViewController,
         machine: S2StateMachine,
         configuration: S2CalibrationConfiguration,
-        photoContent: ((String, CGSize, CGFloat, Int) -> AnyView)? = nil
+        photoContent: ((String, CGSize, CGFloat, Int) -> AnyView)? = nil,
+        assetAspectRatio: CGFloat? = nil
     ) {
         let state = S2ViewportPresentationState(
             interfaceVisibility: machine.interfaceVisibility,
@@ -2419,7 +2707,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             let value = S2ViewportLayout.metrics(
                 physicalSize: physicalSize,
                 presentationState: state,
-                assetAspectRatio: screenAspectRatio,
+                assetAspectRatio: assetAspectRatio ?? screenAspectRatio,
                 configuration: configuration
             )
             let requestedScale = index == machine.currentIndex

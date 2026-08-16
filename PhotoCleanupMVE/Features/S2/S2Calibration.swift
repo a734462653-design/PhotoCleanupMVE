@@ -60,7 +60,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDragMinimumDistance: Double
     var bottomStripSwitchDistance: Double
 
-    // IC-061 沉浸过渡与 Nx 稳定项目判断默认值；全部数值延续 IC-060。
+    // IC-063 全屏沉浸与原生退出项目判断默认值；全部数值延续 IC-061。
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScale: 4,
         zoomSnapBackThreshold: 1.1,
@@ -164,7 +164,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260815-061-immersive-transition-and-nx-stability"),
+            ("taskID", "IC-20260816-063-immersive-fullscreen-and-zoomout"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
@@ -382,6 +382,21 @@ struct S2AnimationPolicy: Equatable {
 
     var durationSeconds: TimeInterval {
         shouldAnimate ? durationMilliseconds / 1_000 : 0
+    }
+}
+
+struct S2StatusBarAppearance: Equatable {
+    let isHidden: Bool
+    let transitionDuration: TimeInterval
+
+    init(
+        interfaceVisibility: S2InterfaceVisibility,
+        configuration: S2CalibrationConfiguration
+    ) {
+        isHidden = interfaceVisibility == .hidden
+        transitionDuration = S2AnimationPolicy(
+            configuration: configuration
+        ).durationSeconds
     }
 }
 
@@ -786,17 +801,19 @@ enum S2ViewportLayout {
             viewportAspectRatio: viewportAspectRatio,
             scope: configuration.fitInsetScope
         )
-        let keepsFrame = applies && !(
+        let fillsViewport = applies &&
             presentationState.interfaceVisibility == .hidden &&
                 configuration.screenshotImmersiveOnHide
-        )
+        let keepsFrame = applies && !fillsViewport
         let insetScale = keepsFrame
             ? max(0, 1 - CGFloat(configuration.fitInsetRatio))
             : 1
-        let displaySize = CGSize(
-            width: fitSize.width * insetScale,
-            height: fitSize.height * insetScale
-        )
+        let displaySize = fillsViewport
+            ? physicalSize
+            : CGSize(
+                width: fitSize.width * insetScale,
+                height: fitSize.height * insetScale
+            )
         let fillMultiplier = S2Geometry.aspectFillMultiplier(
             viewportSize: physicalSize,
             assetAspectRatio: assetAspectRatio

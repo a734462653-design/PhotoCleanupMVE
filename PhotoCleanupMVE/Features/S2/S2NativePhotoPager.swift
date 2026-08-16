@@ -20,8 +20,13 @@ struct S2NativePageContent {
 }
 
 struct S2ImmersiveTransitionFrame: Equatable {
-    let scale: CGFloat
+    let scaleX: CGFloat
+    let scaleY: CGFloat
     let cornerRadius: CGFloat
+
+    var scale: CGFloat {
+        min(scaleX, scaleY)
+    }
 }
 
 struct S2ImmersiveTransition: Equatable {
@@ -31,20 +36,29 @@ struct S2ImmersiveTransition: Equatable {
     let sourceCornerRadius: CGFloat
     let targetCornerRadius: CGFloat
 
-    var targetScale: CGFloat {
+    var targetScaleX: CGFloat {
         guard layoutSize.width > 0, layoutSize.height > 0 else {
             return 1
         }
-        return min(
-            targetSize.width / layoutSize.width,
-            targetSize.height / layoutSize.height
-        )
+        return targetSize.width / layoutSize.width
+    }
+
+    var targetScaleY: CGFloat {
+        guard layoutSize.width > 0, layoutSize.height > 0 else {
+            return 1
+        }
+        return targetSize.height / layoutSize.height
+    }
+
+    var targetScale: CGFloat {
+        min(targetScaleX, targetScaleY)
     }
 
     func frame(at progress: CGFloat) -> S2ImmersiveTransitionFrame {
         let boundedProgress = min(1, max(0, progress))
         return S2ImmersiveTransitionFrame(
-            scale: 1 + (targetScale - 1) * boundedProgress,
+            scaleX: 1 + (targetScaleX - 1) * boundedProgress,
+            scaleY: 1 + (targetScaleY - 1) * boundedProgress,
             cornerRadius: sourceCornerRadius +
                 (targetCornerRadius - sourceCornerRadius) * boundedProgress
         )
@@ -221,6 +235,10 @@ final class S2NativeZoomScrollView: UIScrollView {
     private(set) var fittedSize = CGSize.zero
     private(set) var nativeZoomInvocationCount = 0
     private(set) var lastNativeZoomRect: CGRect?
+    private(set) var minimumZoomScaleAnimationInvocationCount = 0
+    private(set) var lastMinimumZoomScaleAnimationTarget: CGFloat?
+    private(set) var lastMinimumZoomScaleAnimationWasAnimated: Bool?
+    private(set) var independentContentOffsetWriteCount = 0
     private(set) var isApplyingNativeState = false
 
     override init(frame: CGRect) {
@@ -338,6 +356,13 @@ final class S2NativeZoomScrollView: UIScrollView {
         return targetRect
     }
 
+    func animateToMinimumZoomScale() {
+        minimumZoomScaleAnimationInvocationCount += 1
+        lastMinimumZoomScaleAnimationTarget = minimumZoomScale
+        lastMinimumZoomScaleAnimationWasAnimated = true
+        setZoomScale(minimumZoomScale, animated: true)
+    }
+
     func requestedScale(for targetRect: CGRect) -> CGFloat? {
         guard targetRect.width > 0,
               targetRect.height > 0,
@@ -373,6 +398,7 @@ final class S2NativeZoomScrollView: UIScrollView {
         )
         if abs(contentOffset.x - nextOffset.x) > 0.000_001 ||
             abs(contentOffset.y - nextOffset.y) > 0.000_001 {
+            independentContentOffsetWriteCount += 1
             setContentOffset(nextOffset, animated: false)
         }
         isApplyingNativeState = false
@@ -780,8 +806,8 @@ final class S2NativeZoomPageController: UIViewController,
             ],
             animations: {
                 presentationContentView.transform = CGAffineTransform(
-                    scaleX: targetFrame.scale,
-                    y: targetFrame.scale
+                    scaleX: targetFrame.scaleX,
+                    y: targetFrame.scaleY
                 )
                 presentationContentView.layer.cornerRadius =
                     targetLayerCornerRadius
@@ -1096,6 +1122,7 @@ final class S2NativePagerViewController: UIViewController,
     private var lastOuterDuration: TimeInterval = 0
     private var nXEdgePagingInteraction: S2NxEdgePagingInteraction?
     private var lastNXEdgePagingProjection: S2NxEdgePagingProjection?
+    private(set) var nativeZoomReturnInvocationCount = 0
 
     override func loadView() {
         let rootView = UIView()
@@ -1231,10 +1258,7 @@ final class S2NativePagerViewController: UIViewController,
             return false
         }
         if wasZoomed {
-            page.zoomScrollView.setZoomScale(
-                1,
-                animated: configuration.animationsEnabled
-            )
+            returnToMinimumZoomScale(on: page)
         } else {
             _ = page.zoomScrollView.performDoubleTapZoom(
                 at: location,
@@ -1295,13 +1319,26 @@ final class S2NativePagerViewController: UIViewController,
         ) else {
             return
         }
-        if abs(page.zoomScrollView.zoomScale - targetScale) > 0.000_001 {
+        if abs(
+            targetScale - page.zoomScrollView.minimumZoomScale
+        ) <= 0.000_001 {
+            returnToMinimumZoomScale(on: page)
+        } else if abs(
+            page.zoomScrollView.zoomScale - targetScale
+        ) > 0.000_001 {
             page.zoomScrollView.setZoomScale(
                 targetScale,
                 animated: configuration.animationsEnabled
             )
         }
         page.zoomScrollView.updatePanAvailability()
+    }
+
+    private func returnToMinimumZoomScale(
+        on page: S2NativeZoomPageController
+    ) {
+        nativeZoomReturnInvocationCount += 1
+        page.zoomScrollView.animateToMinimumZoomScale()
     }
 
     @discardableResult

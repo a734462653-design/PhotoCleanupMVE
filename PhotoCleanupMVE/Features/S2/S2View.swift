@@ -88,6 +88,7 @@ struct S2View: View {
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
     @State private var safeAreaInsets = S2OverlaySafeAreaInsets.zero
+    @State private var statusBarHidden: Bool
 
     init(
         machine: S2StateMachine,
@@ -113,6 +114,9 @@ struct S2View: View {
         self.onFavoriteRequest = onFavoriteRequest
         self.onRecentAlbumRequest = onRecentAlbumRequest
         self.photoSwitchHapticFeedback = photoSwitchHapticFeedback
+        _statusBarHidden = State(
+            initialValue: machine.interfaceVisibility == .hidden
+        )
     }
 
     var body: some View {
@@ -158,6 +162,10 @@ struct S2View: View {
             }
         }
         .ignoresSafeArea()
+        .statusBarHidden(statusBarHidden)
+        .onChange(of: machine.interfaceVisibility) { _, visibility in
+            applyStatusBarAppearance(for: visibility)
+        }
         .transaction { transaction in
             if !calibration.configuration.animationsEnabled {
                 transaction.animation = nil
@@ -901,6 +909,26 @@ struct S2View: View {
 
     private var animationPolicy: S2AnimationPolicy {
         S2AnimationPolicy(configuration: calibration.configuration)
+    }
+
+    private func applyStatusBarAppearance(
+        for visibility: S2InterfaceVisibility
+    ) {
+        let appearance = S2StatusBarAppearance(
+            interfaceVisibility: visibility,
+            configuration: calibration.configuration
+        )
+        if appearance.transitionDuration > 0 {
+            withAnimation(.linear(
+                duration: appearance.transitionDuration
+            )) {
+                statusBarHidden = appearance.isHidden
+            }
+        } else {
+            performWithoutAnimation {
+                statusBarHidden = appearance.isHidden
+            }
+        }
     }
 
     private func performCalibratedAnimation(_ action: () -> Void) {
