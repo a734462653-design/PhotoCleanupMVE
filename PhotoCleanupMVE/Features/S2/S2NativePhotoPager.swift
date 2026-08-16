@@ -1965,12 +1965,12 @@ final class S2NativePagerViewController: UIViewController,
             return false
         }
         let targetScale = wasZoomed ? CGFloat(1) : machine.scale
-        guard page.startDoubleTapTransition(
+        if !page.startDoubleTapTransition(
             enteringNx: !wasZoomed,
             targetScale: targetScale,
             at: location,
             configuration: configuration
-        ) else {
+        ) {
             page.zoomScrollView.applyNativeState(
                 scale: targetScale,
                 viewportOffset: .zero
