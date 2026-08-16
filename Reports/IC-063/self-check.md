@@ -22,13 +22,14 @@
 
 ## 实现结果
 
-- 稳定 1x：`contentSize` 恒等于视口、`contentOffset` 恒为零；照片内缩只由内层布局尺寸承载，内层 `transform` 恒等，圆角直接写入照片层。
+- 稳定 1x：`contentSize` 恒等于视口、`contentOffset` 恒为零；命中 1% 容差的照片也严格使用物理视口乘以 `(1 - fitInsetRatio)` 的布局尺寸，内层 `transform` 恒等，圆角直接写入照片层。
 - 稳定 Nx：命中照片采用未内缩的物理视口作为原生缩放基准；`V` 切换只记录延迟目标，不改变倍率、偏移、内容尺寸、内层 frame 或圆角。
-- 双击转场：进入和退出共用 `S2DoubleTapTransition` 与一层专用快照过渡视图；动画期间原生 `zoomScale` 不变；终点无动画一次性同步 `zoomScale`、`contentSize`、`contentOffset` 和照片 frame，并记录同步前后 window frame。
+- 双击转场：进入和退出共用 `S2DoubleTapTransition` 与一层专用快照过渡视图；页控制器与父分页布局层共同冻结动画期间的原生 `zoomScale`；终点无动画一次性同步 `zoomScale`、`contentSize`、`contentOffset` 和照片 frame，并记录同步前后 window frame。
 - 原生持续交互：捏合、Nx 平移、边界和分页仍由 `UIScrollView` 驱动；捏合吸附仍使用原生最小倍率动画。
-- 状态栏与安全区：内外滚动视图运行时均为 `.never`；主图根视图忽略安全区；内层 `UIHostingController.additionalSafeAreaInsets` 明确为零；状态栏随 `V` 隐藏或恢复。
+- 状态栏与安全区：内外滚动视图运行时均为 `.never`；主图根视图及逐页照片托管根均忽略安全区；内层 `UIHostingController.additionalSafeAreaInsets` 明确为零；状态栏随 `V` 隐藏或恢复。
+- 图片请求：逐页图片请求使用稳定的未内缩原生基准尺寸，布局从 1x 手机框切到 Nx 基准时不会被误判为视口变化；既有“捏合中零请求、结束一次请求”策略保持不变。
 - 参数：`minDoubleTapScale=2.000000`、`fitInsetRatio=0.300000`、`pinchMaxScale=4.000000`；`fitInsetRatio` 保持实时调节。
-- 自动诊断：debug 面板可一键归一状态、切换两次 `V`、执行双击进入和退出，并自动采集进入至少 3 个、退出至少 5 个中间帧，最后生成可选择、复制或分享的文本。
+- 自动诊断：debug 面板可一键归一状态、切换两次 `V`、执行双击进入和退出，并按不同显示帧自动采集进入至少 3 个、退出至少 5 个中间帧；Q1 的空白归因从窗口坐标实际计算并换算为像素，Q2～Q3 的恒等、恒定、单调与跳变结论均从全部对应样本计算，最后生成可选择、复制或分享的文本。
 
 ## G1～G12 断言
 
@@ -51,10 +52,10 @@
 
 ## 本地自验
 
-- Windows 静态 XCTest 数量：382（要求不少于 363）。
+- Windows 静态 XCTest 数量：383（要求不少于 363）。
 - `Scripts/selfcheck.ps1`：通过。
 - `git diff --check`：通过。
-- `Scripts/verify-IC-20260816-063.ps1 -允许待回填CI`：通过，共 61 项检查。
+- `pwsh -NoProfile -File Scripts/verify-IC-20260816-063.ps1 -允许待回填CI`：通过，共 66 项检查。
 - Windows 没有 Xcode，因此本地不声称执行 UIKit XCTest。
 
 ## CI 与真实退出码

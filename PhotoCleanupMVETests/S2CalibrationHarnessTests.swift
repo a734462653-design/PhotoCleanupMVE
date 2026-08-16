@@ -687,12 +687,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(
             oppositeOrientation.oneXDisplaySize.width,
-            oppositeOrientation.aspectFitSize.width * 0.70,
+            physicalSize.width * 0.70,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
             oppositeOrientation.oneXDisplaySize.height,
-            oppositeOrientation.aspectFitSize.height * 0.70,
+            physicalSize.height * 0.70,
             accuracy: 0.000_001
         )
     }
@@ -1106,6 +1106,45 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.imageRequestScale, 1.8, accuracy: 0.000_001)
     }
 
+    // IC-063：原生基准切换布局尺寸时，不把捏合开始误报为图片视口变化。
+    func testIC063NativeBaseResizeIssuesNoImageRequestBeforePinchEnd() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let requestCounter = S2ImageRequestCounter()
+        let content = S2TemporaryPhotoImageView(
+            strategy: requestCounter,
+            assetID: "asset-1",
+            requestBaseSize: physicalSize,
+            requestedScale: 1,
+            requestStrategy: configuration.imageRequestStrategy,
+            requestRevision: 0,
+            showsOpaqueLoadingBackground: true,
+            onReading: { _ in }
+        )
+        let controller = UIHostingController(rootView: content)
+        let container = UIViewController()
+        container.addChild(controller)
+        controller.view.frame = CGRect(
+            origin: .zero,
+            size: CGSize(width: 210, height: 420)
+        )
+        container.view.addSubview(controller.view)
+        controller.didMove(toParent: container)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = container
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertGreaterThan(requestCounter.requestCount, 0)
+        requestCounter.reset()
+
+        controller.view.frame = CGRect(origin: .zero, size: physicalSize)
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+
+        XCTAssertEqual(requestCounter.requestCount, 0)
+    }
+
     // G1：1x 上滑达到既有阈值后标记触摸开始时的当前资产。
     func testG1OneXSwipeUpMarksCurrentAsset() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -1277,10 +1316,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-063 G2：显示态 1x 按 fitInsetRatio 内缩且四边对称。
     func testIC063G2VisibleMatchedPhotoUsesInsetLayoutAndIsCentered() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let nearToleranceRatio = screenAspectRatio * 1.009
         let machine = makeMachine(configuration: configuration)
         let controller = makeNativePagerController(
             machine: machine,
-            configuration: configuration
+            configuration: configuration,
+            assetAspectRatio: nearToleranceRatio
         )
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
         let frame = tryUnwrap(page.zoomScrollView.visiblePresentationFrame())
@@ -1338,6 +1379,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ))
         XCTAssertTrue(page.isDoubleTapTransitionActive)
         XCTAssertEqual(page.zoomScrollView.zoomScale, 1, accuracy: 0.000_001)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        XCTAssertEqual(page.zoomScrollView.zoomScale, 1, accuracy: 0.000_001)
+        XCTAssertTrue(
+            tryUnwrap(page.zoomScrollView.presentationContentView)
+                .transform.isIdentity
+        )
+        let entryTransition = tryUnwrap(page.lastDoubleTapTransition)
         page.finishActiveDoubleTapTransition()
         XCTAssertLessThanOrEqual(
             tryUnwrap(page.lastDoubleTapSynchronization).maximumDifference,
@@ -1350,6 +1402,33 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ))
         XCTAssertTrue(page.isDoubleTapTransitionActive)
         XCTAssertEqual(page.zoomScrollView.zoomScale, nxScale, accuracy: 0.000_001)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        XCTAssertEqual(
+            page.zoomScrollView.zoomScale,
+            nxScale,
+            accuracy: 0.000_001
+        )
+        XCTAssertTrue(
+            tryUnwrap(page.zoomScrollView.presentationContentView)
+                .transform.isIdentity
+        )
+        let exitTransition = tryUnwrap(page.lastDoubleTapTransition)
+        for progress in [CGFloat(0), 0.25, 0.5, 0.75, 1] {
+            let reading = S2DoubleTapSynchronizationReading(
+                beforeWindowFrame: entryTransition.frame(at: progress),
+                afterWindowFrame: exitTransition.frame(at: 1 - progress)
+            )
+            XCTAssertLessThanOrEqual(reading.maximumDifference, 0.5)
+            XCTAssertEqual(
+                entryTransition.cornerRadius(at: progress),
+                exitTransition.cornerRadius(at: 1 - progress),
+                accuracy: 0.5
+            )
+        }
         page.finishActiveDoubleTapTransition()
         XCTAssertLessThanOrEqual(
             tryUnwrap(page.lastDoubleTapSynchronization).maximumDifference,
@@ -1434,6 +1513,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page.zoomScrollView.contentInsetAdjustmentBehavior,
             .never
         )
+        XCTAssertEqual(page.additionalSafeAreaInsets, .zero)
+        XCTAssertEqual(page.diagnosticAdditionalSafeAreaInsets, .zero)
     }
 
     // IC-063 G8：新旧几何契约共用同一测试靶，不以替代状态机规避回归。
@@ -1479,6 +1560,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
         let report = diagnostics.reportText
         XCTAssertFalse(diagnostics.isExporting)
+        XCTAssertTrue(report.contains("中间帧门禁：通过"))
         XCTAssertTrue(report.contains("V=显示、s=1 稳定态"))
         XCTAssertTrue(report.contains("单击后 V=隐藏、s=1 稳定态"))
         XCTAssertTrue(report.contains("双击进入 Nx：动画结束稳定态"))
@@ -1495,6 +1577,31 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(report.contains("Q2："))
         XCTAssertTrue(report.contains("Q3："))
         XCTAssertTrue(report.contains("Q4："))
+        XCTAssertTrue(report.contains(
+            "Q1：顶部空白 0.000000px；contentInset=0.000000px，" +
+                "safeAreaInsets=0.000000px，aspectFit=0.000000px；" +
+                "加和=0.000000px。"
+        ))
+        XCTAssertTrue(report.contains(
+            "Q2：s>1 全部样本内层 transform 恒等=true"
+        ))
+        XCTAssertTrue(report.contains("稳定 Nx zoomScale=2.000000"))
+        XCTAssertTrue(report.contains("进入动画原生 zoomScale 恒定=true"))
+        XCTAssertTrue(report.contains("退出动画原生 zoomScale 恒定=true"))
+        XCTAssertTrue(report.contains(
+            "zoomScale 与内层 transform 同时非默认=false"
+        ))
+        XCTAssertTrue(report.contains(
+            "动画帧内层 transform 恒等=true"
+        ))
+        XCTAssertTrue(report.contains(
+            "专用过渡层 transform 全部六元组分量单调=true"
+        ))
+        XCTAssertTrue(report.contains("动画帧 contentOffset 无跳变=true"))
+        XCTAssertTrue(report.contains(
+            "Q4：V=显示时状态栏隐藏=false；" +
+                "V=隐藏时状态栏隐藏=true。"
+        ))
         print("IC063_DIAGNOSTICS_SAMPLE_BEGIN\n\(report)\nIC063_DIAGNOSTICS_SAMPLE_END")
     }
 

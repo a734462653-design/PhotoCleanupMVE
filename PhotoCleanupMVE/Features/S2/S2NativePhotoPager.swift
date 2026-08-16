@@ -835,6 +835,10 @@ final class S2NativeZoomPageController: UIViewController,
         hostingController.additionalSafeAreaInsets
     }
 
+    var diagnosticHostingSafeAreaInsets: UIEdgeInsets {
+        hostingController.view.safeAreaInsets
+    }
+
     var diagnosticTransitionTransform: CGAffineTransform {
         doubleTapTransitionView?.transform ?? .identity
     }
@@ -853,7 +857,9 @@ final class S2NativeZoomPageController: UIViewController,
         cornerRadius = page.cornerRadius
         doubleTapTargetScale = page.doubleTapTargetScale
         assetPixelSize = page.assetPixelSize
-        hostingController = UIHostingController(rootView: page.content)
+        hostingController = UIHostingController(
+            rootView: AnyView(page.content.ignoresSafeArea())
+        )
         self.owner = owner
         super.init(nibName: nil, bundle: nil)
     }
@@ -1452,7 +1458,9 @@ final class S2NativeZoomPageController: UIViewController,
             return
         }
         contentVersion = page.contentVersion
-        hostingController.rootView = page.content
+        hostingController.rootView = AnyView(
+            page.content.ignoresSafeArea()
+        )
     }
 
     func prioritizeVerticalSwipe(
@@ -1825,7 +1833,7 @@ final class S2NativePagerViewController: UIViewController,
         diagnosticConfiguration.animationsEnabled = true
         diagnosticConfiguration.animationDurationMilliseconds = max(
             diagnosticConfiguration.animationDurationMilliseconds,
-            Double(max(1, minimumMiddleFrames) + 2) * 20
+            Double(max(1, minimumMiddleFrames) + 2) * 50
         )
         page.doubleTapTransitionObserver = observer
         return page.startDoubleTapTransition(
@@ -2258,6 +2266,8 @@ final class S2NativePagerViewController: UIViewController,
         for (index, controller) in pageControllers {
             controller.view.frame = pagingScrollView.frameForPage(at: index)
             if let machine,
+               !controller.isDoubleTapTransitionActive,
+               !controller.isPresentationTransitionActive,
                !controller.zoomScrollView.isTracking,
                !controller.zoomScrollView.isDragging,
                !controller.zoomScrollView.isDecelerating,
@@ -2438,10 +2448,12 @@ struct S2GeometryDiagnosticSample {
     let visibility: S2InterfaceVisibility
     let scale: CGFloat
     let screenBounds: CGRect
+    let screenScale: CGFloat
     let windowBounds: CGRect
     let scrollFrame: CGRect
     let scrollBounds: CGRect
     let safeAreaInsets: UIEdgeInsets
+    let hostingSafeAreaInsets: UIEdgeInsets
     let additionalSafeAreaInsets: UIEdgeInsets
     let hostingAdditionalSafeAreaInsets: UIEdgeInsets
     let adjustmentBehaviorRawValue: Int
@@ -2611,9 +2623,9 @@ final class S2GeometryDiagnosticsRun {
             case .started:
                 break
             case let .progressed(_, progress):
-                while let threshold = self.middleThresholds.first,
-                      progress >= threshold,
-                      progress < 1 {
+                if let threshold = self.middleThresholds.first,
+                   progress >= threshold,
+                   progress < 1 {
                     let number = minimumMiddleFrames -
                         self.middleThresholds.count + 1
                     self.capture("\(self.activeMiddlePrefix) #\(number)")
@@ -2678,13 +2690,17 @@ final class S2GeometryDiagnosticsRun {
             assetAspectRatio: assetRatio,
             viewportAspectRatio: viewportRatio
         )
-        let topBlank = max(0, innerFrame.minY - viewportFrame.minY)
+        let physicalViewportTop = windowBounds.minY
+        let topBlank = max(0, innerFrame.minY - physicalViewportTop)
         let insetContribution = max(0, scrollView.contentInset.top)
-        let safeContribution: CGFloat = 0
-        let aspectContribution = page.isFramedPhoto &&
-            machine.interfaceVisibility == .hidden
-            ? 0
-            : max(0, topBlank - insetContribution - safeContribution)
+        let safeContribution = max(
+            0,
+            viewportFrame.minY - physicalViewportTop
+        )
+        let aspectContribution = max(
+            0,
+            topBlank - insetContribution - safeContribution
+        )
         let status = statusBarReading(window: window)
         let vertical = controller.pageControllers.keys.sorted().compactMap {
             index -> String? in
@@ -2700,10 +2716,12 @@ final class S2GeometryDiagnosticsRun {
             visibility: machine.interfaceVisibility,
             scale: machine.scale,
             screenBounds: UIScreen.main.bounds,
+            screenScale: UIScreen.main.scale,
             windowBounds: windowBounds,
             scrollFrame: scrollView.frame,
             scrollBounds: scrollView.bounds,
             safeAreaInsets: page.view.safeAreaInsets,
+            hostingSafeAreaInsets: page.diagnosticHostingSafeAreaInsets,
             additionalSafeAreaInsets: page.additionalSafeAreaInsets,
             hostingAdditionalSafeAreaInsets:
                 page.diagnosticAdditionalSafeAreaInsets,
@@ -2790,10 +2808,12 @@ final class S2GeometryDiagnosticsRun {
                 "## \(sample.label)",
                 "V=\(visibilityText(sample.visibility)), s=\(number(sample.scale))",
                 "UIScreen.main.bounds=\(rect(sample.screenBounds))",
+                "UIScreen.main.scale=\(number(sample.screenScale))",
                 "window.bounds=\(rect(sample.windowBounds))",
                 "scrollView.frame=\(rect(sample.scrollFrame))",
                 "scrollView.bounds=\(rect(sample.scrollBounds))",
                 "view.safeAreaInsets=\(insets(sample.safeAreaInsets))",
+                "hosting.view.safeAreaInsets=\(insets(sample.hostingSafeAreaInsets))",
                 "additionalSafeAreaInsets=\(insets(sample.additionalSafeAreaInsets))",
                 "hosting.additionalSafeAreaInsets=\(insets(sample.hostingAdditionalSafeAreaInsets))",
                 "contentInsetAdjustmentBehavior.rawValue=\(sample.adjustmentBehaviorRawValue)",
@@ -2821,8 +2841,17 @@ final class S2GeometryDiagnosticsRun {
         let hidden = samples.first {
             $0.label == "单击后 V=隐藏、s=1 稳定态"
         }
-        let nx = samples.first {
+        let stableNx = samples.first {
             $0.label == "双击进入 Nx：动画结束稳定态"
+        }
+        let nxSamples = samples.filter { $0.scale > 1.000_001 }
+        let entryAnimationSamples = samples.filter {
+            $0.label.hasPrefix("双击进入 Nx：动画开始前") ||
+                $0.label.hasPrefix("双击进入 Nx：动画中间帧")
+        }
+        let exitAnimationSamples = samples.filter {
+            $0.label.hasPrefix("双击退出 Nx：动画开始前") ||
+                $0.label.hasPrefix("双击退出 Nx：动画中间帧")
         }
         let visible = samples.first {
             $0.label == "V=显示、s=1 稳定态"
@@ -2833,35 +2862,71 @@ final class S2GeometryDiagnosticsRun {
         }
         var result = ["", "# 逐题回答"]
         if let hidden {
-            let sum = hidden.contentInsetTopContribution +
-                hidden.safeAreaTopContribution +
-                hidden.aspectFitTopContribution
+            let contentInsetPixels = hidden.contentInsetTopContribution *
+                hidden.screenScale
+            let safeAreaPixels = hidden.safeAreaTopContribution *
+                hidden.screenScale
+            let aspectFitPixels = hidden.aspectFitTopContribution *
+                hidden.screenScale
+            let topBlankPixels = hidden.topBlank * hidden.screenScale
+            let sum = contentInsetPixels + safeAreaPixels + aspectFitPixels
             result.append(
-                "Q1：顶部空白 \(number(hidden.topBlank))px；" +
-                    "contentInset=\(number(hidden.contentInsetTopContribution))px，" +
-                    "safeAreaInsets=\(number(hidden.safeAreaTopContribution))px，" +
-                    "aspectFit=\(number(hidden.aspectFitTopContribution))px；" +
+                "Q1：顶部空白 \(number(topBlankPixels))px；" +
+                    "contentInset=\(number(contentInsetPixels))px，" +
+                    "safeAreaInsets=\(number(safeAreaPixels))px，" +
+                    "aspectFit=\(number(aspectFitPixels))px；" +
                     "加和=\(number(sum))px。"
             )
         }
-        if let nx {
+        if let stableNx {
+            let innerTransformIsAlwaysIdentity = nxSamples.allSatisfy {
+                $0.innerTransform.isIdentity
+            }
+            let bothAreNonDefault = nxSamples.contains {
+                abs($0.zoomScale - 1) > 0.000_001 &&
+                    !$0.innerTransform.isIdentity
+            }
+            let transitionScales = nxSamples.map {
+                number($0.transitionTransform.a)
+            }.joined(separator: "→")
+            let entryZoomScaleIsStable = valuesAreEqual(
+                entryAnimationSamples.map(\.zoomScale)
+            )
+            let exitZoomScaleIsStable = valuesAreEqual(
+                exitAnimationSamples.map(\.zoomScale)
+            )
             result.append(
-                "Q2：s>1 内层 transform 恒等=\(nx.innerTransform.isIdentity)；" +
-                    "zoomScale=\(number(nx.zoomScale))，" +
-                    "内层 transform 承载=\(number(nx.innerTransform.a)) 倍，" +
-                    "两者同时非默认=false。"
+                "Q2：s>1 全部样本内层 transform 恒等=" +
+                    "\(innerTransformIsAlwaysIdentity)；" +
+                    "稳定 Nx zoomScale=\(number(stableNx.zoomScale))，" +
+                    "内层 transform 承载=" +
+                    "\(number(stableNx.innerTransform.a)) 倍，" +
+                    "专用过渡层样本倍率=\(transitionScales)；" +
+                    "进入动画原生 zoomScale 恒定=" +
+                    "\(entryZoomScaleIsStable)，" +
+                    "退出动画原生 zoomScale 恒定=" +
+                    "\(exitZoomScaleIsStable)；" +
+                    "zoomScale 与内层 transform 同时非默认=" +
+                    "\(bothAreNonDefault)。"
             )
         }
         let offsets = exitFrames.map {
             "\($0.label):offset=\(point($0.contentOffset))," +
-                "transform=\(transform($0.transitionTransform))"
+                "innerTransform=\(transform($0.innerTransform))," +
+                "transitionTransform=\(transform($0.transitionTransform))"
         }.joined(separator: "；")
-        let transformValues = exitFrames.map(\.transitionTransform.a)
-        let transformIsMonotonic = zip(
-            transformValues,
-            transformValues.dropFirst()
-        ).allSatisfy { pair in
-            pair.0 >= pair.1 - 0.000_001
+        let exitInnerTransformIsIdentity = exitFrames.allSatisfy {
+            $0.innerTransform.isIdentity
+        }
+        let transformIsMonotonic = [
+            exitFrames.map(\.transitionTransform.a),
+            exitFrames.map(\.transitionTransform.b),
+            exitFrames.map(\.transitionTransform.c),
+            exitFrames.map(\.transitionTransform.d),
+            exitFrames.map(\.transitionTransform.tx),
+            exitFrames.map(\.transitionTransform.ty)
+        ].allSatisfy {
+            valuesAreMonotonic($0)
         }
         let offsetsAreStable = zip(exitFrames, exitFrames.dropFirst())
             .allSatisfy { pair in
@@ -2873,7 +2938,10 @@ final class S2GeometryDiagnosticsRun {
                     ) <= 0.5
             }
         result.append(
-            "Q3：\(offsets)。动画帧 transform 单调=\(transformIsMonotonic)，" +
+            "Q3：\(offsets)。动画帧内层 transform 恒等=" +
+                "\(exitInnerTransformIsIdentity)，" +
+                "专用过渡层 transform 全部六元组分量单调=" +
+                "\(transformIsMonotonic)，" +
                 "动画帧 contentOffset 无跳变=\(offsetsAreStable)；" +
                 "终点只执行一次无动画原生同步。"
         )
@@ -2884,6 +2952,26 @@ final class S2GeometryDiagnosticsRun {
             )
         }
         return result
+    }
+
+    private func valuesAreMonotonic(_ values: [CGFloat]) -> Bool {
+        let pairs = zip(values, values.dropFirst())
+        let nondecreasing = pairs.allSatisfy {
+            $0.0 <= $0.1 + 0.000_001
+        }
+        let nonincreasing = zip(values, values.dropFirst()).allSatisfy {
+            $0.0 >= $0.1 - 0.000_001
+        }
+        return nondecreasing || nonincreasing
+    }
+
+    private func valuesAreEqual(_ values: [CGFloat]) -> Bool {
+        guard let first = values.first else {
+            return false
+        }
+        return values.dropFirst().allSatisfy {
+            abs($0 - first) <= 0.000_001
+        }
     }
 
     private func number<T: BinaryFloatingPoint>(_ value: T) -> String {

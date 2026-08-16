@@ -70,6 +70,7 @@ final class S2TemporaryPhotoKitImageStrategy: S2PhotoImageRequesting {
 struct S2TemporaryPhotoImageView: View {
     let strategy: any S2PhotoImageRequesting
     let assetID: String
+    var requestBaseSize: CGSize? = nil
     let requestedScale: CGFloat
     let requestStrategy: S2ImageRequestStrategy?
     let requestRevision: Int
@@ -85,7 +86,7 @@ struct S2TemporaryPhotoImageView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let key = requestKey(for: geometry.size)
+            let key = requestKey(for: requestBaseSize ?? geometry.size)
             ZStack {
                 if showsOpaqueLoadingBackground {
                     Color.black

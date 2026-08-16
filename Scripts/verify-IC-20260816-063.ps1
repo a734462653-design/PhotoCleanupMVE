@@ -97,6 +97,7 @@ try {
         检查 ($测试文本.Contains("func $测试名(")) "缺少 XCTest：$测试名"
     }
     检查 (-not $测试文本.Contains("testG2NxSwipeUpMarksCurrentAsset")) "仍保留 Nx 上滑标记的冲突断言"
+    检查 ($测试文本.Contains("let nearToleranceRatio = screenAspectRatio * 1.009")) "G2 未覆盖容差内但比例不完全相等的照片"
 
     $原生文本 = 读取 "PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift"
     检查 ($原生文本.Contains("return machine.scale == 1")) "竖向识别器没有按严格 s == 1 门控"
@@ -105,11 +106,13 @@ try {
     检查 ($原生文本.Contains("isDoubleTapTransitionActive")) "缺少双击过渡状态门控"
     检查 ($原生文本.Contains("S2DoubleTapSynchronizationReading")) "缺少同步前后 window frame 证据"
     检查 ($原生文本.Contains("applyDoubleTapTarget")) "双击终点未同步给 UIScrollView"
+    检查 ($原生文本.Contains("!controller.isDoubleTapTransitionActive")) "父分页布局未冻结双击动画期间的原生倍率"
     检查 (-not $原生文本.Contains("presentationContentView.transform = CGAffineTransform")) "1x 沉浸仍由内层 transform 承载"
     检查 ($原生文本.Contains("contentSize = viewportSize")) "1x contentSize 未固定为视口"
     检查 ($原生文本.Contains("setContentOffset(.zero, animated: false)")) "1x contentOffset 未归零"
     检查 (([regex]::Matches($原生文本, 'contentInsetAdjustmentBehavior = \.never')).Count -ge 2) "内外滚动视图未显式设置 .never"
     检查 ($原生文本.Contains("hostingController.additionalSafeAreaInsets = .zero")) "内层 HostingController 未清空额外安全区"
+    检查 ($原生文本.Contains("page.content.ignoresSafeArea()")) "内层照片托管根未真正忽略安全区"
     检查 ($原生文本.Contains("S2GeometryDiagnosticsRun")) "缺少自动几何诊断执行器"
     foreach ($题号 in 1..4) {
         检查 ($原生文本.Contains("Q$题号" + "：")) "诊断报告缺少 Q$题号 回答"
@@ -117,6 +120,7 @@ try {
     检查 ($原生文本.Contains("verticalSwipeRecognizer.state.rawValue")) "诊断未记录竖向识别器状态"
     检查 ($原生文本.Contains("minimumMiddleFrames: 3")) "进入动画未要求至少 3 个中间帧"
     检查 ($原生文本.Contains("minimumMiddleFrames: 5")) "退出动画未要求至少 5 个中间帧"
+    检查 (-not $原生文本.Contains("let safeContribution: CGFloat = 0")) "诊断仍把安全区贡献硬编码为零"
 
     $标定文本 = 读取 "PhotoCleanupMVE/Features/S2/S2Calibration.swift"
     检查 ([regex]::IsMatch($标定文本, 'minDoubleTapScale:\s*2,')) "minDoubleTapScale 出厂值不是 2.000000"
@@ -124,6 +128,7 @@ try {
     检查 ([regex]::IsMatch($标定文本, 'fitCornerRadius:\s*28,')) "fitCornerRadius 出厂值被改动"
     检查 ([regex]::IsMatch($标定文本, 'pinchMaxScale:\s*4,')) "pinchMaxScale 被改动"
     检查 ($标定文本.Contains("nativeZoomBaseSize: applies ? physicalSize : fitSize")) "Nx 未使用去内缩后的几何基准"
+    检查 ($标定文本.Contains("(applies && matchesScreenAspect)")) "命中容差的 1x 手机框未以物理视口为尺寸基准"
 
     $视图文本 = 读取 "PhotoCleanupMVE/Features/S2/S2View.swift"
     检查 ($视图文本.Contains('title: "fitInsetRatio"')) "debug 面板缺少 fitInsetRatio"

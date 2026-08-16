@@ -802,6 +802,10 @@ enum S2ViewportLayout {
             viewportAspectRatio: viewportAspectRatio,
             scope: configuration.fitInsetScope
         )
+        let matchesScreenAspect = S2Geometry.isScreenAspectMatch(
+            assetAspectRatio: assetAspectRatio,
+            viewportAspectRatio: viewportAspectRatio
+        )
         let fillsViewport = applies &&
             presentationState.interfaceVisibility == .hidden &&
                 configuration.screenshotImmersiveOnHide
@@ -809,8 +813,13 @@ enum S2ViewportLayout {
         let insetScale = keepsFrame
             ? max(0, 1 - CGFloat(configuration.fitInsetRatio))
             : 1
-        let displaySize = fillsViewport
-            ? physicalSize
+        let usesViewportFrame = fillsViewport ||
+            (applies && matchesScreenAspect)
+        let displaySize = usesViewportFrame
+            ? CGSize(
+                width: physicalSize.width * insetScale,
+                height: physicalSize.height * insetScale
+            )
             : CGSize(
                 width: fitSize.width * insetScale,
                 height: fitSize.height * insetScale

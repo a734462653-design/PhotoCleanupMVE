@@ -44,6 +44,7 @@ enum S2BottomStripPhotoSwitcher {
 struct S2ImageContentContext {
     let assetID: String
     let fittedSize: CGSize
+    let requestBaseSize: CGSize
     let contentMode: ContentMode
     let scale: CGFloat
     let requestStrategy: S2ImageRequestStrategy?
@@ -222,6 +223,7 @@ struct S2View: View {
             let content = photoContent(S2ImageContentContext(
                 assetID: assetID,
                 fittedSize: pageMetrics.oneXDisplaySize,
+                requestBaseSize: pageMetrics.nativeZoomBaseSize,
                 contentMode: pageMetrics.isFramedPhoto ? .fill : .fit,
                 scale: index == machine.currentIndex
                     ? machine.imageRequestScale

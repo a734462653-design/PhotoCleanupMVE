@@ -42,6 +42,8 @@ struct PhotoCleanupMVEApp: App {
                                     S2TemporaryPhotoImageView(
                                         strategy: s2PhotoImageStrategy,
                                         assetID: context.assetID,
+                                        requestBaseSize:
+                                            context.requestBaseSize,
                                         requestedScale: context.scale,
                                         requestStrategy:
                                             context.requestStrategy,
