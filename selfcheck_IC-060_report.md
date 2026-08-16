@@ -2,9 +2,10 @@
 
 ## 1. 当前结论
 
-IC-060 的代码、13 项新增 XCTest、自验脚本与回归替代断言已经完成。Windows 本地静态
-门禁通过，XCTest 静态总数由 IC-059 的 341 项增加为 354 项。当前报告随首次实现提交
-进入 macOS CI；CI 日志、最终运行链接、IPA artifact 与 SHA-256 将以最终验证结果更新。
+IC-060 的代码、13 项新增 XCTest、自验脚本与回归替代断言均已完成。Windows 本地静态
+门禁通过，XCTest 总数由 IC-059 的 341 项增加为 354 项。macOS CI #53 已实际执行全部
+354 项 XCTest，结果为 0 failures、0 unexpected；Release 真机构建、未签名 IPA 生成和
+artifact 上传也全部成功。最终 artifact 已下载并独立复核，IPA SHA-256 与 CI 原文一致。
 
 ## 2. 实现摘要
 
@@ -62,21 +63,21 @@ UIKit 的公开 `UITapGestureRecognizer` 接口提供点击次数和触点数等
 
 ## 3. IC-060 十三项专项测试
 
-| 编号 | XCTest 方法 | 当前状态 |
+| 编号 | XCTest 方法 | CI #53 状态 |
 |---|---|---|
-| K1 | `testK1SingleTapRequiresDoubleTapRecognizerToFail` | 静态存在；待 CI |
-| K2 | `testK2DoubleTapNeverChangesInterfaceVisibilityAndReachesTargetScale` | 静态存在；待 CI |
-| K3 | `testK3SingleTapAfterDoubleTapFailureTogglesVisibilityExactlyOnce` | 静态存在；待 CI |
-| K4 | `testK4DoubleTapDecisionWindowFactoryDefaultIsTwoHundredMilliseconds` | 静态存在；待 CI |
-| S1 | `testS1FramedPhotoVisibleStateUsesSeventyPercentShortEdgeAndRadiusTwentyEight` | 静态存在；待 CI |
-| S2 | `testS2FramedPhotoHiddenStateFitsViewportWithoutCroppingAndHasZeroRadius` | 静态存在；待 CI |
-| S3 | `testS3NonFramedPhotoGeometryIsEqualAcrossVisibilityStates` | 静态存在；待 CI |
-| S4 | `testS4ImmersiveTogglePreservesViewportFillMultiplierAndDoubleTapTarget` | 静态存在；待 CI |
-| S5 | `testS5DisabledScreenshotImmersiveKeepsPhoneFrameWhenHidden` | 静态存在；待 CI |
-| S6 | `testS6ScreenshotImmersiveFactoryDefaultIsTrue` | 静态存在；待 CI |
-| A1 | `testA1NativePagingPhotoSwitchProducesNoHaptic` | 静态存在；待 CI |
-| A2 | `testA2BottomStripCurrentItemChangesProduceExactlyNHaptics` | 静态存在；待 CI |
-| A3 | `testA3DisabledPhotoSwitchHapticProducesNoHaptic` | 静态存在；待 CI |
+| K1 | `testK1SingleTapRequiresDoubleTapRecognizerToFail` | 通过 |
+| K2 | `testK2DoubleTapNeverChangesInterfaceVisibilityAndReachesTargetScale` | 通过 |
+| K3 | `testK3SingleTapAfterDoubleTapFailureTogglesVisibilityExactlyOnce` | 通过 |
+| K4 | `testK4DoubleTapDecisionWindowFactoryDefaultIsTwoHundredMilliseconds` | 通过 |
+| S1 | `testS1FramedPhotoVisibleStateUsesSeventyPercentShortEdgeAndRadiusTwentyEight` | 通过 |
+| S2 | `testS2FramedPhotoHiddenStateFitsViewportWithoutCroppingAndHasZeroRadius` | 通过 |
+| S3 | `testS3NonFramedPhotoGeometryIsEqualAcrossVisibilityStates` | 通过 |
+| S4 | `testS4ImmersiveTogglePreservesViewportFillMultiplierAndDoubleTapTarget` | 通过 |
+| S5 | `testS5DisabledScreenshotImmersiveKeepsPhoneFrameWhenHidden` | 通过 |
+| S6 | `testS6ScreenshotImmersiveFactoryDefaultIsTrue` | 通过 |
+| A1 | `testA1NativePagingPhotoSwitchProducesNoHaptic` | 通过 |
+| A2 | `testA2BottomStripCurrentItemChangesProduceExactlyNHaptics` | 通过 |
+| A3 | `testA3DisabledPhotoSwitchHapticProducesNoHaptic` | 通过 |
 
 S2 还在同一测试内断言：开启动画时显隐过渡时长为出厂值 0.18 秒；关闭动画时记录时长为
 0 并直接切换。
@@ -85,60 +86,60 @@ S2 还在同一测试内断言：开启动画时显隐过渡时长为出厂值 0
 
 ### 4.1 IC-059 G1～G4、M1～M2、F1～F4、B1～B3、H1～H2
 
-| 编号 | XCTest 方法 | 当前状态 |
+| 编号 | XCTest 方法 | CI #53 状态 |
 |---|---|---|
-| G1 | `testG1OneXSwipeUpMarksCurrentAsset` | 静态存在；待 CI |
-| G2 | `testG2NxSwipeUpMarksCurrentAsset` | 静态存在；待 CI |
-| G3 | `testG3ReplacementNativeDoubleTapDoesNotApplyOrRevertSingleTap` | 替代断言；待 CI |
-| G4 | `testG4ReplacementTwoUIKitResolvedSingleTapsToggleTwiceWithoutZoom` | 替代断言；待 CI |
-| M1 | `testM1ScreenAspectDoubleTapUsesMinimumScale` | 静态存在；待 CI |
-| M2 | `testM2NonScreenPhotoDoubleTapUsesAspectFillScale` | 静态存在；待 CI |
-| F1 | `testF1FactoryInsetShrinksShortEdgeToSeventyPercent` | 静态存在；待 CI |
-| F2 | `testF2CornerRadiusAppliesOnlyToInsetPhotos` | 静态存在；待 CI |
-| F3 | `testF3ReplacementNonFramedPhotoKeepsGeometryAcrossVisibility` | 替代断言；待 CI |
-| F4 | `testF4InsetDoesNotChangeViewportOrAspectFillMultiplier` | 静态存在；待 CI |
-| B1 | `testB1NxBoundaryContinuationProducesPagingDisplacement` | 静态存在；待 CI |
-| B2 | `testB2NxBoundaryPagingBelowThresholdKeepsCurrentIndex` | 静态存在；待 CI |
-| B3 | `testB3NxBoundaryPagingCompletionResetsNewPhotoScale` | 静态存在；待 CI |
-| H1 | `testH1ReplacementEnabledHapticFiresOnlyForBottomStripChanges` | 替代断言；待 CI |
-| H2 | `testH2ReplacementDisabledPhotoSwitchHapticDoesNotFire` | 替代断言；待 CI |
+| G1 | `testG1OneXSwipeUpMarksCurrentAsset` | 通过 |
+| G2 | `testG2NxSwipeUpMarksCurrentAsset` | 通过 |
+| G3 | `testG3ReplacementNativeDoubleTapDoesNotApplyOrRevertSingleTap` | 通过（替代断言） |
+| G4 | `testG4ReplacementTwoUIKitResolvedSingleTapsToggleTwiceWithoutZoom` | 通过（替代断言） |
+| M1 | `testM1ScreenAspectDoubleTapUsesMinimumScale` | 通过 |
+| M2 | `testM2NonScreenPhotoDoubleTapUsesAspectFillScale` | 通过 |
+| F1 | `testF1FactoryInsetShrinksShortEdgeToSeventyPercent` | 通过 |
+| F2 | `testF2CornerRadiusAppliesOnlyToInsetPhotos` | 通过 |
+| F3 | `testF3ReplacementNonFramedPhotoKeepsGeometryAcrossVisibility` | 通过（替代断言） |
+| F4 | `testF4InsetDoesNotChangeViewportOrAspectFillMultiplier` | 通过 |
+| B1 | `testB1NxBoundaryContinuationProducesPagingDisplacement` | 通过 |
+| B2 | `testB2NxBoundaryPagingBelowThresholdKeepsCurrentIndex` | 通过 |
+| B3 | `testB3NxBoundaryPagingCompletionResetsNewPhotoScale` | 通过 |
+| H1 | `testH1ReplacementEnabledHapticFiresOnlyForBottomStripChanges` | 通过（替代断言） |
+| H2 | `testH2ReplacementDisabledPhotoSwitchHapticDoesNotFire` | 通过（替代断言） |
 
 ### 4.2 IC-058 N1～N8
 
-| 编号 | XCTest 方法 | 当前状态 |
+| 编号 | XCTest 方法 | CI #53 状态 |
 |---|---|---|
-| N1 | `testN1NativeZoomContainerUsesConfiguredMinimumAndMaximumScale` | 静态存在；待 CI |
-| N2 | `testN2DoubleTapInvokesNativeZoomWithResolvedTargetScale` | 静态存在；待 CI |
-| N3 | `testN3NativePagingUsesConfiguredPageSpacing` | 静态存在；待 CI |
-| N4 | `testN4PageSpacingFactoryDefaultIsTwentyPoints` | 静态存在；待 CI |
-| N5 | `testN5NxSingleTapTogglesInterfaceWithoutChangingNativeViewport` | 静态存在；待 CI |
-| N6 | `testN6OneXSingleTapTogglesInterfaceVisibility` | 静态存在；待 CI |
-| N7 | `testN7NativePageChangeResetsZoomToOne` | 静态存在；待 CI |
-| N8 | `testN8NativePinchRequestsZeroDuringGestureAndOnceAfterEnd` | 静态存在；待 CI |
+| N1 | `testN1NativeZoomContainerUsesConfiguredMinimumAndMaximumScale` | 通过 |
+| N2 | `testN2DoubleTapInvokesNativeZoomWithResolvedTargetScale` | 通过 |
+| N3 | `testN3NativePagingUsesConfiguredPageSpacing` | 通过 |
+| N4 | `testN4PageSpacingFactoryDefaultIsTwentyPoints` | 通过 |
+| N5 | `testN5NxSingleTapTogglesInterfaceWithoutChangingNativeViewport` | 通过 |
+| N6 | `testN6OneXSingleTapTogglesInterfaceVisibility` | 通过 |
+| N7 | `testN7NativePageChangeResetsZoomToOne` | 通过 |
+| N8 | `testN8NativePinchRequestsZeroDuringGestureAndOnceAfterEnd` | 通过 |
 
 ### 4.3 IC-057 E1～E6
 
-| 编号 | XCTest 方法 | 当前状态 |
+| 编号 | XCTest 方法 | CI #53 状态 |
 |---|---|---|
-| E1 | `testE1ReplacementSingleTapRunsAfterDoubleTapFailure` | 替代断言；待 CI |
-| E2 | `testE2ReplacementDoubleTapSuppressesSingleTapAction` | 替代断言；待 CI |
-| E3 | `testE3ReplacementTwoResolvedSingleTapsToggleTwice` | 替代断言；待 CI |
-| E4 | `testE4ReplacementRecognizedDoubleTapMatchesDirectDoubleTap` | 替代断言；待 CI |
-| E5 | `testE5ReadingsExposeAspectRatiosAndDoubleTapTargetScale` | 静态存在；待 CI |
-| E6 | `testE6ReadingsAndParameterPanelsAreMutuallyExclusive` | 静态存在；待 CI |
+| E1 | `testE1ReplacementSingleTapRunsAfterDoubleTapFailure` | 通过（替代断言） |
+| E2 | `testE2ReplacementDoubleTapSuppressesSingleTapAction` | 通过（替代断言） |
+| E3 | `testE3ReplacementTwoResolvedSingleTapsToggleTwice` | 通过（替代断言） |
+| E4 | `testE4ReplacementRecognizedDoubleTapMatchesDirectDoubleTap` | 通过（替代断言） |
+| E5 | `testE5ReadingsExposeAspectRatiosAndDoubleTapTargetScale` | 通过 |
+| E6 | `testE6ReadingsAndParameterPanelsAreMutuallyExclusive` | 通过 |
 
 ### 4.4 IC-056 D1～D8
 
-| 编号 | XCTest 方法 | 当前状态 |
+| 编号 | XCTest 方法 | CI #53 状态 |
 |---|---|---|
-| D1 | `testD1ReplacementScreenAspectFitInsetShrinksShortEdgeToSeventyPercent` | 静态存在；待 CI |
-| D2 | `testD2ZeroFitInsetMatchesPureAspectFit` | 静态存在；待 CI |
-| D3 | `testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged` | 静态存在；待 CI |
-| D4 | `testD4ScreenAspectDoubleTapUsesMinimumScale` | 静态存在；待 CI |
-| D5 | `testD5ReplacementNonScreenDoubleTapUsesAspectFillScale` | 静态存在；待 CI |
-| D6 | `testD6LeftEdgeDoubleTapAlignsLeftContentBoundary` | 静态存在；待 CI |
-| D7 | `testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary` | 静态存在；待 CI |
-| D8 | `testD8DoubleTapExitResetsScaleAndOffset` | 静态存在；待 CI |
+| D1 | `testD1ReplacementScreenAspectFitInsetShrinksShortEdgeToSeventyPercent` | 通过 |
+| D2 | `testD2ZeroFitInsetMatchesPureAspectFit` | 通过 |
+| D3 | `testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged` | 通过 |
+| D4 | `testD4ScreenAspectDoubleTapUsesMinimumScale` | 通过 |
+| D5 | `testD5ReplacementNonScreenDoubleTapUsesAspectFillScale` | 通过 |
+| D6 | `testD6LeftEdgeDoubleTapAlignsLeftContentBoundary` | 通过 |
+| D7 | `testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary` | 通过 |
+| D8 | `testD8DoubleTapExitResetsScaleAndOffset` | 通过 |
 
 ## 5. 失效项清单与替代断言
 
@@ -188,19 +189,46 @@ hapticOnPhotoSwitch=true
 触觉来源、出厂值、参数导出、变更白名单、禁止文件、`debugAssetLimit`、
 `git diff --check`、String Catalog 与仓库结构门禁。
 
-当前 Windows 本地结果：专项脚本 106 项检查全部通过，静态 XCTest 总数 354；String
-Catalog 扫描通过，用户可见硬编码残留 0；`git diff --check` 与仓库结构门禁通过。当前
-Windows 环境没有 Xcode，因此没有伪称本地执行 XCTest；实际 XCTest 交由 macOS CI。
+Windows 本地结果：专项脚本 106 项检查全部通过，静态 XCTest 总数 354；String Catalog
+扫描通过，用户可见硬编码残留 0；`git diff --check` 与仓库结构门禁通过。当前 Windows
+环境没有 Xcode，因此没有伪称本地执行 XCTest；实际 XCTest 已由 macOS CI #53 完成。
 
 ## 8. CI、XCTest 与 IPA
 
-- CI run：首次实现提交推送后更新。
-- 被测提交：首次实现提交推送后更新。
-- 测试总数：静态 354；CI 实际执行数待更新。
-- CI 结论：待 macOS CI 实际执行。
-- XCTest 日志原文：尚未产生。
-- IPA artifact：待 CI 生成。
-- IPA SHA-256：待 artifact 下载后独立复核。
+- CI run：[iOS 构建与自验 #53](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31931934877)。
+- CI job：[构建、XCTest 与未签名产物](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31931934877/job/95127995271)。
+- 被测提交：`12b0b0b1d51961c64c69e559e396649a1046630d`。
+- CI 环境：`macos-15`、Xcode 16.4、iPhone 模拟器。
+- 测试总数：354；十三项专项测试逐项通过，指定 37 项回归逐项通过。
+- CI 结论：`completed/success`；结构自验、硬编码扫描、XCTest、Release 真机构建和
+  artifact 上传全部成功。
+- XCTest 日志原文：
+
+```text
+2026-08-16T06:46:55.6453650Z 	 Executed 354 tests, with 0 failures (0 unexpected) in 10.168 (16.514) seconds
+2026-08-16T06:46:59.5157200Z ** TEST SUCCEEDED **
+```
+
+收敛记录：CI #52 首次实际执行本卡测试时，A2 测试夹具提供 8 个资源标识却把
+`totalAssetCount` 写死为 3，状态机前置条件令该测试初始化失败；产品实现和其他测试没有
+触发该问题。提交 `12b0b0b` 仅把夹具总数改为 `orderedAssetIDs.count`。CI #53 随后完整
+执行 354 项并全绿，没有删除测试、降低数量门槛或放宽触觉次数断言。
+
+### 8.1 IPA artifact
+
+- artifact：[PhotoCleanupMVE-unsigned-12b0b0b1d519](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31931934877/artifacts/9259634362)。
+- artifact ID：`9259634362`；归档字节数：573820；到期时间：2026-11-14 06:39:22 UTC。
+- artifact 归档 SHA-256：`13e7df5c560b6615c7b4eb7c9ef0dcf0b6eccf487e6938e9c5db52e8e1575277`。
+- IPA 文件：`PhotoCleanupMVE-unsigned.ipa`；字节数：573650。
+- IPA SHA-256：`128916ddc7469d993a0199d791fac771bfce1039da653b7c6e820d4c59f01433`。
+- 独立复核：下载后的 artifact 只含唯一预期 IPA，外层归档 SHA-256 与 GitHub 元数据
+  digest 一致；IPA 含 `Payload/PhotoCleanupMVE.app/Info.plist` 与主二进制，共 8 个条目，
+  路径穿越条目、签名目录和描述文件均为 0；本地重算 IPA SHA-256 与 CI 构建日志一致。
+
+CI 按仓库既有流程构建 Release 真机应用并封装为未签名 IPA，不包含开发者账号、设备绑定或
+描述文件。任务禁止账号操作，因此不生成绑定具体账号的签名包；artifact 可下载且 IPA 结构
+有效，在普通未越狱真机上安装前仍需由用户既有签名／侧载链路签名，本任务不冒充完成账号
+签名。
 
 ## 9. 变更文件清单
 
@@ -219,6 +247,8 @@ Windows 环境没有 Xcode，因此没有伪称本地执行 XCTest；实际 XCTe
 
 - 基线：`b58cb2be94953ab58cb07ea06ab34cbcc238eb46`（IC-059 交付分支头）。
 - 独立分支：`feature/ic-060-tap-and-immersive`。
+- 实现提交：`d1c3c3687f62d9eb4fde642a13325c9c1eb9ec0b`；A2 夹具修复提交：
+  `12b0b0b1d51961c64c69e559e396649a1046630d`，CI #53 对后者实际验收。
 - `main` 与 `origin/main` 保持 `bccc2d2deadf37da470b9270f25ecb0312e6d4de`。
 - 未修改任何规格、决策日志、S1/S3/S4/S5、上滑/下滑阈值和语义、图像请求策略默认值、
   `fitInsetRatio`、`fitCornerRadius`、`minDoubleTapScale`、`pageSpacing` 或
