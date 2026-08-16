@@ -45,7 +45,31 @@ jobs:
         run: ./Scripts/scan-hardcoded-user-visible-strings.ps1
 
       - name: 运行 XCTest
-        run: bash Scripts/test-xcode.sh
+        run: |
+          test_log="$(mktemp -t PhotoCleanupMVE-xctest.XXXXXX)"
+          if bash Scripts/test-xcode.sh 2>&1 | tee "$test_log"; then
+            test_status=0
+          else
+            test_status=$?
+          fi
+
+          {
+            echo "### XCTest 原始摘要"
+            echo '```text'
+            /usr/bin/grep -E \
+              '(^| )error:|failed|Executed [0-9]+ tests|TEST (SUCCEEDED|FAILED)' \
+              "$test_log" | tail -n 200 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$test_status" -ne 0 ]; then
+            failure_line="$(
+              /usr/bin/grep -E '(^| )error:|failed|TEST FAILED' "$test_log" |
+                tail -n 1 || true
+            )"
+            echo "::error title=XCTest 失败::${failure_line:-未找到具体错误行，请查看步骤摘要。}"
+          fi
+          exit "$test_status"
 
       - name: 构建未签名应用
         id: package
