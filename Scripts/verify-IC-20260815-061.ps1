@@ -155,7 +155,7 @@ try {
 
     $CI文本 = 读取 ".github/workflows/ci.yml"
     检查 ($CI文本.Contains("::notice title=XCTest 执行摘要::")) "CI 未公开记录 XCTest 执行原文"
-    检查 ($CI文本.Contains("::notice title=未签名 IPA 校验::")) "CI 未公开记录 IPA 字节数与 SHA-256"
+    检查 ($CI文本.Contains('字节数=${ipa_size}，SHA-256=${ipa_sha256}')) "CI 未安全公开记录 IPA 字节数与 SHA-256"
 
     $允许文件 = @(
         ".github/workflows/ci.yml",
