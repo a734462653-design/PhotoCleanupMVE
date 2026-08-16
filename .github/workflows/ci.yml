@@ -46,6 +46,7 @@ jobs:
 
       - name: 运行 XCTest
         run: |
+          set -o pipefail
           test_log="$(mktemp -t PhotoCleanupMVE-xctest.XXXXXX)"
           if bash Scripts/test-xcode.sh 2>&1 | tee "$test_log"; then
             test_status=0
@@ -62,11 +63,18 @@ jobs:
           fi
 
           if [ "$test_status" -ne 0 ]; then
-            failure_line="$(
-              /usr/bin/grep -E '(^| )error:|failed|TEST FAILED' "$test_log" |
-                tail -n 1 || true
+            failure_lines="$(
+              /usr/bin/grep -E \
+                'PhotoCleanupMVETests/.*error:|Test Case .* failed' \
+                "$test_log" | tail -n 50 || true
             )"
-            echo "::error title=XCTest 失败::${failure_line:-未找到具体错误行，请查看步骤摘要。}"
+            if [ -n "$failure_lines" ]; then
+              while IFS= read -r failure_line; do
+                echo "::error title=XCTest 失败::$failure_line"
+              done <<< "$failure_lines"
+            else
+              echo "::error title=XCTest 失败::未找到具体错误行。"
+            fi
           fi
           exit "$test_status"
 
