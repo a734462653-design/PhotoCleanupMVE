@@ -416,12 +416,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(revealed.readingsVisible)
     }
 
-    // L7：完整出厂配置锁定 IC-055 指定值，避免系统惯例项漂移。
+    // L7：完整出厂配置仅按 IC-063 定案把双击最小倍率改为 2。
     func testL7FactoryDefaultsMatchSystemParityDecision() {
         let expected = S2CalibrationConfiguration(
             pinchMaxScale: 4,
             zoomSnapBackThreshold: 1.1,
-            minDoubleTapScale: 2.5,
+            minDoubleTapScale: 2,
             doubleTapAnchorStrategy: .touchPoint,
             edgePagingTriggerDistance: 40,
             edgePagingTriggerVelocity: 300,
@@ -475,7 +475,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "taskID=IC-20260816-063-immersive-fullscreen-and-zoomout"
+                "taskID=IC-20260816-063-s2-immersive-and-doubletap-transition"
             )
         )
         XCTAssertTrue(
@@ -484,7 +484,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             )
         )
         XCTAssertTrue(
-            actual.exportText().contains("minDoubleTapScale=2.500000")
+            actual.exportText().contains("minDoubleTapScale=2.000000")
         )
         XCTAssertTrue(actual.exportText().contains("fitInsetRatio=0.300000"))
         XCTAssertTrue(actual.exportText().contains("fitCornerRadius=28.000000"))
