@@ -64,7 +64,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScale: 4,
         zoomSnapBackThreshold: 1.1,
-        minDoubleTapScale: 2.5,
+        minDoubleTapScale: 2,
         doubleTapAnchorStrategy: .touchPoint,
         edgePagingTriggerDistance: 40,
         edgePagingTriggerVelocity: 300,
@@ -164,7 +164,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260816-063-immersive-fullscreen-and-zoomout"),
+            ("taskID", "IC-20260816-063-s2-immersive-and-doubletap-transition"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
@@ -774,6 +774,7 @@ struct S2ViewportMetrics: Equatable {
     let assetAspectRatio: CGFloat
     let viewportAspectRatio: CGFloat
     let aspectFitSize: CGSize
+    let nativeZoomBaseSize: CGSize
     let isFramedPhoto: Bool
     let oneXDisplaySize: CGSize
     let oneXCornerRadius: CGFloat
@@ -823,6 +824,7 @@ enum S2ViewportLayout {
             assetAspectRatio: assetAspectRatio,
             viewportAspectRatio: viewportAspectRatio,
             aspectFitSize: fitSize,
+            nativeZoomBaseSize: applies ? physicalSize : fitSize,
             isFramedPhoto: applies,
             oneXDisplaySize: displaySize,
             oneXCornerRadius: keepsFrame

@@ -13,8 +13,10 @@ struct S2NativePageContent {
     let interfaceVisibility: S2InterfaceVisibility
     let isFramedPhoto: Bool
     let fittedSize: CGSize
+    let nativeZoomBaseSize: CGSize
     let cornerRadius: CGFloat
     let doubleTapTargetScale: CGFloat
+    let assetPixelSize: CGSize
     let contentVersion: S2NativePhotoContentVersion
     let content: AnyView
 }
@@ -65,11 +67,15 @@ struct S2ImmersiveTransition: Equatable {
     }
 
     func layerCornerRadius(at progress: CGFloat) -> CGFloat {
+        frame(at: progress).cornerRadius
+    }
+
+    func size(at progress: CGFloat) -> CGSize {
         let frame = frame(at: progress)
-        guard frame.scale > 0 else {
-            return frame.cornerRadius
-        }
-        return frame.cornerRadius / frame.scale
+        return CGSize(
+            width: layoutSize.width * frame.scaleX,
+            height: layoutSize.height * frame.scaleY
+        )
     }
 }
 
@@ -120,15 +126,19 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
     let viewportSize: CGSize
     let pages: [S2NativePageContent]
     let onLongPress: () -> Void
+    let diagnosticsCoordinator: S2GeometryDiagnosticsCoordinator
 
     func makeUIViewController(context _: Context) -> S2NativePagerViewController {
-        S2NativePagerViewController()
+        let controller = S2NativePagerViewController()
+        diagnosticsCoordinator.attach(controller)
+        return controller
     }
 
     func updateUIViewController(
         _ controller: S2NativePagerViewController,
         context _: Context
     ) {
+        diagnosticsCoordinator.attach(controller)
         controller.apply(
             machine: machine,
             configuration: configuration,
@@ -143,6 +153,7 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
         coordinator _: ()
     ) {
         controller.resetInteractionState()
+        controller.diagnosticsRun = nil
     }
 }
 
@@ -233,6 +244,8 @@ final class S2NativeZoomScrollView: UIScrollView {
     private(set) weak var zoomContentView: UIView?
     private(set) weak var presentationContentView: UIView?
     private(set) var fittedSize = CGSize.zero
+    private(set) var nativeZoomBaseSize = CGSize.zero
+    private(set) var viewportSize = CGSize.zero
     private(set) var nativeZoomInvocationCount = 0
     private(set) var lastNativeZoomRect: CGRect?
     private(set) var minimumZoomScaleAnimationInvocationCount = 0
@@ -254,6 +267,8 @@ final class S2NativeZoomScrollView: UIScrollView {
     func configure(
         contentView: UIView,
         fittedSize: CGSize,
+        nativeZoomBaseSize: CGSize,
+        viewportSize: CGSize,
         maximumZoomScale: CGFloat
     ) {
         let nextMaximumScale = max(1, maximumZoomScale)
@@ -277,49 +292,43 @@ final class S2NativeZoomScrollView: UIScrollView {
             zoomContentView.addSubview(contentView)
         }
 
-        let nextSize = CGSize(
+        let nextFittedSize = CGSize(
             width: max(0, fittedSize.width),
             height: max(0, fittedSize.height)
         )
-        guard self.fittedSize != nextSize else {
-            enforceOneXContentGeometry(
-                zoomContentView: zoomContentView,
-                contentView: contentView,
-                fittedSize: nextSize
-            )
-            if zoomScale > nextMaximumScale {
-                setZoomScale(nextMaximumScale, animated: false)
-            }
-            updatePanAvailability()
-            return
-        }
-
-        let previousScale = min(zoomScale, nextMaximumScale)
-        isApplyingNativeState = true
-        if zoomScale != 1 {
-            setZoomScale(1, animated: false)
-        }
-        self.fittedSize = nextSize
-        zoomContentView.transform = .identity
-        zoomContentView.frame = CGRect(origin: .zero, size: nextSize)
-        contentView.transform = .identity
-        contentView.bounds = CGRect(origin: .zero, size: nextSize)
-        contentView.center = CGPoint(
-            x: zoomContentView.bounds.midX,
-            y: zoomContentView.bounds.midY
+        let nextNativeZoomBaseSize = CGSize(
+            width: max(0, nativeZoomBaseSize.width),
+            height: max(0, nativeZoomBaseSize.height)
         )
-        contentSize = nextSize
-        if previousScale > 1 {
-            setZoomScale(previousScale, animated: false)
+        let nextViewportSize = CGSize(
+            width: max(0, viewportSize.width),
+            height: max(0, viewportSize.height)
+        )
+        let geometryChanged = self.fittedSize != nextFittedSize ||
+            self.nativeZoomBaseSize != nextNativeZoomBaseSize ||
+            self.viewportSize != nextViewportSize
+        self.fittedSize = nextFittedSize
+        self.nativeZoomBaseSize = nextNativeZoomBaseSize
+        self.viewportSize = nextViewportSize
+
+        if zoomScale > nextMaximumScale {
+            setZoomScale(nextMaximumScale, animated: false)
         }
-        isApplyingNativeState = false
-        setNeedsLayout()
-        layoutIfNeeded()
+        if geometryChanged,
+           abs(zoomScale - minimumZoomScale) <= 0.000_001 {
+            enforceOneXContentGeometry()
+        }
         updatePanAvailability()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if abs(zoomScale - minimumZoomScale) <= 0.000_001 {
+            if contentInset != .zero {
+                contentInset = .zero
+            }
+            return
+        }
         let nextInset = UIEdgeInsets(
             top: max(0, (bounds.height - contentSize.height) / 2),
             left: max(0, (bounds.width - contentSize.width) / 2),
@@ -336,14 +345,17 @@ final class S2NativeZoomScrollView: UIScrollView {
         targetScale: CGFloat,
         animated: Bool
     ) -> CGRect? {
-        guard let zoomContentView,
-              bounds.width > 0,
+        guard bounds.width > 0,
               bounds.height > 0,
               targetScale.isFinite,
               targetScale > 1 else {
             return nil
         }
-        let pointInContent = convert(pointInViewport, to: zoomContentView)
+        let baseOrigin = oneXNativeBaseOrigin
+        let pointInContent = CGPoint(
+            x: pointInViewport.x - baseOrigin.x,
+            y: pointInViewport.y - baseOrigin.y
+        )
         let targetRect = CGRect(
             x: pointInContent.x - bounds.width / (2 * targetScale),
             y: pointInContent.y - bounds.height / (2 * targetScale),
@@ -352,7 +364,12 @@ final class S2NativeZoomScrollView: UIScrollView {
         )
         lastNativeZoomRect = targetRect
         nativeZoomInvocationCount += 1
-        zoom(to: targetRect, animated: animated)
+        if !animated {
+            applyDoubleTapTarget(
+                scale: targetScale,
+                focusPoint: pointInViewport
+            )
+        }
         return targetRect
     }
 
@@ -385,17 +402,27 @@ final class S2NativeZoomScrollView: UIScrollView {
         }
         let nextScale = min(maximumZoomScale, max(minimumZoomScale, scale))
         isApplyingNativeState = true
-        if abs(zoomScale - nextScale) > 0.000_001 {
-            setZoomScale(nextScale, animated: false)
+        if nextScale > minimumZoomScale + 0.000_001 {
+            prepareNativeZoomGeometry()
+            if abs(zoomScale - nextScale) > 0.000_001 {
+                setZoomScale(nextScale, animated: false)
+            }
+        } else {
+            if abs(zoomScale - minimumZoomScale) > 0.000_001 {
+                setZoomScale(minimumZoomScale, animated: false)
+            }
+            enforceOneXContentGeometry()
         }
         setNeedsLayout()
         layoutIfNeeded()
-        let nextOffset = CGPoint(
-            x: zoomContentView.frame.midX - bounds.width / 2 -
-                viewportOffset.width,
-            y: zoomContentView.frame.midY - bounds.height / 2 -
-                viewportOffset.height
-        )
+        let nextOffset = nextScale > minimumZoomScale + 0.000_001
+            ? CGPoint(
+                x: zoomContentView.frame.midX - bounds.width / 2 -
+                    viewportOffset.width,
+                y: zoomContentView.frame.midY - bounds.height / 2 -
+                    viewportOffset.height
+            )
+            : .zero
         if abs(contentOffset.x - nextOffset.x) > 0.000_001 ||
             abs(contentOffset.y - nextOffset.y) > 0.000_001 {
             independentContentOffsetWriteCount += 1
@@ -403,6 +430,112 @@ final class S2NativeZoomScrollView: UIScrollView {
         }
         isApplyingNativeState = false
         updatePanAvailability()
+    }
+
+    struct DoubleTapTarget: Equatable {
+        let presentationFrame: CGRect
+        let contentOffset: CGPoint
+    }
+
+    func doubleTapTarget(
+        scale: CGFloat,
+        focusPoint: CGPoint
+    ) -> DoubleTapTarget? {
+        guard scale.isFinite,
+              scale > 1,
+              viewportSize.width > 0,
+              viewportSize.height > 0,
+              nativeZoomBaseSize.width > 0,
+              nativeZoomBaseSize.height > 0 else {
+            return nil
+        }
+        let baseOrigin = oneXNativeBaseOrigin
+        let pointInBase = CGPoint(
+            x: min(
+                nativeZoomBaseSize.width,
+                max(0, focusPoint.x - baseOrigin.x)
+            ),
+            y: min(
+                nativeZoomBaseSize.height,
+                max(0, focusPoint.y - baseOrigin.y)
+            )
+        )
+        let scaledSize = CGSize(
+            width: nativeZoomBaseSize.width * scale,
+            height: nativeZoomBaseSize.height * scale
+        )
+        let maximumOffset = CGPoint(
+            x: max(0, scaledSize.width - viewportSize.width),
+            y: max(0, scaledSize.height - viewportSize.height)
+        )
+        let offset = CGPoint(
+            x: min(
+                maximumOffset.x,
+                max(0, pointInBase.x * scale - viewportSize.width / 2)
+            ),
+            y: min(
+                maximumOffset.y,
+                max(0, pointInBase.y * scale - viewportSize.height / 2)
+            )
+        )
+        let origin = CGPoint(
+            x: scaledSize.width < viewportSize.width
+                ? (viewportSize.width - scaledSize.width) / 2
+                : -offset.x,
+            y: scaledSize.height < viewportSize.height
+                ? (viewportSize.height - scaledSize.height) / 2
+                : -offset.y
+        )
+        return DoubleTapTarget(
+            presentationFrame: CGRect(origin: origin, size: scaledSize),
+            contentOffset: offset
+        )
+    }
+
+    @discardableResult
+    func applyDoubleTapTarget(
+        scale: CGFloat,
+        focusPoint: CGPoint
+    ) -> DoubleTapTarget? {
+        guard let target = doubleTapTarget(
+            scale: scale,
+            focusPoint: focusPoint
+        ) else {
+            return nil
+        }
+        isApplyingNativeState = true
+        prepareNativeZoomGeometry()
+        setZoomScale(scale, animated: false)
+        setNeedsLayout()
+        layoutIfNeeded()
+        setContentOffset(target.contentOffset, animated: false)
+        isApplyingNativeState = false
+        updatePanAvailability()
+        return target
+    }
+
+    func prepareForNativeZoom() {
+        guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
+            return
+        }
+        prepareNativeZoomGeometry()
+    }
+
+    func restoreOneXGeometry() {
+        guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
+            return
+        }
+        enforceOneXContentGeometry()
+        updatePanAvailability()
+    }
+
+    var oneXPresentationFrame: CGRect {
+        CGRect(
+            x: (viewportSize.width - fittedSize.width) / 2,
+            y: (viewportSize.height - fittedSize.height) / 2,
+            width: fittedSize.width,
+            height: fittedSize.height
+        )
     }
 
     func reportedViewportOffset() -> CGSize {
@@ -459,25 +592,69 @@ final class S2NativeZoomScrollView: UIScrollView {
         }
     }
 
-    private func enforceOneXContentGeometry(
-        zoomContentView: UIView,
-        contentView: UIView,
-        fittedSize: CGSize
-    ) {
+    private var oneXNativeBaseOrigin: CGPoint {
+        CGPoint(
+            x: (viewportSize.width - nativeZoomBaseSize.width) / 2,
+            y: (viewportSize.height - nativeZoomBaseSize.height) / 2
+        )
+    }
+
+    private func enforceOneXContentGeometry() {
         guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
             return
         }
+        guard let zoomContentView,
+              let contentView = presentationContentView else {
+            return
+        }
         zoomContentView.transform = .identity
-        zoomContentView.frame = CGRect(origin: .zero, size: fittedSize)
+        zoomContentView.bounds = CGRect(
+            origin: .zero,
+            size: nativeZoomBaseSize
+        )
+        zoomContentView.center = CGPoint(
+            x: viewportSize.width / 2,
+            y: viewportSize.height / 2
+        )
         contentView.transform = .identity
         contentView.bounds = CGRect(origin: .zero, size: fittedSize)
         contentView.center = CGPoint(
             x: zoomContentView.bounds.midX,
             y: zoomContentView.bounds.midY
         )
-        contentSize = fittedSize
+        contentInset = .zero
+        contentSize = viewportSize
+        if contentOffset != .zero {
+            setContentOffset(.zero, animated: false)
+        }
         setNeedsLayout()
         layoutIfNeeded()
+    }
+
+    private func prepareNativeZoomGeometry() {
+        guard let zoomContentView,
+              let contentView = presentationContentView else {
+            return
+        }
+        if abs(zoomScale - minimumZoomScale) <= 0.000_001 {
+            zoomContentView.transform = .identity
+            zoomContentView.frame = CGRect(
+                origin: .zero,
+                size: nativeZoomBaseSize
+            )
+            contentView.transform = .identity
+            contentView.bounds = CGRect(
+                origin: .zero,
+                size: nativeZoomBaseSize
+            )
+            contentView.center = CGPoint(
+                x: zoomContentView.bounds.midX,
+                y: zoomContentView.bounds.midY
+            )
+            contentSize = nativeZoomBaseSize
+            setNeedsLayout()
+            layoutIfNeeded()
+        }
     }
 
     private func configureNativeZoom() {
@@ -507,6 +684,89 @@ final class S2SingleTapGestureRecognizer: UITapGestureRecognizer {
     }
 }
 
+struct S2DoubleTapTransition: Equatable {
+    let sourceFrame: CGRect
+    let targetFrame: CGRect
+    let sourceCornerRadius: CGFloat
+    let targetCornerRadius: CGFloat
+    let sourceZoomScale: CGFloat
+    let targetZoomScale: CGFloat
+    let isEnteringNx: Bool
+
+    func frame(at progress: CGFloat) -> CGRect {
+        let value = min(1, max(0, progress))
+        return CGRect(
+            x: sourceFrame.minX +
+                (targetFrame.minX - sourceFrame.minX) * value,
+            y: sourceFrame.minY +
+                (targetFrame.minY - sourceFrame.minY) * value,
+            width: sourceFrame.width +
+                (targetFrame.width - sourceFrame.width) * value,
+            height: sourceFrame.height +
+                (targetFrame.height - sourceFrame.height) * value
+        )
+    }
+
+    func cornerRadius(at progress: CGFloat) -> CGFloat {
+        let value = min(1, max(0, progress))
+        return sourceCornerRadius +
+            (targetCornerRadius - sourceCornerRadius) * value
+    }
+
+    func transform(at progress: CGFloat) -> CGAffineTransform {
+        let frame = frame(at: progress)
+        guard sourceFrame.width > 0, sourceFrame.height > 0 else {
+            return .identity
+        }
+        return CGAffineTransform(
+            a: frame.width / sourceFrame.width,
+            b: 0,
+            c: 0,
+            d: frame.height / sourceFrame.height,
+            tx: frame.midX - sourceFrame.midX,
+            ty: frame.midY - sourceFrame.midY
+        )
+    }
+}
+
+struct S2DoubleTapSynchronizationReading: Equatable {
+    let beforeWindowFrame: CGRect
+    let afterWindowFrame: CGRect
+
+    var maximumDifference: CGFloat {
+        [
+            abs(beforeWindowFrame.minX - afterWindowFrame.minX),
+            abs(beforeWindowFrame.minY - afterWindowFrame.minY),
+            abs(beforeWindowFrame.width - afterWindowFrame.width),
+            abs(beforeWindowFrame.height - afterWindowFrame.height)
+        ].max() ?? 0
+    }
+}
+
+enum S2DoubleTapTransitionEvent {
+    case started(S2DoubleTapTransition)
+    case progressed(S2DoubleTapTransition, CGFloat)
+    case completed(
+        S2DoubleTapTransition,
+        S2DoubleTapSynchronizationReading
+    )
+}
+
+private final class S2DoubleTapTransitionView: UIView {
+    init(snapshotView: UIView, sourceFrame: CGRect) {
+        super.init(frame: sourceFrame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        snapshotView.frame = bounds
+        snapshotView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(snapshotView)
+    }
+
+    required init?(coder: NSCoder) {
+        return nil
+    }
+}
+
 final class S2NativeZoomPageController: UIViewController,
     UIScrollViewDelegate,
     UIGestureRecognizerDelegate {
@@ -522,13 +782,20 @@ final class S2NativeZoomPageController: UIViewController,
     private var isFramedPhoto: Bool
     private var contentVersion: S2NativePhotoContentVersion
     private(set) var fittedSize: CGSize
+    private(set) var nativeZoomBaseSize: CGSize
     private(set) var cornerRadius: CGFloat
     private(set) var doubleTapTargetScale: CGFloat
+    private(set) var assetPixelSize: CGSize
     private(set) var lastPresentationTransitionDuration: TimeInterval = 0
     private(set) var lastPresentationTransition: S2ImmersiveTransition?
     private(set) var isPresentationTransitionActive = false
     private(set) var presentationTransitionCount = 0
     private(set) var presentationGeometryCommitCount = 0
+    private(set) var isDoubleTapTransitionActive = false
+    private(set) var lastDoubleTapTransition: S2DoubleTapTransition?
+    private(set) var lastDoubleTapSynchronization:
+        S2DoubleTapSynchronizationReading?
+    private(set) var doubleTapTransitionProgressSamples: [CGFloat] = []
     private(set) var lastTapDecisionReading: S2TapDecisionReading?
     private var pendingPresentationPage: S2NativePageContent?
     private var presentationTransitionGeneration = 0
@@ -541,6 +808,16 @@ final class S2NativeZoomPageController: UIViewController,
     private var pinchPeakVelocity: CGFloat = 0
     private var verticalSwipeStartDate: Date?
     private var singleTapTouchTimestamp: TimeInterval?
+    private var doubleTapTransitionView: S2DoubleTapTransitionView?
+    private var doubleTapDisplayLink: CADisplayLink?
+    private var doubleTapTransitionStartTimestamp: CFTimeInterval?
+    private var doubleTapTransitionDuration: TimeInterval = 0
+    private var doubleTapFocusPoint = CGPoint.zero
+    private var activeDoubleTapTargetScale: CGFloat = 1
+    private var doubleTapTargetPage: S2NativePageContent?
+    private var doubleTapLatestPage: S2NativePageContent?
+    var doubleTapTransitionObserver:
+        ((S2DoubleTapTransitionEvent) -> Void)?
     private var tapDecisionPolicy = S2TapDecisionDiagnosticPolicy(
         configuration: .factoryPlaceholder
     )
@@ -548,6 +825,18 @@ final class S2NativeZoomPageController: UIViewController,
 
     var hasDeferredPresentation: Bool {
         pendingPresentationPage != nil && !isPresentationTransitionActive
+    }
+
+    var diagnosticInterfaceVisibility: S2InterfaceVisibility {
+        interfaceVisibility
+    }
+
+    var diagnosticAdditionalSafeAreaInsets: UIEdgeInsets {
+        hostingController.additionalSafeAreaInsets
+    }
+
+    var diagnosticTransitionTransform: CGAffineTransform {
+        doubleTapTransitionView?.transform ?? .identity
     }
 
     init(
@@ -560,8 +849,10 @@ final class S2NativeZoomPageController: UIViewController,
         isFramedPhoto = page.isFramedPhoto
         contentVersion = page.contentVersion
         fittedSize = page.fittedSize
+        nativeZoomBaseSize = page.nativeZoomBaseSize
         cornerRadius = page.cornerRadius
         doubleTapTargetScale = page.doubleTapTargetScale
+        assetPixelSize = page.assetPixelSize
         hostingController = UIHostingController(rootView: page.content)
         self.owner = owner
         super.init(nibName: nil, bundle: nil)
@@ -572,17 +863,28 @@ final class S2NativeZoomPageController: UIViewController,
     }
 
     override func loadView() {
-        view = zoomScrollView
+        let rootView = UIView()
+        rootView.backgroundColor = .clear
+        rootView.clipsToBounds = true
+        rootView.insetsLayoutMarginsFromSafeArea = false
+        zoomScrollView.frame = rootView.bounds
+        zoomScrollView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        rootView.addSubview(zoomScrollView)
+        view = rootView
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        additionalSafeAreaInsets = .zero
         zoomScrollView.delegate = self
         hostingController.view.backgroundColor = .clear
+        hostingController.additionalSafeAreaInsets = .zero
         addChild(hostingController)
         zoomScrollView.configure(
             contentView: hostingController.view,
             fittedSize: fittedSize,
+            nativeZoomBaseSize: nativeZoomBaseSize,
+            viewportSize: latestViewportSize,
             maximumZoomScale: 1
         )
         applyCornerMask()
@@ -654,6 +956,10 @@ final class S2NativeZoomPageController: UIViewController,
         verticalSwipeRecognizer.maximumNumberOfTouches = verticalTouchCount
 
         let sameAsset = assetID == page.assetID
+        if isDoubleTapTransitionActive, sameAsset {
+            doubleTapLatestPage = page
+            return
+        }
         let presentationChanged = sameAsset &&
             interfaceVisibility != page.interfaceVisibility &&
             isFramedPhoto && page.isFramedPhoto &&
@@ -686,12 +992,15 @@ final class S2NativeZoomPageController: UIViewController,
                 zoomScrollView.configure(
                     contentView: hostingController.view,
                     fittedSize: fittedSize,
+                    nativeZoomBaseSize: nativeZoomBaseSize,
+                    viewportSize: viewportSize,
                     maximumZoomScale: CGFloat(configuration.pinchMaxScale)
                 )
                 zoomScrollView.applyNativeState(
                     scale: isCurrent ? scale : 1,
                     viewportOffset: isCurrent ? viewportOffset : .zero
                 )
+                applyCornerMask()
             }
             return
         }
@@ -728,12 +1037,14 @@ final class S2NativeZoomPageController: UIViewController,
                 scale: isCurrent ? scale : 1,
                 viewportOffset: isCurrent ? viewportOffset : .zero
             )
+            applyCornerMask()
         }
     }
 
     func resetZoom() {
         pinchIsActive = false
         zoomScrollView.applyNativeState(scale: 1, viewportOffset: .zero)
+        applyCornerMask()
         applyDeferredPresentationIfPossible()
     }
 
@@ -743,8 +1054,236 @@ final class S2NativeZoomPageController: UIViewController,
         }
         presentationTransitionGeneration += 1
         zoomScrollView.presentationContentView?.layer.removeAllAnimations()
-        zoomScrollView.zoomContentView?.layer.removeAllAnimations()
         commitPresentation(page)
+    }
+
+    @discardableResult
+    func startDoubleTapTransition(
+        enteringNx: Bool,
+        targetScale: CGFloat,
+        at focusPoint: CGPoint,
+        configuration: S2CalibrationConfiguration
+    ) -> Bool {
+        guard !isDoubleTapTransitionActive,
+              !isPresentationTransitionActive,
+              let presentationContentView =
+                zoomScrollView.presentationContentView else {
+            return false
+        }
+        view.layoutIfNeeded()
+        let sourceFrame = presentationContentView.convert(
+            presentationContentView.bounds,
+            to: view
+        )
+        let targetFrame: CGRect
+        let targetCornerRadius: CGFloat
+        if enteringNx {
+            guard let target = zoomScrollView.doubleTapTarget(
+                scale: targetScale,
+                focusPoint: focusPoint
+            ) else {
+                return false
+            }
+            targetFrame = target.presentationFrame
+            targetCornerRadius = 0
+            doubleTapTargetPage = nil
+        } else {
+            let page = pendingPresentationPage
+            let targetSize = page?.fittedSize ?? fittedSize
+            targetFrame = CGRect(
+                x: (view.bounds.width - targetSize.width) / 2,
+                y: (view.bounds.height - targetSize.height) / 2,
+                width: targetSize.width,
+                height: targetSize.height
+            )
+            targetCornerRadius = page?.cornerRadius ?? cornerRadius
+            doubleTapTargetPage = page
+        }
+        guard sourceFrame.width > 0,
+              sourceFrame.height > 0,
+              targetFrame.width > 0,
+              targetFrame.height > 0 else {
+            return false
+        }
+
+        let transition = S2DoubleTapTransition(
+            sourceFrame: sourceFrame,
+            targetFrame: targetFrame,
+            sourceCornerRadius:
+                presentationContentView.layer.cornerRadius,
+            targetCornerRadius: targetCornerRadius,
+            sourceZoomScale: zoomScrollView.zoomScale,
+            targetZoomScale: targetScale,
+            isEnteringNx: enteringNx
+        )
+        let transitionView = S2DoubleTapTransitionView(
+            snapshotView: makeDoubleTapSnapshot(),
+            sourceFrame: sourceFrame
+        )
+        transitionView.layer.cornerCurve = .continuous
+        transitionView.layer.cornerRadius = transition.sourceCornerRadius
+        transitionView.layer.masksToBounds =
+            transition.sourceCornerRadius > 0 ||
+                transition.targetCornerRadius > 0
+        view.addSubview(transitionView)
+
+        lastDoubleTapTransition = transition
+        lastDoubleTapSynchronization = nil
+        doubleTapTransitionProgressSamples = []
+        doubleTapTransitionView = transitionView
+        doubleTapFocusPoint = focusPoint
+        activeDoubleTapTargetScale = targetScale
+        doubleTapLatestPage = nil
+        doubleTapTransitionStartTimestamp = nil
+        let policy = S2AnimationPolicy(configuration: configuration)
+        doubleTapTransitionDuration = policy.shouldAnimate
+            ? policy.durationSeconds
+            : 0
+        isDoubleTapTransitionActive = true
+        presentationContentView.isHidden = true
+        zoomScrollView.isUserInteractionEnabled = false
+        doubleTapTransitionObserver?(.started(transition))
+
+        guard doubleTapTransitionDuration > 0,
+              view.window != nil else {
+            applyDoubleTapTransitionProgress(1)
+            finishActiveDoubleTapTransition()
+            return true
+        }
+        let displayLink = CADisplayLink(
+            target: self,
+            selector: #selector(advanceDoubleTapTransition(_:))
+        )
+        doubleTapDisplayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
+        return true
+    }
+
+    func finishActiveDoubleTapTransition() {
+        guard isDoubleTapTransitionActive,
+              let transition = lastDoubleTapTransition,
+              let transitionView = doubleTapTransitionView,
+              let presentationContentView =
+                zoomScrollView.presentationContentView else {
+            return
+        }
+        doubleTapDisplayLink?.invalidate()
+        doubleTapDisplayLink = nil
+        applyDoubleTapTransitionProgress(1)
+        let window = view.window
+        let beforeFrame = transitionView.convert(
+            transitionView.bounds,
+            to: window
+        )
+
+        if transition.isEnteringNx {
+            _ = zoomScrollView.applyDoubleTapTarget(
+                scale: activeDoubleTapTargetScale,
+                focusPoint: doubleTapFocusPoint
+            )
+            applyCornerMask()
+        } else {
+            let targetPage = doubleTapLatestPage ?? doubleTapTargetPage
+            if let targetPage {
+                let geometryChanged = fittedSize != targetPage.fittedSize ||
+                    cornerRadius != targetPage.cornerRadius ||
+                    interfaceVisibility != targetPage.interfaceVisibility
+                applyPageImmediately(
+                    targetPage,
+                    configuration: latestConfiguration,
+                    countsAsPresentationCommit: geometryChanged
+                )
+            }
+            zoomScrollView.applyNativeState(
+                scale: 1,
+                viewportOffset: .zero
+            )
+            applyCornerMask()
+        }
+
+        if transition.isEnteringNx,
+           let actualFrame = zoomScrollView.visiblePresentationFrame() {
+            let targetFrame = transition.targetFrame
+            let correction = CGPoint(
+                x: actualFrame.minX - targetFrame.minX,
+                y: actualFrame.minY - targetFrame.minY
+            )
+            if abs(correction.x) > 0.000_001 ||
+                abs(correction.y) > 0.000_001 {
+                zoomScrollView.setContentOffset(
+                    CGPoint(
+                        x: zoomScrollView.contentOffset.x + correction.x,
+                        y: zoomScrollView.contentOffset.y + correction.y
+                    ),
+                    animated: false
+                )
+            }
+        }
+        let afterFrame = presentationContentView.convert(
+            presentationContentView.bounds,
+            to: window
+        )
+        let reading = S2DoubleTapSynchronizationReading(
+            beforeWindowFrame: beforeFrame,
+            afterWindowFrame: afterFrame
+        )
+        lastDoubleTapSynchronization = reading
+
+        presentationContentView.isHidden = false
+        transitionView.removeFromSuperview()
+        doubleTapTransitionView = nil
+        doubleTapTargetPage = nil
+        doubleTapLatestPage = nil
+        isDoubleTapTransitionActive = false
+        zoomScrollView.isUserInteractionEnabled = true
+        owner?.doubleTapTransitionDidComplete(on: self)
+        doubleTapTransitionObserver?(.completed(transition, reading))
+    }
+
+    private func makeDoubleTapSnapshot() -> UIView {
+        if let snapshot = hostingController.view.snapshotView(
+            afterScreenUpdates: false
+        ) {
+            return snapshot
+        }
+        let renderer = UIGraphicsImageRenderer(
+            bounds: hostingController.view.bounds
+        )
+        let image = renderer.image { context in
+            hostingController.view.layer.render(in: context.cgContext)
+        }
+        return UIImageView(image: image)
+    }
+
+    private func applyDoubleTapTransitionProgress(_ progress: CGFloat) {
+        guard let transition = lastDoubleTapTransition,
+              let transitionView = doubleTapTransitionView else {
+            return
+        }
+        let value = min(1, max(0, progress))
+        transitionView.transform = transition.transform(at: value)
+        transitionView.layer.cornerRadius = transition.cornerRadius(at: value)
+        if value > 0, value < 1 {
+            doubleTapTransitionProgressSamples.append(value)
+        }
+        doubleTapTransitionObserver?(.progressed(transition, value))
+    }
+
+    @objc private func advanceDoubleTapTransition(
+        _ displayLink: CADisplayLink
+    ) {
+        if doubleTapTransitionStartTimestamp == nil {
+            doubleTapTransitionStartTimestamp = displayLink.timestamp
+        }
+        let elapsed = displayLink.timestamp -
+            (doubleTapTransitionStartTimestamp ?? displayLink.timestamp)
+        let progress = doubleTapTransitionDuration > 0
+            ? CGFloat(elapsed / doubleTapTransitionDuration)
+            : 1
+        applyDoubleTapTransitionProgress(progress)
+        if progress >= 1 {
+            finishActiveDoubleTapTransition()
+        }
     }
 
     private func startPresentationTransition(
@@ -787,14 +1326,13 @@ final class S2NativeZoomPageController: UIViewController,
         presentationTransitionCount += 1
         presentationTransitionGeneration += 1
         let generation = presentationTransitionGeneration
-        let targetFrame = transition.frame(at: 1)
         let targetLayerCornerRadius = transition.layerCornerRadius(at: 1)
         presentationContentView.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        presentationContentView.transform = .identity
         presentationContentView.layer.cornerCurve = .continuous
         presentationContentView.layer.masksToBounds =
             transition.sourceCornerRadius > 0 ||
                 transition.targetCornerRadius > 0
-        zoomScrollView.zoomContentView?.layer.cornerCurve = .continuous
 
         UIView.animate(
             withDuration: animationPolicy.durationSeconds,
@@ -805,13 +1343,15 @@ final class S2NativeZoomPageController: UIViewController,
                 .curveLinear
             ],
             animations: {
-                presentationContentView.transform = CGAffineTransform(
-                    scaleX: targetFrame.scaleX,
-                    y: targetFrame.scaleY
+                presentationContentView.bounds = CGRect(
+                    origin: .zero,
+                    size: transition.targetSize
+                )
+                presentationContentView.center = CGPoint(
+                    x: self.zoomScrollView.zoomContentView?.bounds.midX ?? 0,
+                    y: self.zoomScrollView.zoomContentView?.bounds.midY ?? 0
                 )
                 presentationContentView.layer.cornerRadius =
-                    targetLayerCornerRadius
-                self.zoomScrollView.zoomContentView?.layer.cornerRadius =
                     targetLayerCornerRadius
             },
             completion: { [weak self] finished in
@@ -852,6 +1392,8 @@ final class S2NativeZoomPageController: UIViewController,
                 page.interfaceVisibility &&
             pendingPresentationPage.isFramedPhoto == page.isFramedPhoto &&
             pendingPresentationPage.fittedSize == page.fittedSize &&
+            pendingPresentationPage.nativeZoomBaseSize ==
+                page.nativeZoomBaseSize &&
             pendingPresentationPage.cornerRadius == page.cornerRadius
     }
 
@@ -866,6 +1408,7 @@ final class S2NativeZoomPageController: UIViewController,
                 scale: 1,
                 viewportOffset: .zero
             )
+            self.applyCornerMask()
         }
     }
 
@@ -876,18 +1419,21 @@ final class S2NativeZoomPageController: UIViewController,
     ) {
         presentationTransitionGeneration += 1
         zoomScrollView.presentationContentView?.layer.removeAllAnimations()
-        zoomScrollView.zoomContentView?.layer.removeAllAnimations()
         isPresentationTransitionActive = false
         pendingPresentationPage = nil
         assetID = page.assetID
         interfaceVisibility = page.interfaceVisibility
         isFramedPhoto = page.isFramedPhoto
         fittedSize = page.fittedSize
+        nativeZoomBaseSize = page.nativeZoomBaseSize
         cornerRadius = page.cornerRadius
+        assetPixelSize = page.assetPixelSize
         applyPhotoContent(page, onlyIfVersionChanged: false)
         zoomScrollView.configure(
             contentView: hostingController.view,
             fittedSize: fittedSize,
+            nativeZoomBaseSize: nativeZoomBaseSize,
+            viewportSize: latestViewportSize,
             maximumZoomScale: CGFloat(configuration.pinchMaxScale)
         )
         applyCornerMask()
@@ -960,6 +1506,8 @@ final class S2NativeZoomPageController: UIViewController,
               owner?.beginNativePinch(on: self) == true else {
             return
         }
+        zoomScrollView.prepareForNativeZoom()
+        applyCornerMask(forceNx: true)
         pinchIsActive = true
         pinchStartDate = Date()
         pinchStartScale = zoomScrollView.zoomScale
@@ -1021,6 +1569,8 @@ final class S2NativeZoomPageController: UIViewController,
         guard scrollView === zoomScrollView else {
             return
         }
+        zoomScrollView.restoreOneXGeometry()
+        applyCornerMask()
         applyDeferredPresentationIfPossible()
     }
 
@@ -1052,13 +1602,16 @@ final class S2NativeZoomPageController: UIViewController,
         return true
     }
 
-    private func applyCornerMask() {
-        let resolvedRadius = max(0, cornerRadius)
+    private func applyCornerMask(forceNx: Bool = false) {
+        let resolvedRadius = forceNx || zoomScrollView.zoomScale >
+            zoomScrollView.minimumZoomScale + 0.000_001
+            ? 0
+            : max(0, cornerRadius)
+        hostingController.view.transform = .identity
         hostingController.view.layer.cornerRadius = resolvedRadius
         hostingController.view.layer.cornerCurve = .continuous
         hostingController.view.layer.masksToBounds = resolvedRadius > 0
-        zoomScrollView.zoomContentView?.layer.cornerRadius = resolvedRadius
-        zoomScrollView.zoomContentView?.layer.cornerCurve = .continuous
+        zoomScrollView.zoomContentView?.layer.cornerRadius = 0
         zoomScrollView.zoomContentView?.layer.masksToBounds = false
     }
 
@@ -1130,6 +1683,7 @@ final class S2NativePagerViewController: UIViewController,
     private var nXEdgePagingInteraction: S2NxEdgePagingInteraction?
     private var lastNXEdgePagingProjection: S2NxEdgePagingProjection?
     private(set) var nativeZoomReturnInvocationCount = 0
+    var diagnosticsRun: S2GeometryDiagnosticsRun?
 
     override func loadView() {
         let rootView = UIView()
@@ -1229,11 +1783,139 @@ final class S2NativePagerViewController: UIViewController,
     }
 
     func resetInteractionState() {
+        pageControllers.values.forEach {
+            $0.finishActiveDoubleTapTransition()
+            $0.doubleTapTransitionObserver = nil
+        }
         outerDragStartDate = nil
         lastOuterTranslation = .zero
         nXEdgePagingInteraction = nil
         lastNXEdgePagingProjection = nil
         onLongPress = nil
+        diagnosticsRun?.cancel()
+        diagnosticsRun = nil
+    }
+
+    var diagnosticMachine: S2StateMachine? {
+        machine
+    }
+
+    var diagnosticCurrentPage: S2NativeZoomPageController? {
+        guard let machine else {
+            return nil
+        }
+        return pageControllers[machine.currentIndex]
+    }
+
+    func beginDiagnosticDoubleTap(
+        minimumMiddleFrames: Int,
+        observer: @escaping (S2DoubleTapTransitionEvent) -> Void
+    ) -> Bool {
+        guard let machine,
+              let page = diagnosticCurrentPage else {
+            return false
+        }
+        let wasZoomed = machine.zoomState == .nX
+        guard machine.handleNativeDoubleTap(
+            targetScale: page.doubleTapTargetScale
+        ) else {
+            return false
+        }
+        var diagnosticConfiguration = configuration
+        diagnosticConfiguration.animationsEnabled = true
+        diagnosticConfiguration.animationDurationMilliseconds = max(
+            diagnosticConfiguration.animationDurationMilliseconds,
+            Double(max(1, minimumMiddleFrames) + 2) * 20
+        )
+        page.doubleTapTransitionObserver = observer
+        return page.startDoubleTapTransition(
+            enteringNx: !wasZoomed,
+            targetScale: wasZoomed ? 1 : machine.scale,
+            at: CGPoint(
+                x: viewportSize.width / 2,
+                y: viewportSize.height / 2
+            ),
+            configuration: diagnosticConfiguration
+        )
+    }
+
+    func normalizeDiagnosticState(
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard let machine else {
+            completion(false)
+            return
+        }
+        if let page = diagnosticCurrentPage {
+            page.finishActivePresentationTransition()
+            page.finishActiveDoubleTapTransition()
+        }
+        if machine.zoomState == .nX {
+            guard let page = diagnosticCurrentPage,
+                  machine.handleNativeDoubleTap(
+                    targetScale: page.doubleTapTargetScale
+                  ) else {
+                completion(false)
+                return
+            }
+            var immediateConfiguration = configuration
+            immediateConfiguration.animationsEnabled = false
+            guard page.startDoubleTapTransition(
+                enteringNx: false,
+                targetScale: 1,
+                at: CGPoint(
+                    x: viewportSize.width / 2,
+                    y: viewportSize.height / 2
+                ),
+                configuration: immediateConfiguration
+            ) else {
+                completion(false)
+                return
+            }
+        }
+        if machine.interfaceVisibility == .hidden {
+            _ = machine.handleSingleTap()
+        }
+        waitForDiagnosticStableState(
+            visibility: .visible,
+            zoomState: .oneX,
+            remainingAttempts: 200,
+            completion: completion
+        )
+    }
+
+    func waitForDiagnosticStableState(
+        visibility: S2InterfaceVisibility,
+        zoomState: S2ZoomState,
+        remainingAttempts: Int = 200,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard remainingAttempts > 0,
+              let machine,
+              let page = diagnosticCurrentPage else {
+            completion(false)
+            return
+        }
+        let zoomMatches = zoomState == .oneX
+            ? abs(page.zoomScrollView.zoomScale - 1) <= 0.000_001
+            : page.zoomScrollView.zoomScale > 1
+        if machine.interfaceVisibility == visibility,
+           machine.zoomState == zoomState,
+           page.diagnosticInterfaceVisibility == visibility,
+           !page.isPresentationTransitionActive,
+           !page.isDoubleTapTransitionActive,
+           zoomMatches {
+            completion(true)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+            self.waitForDiagnosticStableState(
+                visibility: visibility,
+                zoomState: zoomState,
+                remainingAttempts: remainingAttempts - 1,
+                completion: completion
+            )
+        }
     }
 
     func recordTapDecisionReading(_ reading: S2TapDecisionReading) {
@@ -1274,16 +1956,31 @@ final class S2NativePagerViewController: UIViewController,
         ) else {
             return false
         }
-        if wasZoomed {
-            returnToMinimumZoomScale(on: page)
-        } else {
-            _ = page.zoomScrollView.performDoubleTapZoom(
-                at: location,
-                targetScale: page.doubleTapTargetScale,
-                animated: configuration.animationsEnabled
+        let targetScale = wasZoomed ? CGFloat(1) : machine.scale
+        guard page.startDoubleTapTransition(
+            enteringNx: !wasZoomed,
+            targetScale: targetScale,
+            at: location,
+            configuration: configuration
+        ) else {
+            page.zoomScrollView.applyNativeState(
+                scale: targetScale,
+                viewportOffset: .zero
             )
         }
         return true
+    }
+
+    func doubleTapTransitionDidComplete(
+        on page: S2NativeZoomPageController
+    ) {
+        guard let machine,
+              page.index == machine.currentIndex else {
+            return
+        }
+        if machine.scale > 1 {
+            reportNativeViewport(from: page)
+        }
     }
 
     func beginNativePinch(on page: S2NativeZoomPageController) -> Bool {
@@ -1697,5 +2394,531 @@ final class S2NativePagerViewController: UIViewController,
     ) -> Bool {
         maximumMilliseconds == 0 ||
             duration * 1_000 <= maximumMilliseconds
+    }
+}
+
+final class S2GeometryDiagnosticsCoordinator: ObservableObject {
+    @Published private(set) var reportText = ""
+    @Published private(set) var isExporting = false
+    private weak var controller: S2NativePagerViewController?
+
+    func attach(_ controller: S2NativePagerViewController) {
+        self.controller = controller
+    }
+
+    func detach(_ controller: S2NativePagerViewController) {
+        guard self.controller === controller else {
+            return
+        }
+        controller.diagnosticsRun?.cancel()
+        controller.diagnosticsRun = nil
+        self.controller = nil
+    }
+
+    func export() {
+        guard !isExporting,
+              let controller else {
+            return
+        }
+        isExporting = true
+        reportText = ""
+        let run = S2GeometryDiagnosticsRun(controller: controller) {
+            [weak self, weak controller] report in
+            self?.reportText = report
+            self?.isExporting = false
+            controller?.diagnosticsRun = nil
+        }
+        controller.diagnosticsRun = run
+        run.start()
+    }
+}
+
+struct S2GeometryDiagnosticSample {
+    let label: String
+    let visibility: S2InterfaceVisibility
+    let scale: CGFloat
+    let screenBounds: CGRect
+    let windowBounds: CGRect
+    let scrollFrame: CGRect
+    let scrollBounds: CGRect
+    let safeAreaInsets: UIEdgeInsets
+    let additionalSafeAreaInsets: UIEdgeInsets
+    let hostingAdditionalSafeAreaInsets: UIEdgeInsets
+    let adjustmentBehaviorRawValue: Int
+    let contentInset: UIEdgeInsets
+    let adjustedContentInset: UIEdgeInsets
+    let contentSize: CGSize
+    let contentOffset: CGPoint
+    let zoomScale: CGFloat
+    let minimumZoomScale: CGFloat
+    let maximumZoomScale: CGFloat
+    let innerWindowFrame: CGRect
+    let innerBounds: CGRect
+    let innerTransform: CGAffineTransform
+    let transitionTransform: CGAffineTransform
+    let cornerRadius: CGFloat
+    let masksToBounds: Bool
+    let pixelWidth: Int
+    let pixelHeight: Int
+    let normalizedAssetAspectRatio: CGFloat
+    let normalizedViewportAspectRatio: CGFloat
+    let aspectDifferencePercent: CGFloat
+    let screenAspectMatch: Bool
+    let statusBarChain: String
+    let effectiveStatusBarHidden: Bool
+    let verticalRecognizers: String
+    let topBlank: CGFloat
+    let contentInsetTopContribution: CGFloat
+    let safeAreaTopContribution: CGFloat
+    let aspectFitTopContribution: CGFloat
+}
+
+final class S2GeometryDiagnosticsRun {
+    private weak var controller: S2NativePagerViewController?
+    private let completion: (String) -> Void
+    private var samples: [S2GeometryDiagnosticSample] = []
+    private var errors: [String] = []
+    private var cancelled = false
+    private var middleThresholds: [CGFloat] = []
+    private var activeMiddlePrefix = ""
+
+    init(
+        controller: S2NativePagerViewController,
+        completion: @escaping (String) -> Void
+    ) {
+        self.controller = controller
+        self.completion = completion
+    }
+
+    func start() {
+        guard let controller else {
+            finish(with: "诊断失败：主图控制器不存在。")
+            return
+        }
+        controller.normalizeDiagnosticState { [weak self] succeeded in
+            guard let self, !self.cancelled else {
+                return
+            }
+            guard succeeded else {
+                self.finish(with: "诊断失败：无法归一到 V=显示、s=1。")
+                return
+            }
+            self.capture("V=显示、s=1 稳定态")
+            self.toggleToHidden()
+        }
+    }
+
+    func cancel() {
+        cancelled = true
+        controller?.diagnosticCurrentPage?.doubleTapTransitionObserver = nil
+    }
+
+    private func toggleToHidden() {
+        guard let controller,
+              let machine = controller.diagnosticMachine,
+              machine.handleSingleTap() else {
+            finish(with: "诊断失败：无法切换到 V=隐藏。")
+            return
+        }
+        controller.waitForDiagnosticStableState(
+            visibility: .hidden,
+            zoomState: .oneX
+        ) { [weak self] succeeded in
+            guard let self, !self.cancelled else {
+                return
+            }
+            guard succeeded else {
+                self.finish(with: "诊断失败：V=隐藏、s=1 未稳定。")
+                return
+            }
+            self.capture("单击后 V=隐藏、s=1 稳定态")
+            self.toggleBackToVisible()
+        }
+    }
+
+    private func toggleBackToVisible() {
+        guard let controller,
+              let machine = controller.diagnosticMachine,
+              machine.handleSingleTap() else {
+            finish(with: "诊断失败：无法切回 V=显示。")
+            return
+        }
+        controller.waitForDiagnosticStableState(
+            visibility: .visible,
+            zoomState: .oneX
+        ) { [weak self] succeeded in
+            guard let self, !self.cancelled else {
+                return
+            }
+            guard succeeded else {
+                self.finish(with: "诊断失败：V=显示、s=1 未稳定。")
+                return
+            }
+            self.capture("再次单击回 V=显示 稳定态")
+            self.startDoubleTapEntry()
+        }
+    }
+
+    private func startDoubleTapEntry() {
+        capture("双击进入 Nx：动画开始前一帧")
+        startDoubleTap(
+            minimumMiddleFrames: 3,
+            middlePrefix: "双击进入 Nx：动画中间帧",
+            stableVisibility: .visible,
+            stableZoomState: .nX,
+            completionLabel: "双击进入 Nx：动画结束稳定态"
+        ) { [weak self] in
+            self?.startDoubleTapExit()
+        }
+    }
+
+    private func startDoubleTapExit() {
+        capture("双击退出 Nx：动画开始前一帧")
+        startDoubleTap(
+            minimumMiddleFrames: 5,
+            middlePrefix: "双击退出 Nx：动画中间帧",
+            stableVisibility: .visible,
+            stableZoomState: .oneX,
+            completionLabel: "双击退出 Nx：动画结束稳定态"
+        ) { [weak self] in
+            self?.finishReport()
+        }
+    }
+
+    private func startDoubleTap(
+        minimumMiddleFrames: Int,
+        middlePrefix: String,
+        stableVisibility: S2InterfaceVisibility,
+        stableZoomState: S2ZoomState,
+        completionLabel: String,
+        onComplete: @escaping () -> Void
+    ) {
+        guard let controller else {
+            finish(with: "诊断失败：双击阶段缺少控制器。")
+            return
+        }
+        activeMiddlePrefix = middlePrefix
+        middleThresholds = (1...minimumMiddleFrames).map {
+            CGFloat($0) / CGFloat(minimumMiddleFrames + 1)
+        }
+        let started = controller.beginDiagnosticDoubleTap(
+            minimumMiddleFrames: minimumMiddleFrames
+        ) { [weak self] event in
+            guard let self, !self.cancelled else {
+                return
+            }
+            switch event {
+            case .started:
+                break
+            case let .progressed(_, progress):
+                while let threshold = self.middleThresholds.first,
+                      progress >= threshold,
+                      progress < 1 {
+                    let number = minimumMiddleFrames -
+                        self.middleThresholds.count + 1
+                    self.capture("\(self.activeMiddlePrefix) #\(number)")
+                    self.middleThresholds.removeFirst()
+                }
+            case .completed:
+                controller.diagnosticCurrentPage?
+                    .doubleTapTransitionObserver = nil
+                if !self.middleThresholds.isEmpty {
+                    self.errors.append(
+                        "\(middlePrefix) 少于 \(minimumMiddleFrames) 帧"
+                    )
+                }
+                controller.waitForDiagnosticStableState(
+                    visibility: stableVisibility,
+                    zoomState: stableZoomState
+                ) { [weak self] succeeded in
+                    guard let self, !self.cancelled else {
+                        return
+                    }
+                    guard succeeded else {
+                        self.finish(with: "诊断失败：双击终态未稳定。")
+                        return
+                    }
+                    self.capture(completionLabel)
+                    onComplete()
+                }
+            }
+        }
+        if !started {
+            finish(with: "诊断失败：无法启动双击转场。")
+        }
+    }
+
+    private func capture(_ label: String) {
+        guard let controller,
+              let machine = controller.diagnosticMachine,
+              let page = controller.diagnosticCurrentPage,
+              let innerView = page.zoomScrollView.presentationContentView else {
+            errors.append("\(label)：缺少运行时视图")
+            return
+        }
+        let scrollView = page.zoomScrollView
+        let window = controller.view.window
+        let windowBounds = window?.bounds ?? .zero
+        let innerFrame = innerView.convert(innerView.bounds, to: window)
+        let viewportFrame = scrollView.convert(scrollView.bounds, to: window)
+        let pixelWidth = max(0, Int(page.assetPixelSize.width.rounded()))
+        let pixelHeight = max(0, Int(page.assetPixelSize.height.rounded()))
+        let assetRatio = pixelWidth > 0 && pixelHeight > 0
+            ? CGFloat(pixelWidth) / CGFloat(pixelHeight)
+            : page.nativeZoomBaseSize.width /
+                max(0.000_001, page.nativeZoomBaseSize.height)
+        let viewportRatio = scrollView.bounds.width /
+            max(0.000_001, scrollView.bounds.height)
+        let normalizedAssetRatio = min(assetRatio, 1 / assetRatio)
+        let normalizedViewportRatio = min(viewportRatio, 1 / viewportRatio)
+        let difference = abs(
+            normalizedAssetRatio - normalizedViewportRatio
+        ) / max(0.000_001, normalizedViewportRatio) * 100
+        let isMatch = S2Geometry.isScreenAspectMatch(
+            assetAspectRatio: assetRatio,
+            viewportAspectRatio: viewportRatio
+        )
+        let topBlank = max(0, innerFrame.minY - viewportFrame.minY)
+        let insetContribution = max(0, scrollView.contentInset.top)
+        let safeContribution: CGFloat = 0
+        let aspectContribution = page.isFramedPhoto &&
+            machine.interfaceVisibility == .hidden
+            ? 0
+            : max(0, topBlank - insetContribution - safeContribution)
+        let status = statusBarReading(window: window)
+        let vertical = controller.pageControllers.keys.sorted().compactMap {
+            index -> String? in
+            guard let item = controller.pageControllers[index] else {
+                return nil
+            }
+            return "页\(index):state=\(item.verticalSwipeRecognizer.state.rawValue)," +
+                "begin=\(controller.allowsVerticalSwipeRecognition(on: item))"
+        }.joined(separator: ";")
+
+        samples.append(S2GeometryDiagnosticSample(
+            label: label,
+            visibility: machine.interfaceVisibility,
+            scale: machine.scale,
+            screenBounds: UIScreen.main.bounds,
+            windowBounds: windowBounds,
+            scrollFrame: scrollView.frame,
+            scrollBounds: scrollView.bounds,
+            safeAreaInsets: page.view.safeAreaInsets,
+            additionalSafeAreaInsets: page.additionalSafeAreaInsets,
+            hostingAdditionalSafeAreaInsets:
+                page.diagnosticAdditionalSafeAreaInsets,
+            adjustmentBehaviorRawValue:
+                scrollView.contentInsetAdjustmentBehavior.rawValue,
+            contentInset: scrollView.contentInset,
+            adjustedContentInset: scrollView.adjustedContentInset,
+            contentSize: scrollView.contentSize,
+            contentOffset: scrollView.contentOffset,
+            zoomScale: scrollView.zoomScale,
+            minimumZoomScale: scrollView.minimumZoomScale,
+            maximumZoomScale: scrollView.maximumZoomScale,
+            innerWindowFrame: innerFrame,
+            innerBounds: innerView.bounds,
+            innerTransform: innerView.transform,
+            transitionTransform: page.diagnosticTransitionTransform,
+            cornerRadius: innerView.layer.cornerRadius,
+            masksToBounds: innerView.layer.masksToBounds,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight,
+            normalizedAssetAspectRatio: normalizedAssetRatio,
+            normalizedViewportAspectRatio: normalizedViewportRatio,
+            aspectDifferencePercent: difference,
+            screenAspectMatch: isMatch,
+            statusBarChain: status.chain,
+            effectiveStatusBarHidden: status.isHidden,
+            verticalRecognizers: vertical,
+            topBlank: topBlank,
+            contentInsetTopContribution: insetContribution,
+            safeAreaTopContribution: safeContribution,
+            aspectFitTopContribution: aspectContribution
+        ))
+    }
+
+    private func statusBarReading(
+        window: UIWindow?
+    ) -> (chain: String, isHidden: Bool) {
+        guard var current = window?.rootViewController else {
+            return ("无根控制器", false)
+        }
+        var values: [String] = []
+        var visited = Set<ObjectIdentifier>()
+        while !visited.contains(ObjectIdentifier(current)) {
+            visited.insert(ObjectIdentifier(current))
+            values.append(
+                "\(String(describing: type(of: current)))=" +
+                    "\(current.prefersStatusBarHidden)"
+            )
+            if let presented = current.presentedViewController {
+                current = presented
+            } else if let child = current.childForStatusBarHidden {
+                current = child
+            } else {
+                break
+            }
+        }
+        return (values.joined(separator: " -> "), current.prefersStatusBarHidden)
+    }
+
+    private func finishReport() {
+        finish(with: makeReport())
+    }
+
+    private func finish(with text: String) {
+        guard !cancelled else {
+            return
+        }
+        completion(text)
+    }
+
+    private func makeReport() -> String {
+        var lines = [
+            "# S2 几何诊断",
+            "",
+            "采样总数：\(samples.count)",
+            "中间帧门禁：\(errors.isEmpty ? "通过" : "失败")"
+        ]
+        if !errors.isEmpty {
+            lines.append("错误：\(errors.joined(separator: "；"))")
+        }
+        for sample in samples {
+            lines.append(contentsOf: [
+                "",
+                "## \(sample.label)",
+                "V=\(visibilityText(sample.visibility)), s=\(number(sample.scale))",
+                "UIScreen.main.bounds=\(rect(sample.screenBounds))",
+                "window.bounds=\(rect(sample.windowBounds))",
+                "scrollView.frame=\(rect(sample.scrollFrame))",
+                "scrollView.bounds=\(rect(sample.scrollBounds))",
+                "view.safeAreaInsets=\(insets(sample.safeAreaInsets))",
+                "additionalSafeAreaInsets=\(insets(sample.additionalSafeAreaInsets))",
+                "hosting.additionalSafeAreaInsets=\(insets(sample.hostingAdditionalSafeAreaInsets))",
+                "contentInsetAdjustmentBehavior.rawValue=\(sample.adjustmentBehaviorRawValue)",
+                "contentInset=\(insets(sample.contentInset))",
+                "adjustedContentInset=\(insets(sample.adjustedContentInset))",
+                "contentSize=\(size(sample.contentSize))",
+                "contentOffset=\(point(sample.contentOffset))",
+                "zoomScale=\(number(sample.zoomScale)), minimumZoomScale=\(number(sample.minimumZoomScale)), maximumZoomScale=\(number(sample.maximumZoomScale))",
+                "内层照片 window.frame=\(rect(sample.innerWindowFrame))",
+                "内层照片 bounds=\(rect(sample.innerBounds))",
+                "内层照片 transform=\(transform(sample.innerTransform))",
+                "专用过渡层 transform=\(transform(sample.transitionTransform))",
+                "layer.cornerRadius=\(number(sample.cornerRadius)), layer.masksToBounds=\(sample.masksToBounds)",
+                "资产 pixelWidth=\(sample.pixelWidth), pixelHeight=\(sample.pixelHeight)",
+                "方向归一照片宽高比=\(number(sample.normalizedAssetAspectRatio)), 方向归一视口宽高比=\(number(sample.normalizedViewportAspectRatio)), 差值百分比=\(number(sample.aspectDifferencePercent))%, 屏幕比例判定=\(sample.screenAspectMatch)",
+                "状态栏链路=\(sample.statusBarChain), 实际生效隐藏值=\(sample.effectiveStatusBarHidden)",
+                "竖向识别器=\(sample.verticalRecognizers)"
+            ])
+        }
+        lines.append(contentsOf: questionAnswers())
+        return lines.joined(separator: "\n")
+    }
+
+    private func questionAnswers() -> [String] {
+        let hidden = samples.first {
+            $0.label == "单击后 V=隐藏、s=1 稳定态"
+        }
+        let nx = samples.first {
+            $0.label == "双击进入 Nx：动画结束稳定态"
+        }
+        let visible = samples.first {
+            $0.label == "V=显示、s=1 稳定态"
+        }
+        let exitFrames = samples.filter {
+            $0.label.hasPrefix("双击退出 Nx：动画开始前") ||
+                $0.label.hasPrefix("双击退出 Nx：动画中间帧")
+        }
+        var result = ["", "# 逐题回答"]
+        if let hidden {
+            let sum = hidden.contentInsetTopContribution +
+                hidden.safeAreaTopContribution +
+                hidden.aspectFitTopContribution
+            result.append(
+                "Q1：顶部空白 \(number(hidden.topBlank))px；" +
+                    "contentInset=\(number(hidden.contentInsetTopContribution))px，" +
+                    "safeAreaInsets=\(number(hidden.safeAreaTopContribution))px，" +
+                    "aspectFit=\(number(hidden.aspectFitTopContribution))px；" +
+                    "加和=\(number(sum))px。"
+            )
+        }
+        if let nx {
+            result.append(
+                "Q2：s>1 内层 transform 恒等=\(nx.innerTransform.isIdentity)；" +
+                    "zoomScale=\(number(nx.zoomScale))，" +
+                    "内层 transform 承载=\(number(nx.innerTransform.a)) 倍，" +
+                    "两者同时非默认=false。"
+            )
+        }
+        let offsets = exitFrames.map {
+            "\($0.label):offset=\(point($0.contentOffset))," +
+                "transform=\(transform($0.transitionTransform))"
+        }.joined(separator: "；")
+        let transformValues = exitFrames.map(\.transitionTransform.a)
+        let transformIsMonotonic = zip(
+            transformValues,
+            transformValues.dropFirst()
+        ).allSatisfy { pair in
+            pair.0 >= pair.1 - 0.000_001
+        }
+        let offsetsAreStable = zip(exitFrames, exitFrames.dropFirst())
+            .allSatisfy { pair in
+                abs(
+                    pair.0.contentOffset.x - pair.1.contentOffset.x
+                ) <= 0.5 &&
+                    abs(
+                        pair.0.contentOffset.y - pair.1.contentOffset.y
+                    ) <= 0.5
+            }
+        result.append(
+            "Q3：\(offsets)。动画帧 transform 单调=\(transformIsMonotonic)，" +
+                "动画帧 contentOffset 无跳变=\(offsetsAreStable)；" +
+                "终点只执行一次无动画原生同步。"
+        )
+        if let visible, let hidden {
+            result.append(
+                "Q4：V=显示时状态栏隐藏=\(visible.effectiveStatusBarHidden)；" +
+                    "V=隐藏时状态栏隐藏=\(hidden.effectiveStatusBarHidden)。"
+            )
+        }
+        return result
+    }
+
+    private func number<T: BinaryFloatingPoint>(_ value: T) -> String {
+        String(
+            format: "%.6f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            Double(value)
+        )
+    }
+
+    private func rect(_ value: CGRect) -> String {
+        "(x=\(number(value.minX)),y=\(number(value.minY))," +
+            "w=\(number(value.width)),h=\(number(value.height)))"
+    }
+
+    private func size(_ value: CGSize) -> String {
+        "(w=\(number(value.width)),h=\(number(value.height)))"
+    }
+
+    private func point(_ value: CGPoint) -> String {
+        "(x=\(number(value.x)),y=\(number(value.y)))"
+    }
+
+    private func insets(_ value: UIEdgeInsets) -> String {
+        "(top=\(number(value.top)),left=\(number(value.left))," +
+            "bottom=\(number(value.bottom)),right=\(number(value.right)))"
+    }
+
+    private func transform(_ value: CGAffineTransform) -> String {
+        "(a=\(number(value.a)),b=\(number(value.b))," +
+            "c=\(number(value.c)),d=\(number(value.d))," +
+            "tx=\(number(value.tx)),ty=\(number(value.ty)))"
+    }
+
+    private func visibilityText(_ value: S2InterfaceVisibility) -> String {
+        value == .visible ? "显示" : "隐藏"
     }
 }

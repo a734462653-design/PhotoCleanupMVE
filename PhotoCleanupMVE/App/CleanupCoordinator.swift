@@ -217,6 +217,16 @@ final class CleanupCoordinator: ObservableObject {
         return CGFloat(asset.pixelWidth) / CGFloat(asset.pixelHeight)
     }
 
+    func s2AssetPixelSize(for assetID: String) -> CGSize {
+        guard let asset = loadedAssets[assetID] else {
+            return .zero
+        }
+        return CGSize(
+            width: CGFloat(max(0, asset.pixelWidth)),
+            height: CGFloat(max(0, asset.pixelHeight))
+        )
+    }
+
     func removeAsset(_ identifier: String) {
         guard let machine = s3Machine else {
             return

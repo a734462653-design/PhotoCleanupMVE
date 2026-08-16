@@ -36,6 +36,7 @@ struct PhotoCleanupMVEApp: App {
                             machine: machine,
                             calibration: coordinator.s2Calibration,
                             assetAspectRatio: coordinator.s2AssetAspectRatio,
+                            assetPixelSize: coordinator.s2AssetPixelSize,
                             photoContent: { context in
                                 AnyView(
                                     S2TemporaryPhotoImageView(
@@ -46,6 +47,7 @@ struct PhotoCleanupMVEApp: App {
                                             context.requestStrategy,
                                         requestRevision:
                                             context.requestRevision,
+                                        contentMode: context.contentMode,
                                         showsOpaqueLoadingBackground: true,
                                         onReading:
                                             context.onRequestReading

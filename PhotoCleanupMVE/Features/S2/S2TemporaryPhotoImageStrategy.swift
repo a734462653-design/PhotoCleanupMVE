@@ -73,6 +73,7 @@ struct S2TemporaryPhotoImageView: View {
     let requestedScale: CGFloat
     let requestStrategy: S2ImageRequestStrategy?
     let requestRevision: Int
+    var contentMode: ContentMode = .fit
     let showsOpaqueLoadingBackground: Bool
     let onReading: (S2ImageRequestReading) -> Void
 
@@ -92,7 +93,7 @@ struct S2TemporaryPhotoImageView: View {
                 if let image, displayedAssetID == assetID {
                     Image(uiImage: image)
                         .resizable()
-                        .scaledToFit()
+                        .aspectRatio(contentMode: contentMode)
                 }
             }
             .onAppear {

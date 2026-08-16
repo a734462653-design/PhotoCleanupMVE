@@ -105,9 +105,14 @@ $dataLiteralPattern = '(?:message\s*(?:=|:)|return)\s*"((?:\\.|[^"\\])*)"'
 foreach ($file in $swiftFiles) {
     $relativePath = $file.FullName.Substring($projectRoot.Length + 1).Replace("\", "/")
     $lines = @(Get-Content -LiteralPath $file.FullName -Encoding UTF8)
+    $inGeometryDiagnosticProtocol = $false
     for ($index = 0; $index -lt $lines.Count; $index++) {
         $line = $lines[$index]
         $lineNumber = $index + 1
+        if ($relativePath -eq "PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift" -and
+            $line -match '^final class S2GeometryDiagnosticsRun') {
+            $inGeometryDiagnosticProtocol = $true
+        }
 
         foreach ($match in [regex]::Matches($line, $literalPattern)) {
             $value = $match.Groups[1].Value
@@ -115,7 +120,15 @@ foreach ($file in $swiftFiles) {
                 continue
             }
 
-            if ($diagnosticReasons.Contains($value)) {
+            if ($inGeometryDiagnosticProtocol) {
+                $diagnostics.Add([PSCustomObject]@{
+                    Path = $relativePath
+                    LineNumber = $lineNumber
+                    Value = $value
+                    Reason = "几何诊断导出协议字段"
+                })
+            }
+            elseif ($diagnosticReasons.Contains($value)) {
                 $diagnostics.Add([PSCustomObject]@{
                     Path = $relativePath
                     LineNumber = $lineNumber
@@ -137,6 +150,9 @@ foreach ($file in $swiftFiles) {
 
         foreach ($match in [regex]::Matches($line, $dataLiteralPattern)) {
             $value = $match.Groups[1].Value
+            if ($inGeometryDiagnosticProtocol) {
+                continue
+            }
             $isLockedVolumeFormat = $relativePath -eq "PhotoCleanupMVE/Core/S3StateMachine.swift" -and
                 ($value.EndsWith(" GB") -or $value.EndsWith(" MB"))
             if ($isLockedVolumeFormat) {

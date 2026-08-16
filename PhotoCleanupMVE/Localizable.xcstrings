@@ -584,6 +584,39 @@
         }
       }
     },
+    "s2.calibration.diagnostics.copy" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制或分享几何诊断"
+          }
+        }
+      }
+    },
+    "s2.calibration.diagnostics.export" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出几何诊断"
+          }
+        }
+      }
+    },
+    "s2.calibration.diagnostics.running" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在自动采样几何数据"
+          }
+        }
+      }
+    },
     "s2.calibration.navigation.empty" : {
       "extractionState" : "manual",
       "localizations" : {

@@ -44,6 +44,7 @@ enum S2BottomStripPhotoSwitcher {
 struct S2ImageContentContext {
     let assetID: String
     let fittedSize: CGSize
+    let contentMode: ContentMode
     let scale: CGFloat
     let requestStrategy: S2ImageRequestStrategy?
     let requestRevision: Int
@@ -76,6 +77,7 @@ struct S2View: View {
     @ObservedObject var calibration: S2CalibrationModel
 
     private let assetAspectRatio: (String) -> CGFloat
+    private let assetPixelSize: (String) -> CGSize
     private let photoContent: PhotoContent
     private let stripItemContent: StripItemContent
     private let albumPickerContent: AlbumPickerContent
@@ -89,11 +91,14 @@ struct S2View: View {
         S2CalibrationOverlayState.initial
     @State private var safeAreaInsets = S2OverlaySafeAreaInsets.zero
     @State private var statusBarHidden: Bool
+    @StateObject private var geometryDiagnostics:
+        S2GeometryDiagnosticsCoordinator
 
     init(
         machine: S2StateMachine,
         calibration: S2CalibrationModel,
         assetAspectRatio: @escaping (String) -> CGFloat,
+        assetPixelSize: @escaping (String) -> CGSize = { _ in .zero },
         photoContent: @escaping PhotoContent,
         stripItemContent: @escaping StripItemContent,
         albumPickerContent: @escaping AlbumPickerContent,
@@ -101,11 +106,14 @@ struct S2View: View {
         onConfirmation: @escaping (S2ExitPayload) -> Void = { _ in },
         onFavoriteRequest: @escaping (S2AssetActionRequest) -> Void = { _ in },
         onRecentAlbumRequest: @escaping (S2AlbumActionRequest) -> Void = { _ in },
-        photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback = .live
+        photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback = .live,
+        geometryDiagnostics: S2GeometryDiagnosticsCoordinator =
+            S2GeometryDiagnosticsCoordinator()
     ) {
         self.machine = machine
         self.calibration = calibration
         self.assetAspectRatio = assetAspectRatio
+        self.assetPixelSize = assetPixelSize
         self.photoContent = photoContent
         self.stripItemContent = stripItemContent
         self.albumPickerContent = albumPickerContent
@@ -114,6 +122,7 @@ struct S2View: View {
         self.onFavoriteRequest = onFavoriteRequest
         self.onRecentAlbumRequest = onRecentAlbumRequest
         self.photoSwitchHapticFeedback = photoSwitchHapticFeedback
+        _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _statusBarHidden = State(
             initialValue: machine.interfaceVisibility == .hidden
         )
@@ -213,6 +222,7 @@ struct S2View: View {
             let content = photoContent(S2ImageContentContext(
                 assetID: assetID,
                 fittedSize: pageMetrics.oneXDisplaySize,
+                contentMode: pageMetrics.isFramedPhoto ? .fill : .fit,
                 scale: index == machine.currentIndex
                     ? machine.imageRequestScale
                     : 1,
@@ -230,8 +240,10 @@ struct S2View: View {
                 interfaceVisibility: machine.interfaceVisibility,
                 isFramedPhoto: pageMetrics.isFramedPhoto,
                 fittedSize: pageMetrics.oneXDisplaySize,
+                nativeZoomBaseSize: pageMetrics.nativeZoomBaseSize,
                 cornerRadius: pageMetrics.oneXCornerRadius,
                 doubleTapTargetScale: pageMetrics.doubleTapTargetScale,
+                assetPixelSize: assetPixelSize(assetID),
                 contentVersion: S2NativePhotoContentVersion(
                     requestedScale: index == machine.currentIndex
                         ? machine.imageRequestScale
@@ -239,10 +251,7 @@ struct S2View: View {
                     requestStrategy: machine.imageRequestStrategy,
                     requestRevision: requestRevision
                 ),
-                content: AnyView(content.frame(
-                    width: pageMetrics.oneXDisplaySize.width,
-                    height: pageMetrics.oneXDisplaySize.height
-                ))
+                content: AnyView(content)
             )
         }
 
@@ -253,7 +262,8 @@ struct S2View: View {
             pages: pages,
             onLongPress: {
                 calibrationOverlayState.toggleAccessControls()
-            }
+            },
+            diagnosticsCoordinator: geometryDiagnostics
         )
         .frame(width: viewportSize.width, height: viewportSize.height)
         .clipped()
@@ -716,6 +726,27 @@ struct S2View: View {
                     Text(L10n.text("s2.calibration.export"))
                 }
                 .s2MinimumTouchTarget()
+                Button(L10n.text("s2.calibration.diagnostics.export")) {
+                    geometryDiagnostics.export()
+                }
+                .disabled(geometryDiagnostics.isExporting)
+                .s2MinimumTouchTarget()
+                if geometryDiagnostics.isExporting {
+                    ProgressView(
+                        L10n.text("s2.calibration.diagnostics.running")
+                    )
+                }
+                if !geometryDiagnostics.reportText.isEmpty {
+                    ShareLink(item: geometryDiagnostics.reportText) {
+                        Text(L10n.text(
+                            "s2.calibration.diagnostics.copy"
+                        ))
+                    }
+                    .s2MinimumTouchTarget()
+                    Text(verbatim: geometryDiagnostics.reportText)
+                        .font(.system(.caption2, design: .monospaced))
+                        .textSelection(.enabled)
+                }
                 Button(L10n.text("s2.calibration.restore_factory")) {
                     calibration.restoreFactoryPlaceholder()
                 }
