@@ -60,7 +60,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDragMinimumDistance: Double
     var bottomStripSwitchDistance: Double
 
-    // IC-060 点击裁决与截图沉浸项目判断默认值；其余字段保持既有数值不变。
+    // IC-061 沉浸过渡与 Nx 稳定项目判断默认值；全部数值延续 IC-060。
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScale: 4,
         zoomSnapBackThreshold: 1.1,
@@ -164,7 +164,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260815-060-tap-arbitration-and-screenshot-immersive"),
+            ("taskID", "IC-20260815-061-immersive-transition-and-nx-stability"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),

@@ -12,6 +12,38 @@ struct S2NativePageContent {
     let content: AnyView
 }
 
+struct S2ImmersiveTransitionFrame: Equatable {
+    let scale: CGFloat
+    let cornerRadius: CGFloat
+}
+
+struct S2ImmersiveTransition: Equatable {
+    let viewportAnchor: CGPoint
+    let layoutSize: CGSize
+    let targetSize: CGSize
+    let sourceCornerRadius: CGFloat
+    let targetCornerRadius: CGFloat
+
+    var targetScale: CGFloat {
+        guard layoutSize.width > 0, layoutSize.height > 0 else {
+            return 1
+        }
+        return min(
+            targetSize.width / layoutSize.width,
+            targetSize.height / layoutSize.height
+        )
+    }
+
+    func frame(at progress: CGFloat) -> S2ImmersiveTransitionFrame {
+        let boundedProgress = min(1, max(0, progress))
+        return S2ImmersiveTransitionFrame(
+            scale: 1 + (targetScale - 1) * boundedProgress,
+            cornerRadius: sourceCornerRadius +
+                (targetCornerRadius - sourceCornerRadius) * boundedProgress
+        )
+    }
+}
+
 struct S2NxEdgePagingProjection: Equatable {
     let direction: S2PageDirection?
     let overflowDistance: CGFloat
@@ -170,6 +202,7 @@ final class S2NativePagingScrollView: UIScrollView {
 
 final class S2NativeZoomScrollView: UIScrollView {
     private(set) weak var zoomContentView: UIView?
+    private(set) weak var presentationContentView: UIView?
     private(set) var fittedSize = CGSize.zero
     private(set) var nativeZoomInvocationCount = 0
     private(set) var lastNativeZoomRect: CGRect?
@@ -194,10 +227,21 @@ final class S2NativeZoomScrollView: UIScrollView {
         self.maximumZoomScale = nextMaximumScale
         minimumZoomScale = 1
 
-        if zoomContentView !== contentView {
-            zoomContentView?.removeFromSuperview()
-            zoomContentView = contentView
-            addSubview(contentView)
+        if zoomContentView == nil {
+            let zoomContentView = UIView()
+            zoomContentView.backgroundColor = .clear
+            zoomContentView.clipsToBounds = false
+            self.zoomContentView = zoomContentView
+            addSubview(zoomContentView)
+        }
+        guard let zoomContentView else {
+            return
+        }
+        if presentationContentView !== contentView {
+            presentationContentView?.removeFromSuperview()
+            presentationContentView = contentView
+            contentView.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            zoomContentView.addSubview(contentView)
         }
 
         let nextSize = CGSize(
@@ -206,6 +250,7 @@ final class S2NativeZoomScrollView: UIScrollView {
         )
         guard self.fittedSize != nextSize else {
             enforceOneXContentGeometry(
+                zoomContentView: zoomContentView,
                 contentView: contentView,
                 fittedSize: nextSize
             )
@@ -222,8 +267,14 @@ final class S2NativeZoomScrollView: UIScrollView {
             setZoomScale(1, animated: false)
         }
         self.fittedSize = nextSize
+        zoomContentView.transform = .identity
+        zoomContentView.frame = CGRect(origin: .zero, size: nextSize)
         contentView.transform = .identity
-        contentView.frame = CGRect(origin: .zero, size: nextSize)
+        contentView.bounds = CGRect(origin: .zero, size: nextSize)
+        contentView.center = CGPoint(
+            x: zoomContentView.bounds.midX,
+            y: zoomContentView.bounds.midY
+        )
         contentSize = nextSize
         if previousScale > 1 {
             setZoomScale(previousScale, animated: false)
@@ -332,6 +383,30 @@ final class S2NativeZoomScrollView: UIScrollView {
         return zoomContentView.convert(zoomContentView.bounds, to: self)
     }
 
+    func visiblePresentationFrame() -> CGRect? {
+        guard let presentationContentView else {
+            return nil
+        }
+        return presentationContentView.convert(
+            presentationContentView.bounds,
+            to: self
+        )
+    }
+
+    func presentationAnchorInViewport() -> CGPoint? {
+        guard let presentationContentView else {
+            return nil
+        }
+        let anchorPoint = presentationContentView.layer.anchorPoint
+        return presentationContentView.convert(
+            CGPoint(
+                x: presentationContentView.bounds.width * anchorPoint.x,
+                y: presentationContentView.bounds.height * anchorPoint.y
+            ),
+            to: self
+        )
+    }
+
     func updatePanAvailability() {
         let shouldEnable = zoomScale > minimumZoomScale + 0.000_001
         if panGestureRecognizer.isEnabled != shouldEnable {
@@ -340,14 +415,21 @@ final class S2NativeZoomScrollView: UIScrollView {
     }
 
     private func enforceOneXContentGeometry(
+        zoomContentView: UIView,
         contentView: UIView,
         fittedSize: CGSize
     ) {
         guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
             return
         }
+        zoomContentView.transform = .identity
+        zoomContentView.frame = CGRect(origin: .zero, size: fittedSize)
         contentView.transform = .identity
-        contentView.frame = CGRect(origin: .zero, size: fittedSize)
+        contentView.bounds = CGRect(origin: .zero, size: fittedSize)
+        contentView.center = CGPoint(
+            x: zoomContentView.bounds.midX,
+            y: zoomContentView.bounds.midY
+        )
         contentSize = fittedSize
         setNeedsLayout()
         layoutIfNeeded()
@@ -397,7 +479,16 @@ final class S2NativeZoomPageController: UIViewController,
     private(set) var cornerRadius: CGFloat
     private(set) var doubleTapTargetScale: CGFloat
     private(set) var lastPresentationTransitionDuration: TimeInterval = 0
+    private(set) var lastPresentationTransition: S2ImmersiveTransition?
+    private(set) var isPresentationTransitionActive = false
+    private(set) var presentationTransitionCount = 0
+    private(set) var presentationGeometryCommitCount = 0
     private(set) var lastTapDecisionReading: S2TapDecisionReading?
+    private var pendingPresentationPage: S2NativePageContent?
+    private var presentationTransitionGeneration = 0
+    private var latestConfiguration =
+        S2CalibrationConfiguration.factoryPlaceholder
+    private var latestViewportSize = CGSize.zero
     private var pinchIsActive = false
     private var pinchStartDate: Date?
     private var pinchStartScale: CGFloat = 1
@@ -408,6 +499,10 @@ final class S2NativeZoomPageController: UIViewController,
         configuration: .factoryPlaceholder
     )
     private(set) var nativeScrollPriorityIsConfigured = false
+
+    var hasDeferredPresentation: Bool {
+        pendingPresentationPage != nil && !isPresentationTransitionActive
+    }
 
     init(
         page: S2NativePageContent,
@@ -486,21 +581,13 @@ final class S2NativeZoomPageController: UIViewController,
         configuration: S2CalibrationConfiguration,
         scale: CGFloat,
         viewportOffset: CGSize,
-        isCurrent: Bool
+        isCurrent: Bool,
+        viewportSize: CGSize
     ) {
         loadViewIfNeeded()
-        let previousAssetID = assetID
-        let previousVisibility = interfaceVisibility
-        let previousIsFramedPhoto = isFramedPhoto
-        let previousFittedSize = fittedSize
-        let previousCornerRadius = cornerRadius
-        assetID = page.assetID
-        interfaceVisibility = page.interfaceVisibility
-        isFramedPhoto = page.isFramedPhoto
-        fittedSize = page.fittedSize
-        cornerRadius = page.cornerRadius
+        latestConfiguration = configuration
+        latestViewportSize = viewportSize
         doubleTapTargetScale = page.doubleTapTargetScale
-        hostingController.rootView = page.content
         tapDecisionPolicy = S2TapDecisionDiagnosticPolicy(
             configuration: configuration
         )
@@ -518,35 +605,49 @@ final class S2NativeZoomPageController: UIViewController,
         )
         verticalSwipeRecognizer.minimumNumberOfTouches = verticalTouchCount
         verticalSwipeRecognizer.maximumNumberOfTouches = verticalTouchCount
-        let animationPolicy = S2AnimationPolicy(configuration: configuration)
-        let presentationChanged = previousAssetID == page.assetID &&
-            previousVisibility != page.interfaceVisibility &&
-            previousIsFramedPhoto && page.isFramedPhoto &&
-            (previousFittedSize != page.fittedSize ||
-                previousCornerRadius != page.cornerRadius)
-        let shouldAnimate = presentationChanged && animationPolicy.shouldAnimate
-        lastPresentationTransitionDuration = shouldAnimate
-            ? animationPolicy.durationSeconds
-            : 0
-        let applyPresentation = {
-            self.zoomScrollView.configure(
-                contentView: self.hostingController.view,
-                fittedSize: self.fittedSize,
-                maximumZoomScale: CGFloat(configuration.pinchMaxScale)
-            )
-            self.applyCornerMask()
-            self.zoomScrollView.layoutIfNeeded()
+
+        let sameAsset = assetID == page.assetID
+        let presentationChanged = sameAsset &&
+            interfaceVisibility != page.interfaceVisibility &&
+            isFramedPhoto && page.isFramedPhoto &&
+            (fittedSize != page.fittedSize ||
+                cornerRadius != page.cornerRadius)
+        let nativeZoomIsAboveOne = isCurrent &&
+            zoomScrollView.zoomScale > 1.000_001
+        if scale > 1.000_001 || nativeZoomIsAboveOne {
+            if presentationChanged {
+                pendingPresentationPage = page
+            } else if sameAsset &&
+                        fittedSize == page.fittedSize &&
+                        cornerRadius == page.cornerRadius {
+                pendingPresentationPage = nil
+            }
+            lastPresentationTransitionDuration = 0
+            return
         }
-        if shouldAnimate {
-            UIView.animate(
-                withDuration: animationPolicy.durationSeconds,
-                delay: 0,
-                options: [.allowUserInteraction, .beginFromCurrentState, .curveLinear],
-                animations: applyPresentation
-            )
-        } else {
-            UIView.performWithoutAnimation(applyPresentation)
+
+        if isPresentationTransitionActive,
+           pendingPresentationMatches(page) {
+            pendingPresentationPage = page
+            return
         }
+
+        if presentationChanged ||
+            (isPresentationTransitionActive && sameAsset) {
+            startPresentationTransition(
+                to: page,
+                configuration: configuration,
+                viewportSize: viewportSize
+            )
+            return
+        }
+
+        pendingPresentationPage = nil
+        applyPageImmediately(
+            page,
+            configuration: configuration,
+            countsAsPresentationCommit: false
+        )
         let interactionIsActive = pinchIsActive ||
             zoomScrollView.isTracking ||
             zoomScrollView.isDragging ||
@@ -563,6 +664,166 @@ final class S2NativeZoomPageController: UIViewController,
     func resetZoom() {
         pinchIsActive = false
         zoomScrollView.applyNativeState(scale: 1, viewportOffset: .zero)
+        applyDeferredPresentationIfPossible()
+    }
+
+    func finishActivePresentationTransition() {
+        guard let page = pendingPresentationPage else {
+            return
+        }
+        presentationTransitionGeneration += 1
+        zoomScrollView.presentationContentView?.layer.removeAllAnimations()
+        zoomScrollView.zoomContentView?.layer.removeAllAnimations()
+        commitPresentation(page)
+    }
+
+    private func startPresentationTransition(
+        to page: S2NativePageContent,
+        configuration: S2CalibrationConfiguration,
+        viewportSize: CGSize
+    ) {
+        let transition = S2ImmersiveTransition(
+            viewportAnchor: CGPoint(
+                x: viewportSize.width / 2,
+                y: viewportSize.height / 2
+            ),
+            layoutSize: fittedSize,
+            targetSize: page.fittedSize,
+            sourceCornerRadius: cornerRadius,
+            targetCornerRadius: page.cornerRadius
+        )
+        let animationPolicy = S2AnimationPolicy(configuration: configuration)
+        lastPresentationTransition = transition
+        lastPresentationTransitionDuration = animationPolicy.shouldAnimate
+            ? animationPolicy.durationSeconds
+            : 0
+
+        guard animationPolicy.shouldAnimate,
+              let presentationContentView =
+                zoomScrollView.presentationContentView else {
+            UIView.performWithoutAnimation {
+                self.applyPageImmediately(
+                    page,
+                    configuration: configuration,
+                    countsAsPresentationCommit: true
+                )
+            }
+            return
+        }
+
+        zoomScrollView.applyNativeState(scale: 1, viewportOffset: .zero)
+        pendingPresentationPage = page
+        isPresentationTransitionActive = true
+        presentationTransitionCount += 1
+        presentationTransitionGeneration += 1
+        let generation = presentationTransitionGeneration
+        let targetFrame = transition.frame(at: 1)
+        presentationContentView.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        presentationContentView.layer.cornerCurve = .continuous
+        presentationContentView.layer.masksToBounds =
+            transition.sourceCornerRadius > 0 ||
+                transition.targetCornerRadius > 0
+        zoomScrollView.zoomContentView?.layer.cornerCurve = .continuous
+
+        UIView.animate(
+            withDuration: animationPolicy.durationSeconds,
+            delay: 0,
+            options: [
+                .allowUserInteraction,
+                .beginFromCurrentState,
+                .curveLinear
+            ],
+            animations: {
+                presentationContentView.transform = CGAffineTransform(
+                    scaleX: targetFrame.scale,
+                    y: targetFrame.scale
+                )
+                presentationContentView.layer.cornerRadius =
+                    targetFrame.cornerRadius
+                self.zoomScrollView.zoomContentView?.layer.cornerRadius =
+                    targetFrame.cornerRadius
+            },
+            completion: { [weak self] finished in
+                guard finished,
+                      let self,
+                      self.presentationTransitionGeneration == generation else {
+                    return
+                }
+                self.commitPresentation(
+                    self.pendingPresentationPage ?? page
+                )
+            }
+        )
+    }
+
+    private func applyDeferredPresentationIfPossible() {
+        guard !isPresentationTransitionActive,
+              !zoomScrollView.isZooming,
+              zoomScrollView.zoomScale <= 1.000_001,
+              let page = pendingPresentationPage else {
+            return
+        }
+        startPresentationTransition(
+            to: page,
+            configuration: latestConfiguration,
+            viewportSize: latestViewportSize
+        )
+    }
+
+    private func pendingPresentationMatches(
+        _ page: S2NativePageContent
+    ) -> Bool {
+        guard let pendingPresentationPage else {
+            return false
+        }
+        return pendingPresentationPage.assetID == page.assetID &&
+            pendingPresentationPage.interfaceVisibility ==
+                page.interfaceVisibility &&
+            pendingPresentationPage.isFramedPhoto == page.isFramedPhoto &&
+            pendingPresentationPage.fittedSize == page.fittedSize &&
+            pendingPresentationPage.cornerRadius == page.cornerRadius
+    }
+
+    private func commitPresentation(_ page: S2NativePageContent) {
+        UIView.performWithoutAnimation {
+            self.applyPageImmediately(
+                page,
+                configuration: self.latestConfiguration,
+                countsAsPresentationCommit: true
+            )
+            self.zoomScrollView.applyNativeState(
+                scale: 1,
+                viewportOffset: .zero
+            )
+        }
+    }
+
+    private func applyPageImmediately(
+        _ page: S2NativePageContent,
+        configuration: S2CalibrationConfiguration,
+        countsAsPresentationCommit: Bool
+    ) {
+        presentationTransitionGeneration += 1
+        zoomScrollView.presentationContentView?.layer.removeAllAnimations()
+        zoomScrollView.zoomContentView?.layer.removeAllAnimations()
+        isPresentationTransitionActive = false
+        pendingPresentationPage = nil
+        assetID = page.assetID
+        interfaceVisibility = page.interfaceVisibility
+        isFramedPhoto = page.isFramedPhoto
+        fittedSize = page.fittedSize
+        cornerRadius = page.cornerRadius
+        hostingController.rootView = page.content
+        zoomScrollView.configure(
+            contentView: hostingController.view,
+            fittedSize: fittedSize,
+            maximumZoomScale: CGFloat(configuration.pinchMaxScale)
+        )
+        applyCornerMask()
+        zoomScrollView.layoutIfNeeded()
+        if countsAsPresentationCommit {
+            presentationGeometryCommitCount += 1
+        }
     }
 
     func prioritizeVerticalSwipe(
@@ -651,21 +912,33 @@ final class S2NativeZoomPageController: UIViewController,
         with view: UIView?,
         atScale scale: CGFloat
     ) {
-        guard scrollView === zoomScrollView, pinchIsActive else {
+        guard scrollView === zoomScrollView else {
             return
         }
-        let duration = Date().timeIntervalSince(pinchStartDate ?? Date())
-        let displacement = abs(scale / max(0.000_001, pinchStartScale) - 1)
-        pinchIsActive = false
-        owner?.finishNativePinch(
-            on: self,
-            scale: scale,
-            displacement: displacement,
-            peakVelocity: pinchPeakVelocity,
-            duration: duration
-        )
-        pinchStartDate = nil
-        pinchPeakVelocity = 0
+        if pinchIsActive {
+            let duration = Date().timeIntervalSince(pinchStartDate ?? Date())
+            let displacement = abs(
+                scale / max(0.000_001, pinchStartScale) - 1
+            )
+            pinchIsActive = false
+            owner?.finishNativePinch(
+                on: self,
+                scale: scale,
+                displacement: displacement,
+                peakVelocity: pinchPeakVelocity,
+                duration: duration
+            )
+            pinchStartDate = nil
+            pinchPeakVelocity = 0
+        }
+        applyDeferredPresentationIfPossible()
+    }
+
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        guard scrollView === zoomScrollView else {
+            return
+        }
+        applyDeferredPresentationIfPossible()
     }
 
     func gestureRecognizerShouldBegin(
@@ -690,9 +963,13 @@ final class S2NativeZoomPageController: UIViewController,
     }
 
     private func applyCornerMask() {
-        hostingController.view.layer.cornerRadius = max(0, cornerRadius)
+        let resolvedRadius = max(0, cornerRadius)
+        hostingController.view.layer.cornerRadius = resolvedRadius
         hostingController.view.layer.cornerCurve = .continuous
-        hostingController.view.layer.masksToBounds = cornerRadius > 0
+        hostingController.view.layer.masksToBounds = resolvedRadius > 0
+        zoomScrollView.zoomContentView?.layer.cornerRadius = resolvedRadius
+        zoomScrollView.zoomContentView?.layer.cornerCurve = .continuous
+        zoomScrollView.zoomContentView?.layer.masksToBounds = false
     }
 
     @objc private func handleSingleTap(_ recognizer: UITapGestureRecognizer) {
@@ -842,7 +1119,8 @@ final class S2NativePagerViewController: UIViewController,
                 configuration: configuration,
                 scale: machine.scale,
                 viewportOffset: machine.viewportOffset,
-                isCurrent: page.index == machine.currentIndex
+                isCurrent: page.index == machine.currentIndex,
+                viewportSize: viewportSize
             )
         }
 

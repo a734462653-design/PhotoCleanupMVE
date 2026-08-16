@@ -1,4 +1,5 @@
 import XCTest
+import Photos
 import SwiftUI
 import UIKit
 @testable import PhotoCleanupMVE
@@ -18,6 +19,28 @@ private final class S2NativeZoomTestDelegate: NSObject, UIScrollViewDelegate {
         with view: UIView?,
         atScale scale: CGFloat
     ) {}
+}
+
+private final class S2ImageRequestCounter: S2PhotoImageRequesting {
+    private(set) var requestCount = 0
+
+    @discardableResult
+    func requestImage(
+        assetID: String,
+        targetSize: CGSize,
+        requestStrategy: S2ImageRequestStrategy,
+        resultHandler: @escaping (UIImage?, Bool) -> Void
+    ) -> PHImageRequestID {
+        requestCount += 1
+        resultHandler(UIImage(), false)
+        return PHInvalidImageRequestID
+    }
+
+    func cancelImageRequest(_ requestID: PHImageRequestID) {}
+
+    func reset() {
+        requestCount = 0
+    }
 }
 
 final class S2CalibrationHarnessTests: XCTestCase {
@@ -452,7 +475,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "taskID=IC-20260815-060-tap-arbitration-and-screenshot-immersive"
+                "taskID=IC-20260815-061-immersive-transition-and-nx-stability"
             )
         )
         XCTAssertTrue(
@@ -1603,13 +1626,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
             configuration: configuration
         )
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        XCTAssertEqual(page.fittedSize, hidden.oneXDisplaySize)
-        XCTAssertEqual(page.cornerRadius, 0)
+        let visible = metrics(
+            visibility: .visible,
+            configuration: configuration
+        )
+        XCTAssertTrue(page.isPresentationTransitionActive)
+        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
+        XCTAssertEqual(page.cornerRadius, visible.oneXCornerRadius)
         XCTAssertEqual(
             page.lastPresentationTransitionDuration,
             0.18,
             accuracy: 0.000_001
         )
+        page.finishActivePresentationTransition()
+        XCTAssertEqual(page.fittedSize, hidden.oneXDisplaySize)
+        XCTAssertEqual(page.cornerRadius, 0)
 
         var directConfiguration = configuration
         directConfiguration.animationsEnabled = false
@@ -1693,6 +1724,382 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(configuration.exportText().contains(
             "screenshotImmersiveOnHide=true"
         ))
+    }
+
+    // X1：缩放变换的实际锚点固定在物理视口中心。
+    func testX1ImmersiveTransitionUsesViewportCenterAnchoredScaleTransform() {
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+
+        let transition = tryUnwrap(page.lastPresentationTransition)
+        let actualAnchor = tryUnwrap(
+            page.zoomScrollView.presentationAnchorInViewport()
+        )
+        XCTAssertEqual(
+            transition.viewportAnchor,
+            CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2)
+        )
+        XCTAssertEqual(actualAnchor.x, transition.viewportAnchor.x, accuracy: 0.000_001)
+        XCTAssertEqual(actualAnchor.y, transition.viewportAnchor.y, accuracy: 0.000_001)
+        XCTAssertEqual(
+            page.zoomScrollView.presentationContentView?.layer.anchorPoint,
+            CGPoint(x: 0.5, y: 0.5)
+        )
+        XCTAssertNotEqual(transition.targetScale, 1, accuracy: 0.000_001)
+        page.finishActivePresentationTransition()
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        let reverseTransition = tryUnwrap(page.lastPresentationTransition)
+        let reverseAnchor = tryUnwrap(
+            page.zoomScrollView.presentationAnchorInViewport()
+        )
+        XCTAssertLessThan(reverseTransition.targetScale, 1)
+        XCTAssertEqual(
+            reverseTransition.viewportAnchor,
+            transition.viewportAnchor
+        )
+        XCTAssertEqual(reverseAnchor.x, transition.viewportAnchor.x, accuracy: 0.000_001)
+        XCTAssertEqual(reverseAnchor.y, transition.viewportAnchor.y, accuracy: 0.000_001)
+        page.finishActivePresentationTransition()
+    }
+
+    // X2：动画区间内布局尺寸不变，尺寸差仅由等比变换承担。
+    func testX2ImmersiveTransitionKeepsLayoutSizeAndUsesTransform() {
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let layoutSize = page.fittedSize
+        let contentSize = page.zoomScrollView.contentSize
+        let presentationBounds = tryUnwrap(
+            page.zoomScrollView.presentationContentView
+        ).bounds.size
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+
+        let transition = tryUnwrap(page.lastPresentationTransition)
+        let transform = tryUnwrap(
+            page.zoomScrollView.presentationContentView
+        ).transform
+        XCTAssertTrue(page.isPresentationTransitionActive)
+        XCTAssertEqual(page.fittedSize, layoutSize)
+        XCTAssertEqual(page.zoomScrollView.fittedSize, layoutSize)
+        XCTAssertEqual(page.zoomScrollView.contentSize, contentSize)
+        XCTAssertEqual(
+            page.zoomScrollView.presentationContentView?.bounds.size,
+            presentationBounds
+        )
+        XCTAssertEqual(transform.a, transition.targetScale, accuracy: 0.000_001)
+        XCTAssertEqual(transform.d, transition.targetScale, accuracy: 0.000_001)
+        XCTAssertEqual(transform.b, 0, accuracy: 0.000_001)
+        XCTAssertEqual(transform.c, 0, accuracy: 0.000_001)
+        page.finishActivePresentationTransition()
+    }
+
+    // X3：圆角与缩放共用线性进度，两个方向的端点和中点连续。
+    func testX3CornerRadiusInterpolatesContinuouslyInBothDirections() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        let hiding = tryUnwrap(page.lastPresentationTransition)
+        XCTAssertEqual(
+            hiding.frame(at: 0).cornerRadius,
+            CGFloat(configuration.fitCornerRadius),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            hiding.frame(at: 0.5).cornerRadius,
+            CGFloat(configuration.fitCornerRadius) / 2,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(hiding.frame(at: 1).cornerRadius, 0)
+        XCTAssertEqual(
+            page.zoomScrollView.presentationContentView?.layer.cornerRadius,
+            0
+        )
+        page.finishActivePresentationTransition()
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        let showing = tryUnwrap(page.lastPresentationTransition)
+        XCTAssertEqual(showing.frame(at: 0).cornerRadius, 0)
+        XCTAssertEqual(
+            showing.frame(at: 0.5).cornerRadius,
+            CGFloat(configuration.fitCornerRadius) / 2,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            showing.frame(at: 1).cornerRadius,
+            CGFloat(configuration.fitCornerRadius),
+            accuracy: 0.000_001
+        )
+        page.finishActivePresentationTransition()
+    }
+
+    // X4：关闭动画后不保留任何过渡态，目标几何一次到位。
+    func testX4DisabledAnimationsReachEndpointWithoutTransition() {
+        var configuration = S2CalibrationConfiguration.factoryPlaceholder
+        configuration.animationsEnabled = false
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let hidden = metrics(
+            visibility: .hidden,
+            configuration: configuration
+        )
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+
+        XCTAssertFalse(page.isPresentationTransitionActive)
+        XCTAssertFalse(page.hasDeferredPresentation)
+        XCTAssertEqual(page.lastPresentationTransitionDuration, 0)
+        XCTAssertEqual(page.presentationTransitionCount, 0)
+        XCTAssertEqual(page.presentationGeometryCommitCount, 1)
+        XCTAssertEqual(page.fittedSize, hidden.oneXDisplaySize)
+        XCTAssertEqual(page.cornerRadius, hidden.oneXCornerRadius)
+        XCTAssertEqual(
+            page.zoomScrollView.presentationContentView?.transform,
+            .identity
+        )
+    }
+
+    // X5：Nx 显隐切换前后五项原生几何量及照片可见框严格相等。
+    func testX5NxVisibilityTogglePreservesAllNativeGeometry() {
+        let originalOffset = CGSize(width: 24, height: 16)
+        let machine = makeMachine(
+            scale: 2,
+            viewportOffset: originalOffset
+        )
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let zoomScale = page.zoomScrollView.zoomScale
+        let contentOffset = page.zoomScrollView.contentOffset
+        let contentSize = page.zoomScrollView.contentSize
+        let viewportSize = page.zoomScrollView.bounds.size
+        let visibleFrame = page.zoomScrollView.visibleContentFrame()
+        let presentationFrame = page.zoomScrollView.visiblePresentationFrame()
+        let fittedSize = page.fittedSize
+        let cornerRadius = page.cornerRadius
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+
+        XCTAssertEqual(page.zoomScrollView.zoomScale, zoomScale)
+        XCTAssertEqual(page.zoomScrollView.contentOffset, contentOffset)
+        XCTAssertEqual(page.zoomScrollView.contentSize, contentSize)
+        XCTAssertEqual(page.zoomScrollView.bounds.size, viewportSize)
+        XCTAssertEqual(page.zoomScrollView.visibleContentFrame(), visibleFrame)
+        XCTAssertEqual(
+            page.zoomScrollView.visiblePresentationFrame(),
+            presentationFrame
+        )
+        XCTAssertEqual(page.fittedSize, fittedSize)
+        XCTAssertEqual(page.cornerRadius, cornerRadius)
+        XCTAssertTrue(page.hasDeferredPresentation)
+        XCTAssertEqual(page.presentationTransitionCount, 0)
+    }
+
+    // X6：Nx 延迟目标在实际回到 1x 后只提交一次并达到当前显隐端点。
+    func testX6NxDeferredPresentationAppliesOnceAfterReturningToOneX() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(
+            scale: 2,
+            viewportOffset: CGSize(width: 24, height: 16),
+            configuration: configuration
+        )
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let visible = metrics(
+            visibility: .visible,
+            configuration: configuration
+        )
+        let hidden = metrics(
+            visibility: .hidden,
+            configuration: configuration
+        )
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        XCTAssertTrue(page.hasDeferredPresentation)
+        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
+
+        XCTAssertTrue(machine.handleNativeDoubleTap(
+            targetScale: page.doubleTapTargetScale
+        ))
+        page.zoomScrollView.setZoomScale(1, animated: false)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+
+        let transition = tryUnwrap(page.lastPresentationTransition)
+        XCTAssertTrue(page.isPresentationTransitionActive)
+        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
+        XCTAssertEqual(page.presentationTransitionCount, 1)
+        XCTAssertEqual(page.presentationGeometryCommitCount, 0)
+        XCTAssertNotEqual(transition.targetScale, 1, accuracy: 0.000_001)
+        page.finishActivePresentationTransition()
+
+        XCTAssertFalse(page.isPresentationTransitionActive)
+        XCTAssertFalse(page.hasDeferredPresentation)
+        XCTAssertEqual(page.fittedSize, hidden.oneXDisplaySize)
+        XCTAssertEqual(page.cornerRadius, hidden.oneXCornerRadius)
+        XCTAssertEqual(page.zoomScrollView.contentSize, hidden.oneXDisplaySize)
+        XCTAssertEqual(page.presentationGeometryCommitCount, 1)
+
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        XCTAssertEqual(page.presentationTransitionCount, 1)
+        XCTAssertEqual(page.presentationGeometryCommitCount, 1)
+    }
+
+    // X7：Nx 未切换显隐时，退出只执行既有缩放归一，不新增呈现提交。
+    func testX7NxExitWithoutVisibilityToggleKeepsExistingBehavior() {
+        let machine = makeMachine(
+            scale: 2,
+            viewportOffset: CGSize(width: 24, height: 16)
+        )
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let visible = metrics(visibility: .visible)
+
+        XCTAssertTrue(machine.handleNativeDoubleTap(
+            targetScale: page.doubleTapTargetScale
+        ))
+        page.zoomScrollView.setZoomScale(1, animated: false)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(machine.viewportOffset, .zero)
+        XCTAssertEqual(page.zoomScrollView.zoomScale, 1)
+        XCTAssertFalse(page.hasDeferredPresentation)
+        XCTAssertFalse(page.isPresentationTransitionActive)
+        XCTAssertNil(page.lastPresentationTransition)
+        XCTAssertEqual(page.presentationTransitionCount, 0)
+        XCTAssertEqual(page.presentationGeometryCommitCount, 0)
+        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
+        XCTAssertEqual(page.cornerRadius, visible.oneXCornerRadius)
+    }
+
+    // X8：过渡未结束前不替换照片内容，真实图像请求计数保持为零。
+    func testX8ImmersiveAnimationIssuesZeroImageRequests() {
+        var configuration = S2CalibrationConfiguration.factoryPlaceholder
+        configuration.animationDurationMilliseconds = 1_000
+        let requestCounter = S2ImageRequestCounter()
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration,
+            photoContent: { assetID, size in
+                AnyView(
+                    S2TemporaryPhotoImageView(
+                        strategy: requestCounter,
+                        assetID: assetID,
+                        requestedScale: 1,
+                        requestStrategy: configuration.imageRequestStrategy,
+                        requestRevision: 0,
+                        showsOpaqueLoadingBackground: true,
+                        onReading: { _ in }
+                    )
+                    .frame(width: size.width, height: size.height)
+                )
+            }
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertGreaterThan(requestCounter.requestCount, 0)
+        requestCounter.reset()
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            photoContent: { assetID, size in
+                AnyView(
+                    S2TemporaryPhotoImageView(
+                        strategy: requestCounter,
+                        assetID: assetID,
+                        requestedScale: 1,
+                        requestStrategy: configuration.imageRequestStrategy,
+                        requestRevision: 0,
+                        showsOpaqueLoadingBackground: true,
+                        onReading: { _ in }
+                    )
+                    .frame(width: size.width, height: size.height)
+                )
+            }
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        XCTAssertTrue(page.isPresentationTransitionActive)
+        XCTAssertEqual(requestCounter.requestCount, 0)
+        controller.pageControllers.values.forEach {
+            $0.finishActivePresentationTransition()
+        }
+        window.isHidden = true
     }
 
     // A1：原生左右分页成功切换照片时触觉调用次数仍为零。
@@ -1918,7 +2325,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     private func makeNativePagerController(
         machine: S2StateMachine,
-        configuration: S2CalibrationConfiguration = .factoryPlaceholder
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder,
+        photoContent: ((String, CGSize) -> AnyView)? = nil
     ) -> S2NativePagerViewController {
         let controller = S2NativePagerViewController()
         controller.loadViewIfNeeded()
@@ -1926,7 +2334,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         applyNativePagerController(
             controller,
             machine: machine,
-            configuration: configuration
+            configuration: configuration,
+            photoContent: photoContent
         )
         return controller
     }
@@ -1934,7 +2343,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     private func applyNativePagerController(
         _ controller: S2NativePagerViewController,
         machine: S2StateMachine,
-        configuration: S2CalibrationConfiguration
+        configuration: S2CalibrationConfiguration,
+        photoContent: ((String, CGSize) -> AnyView)? = nil
     ) {
         let state = S2ViewportPresentationState(
             interfaceVisibility: machine.interfaceVisibility,
@@ -1948,6 +2358,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 assetAspectRatio: screenAspectRatio,
                 configuration: configuration
             )
+            let content = photoContent?(assetID, value.oneXDisplaySize) ??
+                AnyView(
+                    Color.clear.frame(
+                        width: value.oneXDisplaySize.width,
+                        height: value.oneXDisplaySize.height
+                    )
+                )
             return S2NativePageContent(
                 index: index,
                 assetID: assetID,
@@ -1956,12 +2373,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 fittedSize: value.oneXDisplaySize,
                 cornerRadius: value.oneXCornerRadius,
                 doubleTapTargetScale: value.doubleTapTargetScale,
-                content: AnyView(
-                    Color.clear.frame(
-                        width: value.oneXDisplaySize.width,
-                        height: value.oneXDisplaySize.height
-                    )
-                )
+                content: content
             )
         }
         controller.apply(
