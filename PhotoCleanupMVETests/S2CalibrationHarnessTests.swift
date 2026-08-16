@@ -1874,7 +1874,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 rangeDisplayInformation: S2RangeDisplayInformation(
                     rangeID: "range-054",
                     displayName: "测试范围",
-                    totalAssetCount: 3
+                    totalAssetCount: orderedAssetIDs.count
                 ),
                 orderedAssetIDs: orderedAssetIDs,
                 currentAssetID: orderedAssetIDs[resolvedCurrentIndex],
