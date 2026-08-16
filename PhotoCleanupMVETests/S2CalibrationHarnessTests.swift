@@ -1391,9 +1391,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         let entryTransition = tryUnwrap(page.lastDoubleTapTransition)
         page.finishActiveDoubleTapTransition()
+        let entrySynchronization = tryUnwrap(
+            page.lastDoubleTapSynchronization
+        )
         XCTAssertLessThanOrEqual(
-            tryUnwrap(page.lastDoubleTapSynchronization).maximumDifference,
-            0.5
+            entrySynchronization.maximumDifference,
+            0.5,
+            "进入同步前=\(entrySynchronization.beforeWindowFrame)，" +
+                "同步后=\(entrySynchronization.afterWindowFrame)"
         )
 
         let nxScale = page.zoomScrollView.zoomScale
@@ -1422,7 +1427,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 beforeWindowFrame: entryTransition.frame(at: progress),
                 afterWindowFrame: exitTransition.frame(at: 1 - progress)
             )
-            XCTAssertLessThanOrEqual(reading.maximumDifference, 0.5)
+            XCTAssertLessThanOrEqual(
+                reading.maximumDifference,
+                0.5,
+                "进度=\(progress)，进入帧=\(reading.beforeWindowFrame)，" +
+                    "退出反向帧=\(reading.afterWindowFrame)"
+            )
             XCTAssertEqual(
                 entryTransition.cornerRadius(at: progress),
                 exitTransition.cornerRadius(at: 1 - progress),
@@ -1667,11 +1677,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // M2：未命中屏幕比例判定时，双击只采用填满视口倍数。
     func testM2NonScreenPhotoDoubleTapUsesAspectFillScale() {
+        let assetAspectRatio: CGFloat = 0.75
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let value = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
-            assetAspectRatio: 1,
+            assetAspectRatio: assetAspectRatio,
             configuration: configuration
         )
         let machine = makeMachine(configuration: configuration)
@@ -1697,7 +1708,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(legacyMachine.handleDoubleTap(
             at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
             viewportSize: physicalSize,
-            assetAspectRatio: 1
+            assetAspectRatio: assetAspectRatio
         ))
         XCTAssertEqual(
             legacyMachine.scale,
@@ -1740,8 +1751,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(nonMatching.oneXCornerRadius, 0)
         XCTAssertEqual(
-            page.zoomScrollView.zoomContentView?.layer.cornerRadius,
+            page.zoomScrollView.presentationContentView?.layer.cornerRadius,
             CGFloat(configuration.fitCornerRadius)
+        )
+        XCTAssertEqual(
+            page.zoomScrollView.zoomContentView?.layer.cornerRadius,
+            0
         )
     }
 

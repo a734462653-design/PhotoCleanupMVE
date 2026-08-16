@@ -1510,7 +1510,9 @@ final class S2NativeZoomPageController: UIViewController,
         _ scrollView: UIScrollView,
         with view: UIView?
     ) {
+        let pinchState = scrollView.pinchGestureRecognizer?.state
         guard scrollView === zoomScrollView,
+              pinchState == .began || pinchState == .changed,
               owner?.beginNativePinch(on: self) == true else {
             return
         }
@@ -2525,6 +2527,29 @@ final class S2GeometryDiagnosticsRun {
         controller?.diagnosticCurrentPage?.doubleTapTransitionObserver = nil
     }
 
+    private func stabilityDescription(
+        controller: S2NativePagerViewController,
+        visibility: S2InterfaceVisibility,
+        zoomState: S2ZoomState
+    ) -> String {
+        guard let machine = controller.diagnosticMachine,
+              let page = controller.diagnosticCurrentPage else {
+            return "状态机或当前页不存在"
+        }
+        let zoomMatches = zoomState == .oneX
+            ? abs(page.zoomScrollView.zoomScale - 1) <= 0.000_001
+            : page.zoomScrollView.zoomScale > 1
+        return [
+            "状态机V匹配=\(machine.interfaceVisibility == visibility)",
+            "状态机缩放态匹配=\(machine.zoomState == zoomState)",
+            "页面V匹配=\(page.diagnosticInterfaceVisibility == visibility)",
+            "显隐转场中=\(page.isPresentationTransitionActive)",
+            "双击转场中=\(page.isDoubleTapTransitionActive)",
+            "原生缩放匹配=\(zoomMatches)",
+            "原生倍率=\(page.zoomScrollView.zoomScale)"
+        ].joined(separator: "，")
+    }
+
     private func toggleToHidden() {
         guard let controller,
               let machine = controller.diagnosticMachine,
@@ -2540,7 +2565,14 @@ final class S2GeometryDiagnosticsRun {
                 return
             }
             guard succeeded else {
-                self.finish(with: "诊断失败：V=隐藏、s=1 未稳定。")
+                self.finish(
+                    with: "诊断失败：V=隐藏、s=1 未稳定；" +
+                        self.stabilityDescription(
+                            controller: controller,
+                            visibility: .hidden,
+                            zoomState: .oneX
+                        ) + "。"
+                )
                 return
             }
             self.capture("单击后 V=隐藏、s=1 稳定态")
@@ -2563,7 +2595,14 @@ final class S2GeometryDiagnosticsRun {
                 return
             }
             guard succeeded else {
-                self.finish(with: "诊断失败：V=显示、s=1 未稳定。")
+                self.finish(
+                    with: "诊断失败：V=显示、s=1 未稳定；" +
+                        self.stabilityDescription(
+                            controller: controller,
+                            visibility: .visible,
+                            zoomState: .oneX
+                        ) + "。"
+                )
                 return
             }
             self.capture("再次单击回 V=显示 稳定态")
@@ -2647,7 +2686,14 @@ final class S2GeometryDiagnosticsRun {
                         return
                     }
                     guard succeeded else {
-                        self.finish(with: "诊断失败：双击终态未稳定。")
+                        self.finish(
+                            with: "诊断失败：双击终态未稳定；" +
+                                self.stabilityDescription(
+                                    controller: controller,
+                                    visibility: stableVisibility,
+                                    zoomState: stableZoomState
+                                ) + "。"
+                        )
                         return
                     }
                     self.capture(completionLabel)
