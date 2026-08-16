@@ -561,9 +561,13 @@ final class S2NativeZoomScrollView: UIScrollView {
         guard let presentationContentView else {
             return nil
         }
-        return presentationContentView.convert(
+        let contentFrame = presentationContentView.convert(
             presentationContentView.bounds,
             to: self
+        )
+        return contentFrame.offsetBy(
+            dx: -bounds.minX,
+            dy: -bounds.minY
         )
     }
 
@@ -1371,6 +1375,18 @@ final class S2NativeZoomPageController: UIViewController,
                 )
             }
         )
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + animationPolicy.durationSeconds
+        ) { [weak self] in
+            guard let self,
+                  self.isPresentationTransitionActive,
+                  self.presentationTransitionGeneration == generation else {
+                return
+            }
+            self.commitPresentation(
+                self.pendingPresentationPage ?? page
+            )
+        }
     }
 
     private func applyDeferredPresentationIfPossible() {
