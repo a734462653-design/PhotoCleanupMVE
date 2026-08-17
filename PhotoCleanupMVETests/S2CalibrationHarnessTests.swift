@@ -43,6 +43,77 @@ private final class S2ImageRequestCounter: S2PhotoImageRequesting {
     }
 }
 
+private struct IC064BaselinePresentationSample {
+    let timestamp: CFTimeInterval
+    let frame: CGRect
+    let bounds: CGRect
+    let cornerRadius: CGFloat
+}
+
+private final class IC064BaselinePresentationSampler: NSObject {
+    private weak var page: S2NativeZoomPageController?
+    private var displayLink: CADisplayLink?
+    private var startTimestamp: CFTimeInterval?
+    private(set) var samples: [IC064BaselinePresentationSample] = []
+
+    init(page: S2NativeZoomPageController) {
+        self.page = page
+    }
+
+    deinit {
+        displayLink?.invalidate()
+    }
+
+    func start() {
+        samples = []
+        startTimestamp = nil
+        capture(timestamp: CACurrentMediaTime())
+        let displayLink = CADisplayLink(
+            target: self,
+            selector: #selector(captureDisplayFrame(_:))
+        )
+        displayLink.preferredFramesPerSecond = 60
+        self.displayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
+    }
+
+    func stop() -> [IC064BaselinePresentationSample] {
+        displayLink?.invalidate()
+        displayLink = nil
+        capture(timestamp: CACurrentMediaTime())
+        return samples
+    }
+
+    @objc private func captureDisplayFrame(_ displayLink: CADisplayLink) {
+        capture(timestamp: displayLink.timestamp)
+    }
+
+    private func capture(timestamp: CFTimeInterval) {
+        guard let scrollView = page?.zoomScrollView,
+              let presentationContentView = scrollView.presentationContentView,
+              let zoomContentView = scrollView.zoomContentView else {
+            return
+        }
+        let layer = presentationContentView.layer.presentation() ??
+            presentationContentView.layer
+        let frame = zoomContentView.convert(
+            layer.frame,
+            to: scrollView
+        ).offsetBy(
+            dx: -scrollView.bounds.minX,
+            dy: -scrollView.bounds.minY
+        )
+        let firstTimestamp = startTimestamp ?? timestamp
+        startTimestamp = firstTimestamp
+        samples.append(IC064BaselinePresentationSample(
+            timestamp: timestamp - firstTimestamp,
+            frame: frame,
+            bounds: layer.bounds,
+            cornerRadius: layer.cornerRadius
+        ))
+    }
+}
+
 final class S2CalibrationHarnessTests: XCTestCase {
     private var nativeZoomDelegates: [S2NativeZoomTestDelegate] = []
 
@@ -3013,6 +3084,40 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(disabled.durationSeconds, 0)
     }
 
+    // IC-064 改造前证据：在继承提交上以 60Hz 读取真实 presentation 层。
+    func testIC064BaselinePresentationCurveProbe() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        let hiding = captureBaselinePresentationToggle(
+            direction: "hiding",
+            machine: machine,
+            controller: controller,
+            page: page,
+            configuration: configuration
+        )
+        let showing = captureBaselinePresentationToggle(
+            direction: "showing",
+            machine: machine,
+            controller: controller,
+            page: page,
+            configuration: configuration
+        )
+
+        XCTAssertGreaterThanOrEqual(hiding.count, 3)
+        XCTAssertGreaterThanOrEqual(showing.count, 3)
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
     private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(
@@ -3032,6 +3137,45 @@ final class S2CalibrationHarnessTests: XCTestCase {
             bottomStripState: .idle,
             sheetState: .closed
         )
+    }
+
+    private func captureBaselinePresentationToggle(
+        direction: String,
+        machine: S2StateMachine,
+        controller: S2NativePagerViewController,
+        page: S2NativeZoomPageController,
+        configuration: S2CalibrationConfiguration
+    ) -> [IC064BaselinePresentationSample] {
+        let sampler = IC064BaselinePresentationSampler(page: page)
+        sampler.start()
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        let deadline = Date(timeIntervalSinceNow: 1)
+        while page.isPresentationTransitionActive, Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.005))
+        }
+        XCTAssertFalse(page.isPresentationTransitionActive)
+        let samples = sampler.stop()
+        for (index, sample) in samples.enumerated() {
+            print(String(format:
+                "IC064_BASELINE_CURVE direction=%@ sample=%d time=%.6f frame=(%.6f,%.6f,%.6f,%.6f) bounds=(%.6f,%.6f) corner=%.6f",
+                direction,
+                index,
+                sample.timestamp,
+                sample.frame.minX,
+                sample.frame.minY,
+                sample.frame.width,
+                sample.frame.height,
+                sample.bounds.width,
+                sample.bounds.height,
+                sample.cornerRadius
+            ))
+        }
+        return samples
     }
 
     private func metrics(
