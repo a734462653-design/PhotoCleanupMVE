@@ -3609,8 +3609,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let image = UIGraphicsImageRenderer(
             bounds: host.view.bounds,
             format: format
-        ).image { context in
-            host.view.layer.render(in: context.cgContext)
+        ).image { _ in
+            _ = host.view.drawHierarchy(
+                in: host.view.bounds,
+                afterScreenUpdates: true
+            )
         }
         return [
             pixelGray(
