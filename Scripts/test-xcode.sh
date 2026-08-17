@@ -52,8 +52,8 @@ tell application "System Events"
     repeat 40 times
         if exists process "Simulator" then
             tell process "Simulator"
-                if exists menu item "Trigger Screenshot" of menu "File" of menu bar 1 then
-                    click menu item "Trigger Screenshot" of menu "File" of menu bar 1
+                if exists menu item "Trigger Screenshot" of menu "Device" of menu bar 1 then
+                    click menu item "Trigger Screenshot" of menu "Device" of menu bar 1
                     return
                 end if
             end tell
