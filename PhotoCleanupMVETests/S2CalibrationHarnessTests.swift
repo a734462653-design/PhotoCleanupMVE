@@ -219,9 +219,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let authorizationStatus = PHPhotoLibrary.authorizationStatus(
             for: .readWrite
         )
+        let bundleID = Bundle.main.bundleIdentifier ?? "nil"
         print(
             "IC067_G38_AUTH " +
-                "bundleID=\(Bundle.main.bundleIdentifier ?? \"nil\") " +
+                "bundleID=\(bundleID) " +
                 "status=\(authorizationStatus.rawValue)"
         )
         XCTAssertEqual(
