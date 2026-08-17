@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-本地静态门禁与获准的 GitHub CI 均已通过。CI #68 在继承提交上取得改造前真实曲线并证明 384 项基线 XCTest 全部通过；CI #72 在最终产品与测试代码提交 `d1318c4bb2c0d937bd5ce9213d474516cd8a6c85` 上执行 389 项 XCTest、0 失败，真实退出码 0，并成功生成与上传未签名 IPA。H3～H6 仍按任务边界保留给负责人真机并排判定。
+本地静态门禁与获准的 GitHub CI 均已通过。CI #68 在继承提交上取得改造前真实曲线并证明 384 项基线 XCTest 全部通过；CI #72 验证最终产品与测试代码提交 `d1318c4bb2c0d937bd5ce9213d474516cd8a6c85`；CI #73 验证包含报告的交付提交 `26d37f4e0967292c83e7d0098bab721338951d4f`，执行 389 项 XCTest、0 失败，真实退出码 0，并成功生成与上传未签名 IPA。H3～H6 仍按任务边界保留给负责人真机并排判定。
 
 ## 输入与边界
 
@@ -12,6 +12,37 @@
 - 目标分支：`feature/ic-064-toggle-animation`
 - 未改动 `S2StateMachine.swift`、`S2TemporaryPhotoImageStrategy.swift`、`CleanupCoordinator.swift`、规格、决策日志、图片请求策略、双击过渡、Nx 手势门控及 `debugAssetLimit`。
 - `fitInsetRatio=0.300000`、`fitCornerRadius=28.000000`、`minDoubleTapScale=2.000000`、`pinchMaxScale=4.000000` 的出厂值保持不变。
+
+## 最终交付提交与 CI #73 闭环
+
+### `26d37f4e` 相对 `d1318c4b` 的实际差异
+
+以下结果来自实际执行 `git diff d1318c4bb2c0d937bd5ce9213d474516cd8a6c85 26d37f4e0967292c83e7d0098bab721338951d4f`，不是根据提交标题推断：
+
+| 路径 | 状态 | 新增行 | 删除行 |
+|---|---|---:|---:|
+| `Reports/IC-064/change-list.md` | 修改 | 5 | 4 |
+| `Reports/IC-064/self-check.md` | 修改 | 27 | 16 |
+| 合计 | 仅两份报告 | 32 | 20 |
+
+- `git diff --name-status` 只有上述两个 `M`；产品源码、测试源码、工程文件、脚本与 CI 工作流均无差异。
+- `change-list.md` 把实现说明校正为显示刷新逐帧推进、专用内层描边层及同内容版本零重复图片请求。
+- `self-check.md` 把待补的模拟器证据替换为 CI #72 的改造后曲线、389 项 XCTest、三组像素、IPA 与 Artifact 证据。
+- `git diff --check` 对该提交区间真实退出码为 0。
+
+### CI #73 产生的原因
+
+`.github/workflows/ci.yml` 的触发条件是无路径过滤的 `push` 和手动触发。`26d37f4e` 虽然只是报告提交，但它被推送到 `feature/ic-064-toggle-animation` 后仍会自动运行完整的“iOS 构建与自验”；这就是 CI #73 的唯一触发原因，不是产品或测试代码再次变化，也不是手动重跑 #72。
+
+CI #73 检出的 `GITHUB_SHA` 为 `26d37f4e0967292c83e7d0098bab721338951d4f`，因此它实际验证的是包含当时两份报告的交付树，而不只是其父提交 `d1318c4b`。
+
+### 报告补证提交的自引用边界
+
+本节是在 CI #73 完成后补写，不能追溯成为已存在提交 `26d37f4e` 的内容；在不改写历史、不强制推送的约束下，任何补写 #73 结果的报告都会形成一个新的纯文档提交。故本报告采用以下严格口径：
+
+- `26d37f4e` 是 CI #73 已实际验证的交付提交。
+- 本文件所在提交是 `26d37f4e` 之后的报告补证提交；相对 `26d37f4e` 只允许修改本文件，产品、测试、工作流和其他报告不得变化。
+- 本文件所在提交必须再由同一完整工作流成功验证后才构成最终交付；GitHub 在推送后分配的运行编号与结果不能在提交前虚构，最终交付回复应给出该精确运行链接。
 
 ## 改造前过渡曲线
 
@@ -98,10 +129,11 @@ CI #72 使用同一 60Hz `CADisplayLink` 与 `layer.presentation()` 夹具实测
 - 基线被测提交：`2dda2ffd63ac7b5b670d76a7bcbd40c83ed3a5f0`。
 - 基线 XCTest：执行 384 项，0 失败；“运行 XCTest”步骤结论 `success`，脚本把被测命令真实状态原样作为步骤退出码，因此真实退出码为 0。
 - 基线未签名 IPA：639678 字节，SHA-256 `fb53da36bbecb33e6de55d35fa8c860d783948719c6c67c029954c28d336ed68`；Actions Artifact 上传成功。
-- 最终实现 CI：[iOS 构建与自验 #72](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31994638427)，结论 `success`；被测提交 `d1318c4bb2c0d937bd5ce9213d474516cd8a6c85`。
-- 最终 XCTest 原文：`Executed 389 tests, with 0 failures (0 unexpected) in 28.557 (49.329) seconds`；“运行 XCTest”步骤结论 `success`，脚本真实退出码为 0。
-- 最终未签名 IPA：646902 字节，SHA-256 `617474a14d0d75dfe6bef1978a5c9bae37fe5a956ac42aeea6e50d7787a028ca`。
-- Actions Artifact：`PhotoCleanupMVE-unsigned-d1318c4bb2c0`，Artifact ID `9276486248`，上传成功；归档摘要显示 632KB，Artifact digest 为 `sha256:7828dcc006f2807e7bdc6c3fe628d0d71adf7203920ef2b3d0848498c82980ef`。
+- 最终产品与测试代码 CI：[iOS 构建与自验 #72](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31994638427)，结论 `success`；被测提交 `d1318c4bb2c0d937bd5ce9213d474516cd8a6c85`。
+- 包含报告的交付 CI：[iOS 构建与自验 #73](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31995249032)，结论 `success`；被测提交 `26d37f4e0967292c83e7d0098bab721338951d4f`。
+- CI #73 XCTest 原文：`Executed 389 tests, with 0 failures (0 unexpected) in 29.604 (49.754) seconds`；“运行 XCTest”步骤结论 `success`，脚本真实退出码为 0。
+- CI #73 未签名 IPA：646902 字节，SHA-256 `3d9917755d43307b1c0f820f59be2423e6aa5e1b04acbd772b4e90194773cc44`。
+- CI #73 Actions Artifact：`PhotoCleanupMVE-unsigned-26d37f4e0967`，上传成功；归档摘要显示 632KB，Artifact digest 为 `sha256:2d1ecd200464aaf96ebfae93ce5717d37f372e6112cbf949cdeb76017398dc53`。
 
 ## IC-063 遗留说明
 
