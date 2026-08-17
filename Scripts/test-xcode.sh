@@ -63,21 +63,18 @@ xcrun simctl uninstall "$destination_id" "$app_bundle_id" >/dev/null 2>&1 || tru
 privacy_stop_path="$temporary_dir/stop-privacy-grant"
 
 (
-    granted=0
     while [ ! -e "$privacy_stop_path" ]; do
         if xcrun simctl get_app_container \
             "$destination_id" "$app_bundle_id" app >/dev/null 2>&1; then
             if xcrun simctl privacy "$destination_id" grant photos \
                 "$app_bundle_id" >/dev/null 2>&1; then
-                granted=1
+                exit 0
             fi
         fi
         sleep 0.1
     done
-    if [ "$granted" -eq 0 ]; then
-        echo "错误：测试期间未能向宿主授予照片权限。" >&2
-        exit 1
-    fi
+    echo "错误：测试期间未能向宿主授予照片权限。" >&2
+    exit 1
 ) &
 privacy_grant_pid=$!
 
