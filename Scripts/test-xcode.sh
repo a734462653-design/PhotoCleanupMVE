@@ -43,6 +43,13 @@ fi
 
 echo "使用 iPhone 模拟器：$destination_id"
 
+screenshot_path="$temporary_dir/ic067-screen.png"
+xcrun simctl bootstatus "$destination_id" -b
+xcrun simctl io "$destination_id" screenshot "$screenshot_path"
+xcrun simctl addmedia "$destination_id" "$screenshot_path"
+xcrun simctl privacy "$destination_id" grant photos \
+    com.iphonephotomanagement.PhotoCleanupMVE
+
 xcodebuild \
     test \
     -project "$project_path" \
