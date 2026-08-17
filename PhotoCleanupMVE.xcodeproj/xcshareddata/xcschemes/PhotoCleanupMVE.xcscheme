@@ -34,6 +34,20 @@
                ReferencedContainer = "container:PhotoCleanupMVE.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "700000000000000000000004"
+               BuildableName = "PhotoCleanupMVEUITests.xctest"
+               BlueprintName = "PhotoCleanupMVEUITests"
+               ReferencedContainer = "container:PhotoCleanupMVE.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -58,6 +72,16 @@
                BlueprintIdentifier = "700000000000000000000003"
                BuildableName = "PhotoCleanupMVETests.xctest"
                BlueprintName = "PhotoCleanupMVETests"
+               ReferencedContainer = "container:PhotoCleanupMVE.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "700000000000000000000004"
+               BuildableName = "PhotoCleanupMVEUITests.xctest"
+               BlueprintName = "PhotoCleanupMVEUITests"
                ReferencedContainer = "container:PhotoCleanupMVE.xcodeproj">
             </BuildableReference>
          </TestableReference>

@@ -39,6 +39,7 @@ $requiredFiles = @(
     "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/Contents.json",
     "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/RECENTLY_DELETED_PLACEHOLDER.png",
     "PhotoCleanupMVE/Localizable.xcstrings",
+    "PhotoCleanupMVEUITests/IC067ScreenshotSubtypeProbeUITests.swift",
     "PhotoCleanupMVETests/S3StateMachineTests.swift",
     "PhotoCleanupMVETests/SnapshotInvariantTests.swift",
     "PhotoCleanupMVETests/VolumeFormattingTests.swift",
@@ -73,6 +74,7 @@ if (Test-Path -LiteralPath $projectFile -PathType Leaf) {
     $requiredProjectValues = @(
         "PRODUCT_BUNDLE_IDENTIFIER = com.iphonephotomanagement.PhotoCleanupMVE;",
         "PRODUCT_BUNDLE_IDENTIFIER = com.iphonephotomanagement.PhotoCleanupMVETests;",
+        "PRODUCT_BUNDLE_IDENTIFIER = com.iphonephotomanagement.PhotoCleanupMVEUITests;",
         "IPHONEOS_DEPLOYMENT_TARGET = 17.0;",
         "SWIFT_VERSION = 5.0;"
     )
@@ -88,21 +90,17 @@ if (Test-Path -LiteralPath $projectFile -PathType Leaf) {
     )
     $requiredProductTypes = @(
         "com.apple.product-type.application",
-        "com.apple.product-type.bundle.unit-test"
+        "com.apple.product-type.bundle.unit-test",
+        "com.apple.product-type.bundle.ui-testing"
     )
     if ($productTypes.Count -ne $requiredProductTypes.Count) {
-        Add-Failure "工程 target 数量应为 2，实际为 $($productTypes.Count)"
+        Add-Failure "工程 target 数量应为 $($requiredProductTypes.Count)，实际为 $($productTypes.Count)"
     }
     foreach ($productType in $requiredProductTypes) {
         if ($productTypes -cnotcontains $productType) {
             Add-Failure "工程缺少 target 类型：$productType"
         }
     }
-    if ($projectText.Contains("com.apple.product-type.bundle.ui-testing") -or
-        $projectText.Contains("XCUITest")) {
-        Add-Failure "工程出现 XCUITest target"
-    }
-
     $sourceNames = @(
         "PhotoCleanupMVEApp.swift",
         "CleanupCoordinator.swift",
@@ -121,6 +119,7 @@ if (Test-Path -LiteralPath $projectFile -PathType Leaf) {
         "ThumbnailView.swift",
         "L10n.swift",
         "Localizable.xcstrings",
+        "IC067ScreenshotSubtypeProbeUITests.swift",
         "S3StateMachineTests.swift",
         "SnapshotInvariantTests.swift",
         "VolumeFormattingTests.swift",
@@ -140,8 +139,8 @@ if (Test-Path -LiteralPath $projectFile -PathType Leaf) {
 $schemeFile = Join-Path $projectRoot "PhotoCleanupMVE.xcodeproj/xcshareddata/xcschemes/PhotoCleanupMVE.xcscheme"
 if (Test-Path -LiteralPath $schemeFile -PathType Leaf) {
     $schemeText = Get-Content -LiteralPath $schemeFile -Raw -Encoding UTF8
-    if ($schemeText.Contains("UITest")) {
-        Add-Failure "共享方案出现 UI 测试引用"
+    if (-not $schemeText.Contains("PhotoCleanupMVEUITests")) {
+        Add-Failure "共享方案缺少 UI 测试引用"
     }
 }
 

@@ -49,10 +49,18 @@
 		200000000000000000000028 /* S2Calibration.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002B /* S2Calibration.swift */; };
 		200000000000000000000029 /* S2CalibrationHarnessTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002C /* S2CalibrationHarnessTests.swift */; };
 		20000000000000000000002A /* S2NativePhotoPager.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002D /* S2NativePhotoPager.swift */; };
+		20000000000000000000002B /* IC067ScreenshotSubtypeProbeUITests.swift（UI 测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002E /* IC067ScreenshotSubtypeProbeUITests.swift */; };
 /* PBXBuildFile 区段结束 */
 
 /* PBXContainerItemProxy 区段开始 */
 		600000000000000000000001 /* 测试目标代理 */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 700000000000000000000001 /* 工程对象 */;
+			proxyType = 1;
+			remoteGlobalIDString = 700000000000000000000002;
+			remoteInfo = PhotoCleanupMVE;
+		};
+		600000000000000000000003 /* UI 测试目标代理 */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 700000000000000000000001 /* 工程对象 */;
 			proxyType = 1;
@@ -107,6 +115,8 @@
 		10000000000000000000002B /* S2Calibration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2Calibration.swift; sourceTree = "<group>"; };
 		10000000000000000000002C /* S2CalibrationHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2CalibrationHarnessTests.swift; sourceTree = "<group>"; };
 		10000000000000000000002D /* S2NativePhotoPager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2NativePhotoPager.swift; sourceTree = "<group>"; };
+		10000000000000000000002E /* IC067ScreenshotSubtypeProbeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC067ScreenshotSubtypeProbeUITests.swift; sourceTree = "<group>"; };
+		10000000000000000000002F /* PhotoCleanupMVEUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhotoCleanupMVEUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* PBXFileReference 区段结束 */
 
 /* PBXFrameworksBuildPhase 区段开始 */
@@ -124,6 +134,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		400000000000000000000008 /* UI 测试框架阶段 */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* PBXFrameworksBuildPhase 区段结束 */
 
 /* PBXGroup 区段开始 */
@@ -132,6 +149,7 @@
 			children = (
 				300000000000000000000001 /* PhotoCleanupMVE */,
 				300000000000000000000009 /* PhotoCleanupMVETests */,
+				30000000000000000000000E /* PhotoCleanupMVEUITests */,
 				30000000000000000000000A /* 产品 */,
 			);
 			sourceTree = "<group>";
@@ -273,11 +291,20 @@
 			path = PhotoCleanupMVETests;
 			sourceTree = "<group>";
 		};
+		30000000000000000000000E /* PhotoCleanupMVEUITests */ = {
+			isa = PBXGroup;
+			children = (
+				10000000000000000000002E /* IC067ScreenshotSubtypeProbeUITests.swift */,
+			);
+			path = PhotoCleanupMVEUITests;
+			sourceTree = "<group>";
+		};
 		30000000000000000000000A /* 产品 */ = {
 			isa = PBXGroup;
 			children = (
 				100000000000000000000011 /* PhotoCleanupMVE.app */,
 				100000000000000000000012 /* PhotoCleanupMVETests.xctest */,
+				10000000000000000000002F /* PhotoCleanupMVEUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -320,6 +347,24 @@
 			productReference = 100000000000000000000012 /* PhotoCleanupMVETests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		700000000000000000000004 /* PhotoCleanupMVEUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 510000000000000000000004 /* PhotoCleanupMVEUITests 构建配置 */;
+			buildPhases = (
+				400000000000000000000007 /* UI 测试源码阶段 */,
+				400000000000000000000008 /* UI 测试框架阶段 */,
+				400000000000000000000009 /* UI 测试资源阶段 */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				600000000000000000000004 /* UI 测试依赖 PhotoCleanupMVE */,
+			);
+			name = PhotoCleanupMVEUITests;
+			productName = PhotoCleanupMVEUITests;
+			productReference = 10000000000000000000002F /* PhotoCleanupMVEUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* PBXNativeTarget 区段结束 */
 
 /* PBXProject 区段开始 */
@@ -334,6 +379,10 @@
 						CreatedOnToolsVersion = 16.0;
 					};
 					700000000000000000000003 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = 700000000000000000000002;
+					};
+					700000000000000000000004 = {
 						CreatedOnToolsVersion = 16.0;
 						TestTargetID = 700000000000000000000002;
 					};
@@ -355,6 +404,7 @@
 			targets = (
 				700000000000000000000002 /* PhotoCleanupMVE */,
 				700000000000000000000003 /* PhotoCleanupMVETests */,
+				700000000000000000000004 /* PhotoCleanupMVEUITests */,
 			);
 		};
 /* PBXProject 区段结束 */
@@ -374,6 +424,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				20000000000000000000001B /* TRACEABILITY-S3-S5.md（测试资源） */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		400000000000000000000009 /* UI 测试资源阶段 */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -433,6 +490,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		400000000000000000000007 /* UI 测试源码阶段 */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				20000000000000000000002B /* IC067ScreenshotSubtypeProbeUITests.swift（UI 测试源码） */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* PBXSourcesBuildPhase 区段结束 */
 
 /* PBXTargetDependency 区段开始 */
@@ -440,6 +505,11 @@
 			isa = PBXTargetDependency;
 			target = 700000000000000000000002 /* PhotoCleanupMVE */;
 			targetProxy = 600000000000000000000001 /* 测试目标代理 */;
+		};
+		600000000000000000000004 /* UI 测试依赖 PhotoCleanupMVE */ = {
+			isa = PBXTargetDependency;
+			target = 700000000000000000000002 /* PhotoCleanupMVE */;
+			targetProxy = 600000000000000000000003 /* UI 测试目标代理 */;
 		};
 /* PBXTargetDependency 区段结束 */
 
@@ -656,6 +726,50 @@
 			};
 			name = Release;
 		};
+		500000000000000000000007 /* UI 测试调试配置 */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.iphonephotomanagement.PhotoCleanupMVEUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = PhotoCleanupMVE;
+			};
+			name = Debug;
+		};
+		500000000000000000000008 /* UI 测试发布配置 */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.iphonephotomanagement.PhotoCleanupMVEUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = PhotoCleanupMVE;
+			};
+			name = Release;
+		};
 /* XCBuildConfiguration 区段结束 */
 
 /* XCConfigurationList 区段开始 */
@@ -682,6 +796,15 @@
 			buildConfigurations = (
 				500000000000000000000005 /* 测试调试配置 */,
 				500000000000000000000006 /* 测试发布配置 */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		510000000000000000000004 /* PhotoCleanupMVEUITests 构建配置 */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				500000000000000000000007 /* UI 测试调试配置 */,
+				500000000000000000000008 /* UI 测试发布配置 */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

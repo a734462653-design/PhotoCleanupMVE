@@ -7,6 +7,10 @@ import UIKit
 struct PhotoCleanupMVEApp: App {
     @StateObject private var coordinator = CleanupCoordinator()
     @Environment(\.scenePhase) private var scenePhase
+#if DEBUG
+    @State private var ic067ScreenshotSubtypeProbeResult =
+        "IC067_G38_PENDING"
+#endif
     private let s2PhotoImageStrategy = S2TemporaryPhotoKitImageStrategy()
     private let isIC067ScreenshotSubtypeProbe = ProcessInfo.processInfo
         .arguments
@@ -101,10 +105,23 @@ struct PhotoCleanupMVEApp: App {
                     S5View(coordinator: coordinator)
                 }
             }
+#if DEBUG
+            .overlay(alignment: .topLeading) {
+                if isIC067ScreenshotSubtypeProbe {
+                    Text(ic067ScreenshotSubtypeProbeResult)
+                        .font(.caption2)
+                        .accessibilityIdentifier("ic067.g38.probe.result")
+                }
+            }
+#endif
             .onAppear {
 #if DEBUG
                 if isIC067ScreenshotSubtypeProbe {
-                    IC067ScreenshotSubtypeProbe.runAndPersist()
+                    IC067ScreenshotSubtypeProbe.runAndPersist { value in
+                        DispatchQueue.main.async {
+                            ic067ScreenshotSubtypeProbeResult = value
+                        }
+                    }
                 } else if ProcessInfo.processInfo.environment[
                     "XCTestConfigurationFilePath"
                    ] == nil {
@@ -134,9 +151,12 @@ struct PhotoCleanupMVEApp: App {
 
 #if DEBUG
 private enum IC067ScreenshotSubtypeProbe {
-    static func runAndPersist() {
+    static func runAndPersist(
+        completion: @escaping (String) -> Void
+    ) {
         run { value in
             persist(value)
+            completion(value)
         }
     }
 

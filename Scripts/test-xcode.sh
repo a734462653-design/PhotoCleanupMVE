@@ -61,62 +61,23 @@ test -d "$app_path"
 app_bundle_id="com.iphonephotomanagement.PhotoCleanupMVE"
 xcrun simctl uninstall "$destination_id" "$app_bundle_id" >/dev/null 2>&1 || true
 xcrun simctl install "$destination_id" "$app_path"
-xcrun simctl launch --terminate-running-process \
-    "$destination_id" "$app_bundle_id" \
-    --ic067-screenshot-subtype-probe
-
-data_container="$(
-    xcrun simctl get_app_container "$destination_id" "$app_bundle_id" data
-)"
-probe_result_path="$data_container/Documents/ic067-g38-probe.txt"
-for _ in $(seq 1 100); do
-    if [ -f "$probe_result_path" ]; then
-        break
-    fi
-    sleep 0.1
-done
-xcrun simctl terminate "$destination_id" "$app_bundle_id" \
-    >/dev/null 2>&1 || true
-rm -f "$probe_result_path"
-
-xcrun simctl privacy "$destination_id" grant photos "$app_bundle_id"
-xcrun simctl launch --terminate-running-process \
-    "$destination_id" "$app_bundle_id" \
-    --ic067-screenshot-subtype-probe
-
-for _ in $(seq 1 300); do
-    if [ -f "$probe_result_path" ]; then
-        break
-    fi
-    sleep 0.1
-done
-if [ ! -f "$probe_result_path" ]; then
-    echo "错误：截图子类型探针未在三十秒内返回结果。" >&2
-    xcrun simctl terminate "$destination_id" "$app_bundle_id" \
-        >/dev/null 2>&1 || true
-    exit 1
-fi
-
-probe_result="$(sed -n '1p' "$probe_result_path")"
-printf "%s\n" "$probe_result"
-xcrun simctl terminate "$destination_id" "$app_bundle_id" \
-    >/dev/null 2>&1 || true
-case "$probe_result" in
-    IC067_G38_PROBE*afterIsScreenshot=true*)
-        ;;
-    *)
-        echo "错误：截图子类型探针未通过。" >&2
-        exit 1
-        ;;
-esac
-
-xcrun simctl uninstall "$destination_id" "$app_bundle_id"
+xcrun simctl privacy "$destination_id" reset photos "$app_bundle_id"
 xcodebuild \
     test-without-building \
     -project "$project_path" \
     -scheme "$scheme_name" \
     -configuration Debug \
     -destination "platform=iOS Simulator,id=$destination_id" \
-    -derivedDataPath "$temporary_dir/DerivedData"
+    -derivedDataPath "$temporary_dir/DerivedData" \
+    -only-testing:PhotoCleanupMVEUITests/IC067ScreenshotSubtypeProbeUITests/testCroppedScreenshotRetainsScreenshotSubtype
+
+xcodebuild \
+    test-without-building \
+    -project "$project_path" \
+    -scheme "$scheme_name" \
+    -configuration Debug \
+    -destination "platform=iOS Simulator,id=$destination_id" \
+    -derivedDataPath "$temporary_dir/DerivedData" \
+    -only-testing:PhotoCleanupMVETests
 
 echo "XCTest 已全部通过。"
