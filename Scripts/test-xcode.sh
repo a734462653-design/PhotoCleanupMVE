@@ -86,7 +86,7 @@ xcodebuild \
     -configuration Debug \
     -destination "platform=iOS Simulator,id=$destination_id" \
     -derivedDataPath "$temporary_dir/DerivedData" \
-    -only-testing:PhotoCleanupMVEUITests/IC067ScreenshotSubtypeProbeUITests/testCroppedScreenshotRetainsScreenshotSubtype
+    -only-testing:PhotoCleanupMVEUITests/IC067RealInteractionUITests/testRealPinchTakeoverAndOneXReturnGeometry
 
 xcodebuild \
     test-without-building \

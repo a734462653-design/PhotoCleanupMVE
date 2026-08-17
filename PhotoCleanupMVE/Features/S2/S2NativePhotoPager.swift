@@ -508,11 +508,19 @@ final class S2NativeZoomScrollView: UIScrollView {
         return target
     }
 
-    func prepareForNativeZoom() {
+    func prepareForNativeZoom(
+        synchronizedUpdates: () -> Void = {}
+    ) {
         guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
             return
         }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         prepareNativeZoomGeometry()
+        synchronizedUpdates()
+        setNeedsLayout()
+        layoutIfNeeded()
+        CATransaction.commit()
     }
 
     func restoreOneXGeometry() {
@@ -650,8 +658,6 @@ final class S2NativeZoomScrollView: UIScrollView {
                 y: zoomContentView.bounds.midY
             )
             contentSize = nativeZoomBaseSize
-            setNeedsLayout()
-            layoutIfNeeded()
         }
     }
 
@@ -1667,12 +1673,14 @@ final class S2NativeZoomPageController: UIViewController,
               owner?.beginNativePinch(on: self) == true else {
             return
         }
-        zoomScrollView.prepareForNativeZoom()
-        applyCornerMask(forceNx: true)
+        zoomScrollView.prepareForNativeZoom {
+            self.applyCornerMask(forceNx: true)
+        }
         pinchIsActive = true
         pinchStartDate = Date()
         pinchStartScale = zoomScrollView.zoomScale
         pinchPeakVelocity = 0
+        owner?.reportNativePinchTakeover(from: self)
     }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
@@ -1707,6 +1715,9 @@ final class S2NativeZoomPageController: UIViewController,
         guard scrollView === zoomScrollView else {
             return
         }
+        let endedAtMinimum = abs(
+            scale - zoomScrollView.minimumZoomScale
+        ) <= 0.000_001
         if pinchIsActive {
             let duration = Date().timeIntervalSince(pinchStartDate ?? Date())
             let displacement = abs(
@@ -1723,6 +1734,9 @@ final class S2NativeZoomPageController: UIViewController,
             pinchStartDate = nil
             pinchPeakVelocity = 0
         }
+        if endedAtMinimum {
+            completeNativeOneXReturn()
+        }
         applyDeferredPresentationIfPossible()
     }
 
@@ -1730,9 +1744,15 @@ final class S2NativeZoomPageController: UIViewController,
         guard scrollView === zoomScrollView else {
             return
         }
+        completeNativeOneXReturn()
+        applyDeferredPresentationIfPossible()
+    }
+
+    private func completeNativeOneXReturn() {
         zoomScrollView.restoreOneXGeometry()
         applyCornerMask()
-        applyDeferredPresentationIfPossible()
+        owner?.reportNativeViewport(from: self)
+        owner?.reportNativeOneXReturn(from: self)
     }
 
     func gestureRecognizerShouldBegin(
@@ -1889,6 +1909,8 @@ final class S2NativePagerViewController: UIViewController,
     private var lastNXEdgePagingProjection: S2NxEdgePagingProjection?
     private(set) var nativeZoomReturnInvocationCount = 0
     var diagnosticsRun: S2GeometryDiagnosticsRun?
+    var realInteractionDiagnosticObserver:
+        ((S2RealInteractionDiagnosticEvent) -> Void)?
 
     override func loadView() {
         let rootView = UIView()
@@ -2222,6 +2244,50 @@ final class S2NativePagerViewController: UIViewController,
             scale: page.zoomScrollView.zoomScale,
             viewportOffset: page.zoomScrollView.reportedViewportOffset()
         )
+    }
+
+    func reportNativePinchTakeover(from page: S2NativeZoomPageController) {
+        guard let frame = page.zoomScrollView.visiblePresentationFrame()
+        else {
+            return
+        }
+        let viewportCenter = CGPoint(
+            x: page.zoomScrollView.bounds.width / 2,
+            y: page.zoomScrollView.bounds.height / 2
+        )
+        realInteractionDiagnosticObserver?(.pinchTakeover(
+            centerOffset: hypot(
+                frame.midX - viewportCenter.x,
+                frame.midY - viewportCenter.y
+            )
+        ))
+    }
+
+    func reportNativeOneXReturn(from page: S2NativeZoomPageController) {
+        guard let frame = page.zoomScrollView.visiblePresentationFrame()
+        else {
+            return
+        }
+        let expectedFrame = CGRect(
+            x: (page.zoomScrollView.bounds.width - page.fittedSize.width) / 2,
+            y: (page.zoomScrollView.bounds.height - page.fittedSize.height) / 2,
+            width: page.fittedSize.width,
+            height: page.fittedSize.height
+        )
+        let frameDeviation = [
+            abs(frame.minX - expectedFrame.minX),
+            abs(frame.minY - expectedFrame.minY),
+            abs(frame.width - expectedFrame.width),
+            abs(frame.height - expectedFrame.height)
+        ].max() ?? .infinity
+        realInteractionDiagnosticObserver?(.oneXReturn(
+            scaleDelta: abs(
+                page.zoomScrollView.zoomScale -
+                    page.zoomScrollView.minimumZoomScale
+            ),
+            frameDeviation: frameDeviation,
+            visibility: page.diagnosticInterfaceVisibility
+        ))
     }
 
     func finishNativePinch(
@@ -2622,10 +2688,29 @@ final class S2NativePagerViewController: UIViewController,
 final class S2GeometryDiagnosticsCoordinator: ObservableObject {
     @Published private(set) var reportText = ""
     @Published private(set) var isExporting = false
+    @Published private(set) var realInteractionReportText =
+        "IC067_INTERACTION_READY takeovers=0 returns=0"
     private weak var controller: S2NativePagerViewController?
+    private let capturesRealInteractions: Bool
+    private var takeoverCount = 0
+    private var returnCount = 0
+    private var latestTakeoverCenterOffset: CGFloat = -1
+    private var latestReturnScaleDelta: CGFloat = -1
+    private var latestReturnFrameDeviation: CGFloat = -1
+    private var latestReturnVisibility = "none"
+
+    init(capturesRealInteractions: Bool = false) {
+        self.capturesRealInteractions = capturesRealInteractions
+    }
 
     func attach(_ controller: S2NativePagerViewController) {
         self.controller = controller
+        controller.realInteractionDiagnosticObserver =
+            capturesRealInteractions
+            ? { [weak self] event in
+                self?.recordRealInteraction(event)
+            }
+            : nil
     }
 
     func detach(_ controller: S2NativePagerViewController) {
@@ -2634,6 +2719,7 @@ final class S2GeometryDiagnosticsCoordinator: ObservableObject {
         }
         controller.diagnosticsRun?.cancel()
         controller.diagnosticsRun = nil
+        controller.realInteractionDiagnosticObserver = nil
         self.controller = nil
     }
 
@@ -2653,6 +2739,44 @@ final class S2GeometryDiagnosticsCoordinator: ObservableObject {
         controller.diagnosticsRun = run
         run.start()
     }
+
+    private func recordRealInteraction(
+        _ event: S2RealInteractionDiagnosticEvent
+    ) {
+        switch event {
+        case let .pinchTakeover(centerOffset):
+            takeoverCount += 1
+            latestTakeoverCenterOffset = centerOffset
+        case let .oneXReturn(scaleDelta, frameDeviation, visibility):
+            returnCount += 1
+            latestReturnScaleDelta = scaleDelta
+            latestReturnFrameDeviation = frameDeviation
+            latestReturnVisibility = visibility == .visible
+                ? "visible"
+                : "hidden"
+        }
+        realInteractionReportText = String(
+            format: "IC067_INTERACTION takeovers=%d " +
+                "takeoverCenterOffset=%.6f returns=%d " +
+                "returnScaleDelta=%.6f returnFrameDeviation=%.6f " +
+                "returnVisibility=%@",
+            takeoverCount,
+            latestTakeoverCenterOffset,
+            returnCount,
+            latestReturnScaleDelta,
+            latestReturnFrameDeviation,
+            latestReturnVisibility
+        )
+    }
+}
+
+enum S2RealInteractionDiagnosticEvent {
+    case pinchTakeover(centerOffset: CGFloat)
+    case oneXReturn(
+        scaleDelta: CGFloat,
+        frameDeviation: CGFloat,
+        visibility: S2InterfaceVisibility
+    )
 }
 
 struct S2GeometryDiagnosticSample {

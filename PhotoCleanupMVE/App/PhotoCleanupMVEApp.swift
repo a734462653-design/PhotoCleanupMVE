@@ -15,6 +15,9 @@ struct PhotoCleanupMVEApp: App {
     private let isIC067ScreenshotSubtypeProbe = ProcessInfo.processInfo
         .arguments
         .contains("--ic067-screenshot-subtype-probe")
+    private let isIC067RealInteractionProbe = ProcessInfo.processInfo
+        .arguments
+        .contains("--ic067-real-interaction-probe")
 
     var body: some Scene {
         WindowGroup {
@@ -108,6 +111,11 @@ struct PhotoCleanupMVEApp: App {
                 }
             }
 #if DEBUG
+            .overlay {
+                if isIC067RealInteractionProbe {
+                    IC067RealInteractionProbeView()
+                }
+            }
             .overlay(alignment: .topLeading) {
                 if isIC067ScreenshotSubtypeProbe {
                     Text(ic067ScreenshotSubtypeProbeResult)
@@ -124,7 +132,8 @@ struct PhotoCleanupMVEApp: App {
                             ic067ScreenshotSubtypeProbeResult = value
                         }
                     }
-                } else if ProcessInfo.processInfo.environment[
+                } else if !isIC067RealInteractionProbe &&
+                    ProcessInfo.processInfo.environment[
                     "XCTestConfigurationFilePath"
                    ] == nil {
                     coordinator.start()
@@ -152,6 +161,66 @@ struct PhotoCleanupMVEApp: App {
 }
 
 #if DEBUG
+private struct IC067RealInteractionProbeView: View {
+    @StateObject private var machine: S2StateMachine
+    @StateObject private var calibration: S2CalibrationModel
+    @StateObject private var diagnostics: S2GeometryDiagnosticsCoordinator
+
+    init() {
+        _machine = StateObject(
+            wrappedValue: S2PreviewData.machine(for: .visibleOneXIdle)
+        )
+        _calibration = StateObject(
+            wrappedValue: S2CalibrationModel(
+                persistence: S2DiscardingCalibrationPersistence()
+            )
+        )
+        _diagnostics = StateObject(
+            wrappedValue: S2GeometryDiagnosticsCoordinator(
+                capturesRealInteractions: true
+            )
+        )
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let aspectRatio = geometry.size.height > 0
+                ? geometry.size.width / geometry.size.height
+                : 1
+            ZStack(alignment: .topLeading) {
+                S2View(
+                    machine: machine,
+                    calibration: calibration,
+                    assetAspectRatio: { _ in aspectRatio },
+                    assetIsScreenshot: { _ in true },
+                    assetPixelSize: { _ in
+                        CGSize(
+                            width: geometry.size.width * 3,
+                            height: geometry.size.height * 3
+                        )
+                    },
+                    photoContent: { _ in AnyView(Color.gray) },
+                    stripItemContent: { _ in AnyView(Color.clear) },
+                    albumPickerContent: { _, _ in AnyView(EmptyView()) },
+                    geometryDiagnostics: diagnostics
+                )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("ic067.interaction.viewport")
+
+                Text(verbatim: diagnostics.realInteractionReportText)
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                    .padding(2)
+                    .background(.black.opacity(0.8))
+                    .accessibilityIdentifier("ic067.interaction.result")
+                    .allowsHitTesting(false)
+            }
+        }
+        .background(Color(uiColor: .systemBackground))
+        .ignoresSafeArea()
+    }
+}
+
 private enum IC067ScreenshotSubtypeProbe {
     static func runAndPersist(
         completion: @escaping (String) -> Void
