@@ -91,13 +91,18 @@ private final class IC064PresentationLayerSampler: NSObject {
     }
 
     private func capture(timestamp: CFTimeInterval) {
-        guard let scrollView = page?.zoomScrollView,
-              let presentationContentView = scrollView.presentationContentView,
-              let zoomContentView = scrollView.zoomContentView else {
+        guard let page,
+              let presentationContentView =
+                page.zoomScrollView.presentationContentView,
+              let zoomContentView =
+                page.zoomScrollView.zoomContentView else {
             return
         }
+        let scrollView = page.zoomScrollView
         let layer = presentationContentView.layer.presentation() ??
             presentationContentView.layer
+        let borderLayer = page.fitBorderLayer.presentation() ??
+            page.fitBorderLayer
         let frame = zoomContentView.convert(
             layer.frame,
             to: scrollView
@@ -113,7 +118,7 @@ private final class IC064PresentationLayerSampler: NSObject {
             bounds: layer.bounds,
             contentsRect: layer.contentsRect,
             cornerRadius: layer.cornerRadius,
-            borderWidth: layer.borderWidth
+            borderWidth: borderLayer.borderWidth
         ))
     }
 }
@@ -2363,7 +2368,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page.zoomScrollView.presentationContentView?.bounds.size,
             transition.targetSize
         )
-        XCTAssertEqual(transform, .identity)
+        let sourceScale = min(
+            transition.layoutSize.width / transition.targetSize.width,
+            transition.layoutSize.height / transition.targetSize.height
+        )
+        XCTAssertEqual(transform.a, sourceScale, accuracy: 0.000_001)
+        XCTAssertEqual(transform.b, 0, accuracy: 0.000_001)
+        XCTAssertEqual(transform.c, 0, accuracy: 0.000_001)
+        XCTAssertEqual(transform.d, sourceScale, accuracy: 0.000_001)
         page.finishActivePresentationTransition()
     }
 
@@ -2395,11 +2407,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
             accuracy: 0.000_001
         )
         XCTAssertEqual(hiding.frame(at: 1).cornerRadius, 0)
+        let hidingContentView = tryUnwrap(
+            page.zoomScrollView.presentationContentView
+        )
         XCTAssertEqual(
-            page.zoomScrollView.presentationContentView?.layer.cornerRadius,
-            0
+            hidingContentView.layer.cornerRadius *
+                abs(hidingContentView.transform.a),
+            hiding.frame(at: 0).cornerRadius,
+            accuracy: 0.000_001
         )
         page.finishActivePresentationTransition()
+        XCTAssertEqual(hidingContentView.layer.cornerRadius, 0)
 
         XCTAssertTrue(machine.handleSingleTap())
         applyNativePagerController(
@@ -2419,9 +2437,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
             CGFloat(configuration.fitCornerRadius),
             accuracy: 0.000_001
         )
+        let showingContentView = tryUnwrap(
+            page.zoomScrollView.presentationContentView
+        )
         XCTAssertEqual(
-            page.zoomScrollView.presentationContentView?.layer.cornerRadius ?? 0,
-            showing.layerCornerRadius(at: 1),
+            showingContentView.layer.cornerRadius *
+                abs(showingContentView.transform.a),
+            showing.frame(at: 0).cornerRadius,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
@@ -2430,6 +2452,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             accuracy: 0.000_001
         )
         page.finishActivePresentationTransition()
+        XCTAssertEqual(
+            showingContentView.layer.cornerRadius,
+            showing.layerCornerRadius(at: 1),
+            accuracy: 0.000_001
+        )
     }
 
     // X4：关闭动画后不保留任何过渡态，目标几何一次到位。
@@ -3280,8 +3307,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let borderlessPage = tryUnwrap(
             controller.pageControllers[machine.currentIndex]
         )
-        let borderWidthWithoutBorder = borderlessPage.zoomScrollView
-            .presentationContentView?.layer.borderWidth ?? -1
+        let borderWidthWithoutBorder = borderlessPage.fitBorderLayer.borderWidth
         let frameWithoutBorder = borderlessPage.zoomScrollView
             .visiblePresentationFrame()
 
@@ -3302,8 +3328,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             accuracy: 0.000_001
         )
         XCTAssertEqual(
-            restoredPage.zoomScrollView.presentationContentView?
-                .layer.borderWidth ?? -1,
+            restoredPage.fitBorderLayer.borderWidth,
             1,
             accuracy: 0.000_001
         )
@@ -3327,7 +3352,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             nxController.pageControllers[nxMachine.currentIndex]
         )
         XCTAssertEqual(
-            nxPage.zoomScrollView.presentationContentView?.layer.borderWidth,
+            nxPage.fitBorderLayer.borderWidth,
             0
         )
 
@@ -3393,14 +3418,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
             forChild: controller
         )
         let darkColor = tryUnwrap(
-            page.zoomScrollView.presentationContentView?.layer.borderColor
+            page.fitBorderLayer.borderColor
         )
         host.setOverrideTraitCollection(
             UITraitCollection(userInterfaceStyle: .light),
             forChild: controller
         )
         let lightColor = tryUnwrap(
-            page.zoomScrollView.presentationContentView?.layer.borderColor
+            page.fitBorderLayer.borderColor
         )
 
         XCTAssertNotEqual(

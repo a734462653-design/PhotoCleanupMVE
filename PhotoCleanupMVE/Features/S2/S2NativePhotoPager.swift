@@ -779,6 +779,7 @@ final class S2NativeZoomPageController: UIViewController,
     let singleTapRecognizer = S2SingleTapGestureRecognizer()
     let doubleTapRecognizer = UITapGestureRecognizer()
     let verticalSwipeRecognizer = UIPanGestureRecognizer()
+    let fitBorderLayer = CALayer()
     private let hostingController: UIHostingController<AnyView>
     private weak var owner: S2NativePagerViewController?
     private var assetID: String
@@ -898,6 +899,15 @@ final class S2NativeZoomPageController: UIViewController,
         hostingController.view.backgroundColor = .clear
         hostingController.additionalSafeAreaInsets = .zero
         addChild(hostingController)
+        fitBorderLayer.backgroundColor = UIColor.clear.cgColor
+        fitBorderLayer.actions = [
+            "bounds": NSNull(),
+            "position": NSNull(),
+            "borderWidth": NSNull(),
+            "borderColor": NSNull(),
+            "cornerRadius": NSNull()
+        ]
+        hostingController.view.layer.addSublayer(fitBorderLayer)
         zoomScrollView.configure(
             contentView: hostingController.view,
             fittedSize: fittedSize,
@@ -1374,8 +1384,10 @@ final class S2NativeZoomPageController: UIViewController,
                 : 1
         )
         let sourceVisualCornerRadius = sourceLayer.cornerRadius * sourceScale
-        let sourceVisualBorderWidth = sourceLayer.borderWidth * sourceScale
-        let sourceBorderColor = sourceLayer.borderColor
+        let sourceBorderLayer = fitBorderLayer.presentation() ?? fitBorderLayer
+        let sourceVisualBorderWidth = sourceBorderLayer.borderWidth *
+            sourceScale
+        let sourceBorderColor = sourceBorderLayer.borderColor
 
         UIView.performWithoutAnimation {
             self.applyPageImmediately(
@@ -1412,7 +1424,7 @@ final class S2NativeZoomPageController: UIViewController,
         presentationContentView.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         presentationContentView.layer.cornerCurve = .continuous
         UIView.performWithoutAnimation {
-            presentationContentView.layer.borderColor =
+            self.fitBorderLayer.borderColor =
                 sourceBorderColor ?? targetBorderColor
             presentationContentView.layer.masksToBounds =
                 sourceVisualCornerRadius > 0 ||
@@ -1449,12 +1461,15 @@ final class S2NativeZoomPageController: UIViewController,
             )
             presentationContentView.layer.cornerRadius =
                 visualCornerRadius / safeScale
-            presentationContentView.layer.borderWidth =
-                visualBorderWidth / safeScale
-            presentationContentView.layer.borderColor =
-                self.resolvedFitBorderColor()
+            presentationContentView.layer.borderWidth = 0
             presentationContentView.layer.masksToBounds =
                 visualCornerRadius > 0
+            self.fitBorderLayer.cornerRadius =
+                visualCornerRadius / safeScale
+            self.fitBorderLayer.borderWidth =
+                visualBorderWidth / safeScale
+            self.fitBorderLayer.borderColor =
+                self.resolvedFitBorderColor()
         }
     }
 
@@ -1467,7 +1482,7 @@ final class S2NativeZoomPageController: UIViewController,
         }
         let startTimestamp = presentationTransitionStartTimestamp ??
             displayLink.timestamp
-        let elapsed = displayLink.timestamp - startTimestamp
+        let elapsed = CACurrentMediaTime() - startTimestamp
         let progress = presentationTransitionDuration > 0
             ? CGFloat(elapsed / presentationTransitionDuration)
             : 1
@@ -1764,9 +1779,15 @@ final class S2NativeZoomPageController: UIViewController,
         hostingController.view.transform = .identity
         hostingController.view.layer.cornerRadius = resolvedRadius
         hostingController.view.layer.cornerCurve = .continuous
-        hostingController.view.layer.borderWidth = borderWidth
+        hostingController.view.layer.borderWidth = 0
         applyBorderColor()
         hostingController.view.layer.masksToBounds = resolvedRadius > 0
+        fitBorderLayer.frame = hostingController.view.bounds
+        fitBorderLayer.cornerRadius = resolvedRadius
+        fitBorderLayer.cornerCurve = .continuous
+        fitBorderLayer.borderWidth = borderWidth
+        fitBorderLayer.removeFromSuperlayer()
+        hostingController.view.layer.addSublayer(fitBorderLayer)
         zoomScrollView.zoomContentView?.layer.cornerRadius = 0
         zoomScrollView.zoomContentView?.layer.masksToBounds = false
     }
@@ -1807,13 +1828,13 @@ final class S2NativeZoomPageController: UIViewController,
     }
 
     private func applyBorderColor() {
-        hostingController.view.layer.borderColor = resolvedFitBorderColor()
+        fitBorderLayer.borderColor = resolvedFitBorderColor()
     }
 
     func refreshFitBorderColor(
         userInterfaceStyle: UIUserInterfaceStyle
     ) {
-        hostingController.view.layer.borderColor = resolvedFitBorderColor(
+        fitBorderLayer.borderColor = resolvedFitBorderColor(
             userInterfaceStyle: userInterfaceStyle
         )
     }
