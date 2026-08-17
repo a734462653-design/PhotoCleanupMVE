@@ -157,6 +157,19 @@ private enum IC067ScreenshotSubtypeProbe {
         let authorizationStatus = PHPhotoLibrary.authorizationStatus(
             for: .readWrite
         )
+        if authorizationStatus == .notDetermined {
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+                guard status != .notDetermined else {
+                    completion(
+                        "IC067_G38_ERROR stage=authorization " +
+                            "status=\(status.rawValue)"
+                    )
+                    return
+                }
+                run(completion: completion)
+            }
+            return
+        }
         guard authorizationStatus == .authorized else {
             completion(
                 "IC067_G38_ERROR stage=authorization " +
