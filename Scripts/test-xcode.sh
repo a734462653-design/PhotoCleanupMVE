@@ -58,9 +58,23 @@ xcodebuild \
 
 app_path="$temporary_dir/DerivedData/Build/Products/Debug-iphonesimulator/PhotoCleanupMVE.app"
 test -d "$app_path"
-xcrun simctl install "$destination_id" "$app_path"
-xcrun simctl privacy "$destination_id" grant photos \
-    com.iphonephotomanagement.PhotoCleanupMVE
+app_bundle_id="com.iphonephotomanagement.PhotoCleanupMVE"
+xcrun simctl uninstall "$destination_id" "$app_bundle_id" >/dev/null 2>&1 || true
+
+(
+    for _ in $(seq 1 300); do
+        if xcrun simctl get_app_container \
+            "$destination_id" "$app_bundle_id" app >/dev/null 2>&1; then
+            xcrun simctl privacy "$destination_id" grant photos \
+                "$app_bundle_id"
+            exit 0
+        fi
+        sleep 0.1
+    done
+    echo "错误：测试宿主安装后未能及时授予照片权限。" >&2
+    exit 1
+) &
+privacy_grant_pid=$!
 
 xcodebuild \
     test-without-building \
@@ -69,5 +83,7 @@ xcodebuild \
     -configuration Debug \
     -destination "platform=iOS Simulator,id=$destination_id" \
     -derivedDataPath "$temporary_dir/DerivedData"
+
+wait "$privacy_grant_pid"
 
 echo "XCTest 已全部通过。"

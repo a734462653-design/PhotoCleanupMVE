@@ -209,8 +209,23 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // IC-067 前提探针：真实截图经 PhotoKit 裁切编辑后仍保留截图子类型。
     func testIC067ProbeEditedScreenshotRetainsMediaSubtype() throws {
+        let authorizationExpectation = expectation(
+            description: "等待照片读取授权"
+        )
+        PHPhotoLibrary.requestAuthorization(for: .readWrite) { _ in
+            authorizationExpectation.fulfill()
+        }
+        wait(for: [authorizationExpectation], timeout: 10)
+        let authorizationStatus = PHPhotoLibrary.authorizationStatus(
+            for: .readWrite
+        )
+        print(
+            "IC067_G38_AUTH " +
+                "bundleID=\(Bundle.main.bundleIdentifier ?? \"nil\") " +
+                "status=\(authorizationStatus.rawValue)"
+        )
         XCTAssertEqual(
-            PHPhotoLibrary.authorizationStatus(for: .readWrite),
+            authorizationStatus,
             .authorized
         )
 
