@@ -856,6 +856,15 @@ final class S2NativeZoomPageController: UIViewController,
         doubleTapTransitionView?.transform ?? .identity
     }
 
+    func configureRealInteractionAccessibility(
+        identifier: String?
+    ) {
+        zoomScrollView.accessibilityIdentifier = nil
+        zoomScrollView.isAccessibilityElement = false
+        hostingController.view.accessibilityIdentifier = identifier
+        hostingController.view.isAccessibilityElement = identifier != nil
+    }
+
     init(
         page: S2NativePageContent,
         owner: S2NativePagerViewController
@@ -2038,10 +2047,9 @@ final class S2NativePagerViewController: UIViewController,
     private func configureRealInteractionAccessibility(
         for page: S2NativeZoomPageController
     ) {
-        page.zoomScrollView.accessibilityIdentifier =
-            realInteractionAccessibilityIdentifier
-        page.zoomScrollView.isAccessibilityElement =
-            realInteractionAccessibilityIdentifier != nil
+        page.configureRealInteractionAccessibility(
+            identifier: realInteractionAccessibilityIdentifier
+        )
     }
 
     func resetInteractionState() {

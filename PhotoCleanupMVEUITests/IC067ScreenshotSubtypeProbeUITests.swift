@@ -84,11 +84,21 @@ final class IC067RealInteractionUITests: XCTestCase {
         app.launchArguments = ["--ic067-real-interaction-probe"]
         app.launch()
 
+        let photo = app.otherElements["ic067.interaction.viewport"]
         let result = app.staticTexts["ic067.interaction.result"]
+        XCTAssertTrue(photo.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            photo.isHittable,
+            "生产照片视图不可点击：frame=\(photo.frame)"
+        )
         XCTAssertTrue(result.waitForExistence(timeout: 10))
 
-        app.pinch(withScale: 1.5, velocity: 1)
-        let enlarged = waitForResult(result, timeout: 10) { label in
+        photo.pinch(withScale: 1.5, velocity: 1)
+        let enlarged = waitForResult(
+            result,
+            context: "photoFrame=\(photo.frame) hittable=\(photo.isHittable)",
+            timeout: 10
+        ) { label in
             self.number("takeovers", in: label) >= 1
         }
         XCTAssertLessThanOrEqual(
@@ -97,8 +107,12 @@ final class IC067RealInteractionUITests: XCTestCase {
             enlarged
         )
 
-        app.pinch(withScale: 0.5, velocity: -1)
-        let returned = waitForResult(result, timeout: 10) { label in
+        photo.pinch(withScale: 0.5, velocity: -1)
+        let returned = waitForResult(
+            result,
+            context: "photoFrame=\(photo.frame) hittable=\(photo.isHittable)",
+            timeout: 10
+        ) { label in
             self.number("returns", in: label) >= 1
         }
         XCTAssertLessThanOrEqual(
@@ -120,6 +134,7 @@ final class IC067RealInteractionUITests: XCTestCase {
 
     private func waitForResult(
         _ element: XCUIElement,
+        context: String,
         timeout: TimeInterval,
         predicate: (String) -> Bool
     ) -> String {
@@ -131,7 +146,9 @@ final class IC067RealInteractionUITests: XCTestCase {
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         } while Date() < deadline
-        XCTFail("真实交互诊断未在时限内更新：\(element.label)")
+        XCTFail(
+            "真实交互诊断未在时限内更新：\(element.label) \(context)"
+        )
         return element.label
     }
 
