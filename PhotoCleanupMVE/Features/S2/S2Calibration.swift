@@ -46,8 +46,12 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var degradedPreviewPolicy: S2DegradedPreviewPolicy
     var animationsEnabled: Bool
     var animationDurationMilliseconds: Double
+    var presentationToggleDuration: Double
     var fitInsetRatio: Double
     var fitCornerRadius: Double
+    var fitBorderWidth: Double
+    var fitBorderDarkAlpha: Double
+    var fitBorderLightAlpha: Double
     var fitInsetScope: S2FitInsetScope
     var screenshotImmersiveOnHide: Bool
     var pageSpacing: Double
@@ -60,7 +64,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDragMinimumDistance: Double
     var bottomStripSwitchDistance: Double
 
-    // IC-063 全屏沉浸与原生退出项目判断默认值；全部数值延续 IC-061。
+    // IC-064 显隐过渡与描边项目判断默认值；既有数值延续 IC-063。
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScale: 4,
         zoomSnapBackThreshold: 1.1,
@@ -92,8 +96,12 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         degradedPreviewPolicy: .finalImageOnly,
         animationsEnabled: true,
         animationDurationMilliseconds: 180,
+        presentationToggleDuration: 220,
         fitInsetRatio: 0.30,
         fitCornerRadius: 28,
+        fitBorderWidth: 1,
+        fitBorderDarkAlpha: 0.09,
+        fitBorderLightAlpha: 0.055,
         fitInsetScope: .screenAspectOnly,
         screenshotImmersiveOnHide: true,
         pageSpacing: 20,
@@ -156,15 +164,19 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             singleDragTouchCount > 0 &&
             pinchTouchCount > 0 &&
             animationDurationMilliseconds >= 0 &&
+            presentationToggleDuration >= 0 &&
             fitInsetRatio >= 0 && fitInsetRatio < 0.5 &&
             fitCornerRadius >= 0 &&
+            fitBorderWidth >= 0 &&
+            fitBorderDarkAlpha >= 0 && fitBorderDarkAlpha <= 1 &&
+            fitBorderLightAlpha >= 0 && fitBorderLightAlpha <= 1 &&
             pageSpacing >= 0
     }
 
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260816-063-s2-immersive-and-doubletap-transition"),
+            ("taskID", "IC-20260817-064-s2-presentation-toggle-animation"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
@@ -196,8 +208,12 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("degradedPreviewPolicy", degradedPreviewPolicy.rawValue),
             ("animationsEnabled", String(animationsEnabled)),
             ("animationDurationMilliseconds", formatted(animationDurationMilliseconds)),
+            ("presentationToggleDuration", formatted(presentationToggleDuration)),
             ("fitInsetRatio", formatted(fitInsetRatio)),
             ("fitCornerRadius", formatted(fitCornerRadius)),
+            ("fitBorderWidth", formatted(fitBorderWidth)),
+            ("fitBorderDarkAlpha", formatted(fitBorderDarkAlpha)),
+            ("fitBorderLightAlpha", formatted(fitBorderLightAlpha)),
             ("fitInsetScope", fitInsetScope.rawValue),
             ("screenshotImmersiveOnHide", String(screenshotImmersiveOnHide)),
             ("pageSpacing", formatted(pageSpacing)),
@@ -254,8 +270,12 @@ extension S2CalibrationConfiguration {
         case degradedPreviewPolicy
         case animationsEnabled
         case animationDurationMilliseconds
+        case presentationToggleDuration
         case fitInsetRatio
         case fitCornerRadius
+        case fitBorderWidth
+        case fitBorderDarkAlpha
+        case fitBorderLightAlpha
         case fitInsetScope
         case screenshotImmersiveOnHide
         case pageSpacing
@@ -303,8 +323,12 @@ extension S2CalibrationConfiguration {
             degradedPreviewPolicy: try values.decode(S2DegradedPreviewPolicy.self, forKey: .degradedPreviewPolicy),
             animationsEnabled: try values.decode(Bool.self, forKey: .animationsEnabled),
             animationDurationMilliseconds: try values.decode(Double.self, forKey: .animationDurationMilliseconds),
+            presentationToggleDuration: try values.decodeIfPresent(Double.self, forKey: .presentationToggleDuration) ?? 220,
             fitInsetRatio: try values.decode(Double.self, forKey: .fitInsetRatio),
             fitCornerRadius: try values.decodeIfPresent(Double.self, forKey: .fitCornerRadius) ?? 28,
+            fitBorderWidth: try values.decodeIfPresent(Double.self, forKey: .fitBorderWidth) ?? 1,
+            fitBorderDarkAlpha: try values.decodeIfPresent(Double.self, forKey: .fitBorderDarkAlpha) ?? 0.09,
+            fitBorderLightAlpha: try values.decodeIfPresent(Double.self, forKey: .fitBorderLightAlpha) ?? 0.055,
             fitInsetScope: try values.decode(S2FitInsetScope.self, forKey: .fitInsetScope),
             screenshotImmersiveOnHide: try values.decodeIfPresent(Bool.self, forKey: .screenshotImmersiveOnHide) ?? true,
             pageSpacing: try values.decodeIfPresent(Double.self, forKey: .pageSpacing) ?? 20,
@@ -351,8 +375,12 @@ extension S2CalibrationConfiguration {
         try values.encode(degradedPreviewPolicy, forKey: .degradedPreviewPolicy)
         try values.encode(animationsEnabled, forKey: .animationsEnabled)
         try values.encode(animationDurationMilliseconds, forKey: .animationDurationMilliseconds)
+        try values.encode(presentationToggleDuration, forKey: .presentationToggleDuration)
         try values.encode(fitInsetRatio, forKey: .fitInsetRatio)
         try values.encode(fitCornerRadius, forKey: .fitCornerRadius)
+        try values.encode(fitBorderWidth, forKey: .fitBorderWidth)
+        try values.encode(fitBorderDarkAlpha, forKey: .fitBorderDarkAlpha)
+        try values.encode(fitBorderLightAlpha, forKey: .fitBorderLightAlpha)
         try values.encode(fitInsetScope, forKey: .fitInsetScope)
         try values.encode(screenshotImmersiveOnHide, forKey: .screenshotImmersiveOnHide)
         try values.encode(pageSpacing, forKey: .pageSpacing)
@@ -371,9 +399,13 @@ struct S2AnimationPolicy: Equatable {
     let animationsEnabled: Bool
     let durationMilliseconds: Double
 
-    init(configuration: S2CalibrationConfiguration) {
+    init(
+        configuration: S2CalibrationConfiguration,
+        durationMilliseconds: Double? = nil
+    ) {
         animationsEnabled = configuration.animationsEnabled
-        durationMilliseconds = configuration.animationDurationMilliseconds
+        self.durationMilliseconds = durationMilliseconds ??
+            configuration.animationDurationMilliseconds
     }
 
     var shouldAnimate: Bool {

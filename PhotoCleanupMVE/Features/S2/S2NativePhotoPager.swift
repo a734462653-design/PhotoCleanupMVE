@@ -39,21 +39,21 @@ struct S2ImmersiveTransition: Equatable {
     let targetCornerRadius: CGFloat
 
     var targetScaleX: CGFloat {
-        guard layoutSize.width > 0, layoutSize.height > 0 else {
-            return 1
-        }
-        return targetSize.width / layoutSize.width
+        targetScale
     }
 
     var targetScaleY: CGFloat {
-        guard layoutSize.width > 0, layoutSize.height > 0 else {
-            return 1
-        }
-        return targetSize.height / layoutSize.height
+        targetScale
     }
 
     var targetScale: CGFloat {
-        min(targetScaleX, targetScaleY)
+        guard layoutSize.width > 0, layoutSize.height > 0 else {
+            return 1
+        }
+        return min(
+            targetSize.width / layoutSize.width,
+            targetSize.height / layoutSize.height
+        )
     }
 
     func frame(at progress: CGFloat) -> S2ImmersiveTransitionFrame {
@@ -935,6 +935,17 @@ final class S2NativeZoomPageController: UIViewController,
         )
     }
 
+    override func traitCollectionDidChange(
+        _ previousTraitCollection: UITraitCollection?
+    ) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.userInterfaceStyle !=
+                traitCollection.userInterfaceStyle else {
+            return
+        }
+        applyBorderColor()
+    }
+
     func update(
         page: S2NativePageContent,
         configuration: S2CalibrationConfiguration,
@@ -1059,11 +1070,15 @@ final class S2NativeZoomPageController: UIViewController,
     }
 
     func finishActivePresentationTransition() {
+        if isPresentationTransitionActive {
+            finishPresentationTransition(
+                generation: presentationTransitionGeneration
+            )
+            return
+        }
         guard let page = pendingPresentationPage else {
             return
         }
-        presentationTransitionGeneration += 1
-        zoomScrollView.presentationContentView?.layer.removeAllAnimations()
         commitPresentation(page)
     }
 
@@ -1311,7 +1326,11 @@ final class S2NativeZoomPageController: UIViewController,
             sourceCornerRadius: cornerRadius,
             targetCornerRadius: page.cornerRadius
         )
-        let animationPolicy = S2AnimationPolicy(configuration: configuration)
+        let animationPolicy = S2AnimationPolicy(
+            configuration: configuration,
+            durationMilliseconds:
+                configuration.presentationToggleDuration
+        )
         lastPresentationTransition = transition
         lastPresentationTransitionDuration = animationPolicy.shouldAnimate
             ? animationPolicy.durationSeconds
@@ -1331,19 +1350,64 @@ final class S2NativeZoomPageController: UIViewController,
         }
 
         zoomScrollView.applyNativeState(scale: 1, viewportOffset: .zero)
+        view.layoutIfNeeded()
+        let sourceLayer = presentationContentView.layer.presentation() ??
+            presentationContentView.layer
+        let sourceFrame = sourceLayer.frame
+        let sourceScale = min(
+            sourceLayer.bounds.width > 0
+                ? abs(sourceFrame.width / sourceLayer.bounds.width)
+                : 1,
+            sourceLayer.bounds.height > 0
+                ? abs(sourceFrame.height / sourceLayer.bounds.height)
+                : 1
+        )
+        let sourceVisualCornerRadius = sourceLayer.cornerRadius * sourceScale
+        let sourceVisualBorderWidth = sourceLayer.borderWidth * sourceScale
+        let sourceBorderColor = sourceLayer.borderColor
+
+        UIView.performWithoutAnimation {
+            self.applyPageImmediately(
+                page,
+                configuration: configuration,
+                countsAsPresentationCommit: true
+            )
+        }
+        guard page.fittedSize.width > 0,
+              page.fittedSize.height > 0 else {
+            return
+        }
+        let sourceScaleOnTarget = min(
+            sourceFrame.width / page.fittedSize.width,
+            sourceFrame.height / page.fittedSize.height
+        )
+        let safeSourceScale = max(0.000_001, sourceScaleOnTarget)
+        let targetLayerCornerRadius = max(0, page.cornerRadius)
+        let targetBorderWidth = resolvedFitBorderWidth()
+        let targetBorderColor = resolvedFitBorderColor()
+
         pendingPresentationPage = page
         isPresentationTransitionActive = true
         presentationTransitionCount += 1
         presentationTransitionGeneration += 1
         let generation = presentationTransitionGeneration
-        let targetLayerCornerRadius = transition.layerCornerRadius(at: 1)
         presentationContentView.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        presentationContentView.transform = .identity
         presentationContentView.layer.cornerCurve = .continuous
-        presentationContentView.layer.masksToBounds =
-            transition.sourceCornerRadius > 0 ||
-                transition.targetCornerRadius > 0
-
+        UIView.performWithoutAnimation {
+            presentationContentView.transform = CGAffineTransform(
+                scaleX: safeSourceScale,
+                y: safeSourceScale
+            )
+            presentationContentView.layer.cornerRadius =
+                sourceVisualCornerRadius / safeSourceScale
+            presentationContentView.layer.borderWidth =
+                sourceVisualBorderWidth / safeSourceScale
+            presentationContentView.layer.borderColor =
+                sourceBorderColor ?? targetBorderColor
+            presentationContentView.layer.masksToBounds =
+                sourceVisualCornerRadius > 0 ||
+                    targetLayerCornerRadius > 0
+        }
         UIView.animate(
             withDuration: animationPolicy.durationSeconds,
             delay: 0,
@@ -1353,16 +1417,11 @@ final class S2NativeZoomPageController: UIViewController,
                 .curveLinear
             ],
             animations: {
-                presentationContentView.bounds = CGRect(
-                    origin: .zero,
-                    size: transition.targetSize
-                )
-                presentationContentView.center = CGPoint(
-                    x: self.zoomScrollView.zoomContentView?.bounds.midX ?? 0,
-                    y: self.zoomScrollView.zoomContentView?.bounds.midY ?? 0
-                )
+                presentationContentView.transform = .identity
                 presentationContentView.layer.cornerRadius =
                     targetLayerCornerRadius
+                presentationContentView.layer.borderWidth = targetBorderWidth
+                presentationContentView.layer.borderColor = targetBorderColor
             },
             completion: { [weak self] finished in
                 guard finished,
@@ -1370,8 +1429,8 @@ final class S2NativeZoomPageController: UIViewController,
                       self.presentationTransitionGeneration == generation else {
                     return
                 }
-                self.commitPresentation(
-                    self.pendingPresentationPage ?? page
+                self.finishPresentationTransition(
+                    generation: generation
                 )
             }
         )
@@ -1383,10 +1442,31 @@ final class S2NativeZoomPageController: UIViewController,
                   self.presentationTransitionGeneration == generation else {
                 return
             }
-            self.commitPresentation(
-                self.pendingPresentationPage ?? page
+            self.finishPresentationTransition(
+                generation: generation
             )
         }
+    }
+
+    private func finishPresentationTransition(generation: Int) {
+        guard isPresentationTransitionActive,
+              presentationTransitionGeneration == generation else {
+            return
+        }
+        guard let presentationContentView =
+                zoomScrollView.presentationContentView else {
+            isPresentationTransitionActive = false
+            pendingPresentationPage = nil
+            return
+        }
+        presentationContentView.layer.removeAllAnimations()
+        UIView.performWithoutAnimation {
+            presentationContentView.transform = .identity
+            self.applyCornerMask()
+            self.zoomScrollView.layoutIfNeeded()
+        }
+        isPresentationTransitionActive = false
+        pendingPresentationPage = nil
     }
 
     private func applyDeferredPresentationIfPossible() {
@@ -1629,16 +1709,56 @@ final class S2NativeZoomPageController: UIViewController,
     }
 
     private func applyCornerMask(forceNx: Bool = false) {
-        let resolvedRadius = forceNx || zoomScrollView.zoomScale >
+        let isNx = forceNx || zoomScrollView.zoomScale >
             zoomScrollView.minimumZoomScale + 0.000_001
+        let resolvedRadius = isNx
             ? 0
             : max(0, cornerRadius)
+        let borderWidth = isNx ? 0 : resolvedFitBorderWidth()
         hostingController.view.transform = .identity
         hostingController.view.layer.cornerRadius = resolvedRadius
         hostingController.view.layer.cornerCurve = .continuous
+        hostingController.view.layer.borderWidth = borderWidth
+        applyBorderColor()
         hostingController.view.layer.masksToBounds = resolvedRadius > 0
         zoomScrollView.zoomContentView?.layer.cornerRadius = 0
         zoomScrollView.zoomContentView?.layer.masksToBounds = false
+    }
+
+    private func resolvedFitBorderWidth() -> CGFloat {
+        guard interfaceVisibility == .visible,
+              isFramedPhoto,
+              assetPixelSize.width > 0,
+              assetPixelSize.height > 0,
+              latestViewportSize.width > 0,
+              latestViewportSize.height > 0 else {
+            return 0
+        }
+        let assetAspectRatio = assetPixelSize.width / assetPixelSize.height
+        let viewportAspectRatio = latestViewportSize.width /
+            latestViewportSize.height
+        guard S2Geometry.isScreenAspectMatch(
+            assetAspectRatio: assetAspectRatio,
+            viewportAspectRatio: viewportAspectRatio
+        ) else {
+            return 0
+        }
+        return max(0, CGFloat(latestConfiguration.fitBorderWidth))
+    }
+
+    private func resolvedFitBorderColor() -> CGColor {
+        if traitCollection.userInterfaceStyle == .dark {
+            return UIColor.white.withAlphaComponent(
+                CGFloat(latestConfiguration.fitBorderDarkAlpha)
+            ).cgColor
+        }
+        return UIColor.black.withAlphaComponent(
+            CGFloat(latestConfiguration.fitBorderLightAlpha)
+        ).cgColor
+    }
+
+    private func applyBorderColor() {
+        hostingController.view.layer.borderColor = resolvedFitBorderColor()
     }
 
     @objc private func handleSingleTap(_ recognizer: UITapGestureRecognizer) {

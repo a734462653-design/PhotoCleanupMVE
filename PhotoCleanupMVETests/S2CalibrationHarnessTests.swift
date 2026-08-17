@@ -43,6 +43,79 @@ private final class S2ImageRequestCounter: S2PhotoImageRequesting {
     }
 }
 
+private struct IC064PresentationSample {
+    let timestamp: CFTimeInterval
+    let frame: CGRect
+    let bounds: CGRect
+    let cornerRadius: CGFloat
+    let borderWidth: CGFloat
+}
+
+private final class IC064PresentationLayerSampler: NSObject {
+    private weak var page: S2NativeZoomPageController?
+    private var displayLink: CADisplayLink?
+    private var startTimestamp: CFTimeInterval?
+    private(set) var samples: [IC064PresentationSample] = []
+
+    init(page: S2NativeZoomPageController) {
+        self.page = page
+    }
+
+    deinit {
+        displayLink?.invalidate()
+    }
+
+    func start() {
+        samples = []
+        startTimestamp = nil
+        capture(timestamp: CACurrentMediaTime())
+        let displayLink = CADisplayLink(
+            target: self,
+            selector: #selector(captureDisplayFrame(_:))
+        )
+        displayLink.preferredFramesPerSecond = 60
+        self.displayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
+    }
+
+    func stop() -> [IC064PresentationSample] {
+        displayLink?.invalidate()
+        displayLink = nil
+        capture(timestamp: CACurrentMediaTime())
+        return samples
+    }
+
+    @objc private func captureDisplayFrame(_ displayLink: CADisplayLink) {
+        capture(timestamp: displayLink.timestamp)
+    }
+
+    private func capture(timestamp: CFTimeInterval) {
+        guard let scrollView = page?.zoomScrollView,
+              let presentationContentView = scrollView.presentationContentView,
+              let zoomContentView = scrollView.zoomContentView else {
+            return
+        }
+        let layer = presentationContentView.layer.presentation() ??
+            presentationContentView.layer
+        let frame = zoomContentView.convert(
+            layer.frame,
+            to: scrollView
+        ).offsetBy(
+            dx: -scrollView.bounds.minX,
+            dy: -scrollView.bounds.minY
+        )
+        let firstTimestamp = startTimestamp ?? timestamp
+        startTimestamp = firstTimestamp
+        samples.append(IC064PresentationSample(
+            timestamp: timestamp - firstTimestamp,
+            frame: frame,
+            bounds: layer.bounds,
+            cornerRadius: layer.cornerRadius,
+            borderWidth: layer.borderWidth
+        ))
+    }
+}
+
 final class S2CalibrationHarnessTests: XCTestCase {
     private var nativeZoomDelegates: [S2NativeZoomTestDelegate] = []
 
@@ -416,7 +489,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(revealed.readingsVisible)
     }
 
-    // L7：完整出厂配置仅按 IC-063 定案把双击最小倍率改为 2。
+    // L7：完整出厂配置包含 IC-064 的显隐时长与描边定案。
     func testL7FactoryDefaultsMatchSystemParityDecision() {
         let expected = S2CalibrationConfiguration(
             pinchMaxScale: 4,
@@ -449,8 +522,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
             degradedPreviewPolicy: .finalImageOnly,
             animationsEnabled: true,
             animationDurationMilliseconds: 180,
+            presentationToggleDuration: 220,
             fitInsetRatio: 0.30,
             fitCornerRadius: 28,
+            fitBorderWidth: 1,
+            fitBorderDarkAlpha: 0.09,
+            fitBorderLightAlpha: 0.055,
             fitInsetScope: .screenAspectOnly,
             screenshotImmersiveOnHide: true,
             pageSpacing: 20,
@@ -475,7 +552,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "taskID=IC-20260816-063-s2-immersive-and-doubletap-transition"
+                "taskID=IC-20260817-064-s2-presentation-toggle-animation"
             )
         )
         XCTAssertTrue(
@@ -488,6 +565,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(actual.exportText().contains("fitInsetRatio=0.300000"))
         XCTAssertTrue(actual.exportText().contains("fitCornerRadius=28.000000"))
+        XCTAssertTrue(actual.exportText().contains(
+            "presentationToggleDuration=220.000000"
+        ))
+        XCTAssertTrue(actual.exportText().contains("fitBorderWidth=1.000000"))
+        XCTAssertTrue(actual.exportText().contains("fitBorderDarkAlpha=0.090000"))
+        XCTAssertTrue(actual.exportText().contains("fitBorderLightAlpha=0.055000"))
         XCTAssertTrue(actual.exportText().contains("screenshotImmersiveOnHide=true"))
         XCTAssertTrue(actual.exportText().contains("pageSpacing=20.000000"))
         XCTAssertTrue(actual.exportText().contains("hapticOnPhotoSwitch=true"))
@@ -2106,16 +2189,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
             configuration: configuration
         )
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        let visible = metrics(
-            visibility: .visible,
-            configuration: configuration
-        )
         XCTAssertTrue(page.isPresentationTransitionActive)
-        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
-        XCTAssertEqual(page.cornerRadius, visible.oneXCornerRadius)
+        XCTAssertEqual(page.fittedSize, hidden.oneXDisplaySize)
+        XCTAssertEqual(page.cornerRadius, hidden.oneXCornerRadius)
         XCTAssertEqual(
             page.lastPresentationTransitionDuration,
-            0.18,
+            0.22,
             accuracy: 0.000_001
         )
         page.finishActivePresentationTransition()
@@ -2256,12 +2335,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
         page.finishActivePresentationTransition()
     }
 
-    // X2 替代断言：1x 内容尺寸恒为视口，照片用布局尺寸且 transform 恒等。
+    // X2：终态几何在动画开始前提交，照片显示层只承载等比 transform。
     func testX2ImmersiveTransitionKeepsLayoutSizeAndUsesTransform() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        let layoutSize = page.fittedSize
         let contentSize = page.zoomScrollView.contentSize
 
         XCTAssertTrue(machine.handleSingleTap())
@@ -2276,8 +2354,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page.zoomScrollView.presentationContentView
         ).transform
         XCTAssertTrue(page.isPresentationTransitionActive)
-        XCTAssertEqual(page.fittedSize, layoutSize)
-        XCTAssertEqual(page.zoomScrollView.fittedSize, layoutSize)
+        XCTAssertEqual(page.fittedSize, transition.targetSize)
+        XCTAssertEqual(page.zoomScrollView.fittedSize, transition.targetSize)
         XCTAssertEqual(page.zoomScrollView.contentSize, contentSize)
         XCTAssertEqual(
             page.zoomScrollView.presentationContentView?.bounds.size,
@@ -2472,9 +2550,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
         let transition = tryUnwrap(page.lastPresentationTransition)
         XCTAssertTrue(page.isPresentationTransitionActive)
-        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
+        XCTAssertEqual(page.fittedSize, hidden.oneXDisplaySize)
         XCTAssertEqual(page.presentationTransitionCount, 1)
-        XCTAssertEqual(page.presentationGeometryCommitCount, 0)
+        XCTAssertEqual(page.presentationGeometryCommitCount, 1)
         XCTAssertNotEqual(transition.targetScale, 1, accuracy: 0.000_001)
         page.finishActivePresentationTransition()
 
@@ -3013,6 +3091,235 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(disabled.durationSeconds, 0)
     }
 
+    // IC-064 G13～G18：真实显示层采样同时满足等比、中心、双向与稳定性。
+    func testIC064G13ToG18PresentationSamplesMeetGeometryContract() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        let hiding = capturePresentationToggle(
+            machine: machine,
+            controller: controller,
+            page: page,
+            configuration: configuration
+        )
+        let hiddenFrame = page.zoomScrollView.visiblePresentationFrame()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.30))
+        XCTAssertEqual(
+            page.zoomScrollView.visiblePresentationFrame(),
+            hiddenFrame
+        )
+        let showing = capturePresentationToggle(
+            machine: machine,
+            controller: controller,
+            page: page,
+            configuration: configuration
+        )
+
+        XCTAssertGreaterThanOrEqual(hiding.count, 3)
+        XCTAssertGreaterThanOrEqual(showing.count, 3)
+        XCTAssertEqual(
+            hiding.last?.timestamp ?? 0,
+            showing.last?.timestamp ?? 0,
+            accuracy: 0.010
+        )
+        for sample in hiding + showing {
+            let aspectRatio = sample.frame.height > 0
+                ? sample.frame.width / sample.frame.height
+                : 0
+            XCTAssertEqual(
+                aspectRatio,
+                screenAspectRatio,
+                accuracy: screenAspectRatio * 0.01
+            )
+            XCTAssertEqual(
+                sample.frame.midX,
+                physicalSize.width / 2,
+                accuracy: 0.5
+            )
+            XCTAssertEqual(
+                sample.frame.midY,
+                physicalSize.height / 2,
+                accuracy: 0.5
+            )
+            XCTAssertEqual(
+                sample.bounds.width / sample.bounds.height,
+                screenAspectRatio,
+                accuracy: screenAspectRatio * 0.01
+            )
+        }
+        assertMonotonic(
+            hiding.map(\.frame.width),
+            direction: .increasing
+        )
+        assertMonotonic(
+            showing.map(\.frame.width),
+            direction: .decreasing
+        )
+    }
+
+    // IC-064 G19：三种系统样本的左右描边像素均落入目标容差。
+    func testIC064G19FitBorderPixelsMatchDarkAndLightSamples() {
+        let darkBlack = fitBorderPixelGrays(
+            style: .dark,
+            photoGray: 2
+        )
+        let lightBlack = fitBorderPixelGrays(
+            style: .light,
+            photoGray: 2
+        )
+        let lightGray = fitBorderPixelGrays(
+            style: .light,
+            photoGray: 237
+        )
+
+        for value in darkBlack {
+            XCTAssertEqual(Double(value), 25, accuracy: 6)
+        }
+        for value in lightBlack {
+            XCTAssertEqual(Double(value), 2, accuracy: 4)
+        }
+        for value in lightGray {
+            XCTAssertEqual(Double(value), 224, accuracy: 6)
+        }
+    }
+
+    // IC-064 G20：1pt 描边位于照片层内，不改变照片总尺寸。
+    func testIC064G20FitBorderKeepsPhotoGeometryUnchanged() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let value = metrics(configuration: configuration)
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        XCTAssertEqual(
+            page.zoomScrollView.presentationContentView?.layer.borderWidth ?? -1,
+            1,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(page.fittedSize, value.oneXDisplaySize)
+        XCTAssertEqual(
+            page.zoomScrollView.visiblePresentationFrame()?.size,
+            value.oneXDisplaySize
+        )
+    }
+
+    // IC-064 G21：Nx 描边归零，显隐过渡中的视觉线宽连续收敛。
+    func testIC064G21FitBorderTracksScaleAndPresentationProgress() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let nxMachine = makeMachine(scale: 2, configuration: configuration)
+        let nxController = makeNativePagerController(
+            machine: nxMachine,
+            configuration: configuration
+        )
+        let nxPage = tryUnwrap(
+            nxController.pageControllers[nxMachine.currentIndex]
+        )
+        XCTAssertEqual(
+            nxPage.zoomScrollView.presentationContentView?.layer.borderWidth,
+            0
+        )
+
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let samples = capturePresentationToggle(
+            machine: machine,
+            controller: controller,
+            page: page,
+            configuration: configuration
+        )
+        let visualWidths = samples.map {
+            $0.bounds.width > 0
+                ? $0.borderWidth * $0.frame.width / $0.bounds.width
+                : 0
+        }
+        XCTAssertEqual(visualWidths.first ?? 0, 1, accuracy: 0.01)
+        XCTAssertEqual(visualWidths.last ?? 1, 0, accuracy: 0.01)
+        assertMonotonic(visualWidths, direction: .decreasing)
+    }
+
+    // IC-064 G22：trait 明暗切换后描边颜色原地更新，无需重建页面。
+    func testIC064G22FitBorderUpdatesWithInterfaceStyle() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let host = UIViewController()
+        host.view.frame = CGRect(origin: .zero, size: physicalSize)
+        host.addChild(controller)
+        controller.view.frame = host.view.bounds
+        host.view.addSubview(controller.view)
+        controller.didMove(toParent: host)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        host.setOverrideTraitCollection(
+            UITraitCollection(userInterfaceStyle: .dark),
+            forChild: controller
+        )
+        let darkColor = tryUnwrap(
+            page.zoomScrollView.presentationContentView?.layer.borderColor
+        )
+        host.setOverrideTraitCollection(
+            UITraitCollection(userInterfaceStyle: .light),
+            forChild: controller
+        )
+        let lightColor = tryUnwrap(
+            page.zoomScrollView.presentationContentView?.layer.borderColor
+        )
+
+        XCTAssertNotEqual(
+            UIColor(cgColor: darkColor),
+            UIColor(cgColor: lightColor)
+        )
+        XCTAssertEqual(
+            UIColor(cgColor: darkColor).cgColor.alpha,
+            CGFloat(configuration.fitBorderDarkAlpha),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            UIColor(cgColor: lightColor).cgColor.alpha,
+            CGFloat(configuration.fitBorderLightAlpha),
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-064 C7：显隐动画使用独立 220ms 参数，不改动双击的 180ms 参数。
+    func testIC064PresentationToggleUsesDedicatedDuration() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let togglePolicy = S2AnimationPolicy(
+            configuration: configuration,
+            durationMilliseconds:
+                configuration.presentationToggleDuration
+        )
+        let existingPolicy = S2AnimationPolicy(configuration: configuration)
+
+        XCTAssertEqual(togglePolicy.durationSeconds, 0.22, accuracy: 0.000_001)
+        XCTAssertEqual(existingPolicy.durationSeconds, 0.18, accuracy: 0.000_001)
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
     private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(
@@ -3032,6 +3339,171 @@ final class S2CalibrationHarnessTests: XCTestCase {
             bottomStripState: .idle,
             sheetState: .closed
         )
+    }
+
+    private enum MonotonicDirection {
+        case increasing
+        case decreasing
+    }
+
+    private func capturePresentationToggle(
+        machine: S2StateMachine,
+        controller: S2NativePagerViewController,
+        page: S2NativeZoomPageController,
+        configuration: S2CalibrationConfiguration
+    ) -> [IC064PresentationSample] {
+        let sampler = IC064PresentationLayerSampler(page: page)
+        sampler.start()
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        let deadline = Date(timeIntervalSinceNow: 1)
+        while page.isPresentationTransitionActive, Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.005))
+        }
+        XCTAssertFalse(page.isPresentationTransitionActive)
+        return sampler.stop()
+    }
+
+    private func assertMonotonic(
+        _ values: [CGFloat],
+        direction: MonotonicDirection,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertGreaterThanOrEqual(values.count, 2, file: file, line: line)
+        for (previous, next) in zip(values, values.dropFirst()) {
+            switch direction {
+            case .increasing:
+                XCTAssertGreaterThanOrEqual(
+                    next + 0.01,
+                    previous,
+                    file: file,
+                    line: line
+                )
+            case .decreasing:
+                XCTAssertLessThanOrEqual(
+                    next - 0.01,
+                    previous,
+                    file: file,
+                    line: line
+                )
+            }
+        }
+    }
+
+    private func fitBorderPixelGrays(
+        style: UIUserInterfaceStyle,
+        photoGray: Int
+    ) -> [Int] {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration,
+            photoContent: { _, size, _, _ in
+                AnyView(
+                    Color(
+                        UIColor(
+                            white: CGFloat(photoGray) / 255,
+                            alpha: 1
+                        )
+                    )
+                    .frame(width: size.width, height: size.height)
+                )
+            }
+        )
+        let host = UIViewController()
+        host.view.frame = CGRect(origin: .zero, size: physicalSize)
+        host.view.backgroundColor = style == .dark ? .black : .white
+        host.addChild(controller)
+        controller.view.frame = host.view.bounds
+        host.view.addSubview(controller.view)
+        controller.didMove(toParent: host)
+        host.setOverrideTraitCollection(
+            UITraitCollection(userInterfaceStyle: style),
+            forChild: controller
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        host.view.layoutIfNeeded()
+
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let frame = tryUnwrap(page.zoomScrollView.visiblePresentationFrame())
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 3
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(
+            bounds: host.view.bounds,
+            format: format
+        ).image { context in
+            host.view.layer.render(in: context.cgContext)
+        }
+        return [
+            pixelGray(
+                image: image,
+                point: CGPoint(x: frame.minX + 0.5, y: frame.midY)
+            ),
+            pixelGray(
+                image: image,
+                point: CGPoint(x: frame.maxX - 0.5, y: frame.midY)
+            )
+        ]
+    }
+
+    private func pixelGray(image: UIImage, point: CGPoint) -> Int {
+        guard let source = image.cgImage else {
+            XCTFail("截图缺少像素数据")
+            return -1
+        }
+        let x = min(
+            source.width - 1,
+            max(0, Int(point.x * image.scale))
+        )
+        let y = min(
+            source.height - 1,
+            max(0, Int(point.y * image.scale))
+        )
+        guard let cropped = source.cropping(to: CGRect(
+            x: x,
+            y: y,
+            width: 1,
+            height: 1
+        )) else {
+            XCTFail("无法裁取描边像素")
+            return -1
+        }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let didDraw = pixel.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(
+                data: bytes.baseAddress,
+                width: 1,
+                height: 1,
+                bitsPerComponent: 8,
+                bytesPerRow: 4,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else {
+                return false
+            }
+            context.draw(
+                cropped,
+                in: CGRect(x: 0, y: 0, width: 1, height: 1)
+            )
+            return true
+        }
+        guard didDraw else {
+            XCTFail("无法创建像素取样上下文")
+            return -1
+        }
+        return (Int(pixel[0]) + Int(pixel[1]) + Int(pixel[2])) / 3
     }
 
     private func metrics(

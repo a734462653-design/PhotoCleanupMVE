@@ -667,6 +667,19 @@ struct S2View: View {
                     Text(verbatim: "220 ms").tag(Double(220))
                 }
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                Picker(
+                    "presentationToggleDuration",
+                    selection: calibrationBinding(
+                        \.presentationToggleDuration
+                    )
+                ) {
+                    Text(verbatim: "0 ms").tag(Double(0))
+                    Text(verbatim: "180 ms").tag(Double(180))
+                    Text(verbatim: "200 ms").tag(Double(200))
+                    Text(verbatim: "220 ms").tag(Double(220))
+                    Text(verbatim: "240 ms").tag(Double(240))
+                }
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
                 S2CalibrationSliderRow(
                     title: "fitInsetRatio",
                     value: calibrationBinding(\.fitInsetRatio),
@@ -679,6 +692,27 @@ struct S2View: View {
                     value: calibrationBinding(\.fitCornerRadius),
                     range: 0...120,
                     step: 1
+                )
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                S2CalibrationSliderRow(
+                    title: "fitBorderWidth",
+                    value: calibrationBinding(\.fitBorderWidth),
+                    range: 0...4,
+                    step: 0.1
+                )
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                S2CalibrationSliderRow(
+                    title: "fitBorderDarkAlpha",
+                    value: calibrationBinding(\.fitBorderDarkAlpha),
+                    range: 0...0.3,
+                    step: 0.005
+                )
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                S2CalibrationSliderRow(
+                    title: "fitBorderLightAlpha",
+                    value: calibrationBinding(\.fitBorderLightAlpha),
+                    range: 0...0.3,
+                    step: 0.005
                 )
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
                 Picker(
