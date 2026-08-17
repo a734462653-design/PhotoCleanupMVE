@@ -3323,7 +3323,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // IC-065 G30：大于视口的方向只使用原生内容边界，不增加额外余量。
     func testIC065G30OversizedDirectionsUseNativeContentBounds() {
-        for assetAspectRatio in [CGFloat(478.0 / 2_622.0), 9.0 / 16.0] {
+        let assetAspectRatios: [CGFloat] = [
+            478.0 / 2_622.0,
+            9.0 / 16.0
+        ]
+        for assetAspectRatio in assetAspectRatios {
             let hosted = makeIC065HostedPage(
                 assetAspectRatio: assetAspectRatio
             )
