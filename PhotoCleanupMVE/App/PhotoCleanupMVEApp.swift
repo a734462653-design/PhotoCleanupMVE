@@ -15,11 +15,6 @@ struct PhotoCleanupMVEApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-#if DEBUG
-                if isIC067ScreenshotSubtypeProbe {
-                    IC067ScreenshotSubtypeProbeView()
-                } else {
-#endif
                 switch coordinator.route {
                 case .loading:
                     ProgressView(L10n.text("app.loading.photo_library"))
@@ -105,17 +100,23 @@ struct PhotoCleanupMVEApp: App {
                 case .completion:
                     S5View(coordinator: coordinator)
                 }
-#if DEBUG
-                }
-#endif
             }
             .onAppear {
-                if !isIC067ScreenshotSubtypeProbe,
-                   ProcessInfo.processInfo.environment[
+#if DEBUG
+                if isIC067ScreenshotSubtypeProbe {
+                    IC067ScreenshotSubtypeProbe.runAndPersist()
+                } else if ProcessInfo.processInfo.environment[
                     "XCTestConfigurationFilePath"
                    ] == nil {
                     coordinator.start()
                 }
+#else
+                if ProcessInfo.processInfo.environment[
+                    "XCTestConfigurationFilePath"
+                ] == nil {
+                    coordinator.start()
+                }
+#endif
             }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
@@ -132,24 +133,14 @@ struct PhotoCleanupMVEApp: App {
 }
 
 #if DEBUG
-private struct IC067ScreenshotSubtypeProbeView: View {
-    @State private var didStart = false
-    @State private var result = "IC067_G38_RUNNING"
-
-    var body: some View {
-        Text(verbatim: result)
-            .onAppear {
-                guard !didStart else {
-                    return
-                }
-                didStart = true
-                IC067ScreenshotSubtypeProbe.run { value in
-                    persist(value)
-                }
-            }
+private enum IC067ScreenshotSubtypeProbe {
+    static func runAndPersist() {
+        run { value in
+            persist(value)
+        }
     }
 
-    private func persist(_ value: String) {
+    private static func persist(_ value: String) {
         guard let directory = FileManager.default.urls(
             for: .documentDirectory,
             in: .userDomainMask
@@ -160,13 +151,8 @@ private struct IC067ScreenshotSubtypeProbeView: View {
             "ic067-g38-probe.txt"
         )
         try? value.write(to: url, atomically: true, encoding: .utf8)
-        DispatchQueue.main.async {
-            result = value
-        }
     }
-}
 
-private enum IC067ScreenshotSubtypeProbe {
     static func run(completion: @escaping (String) -> Void) {
         let authorizationStatus = PHPhotoLibrary.authorizationStatus(
             for: .readWrite
