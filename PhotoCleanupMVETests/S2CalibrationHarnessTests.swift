@@ -123,6 +123,87 @@ private final class IC064PresentationLayerSampler: NSObject {
     }
 }
 
+private struct IC065PinchPresentationSample {
+    let timestamp: CFTimeInterval
+    let phase: String
+    let zoomScale: CGFloat
+    let frameInWindow: CGRect
+    let contentSize: CGSize
+    let contentOffset: CGPoint
+    let contentInset: UIEdgeInsets
+}
+
+private final class IC065PinchPresentationSampler: NSObject {
+    private weak var scrollView: S2NativeZoomScrollView?
+    private weak var window: UIWindow?
+    private var displayLink: CADisplayLink?
+    private var startTimestamp: CFTimeInterval?
+    private var phase = "one_x"
+    private(set) var samples: [IC065PinchPresentationSample] = []
+
+    init(scrollView: S2NativeZoomScrollView, window: UIWindow) {
+        self.scrollView = scrollView
+        self.window = window
+    }
+
+    deinit {
+        displayLink?.invalidate()
+    }
+
+    func start() {
+        samples = []
+        startTimestamp = nil
+        capture(timestamp: CACurrentMediaTime())
+        let displayLink = CADisplayLink(
+            target: self,
+            selector: #selector(captureDisplayFrame(_:))
+        )
+        displayLink.preferredFramesPerSecond = 60
+        self.displayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
+    }
+
+    func mark(_ phase: String) {
+        self.phase = phase
+        capture(timestamp: CACurrentMediaTime())
+    }
+
+    func stop() -> [IC065PinchPresentationSample] {
+        displayLink?.invalidate()
+        displayLink = nil
+        capture(timestamp: CACurrentMediaTime())
+        return samples
+    }
+
+    @objc private func captureDisplayFrame(_ displayLink: CADisplayLink) {
+        capture(timestamp: displayLink.timestamp)
+    }
+
+    private func capture(timestamp: CFTimeInterval) {
+        guard let scrollView,
+              let window,
+              let presentationContentView =
+                scrollView.presentationContentView,
+              let zoomContentView = scrollView.zoomContentView else {
+            return
+        }
+        let layer = presentationContentView.layer.presentation() ??
+            presentationContentView.layer
+        let frameInWindow = zoomContentView.convert(layer.frame, to: window)
+        let firstTimestamp = startTimestamp ?? timestamp
+        startTimestamp = firstTimestamp
+        samples.append(IC065PinchPresentationSample(
+            timestamp: timestamp - firstTimestamp,
+            phase: phase,
+            zoomScale: scrollView.zoomScale,
+            frameInWindow: frameInWindow,
+            contentSize: scrollView.contentSize,
+            contentOffset: scrollView.contentOffset,
+            contentInset: scrollView.contentInset
+        ))
+    }
+}
+
 final class S2CalibrationHarnessTests: XCTestCase {
     private var nativeZoomDelegates: [S2NativeZoomTestDelegate] = []
 
@@ -3118,6 +3199,72 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let disabled = S2AnimationPolicy(configuration: configuration)
         XCTAssertFalse(disabled.shouldAnimate)
         XCTAssertEqual(disabled.durationSeconds, 0)
+    }
+
+    // IC-065 改造前证据：以 60Hz 记录原生捏合接管前后的 window frame。
+    func testIC065BaselinePinchStartFrameProbe() {
+        let samples: [(String, CGFloat)] = [
+            ("width_limited", 478.0 / 2_622.0),
+            ("height_limited", 9.0 / 16.0)
+        ]
+
+        for (name, assetAspectRatio) in samples {
+            let machine = makeMachine()
+            let controller = makeNativePagerController(
+                machine: machine,
+                assetAspectRatio: assetAspectRatio
+            )
+            let window = UIWindow(
+                frame: CGRect(origin: .zero, size: physicalSize)
+            )
+            window.rootViewController = controller
+            window.isHidden = false
+            defer { window.isHidden = true }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+            let page = tryUnwrap(
+                controller.pageControllers[machine.currentIndex]
+            )
+            let scrollView = page.zoomScrollView
+            let sampler = IC065PinchPresentationSampler(
+                scrollView: scrollView,
+                window: window
+            )
+
+            sampler.start()
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+            scrollView.prepareForNativeZoom()
+            sampler.mark("pinch_began")
+            scrollView.setZoomScale(1.001, animated: false)
+            scrollView.setNeedsLayout()
+            scrollView.layoutIfNeeded()
+            sampler.mark("scale_1_001")
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+            let trace = sampler.stop()
+
+            XCTAssertGreaterThanOrEqual(trace.count, 5)
+            for (index, sample) in trace.enumerated() {
+                print(String(format:
+                    "IC065_BASELINE_FRAME sample=%@ index=%d phase=%@ time=%.6f scale=%.6f frame=(%.6f,%.6f,%.6f,%.6f) contentSize=(%.6f,%.6f) contentOffset=(%.6f,%.6f) inset=(%.6f,%.6f,%.6f,%.6f)",
+                    name,
+                    index,
+                    sample.phase,
+                    sample.timestamp,
+                    sample.zoomScale,
+                    sample.frameInWindow.minX,
+                    sample.frameInWindow.minY,
+                    sample.frameInWindow.width,
+                    sample.frameInWindow.height,
+                    sample.contentSize.width,
+                    sample.contentSize.height,
+                    sample.contentOffset.x,
+                    sample.contentOffset.y,
+                    sample.contentInset.top,
+                    sample.contentInset.left,
+                    sample.contentInset.bottom,
+                    sample.contentInset.right
+                ))
+            }
+        }
     }
 
     // IC-064 G13～G18：真实显示层采样同时满足等比、中心、双向与稳定性。
