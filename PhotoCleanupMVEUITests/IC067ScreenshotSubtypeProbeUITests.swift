@@ -84,7 +84,7 @@ final class IC067RealInteractionUITests: XCTestCase {
         app.launchArguments = ["--ic067-real-interaction-probe"]
         app.launch()
 
-        let viewport = app.otherElements["ic067.interaction.viewport"]
+        let viewport = app.scrollViews["ic067.interaction.viewport"]
         let result = app.staticTexts["ic067.interaction.result"]
         XCTAssertTrue(viewport.waitForExistence(timeout: 10))
         XCTAssertTrue(result.waitForExistence(timeout: 10))

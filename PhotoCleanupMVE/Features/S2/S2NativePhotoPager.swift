@@ -1911,6 +1911,13 @@ final class S2NativePagerViewController: UIViewController,
     var diagnosticsRun: S2GeometryDiagnosticsRun?
     var realInteractionDiagnosticObserver:
         ((S2RealInteractionDiagnosticEvent) -> Void)?
+    var realInteractionAccessibilityIdentifier: String? {
+        didSet {
+            pageControllers.values.forEach {
+                configureRealInteractionAccessibility(for: $0)
+            }
+        }
+    }
 
     override func loadView() {
         let rootView = UIView()
@@ -2009,6 +2016,7 @@ final class S2NativePagerViewController: UIViewController,
                 isCurrent: page.index == machine.currentIndex,
                 viewportSize: viewportSize
             )
+            configureRealInteractionAccessibility(for: controller)
         }
 
         settledIndex = machine.currentIndex
@@ -2022,6 +2030,15 @@ final class S2NativePagerViewController: UIViewController,
             )
         }
         isApplyingSnapshot = false
+    }
+
+    private func configureRealInteractionAccessibility(
+        for page: S2NativeZoomPageController
+    ) {
+        page.zoomScrollView.accessibilityIdentifier =
+            realInteractionAccessibilityIdentifier
+        page.zoomScrollView.isAccessibilityElement =
+            realInteractionAccessibilityIdentifier != nil
     }
 
     func resetInteractionState() {
@@ -2705,6 +2722,10 @@ final class S2GeometryDiagnosticsCoordinator: ObservableObject {
 
     func attach(_ controller: S2NativePagerViewController) {
         self.controller = controller
+        controller.realInteractionAccessibilityIdentifier =
+            capturesRealInteractions
+            ? "ic067.interaction.viewport"
+            : nil
         controller.realInteractionDiagnosticObserver =
             capturesRealInteractions
             ? { [weak self] event in
@@ -2719,6 +2740,7 @@ final class S2GeometryDiagnosticsCoordinator: ObservableObject {
         }
         controller.diagnosticsRun?.cancel()
         controller.diagnosticsRun = nil
+        controller.realInteractionAccessibilityIdentifier = nil
         controller.realInteractionDiagnosticObserver = nil
         self.controller = nil
     }
