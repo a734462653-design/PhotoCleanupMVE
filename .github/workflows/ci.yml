@@ -2,6 +2,9 @@ name: iOS 构建与自验
 
 on:
   push:
+    paths-ignore:
+      - 'Reports/**'
+      - '**.md'
   workflow_dispatch:
 
 permissions:
