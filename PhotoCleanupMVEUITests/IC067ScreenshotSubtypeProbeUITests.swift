@@ -31,7 +31,16 @@ final class IC067ScreenshotSubtypeProbeUITests: XCTestCase {
         }
 
         app.launch()
-        app.tap()
+        let authorizationDeadline = Date().addingTimeInterval(10)
+        repeat {
+            app.tap()
+            if handledPhotoAuthorization {
+                break
+            }
+            RunLoop.current.run(
+                until: Date().addingTimeInterval(0.25)
+            )
+        } while Date() < authorizationDeadline
 
         let result = app.staticTexts["ic067.g38.probe.result"]
         let completed = XCTNSPredicateExpectation(
