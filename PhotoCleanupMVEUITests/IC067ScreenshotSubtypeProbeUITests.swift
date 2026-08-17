@@ -99,7 +99,8 @@ final class IC067RealInteractionUITests: XCTestCase {
             context: "photoFrame=\(photo.frame) hittable=\(photo.isHittable)",
             timeout: 10
         ) { label in
-            self.number("takeovers", in: label) >= 1
+            self.number("takeovers", in: label) >= 1 &&
+                self.number("ends", in: label) >= 1
         }
         XCTAssertLessThanOrEqual(
             number("takeoverCenterOffset", in: enlarged),
