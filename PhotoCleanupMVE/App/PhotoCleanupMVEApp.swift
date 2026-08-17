@@ -22,6 +22,12 @@ struct PhotoCleanupMVEApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
+#if DEBUG
+                if isIC067RealInteractionProbe {
+                    IC067RealInteractionProbeView()
+                } else {
+#endif
+                Group {
                 switch coordinator.route {
                 case .loading:
                     ProgressView(L10n.text("app.loading.photo_library"))
@@ -109,13 +115,12 @@ struct PhotoCleanupMVEApp: App {
                 case .completion:
                     S5View(coordinator: coordinator)
                 }
+                }
+#if DEBUG
+                }
+#endif
             }
 #if DEBUG
-            .overlay {
-                if isIC067RealInteractionProbe {
-                    IC067RealInteractionProbeView()
-                }
-            }
             .overlay(alignment: .topLeading) {
                 if isIC067ScreenshotSubtypeProbe {
                     Text(ic067ScreenshotSubtypeProbeResult)

@@ -43,28 +43,6 @@ fi
 
 echo "使用 iPhone 模拟器：$destination_id"
 
-xcrun simctl bootstatus "$destination_id" -b
-simulator_app_path="$(xcode-select -p)/Applications/Simulator.app"
-open "$simulator_app_path"
-osascript <<'APPLESCRIPT'
-tell application "Simulator" to activate
-tell application "System Events"
-    repeat 40 times
-        if exists process "Simulator" then
-            tell process "Simulator"
-                if exists menu item "Trigger Screenshot" of menu "Device" of menu bar 1 then
-                    click menu item "Trigger Screenshot" of menu "Device" of menu bar 1
-                    return
-                end if
-            end tell
-        end if
-        delay 0.25
-    end repeat
-end tell
-error "未找到 Simulator 的 Trigger Screenshot 菜单项"
-APPLESCRIPT
-sleep 3
-
 xcodebuild \
     build-for-testing \
     -project "$project_path" \
@@ -73,12 +51,6 @@ xcodebuild \
     -destination "platform=iOS Simulator,id=$destination_id" \
     -derivedDataPath "$temporary_dir/DerivedData"
 
-app_path="$temporary_dir/DerivedData/Build/Products/Debug-iphonesimulator/PhotoCleanupMVE.app"
-test -d "$app_path"
-app_bundle_id="com.iphonephotomanagement.PhotoCleanupMVE"
-xcrun simctl uninstall "$destination_id" "$app_bundle_id" >/dev/null 2>&1 || true
-xcrun simctl install "$destination_id" "$app_path"
-xcrun simctl privacy "$destination_id" reset photos "$app_bundle_id"
 xcodebuild \
     test-without-building \
     -project "$project_path" \
