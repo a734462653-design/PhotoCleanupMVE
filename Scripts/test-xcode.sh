@@ -43,10 +43,27 @@ fi
 
 echo "使用 iPhone 模拟器：$destination_id"
 
-screenshot_path="$temporary_dir/ic067-screen.png"
 xcrun simctl bootstatus "$destination_id" -b
-xcrun simctl io "$destination_id" screenshot "$screenshot_path"
-xcrun simctl addmedia "$destination_id" "$screenshot_path"
+simulator_app_path="$(xcode-select -p)/Applications/Simulator.app"
+open "$simulator_app_path"
+osascript <<'APPLESCRIPT'
+tell application "Simulator" to activate
+tell application "System Events"
+    repeat 40 times
+        if exists process "Simulator" then
+            tell process "Simulator"
+                if exists menu item "Trigger Screenshot" of menu "File" of menu bar 1 then
+                    click menu item "Trigger Screenshot" of menu "File" of menu bar 1
+                    return
+                end if
+            end tell
+        end if
+        delay 0.25
+    end repeat
+end tell
+error "未找到 Simulator 的 Trigger Screenshot 菜单项"
+APPLESCRIPT
+sleep 3
 
 xcodebuild \
     build-for-testing \
