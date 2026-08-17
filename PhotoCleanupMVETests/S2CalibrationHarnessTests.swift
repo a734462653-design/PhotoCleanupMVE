@@ -3974,6 +3974,47 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
+    // IC-067 G39：同一个 S2 页面随 trait 原地切换纯黑与纯白背景。
+    func testIC067G39ViewportBackgroundTracksInterfaceStyle() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        XCTAssertTrue(machine.handleSingleTap())
+        let calibration = S2CalibrationModel(
+            persistence: S2DiscardingCalibrationPersistence()
+        )
+        let view = S2View(
+            machine: machine,
+            calibration: calibration,
+            assetAspectRatio: { _ in self.screenAspectRatio },
+            assetIsScreenshot: { _ in true },
+            photoContent: { context in
+                AnyView(Color.clear.frame(
+                    width: context.fittedSize.width,
+                    height: context.fittedSize.height
+                ))
+            },
+            stripItemContent: { _ in AnyView(Color.clear) },
+            albumPickerContent: { _, _ in AnyView(EmptyView()) }
+        )
+        let controller = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.backgroundColor = .red
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+
+        controller.overrideUserInterfaceStyle = .dark
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        let darkGray = viewportBackgroundPixelGray(controller: controller)
+
+        controller.overrideUserInterfaceStyle = .light
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        let lightGray = viewportBackgroundPixelGray(controller: controller)
+
+        XCTAssertEqual(darkGray, 0, accuracy: 3)
+        XCTAssertEqual(lightGray, 255, accuracy: 3)
+    }
+
     // IC-064 C7：显隐动画使用独立 220ms 参数，不改动双击的 180ms 参数。
     func testIC064PresentationToggleUsesDedicatedDuration() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -4155,6 +4196,30 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 point: CGPoint(x: frame.maxX - 0.5, y: frame.midY)
             )
         ]
+    }
+
+    private func viewportBackgroundPixelGray(
+        controller: UIViewController
+    ) -> Int {
+        controller.view.frame = CGRect(origin: .zero, size: physicalSize)
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 3
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(
+            bounds: controller.view.bounds,
+            format: format
+        ).image { _ in
+            _ = controller.view.drawHierarchy(
+                in: controller.view.bounds,
+                afterScreenUpdates: true
+            )
+        }
+        return pixelGray(
+            image: image,
+            point: CGPoint(x: 5, y: physicalSize.height / 2)
+        )
     }
 
     private func pixelGray(image: UIImage, point: CGPoint) -> Int {
