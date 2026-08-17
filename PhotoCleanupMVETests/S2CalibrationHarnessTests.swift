@@ -3137,6 +3137,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(visibleStableSamples.count, 3)
         XCTAssertTrue(hiddenStableSamples.allSatisfy { $0.frame == hiddenFrame })
         XCTAssertTrue(visibleStableSamples.allSatisfy { $0.frame == visibleFrame })
+        XCTAssertGreaterThan(
+            Set(hiding.map { Int(($0.frame.width * 1_000).rounded()) }).count,
+            3
+        )
+        XCTAssertGreaterThan(
+            Set(showing.map { Int(($0.frame.width * 1_000).rounded()) }).count,
+            3
+        )
         XCTAssertEqual(
             hiding.last?.timestamp ?? 0,
             showing.last?.timestamp ?? 0,
@@ -3182,8 +3190,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
         let hidingBounds = hiding.last?.bounds ?? .zero
         let showingBounds = showing.last?.bounds ?? .zero
-        XCTAssertTrue(hiding.allSatisfy { $0.bounds == hidingBounds })
-        XCTAssertTrue(showing.allSatisfy { $0.bounds == showingBounds })
+        XCTAssertTrue(hiding.dropFirst().allSatisfy {
+            $0.bounds == hidingBounds
+        })
+        XCTAssertTrue(showing.dropFirst().allSatisfy {
+            $0.bounds == showingBounds
+        })
         XCTAssertEqual(hiding.first?.frame.width ?? -1, 210, accuracy: 0.5)
         XCTAssertEqual(hiding.last?.frame.width ?? -1, 300, accuracy: 0.5)
         XCTAssertEqual(showing.first?.frame.width ?? -1, 300, accuracy: 0.5)
@@ -3562,7 +3574,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         host.view.layoutIfNeeded()
 
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        let frame = tryUnwrap(page.zoomScrollView.visiblePresentationFrame())
+        let contentView = tryUnwrap(
+            page.zoomScrollView.presentationContentView
+        )
+        let frame = contentView.convert(contentView.bounds, to: host.view)
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 3
         format.opaque = true
