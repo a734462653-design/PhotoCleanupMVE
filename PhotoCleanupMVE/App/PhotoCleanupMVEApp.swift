@@ -204,8 +204,6 @@ private struct IC067RealInteractionProbeView: View {
                     albumPickerContent: { _, _ in AnyView(EmptyView()) },
                     geometryDiagnostics: diagnostics
                 )
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("ic067.interaction.viewport")
 
                 Text(verbatim: diagnostics.realInteractionReportText)
                     .font(.caption2)
