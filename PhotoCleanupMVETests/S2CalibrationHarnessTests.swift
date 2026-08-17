@@ -4015,6 +4015,69 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(lightGray, 255, accuracy: 3)
     }
 
+    // IC-067 G40（夹具驱动）：接管几何与蒙版更新处于同一禁动画事务。
+    func testIC067G40PinchTakeoverCommitsCenteredGeometrySynchronously() {
+        let hosted = makeIC065HostedPage(
+            assetAspectRatio: screenAspectRatio,
+            interfaceVisibility: .visible,
+            isScreenshot: true
+        )
+        defer { hosted.window.isHidden = true }
+        let scrollView = hosted.page.zoomScrollView
+        var synchronizedUpdateWasInsideTransaction = false
+
+        scrollView.prepareForNativeZoom {
+            synchronizedUpdateWasInsideTransaction =
+                CATransaction.disableActions()
+        }
+        let frame = ic065PresentationFrameInWindow(
+            page: hosted.page,
+            window: hosted.window
+        )
+
+        XCTAssertTrue(synchronizedUpdateWasInsideTransaction)
+        XCTAssertEqual(frame.midX, hosted.window.bounds.midX, accuracy: 0.5)
+        XCTAssertEqual(frame.midY, hosted.window.bounds.midY, accuracy: 0.5)
+    }
+
+    // IC-067 G41（夹具驱动）：严格回到 1x 时恢复当前 V 的目标几何。
+    func testIC067G41OneXReturnRestoresCurrentVisibilityGeometry() {
+        for visibility in [S2InterfaceVisibility.visible, .hidden] {
+            let hosted = makeIC065HostedPage(
+                assetAspectRatio: screenAspectRatio,
+                interfaceVisibility: visibility,
+                isScreenshot: true
+            )
+            defer { hosted.window.isHidden = true }
+            let scrollView = hosted.page.zoomScrollView
+            let expected = metrics(visibility: visibility)
+
+            scrollView.prepareForNativeZoom()
+            scrollView.setZoomScale(1.5, animated: false)
+            scrollView.setZoomScale(1, animated: false)
+            hosted.page.scrollViewDidEndZooming(
+                scrollView,
+                with: scrollView.zoomContentView,
+                atScale: 1
+            )
+
+            let frame = scrollView.oneXPresentationFrame
+            XCTAssertEqual(frame.midX, physicalSize.width / 2, accuracy: 0.5)
+            XCTAssertEqual(frame.midY, physicalSize.height / 2, accuracy: 0.5)
+            XCTAssertEqual(
+                frame.size.width,
+                expected.oneXDisplaySize.width,
+                accuracy: 0.5
+            )
+            XCTAssertEqual(
+                frame.size.height,
+                expected.oneXDisplaySize.height,
+                accuracy: 0.5
+            )
+            XCTAssertEqual(scrollView.zoomScale, 1, accuracy: 0.000_001)
+        }
+    }
+
     // IC-064 C7：显隐动画使用独立 220ms 参数，不改动双击的 180ms 参数。
     func testIC064PresentationToggleUsesDedicatedDuration() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder

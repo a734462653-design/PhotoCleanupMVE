@@ -508,11 +508,19 @@ final class S2NativeZoomScrollView: UIScrollView {
         return target
     }
 
-    func prepareForNativeZoom() {
+    func prepareForNativeZoom(
+        synchronizedUpdates: () -> Void = {}
+    ) {
         guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
             return
         }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         prepareNativeZoomGeometry()
+        synchronizedUpdates()
+        setNeedsLayout()
+        layoutIfNeeded()
+        CATransaction.commit()
     }
 
     func restoreOneXGeometry() {
@@ -650,8 +658,6 @@ final class S2NativeZoomScrollView: UIScrollView {
                 y: zoomContentView.bounds.midY
             )
             contentSize = nativeZoomBaseSize
-            setNeedsLayout()
-            layoutIfNeeded()
         }
     }
 
@@ -1667,8 +1673,9 @@ final class S2NativeZoomPageController: UIViewController,
               owner?.beginNativePinch(on: self) == true else {
             return
         }
-        zoomScrollView.prepareForNativeZoom()
-        applyCornerMask(forceNx: true)
+        zoomScrollView.prepareForNativeZoom {
+            self.applyCornerMask(forceNx: true)
+        }
         pinchIsActive = true
         pinchStartDate = Date()
         pinchStartScale = zoomScrollView.zoomScale
@@ -1707,6 +1714,9 @@ final class S2NativeZoomPageController: UIViewController,
         guard scrollView === zoomScrollView else {
             return
         }
+        let endedAtMinimum = abs(
+            scale - zoomScrollView.minimumZoomScale
+        ) <= 0.000_001
         if pinchIsActive {
             let duration = Date().timeIntervalSince(pinchStartDate ?? Date())
             let displacement = abs(
@@ -1723,6 +1733,9 @@ final class S2NativeZoomPageController: UIViewController,
             pinchStartDate = nil
             pinchPeakVelocity = 0
         }
+        if endedAtMinimum {
+            completeNativeOneXReturn()
+        }
         applyDeferredPresentationIfPossible()
     }
 
@@ -1730,9 +1743,14 @@ final class S2NativeZoomPageController: UIViewController,
         guard scrollView === zoomScrollView else {
             return
         }
+        completeNativeOneXReturn()
+        applyDeferredPresentationIfPossible()
+    }
+
+    private func completeNativeOneXReturn() {
         zoomScrollView.restoreOneXGeometry()
         applyCornerMask()
-        applyDeferredPresentationIfPossible()
+        owner?.reportNativeViewport(from: self)
     }
 
     func gestureRecognizerShouldBegin(
