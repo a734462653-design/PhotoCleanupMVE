@@ -60,22 +60,28 @@ app_path="$temporary_dir/DerivedData/Build/Products/Debug-iphonesimulator/PhotoC
 test -d "$app_path"
 app_bundle_id="com.iphonephotomanagement.PhotoCleanupMVE"
 xcrun simctl uninstall "$destination_id" "$app_bundle_id" >/dev/null 2>&1 || true
+privacy_stop_path="$temporary_dir/stop-privacy-grant"
 
 (
-    for _ in $(seq 1 300); do
+    granted=0
+    while [ ! -e "$privacy_stop_path" ]; do
         if xcrun simctl get_app_container \
             "$destination_id" "$app_bundle_id" app >/dev/null 2>&1; then
-            xcrun simctl privacy "$destination_id" grant photos \
-                "$app_bundle_id"
-            exit 0
+            if xcrun simctl privacy "$destination_id" grant photos \
+                "$app_bundle_id" >/dev/null 2>&1; then
+                granted=1
+            fi
         fi
         sleep 0.1
     done
-    echo "错误：测试宿主安装后未能及时授予照片权限。" >&2
-    exit 1
+    if [ "$granted" -eq 0 ]; then
+        echo "错误：测试期间未能向宿主授予照片权限。" >&2
+        exit 1
+    fi
 ) &
 privacy_grant_pid=$!
 
+set +e
 xcodebuild \
     test-without-building \
     -project "$project_path" \
@@ -83,7 +89,20 @@ xcodebuild \
     -configuration Debug \
     -destination "platform=iOS Simulator,id=$destination_id" \
     -derivedDataPath "$temporary_dir/DerivedData"
+test_status=$?
+set -e
 
+touch "$privacy_stop_path"
+set +e
 wait "$privacy_grant_pid"
+privacy_status=$?
+set -e
+
+if [ "$test_status" -ne 0 ]; then
+    exit "$test_status"
+fi
+if [ "$privacy_status" -ne 0 ]; then
+    exit "$privacy_status"
+fi
 
 echo "XCTest 已全部通过。"
