@@ -61,7 +61,6 @@ test -d "$app_path"
 app_bundle_id="com.iphonephotomanagement.PhotoCleanupMVE"
 xcrun simctl uninstall "$destination_id" "$app_bundle_id" >/dev/null 2>&1 || true
 xcrun simctl install "$destination_id" "$app_path"
-xcrun simctl privacy "$destination_id" grant photos "$app_bundle_id"
 xcrun simctl launch --terminate-running-process \
     "$destination_id" "$app_bundle_id" \
     --ic067-screenshot-subtype-probe
@@ -70,6 +69,21 @@ data_container="$(
     xcrun simctl get_app_container "$destination_id" "$app_bundle_id" data
 )"
 probe_result_path="$data_container/Documents/ic067-g38-probe.txt"
+for _ in $(seq 1 100); do
+    if [ -f "$probe_result_path" ]; then
+        break
+    fi
+    sleep 0.1
+done
+xcrun simctl terminate "$destination_id" "$app_bundle_id" \
+    >/dev/null 2>&1 || true
+rm -f "$probe_result_path"
+
+xcrun simctl privacy "$destination_id" grant photos "$app_bundle_id"
+xcrun simctl launch --terminate-running-process \
+    "$destination_id" "$app_bundle_id" \
+    --ic067-screenshot-subtype-probe
+
 for _ in $(seq 1 300); do
     if [ -f "$probe_result_path" ]; then
         break
