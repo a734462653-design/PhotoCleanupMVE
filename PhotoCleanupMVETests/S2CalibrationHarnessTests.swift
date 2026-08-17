@@ -47,6 +47,7 @@ private struct IC064PresentationSample {
     let timestamp: CFTimeInterval
     let frame: CGRect
     let bounds: CGRect
+    let contentsRect: CGRect
     let cornerRadius: CGFloat
     let borderWidth: CGFloat
 }
@@ -110,6 +111,7 @@ private final class IC064PresentationLayerSampler: NSObject {
             timestamp: timestamp - firstTimestamp,
             frame: frame,
             bounds: layer.bounds,
+            contentsRect: layer.contentsRect,
             cornerRadius: layer.cornerRadius,
             borderWidth: layer.borderWidth
         ))
@@ -3124,6 +3126,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page: page,
             configuration: configuration
         )
+        let visibleFrame = page.zoomScrollView.visiblePresentationFrame()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.30))
+        XCTAssertEqual(
+            page.zoomScrollView.visiblePresentationFrame(),
+            visibleFrame
+        )
 
         XCTAssertGreaterThanOrEqual(hiding.count, 3)
         XCTAssertGreaterThanOrEqual(showing.count, 3)
@@ -3132,9 +3140,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
             showing.last?.timestamp ?? 0,
             accuracy: 0.010
         )
+        XCTAssertEqual(hiding.last?.timestamp ?? 0, 0.22, accuracy: 0.020)
+        XCTAssertEqual(showing.last?.timestamp ?? 0, 0.22, accuracy: 0.020)
         for sample in hiding + showing {
             let aspectRatio = sample.frame.height > 0
                 ? sample.frame.width / sample.frame.height
+                : 0
+            let scaleX = sample.bounds.width > 0
+                ? sample.frame.width / sample.bounds.width
+                : 0
+            let scaleY = sample.bounds.height > 0
+                ? sample.frame.height / sample.bounds.height
                 : 0
             XCTAssertEqual(
                 aspectRatio,
@@ -3156,7 +3172,20 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 screenAspectRatio,
                 accuracy: screenAspectRatio * 0.01
             )
+            XCTAssertEqual(scaleX, scaleY, accuracy: max(scaleX, scaleY) * 0.01)
+            XCTAssertEqual(
+                sample.contentsRect,
+                CGRect(x: 0, y: 0, width: 1, height: 1)
+            )
         }
+        let hidingBounds = hiding.last?.bounds ?? .zero
+        let showingBounds = showing.last?.bounds ?? .zero
+        XCTAssertTrue(hiding.allSatisfy { $0.bounds == hidingBounds })
+        XCTAssertTrue(showing.allSatisfy { $0.bounds == showingBounds })
+        XCTAssertEqual(hiding.first?.frame.width ?? -1, 210, accuracy: 0.5)
+        XCTAssertEqual(hiding.last?.frame.width ?? -1, 300, accuracy: 0.5)
+        XCTAssertEqual(showing.first?.frame.width ?? -1, 300, accuracy: 0.5)
+        XCTAssertEqual(showing.last?.frame.width ?? -1, 210, accuracy: 0.5)
         assertMonotonic(
             hiding.map(\.frame.width),
             direction: .increasing
@@ -3165,6 +3194,22 @@ final class S2CalibrationHarnessTests: XCTestCase {
             showing.map(\.frame.width),
             direction: .decreasing
         )
+        let hidingCornerRadii = hiding.map {
+            $0.bounds.width > 0
+                ? $0.cornerRadius * $0.frame.width / $0.bounds.width
+                : 0
+        }
+        let showingCornerRadii = showing.map {
+            $0.bounds.width > 0
+                ? $0.cornerRadius * $0.frame.width / $0.bounds.width
+                : 0
+        }
+        XCTAssertEqual(hidingCornerRadii.first ?? -1, 28, accuracy: 0.5)
+        XCTAssertEqual(hidingCornerRadii.last ?? -1, 0, accuracy: 0.5)
+        XCTAssertEqual(showingCornerRadii.first ?? -1, 0, accuracy: 0.5)
+        XCTAssertEqual(showingCornerRadii.last ?? -1, 28, accuracy: 0.5)
+        assertMonotonic(hidingCornerRadii, direction: .decreasing)
+        assertMonotonic(showingCornerRadii, direction: .increasing)
     }
 
     // IC-064 G19：三种系统样本的左右描边像素均落入目标容差。
@@ -3243,20 +3288,34 @@ final class S2CalibrationHarnessTests: XCTestCase {
         defer { window.isHidden = true }
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        let samples = capturePresentationToggle(
+        let hiding = capturePresentationToggle(
             machine: machine,
             controller: controller,
             page: page,
             configuration: configuration
         )
-        let visualWidths = samples.map {
+        let hidingWidths = hiding.map {
             $0.bounds.width > 0
                 ? $0.borderWidth * $0.frame.width / $0.bounds.width
                 : 0
         }
-        XCTAssertEqual(visualWidths.first ?? 0, 1, accuracy: 0.01)
-        XCTAssertEqual(visualWidths.last ?? 1, 0, accuracy: 0.01)
-        assertMonotonic(visualWidths, direction: .decreasing)
+        let showing = capturePresentationToggle(
+            machine: machine,
+            controller: controller,
+            page: page,
+            configuration: configuration
+        )
+        let showingWidths = showing.map {
+            $0.bounds.width > 0
+                ? $0.borderWidth * $0.frame.width / $0.bounds.width
+                : 0
+        }
+        XCTAssertEqual(hidingWidths.first ?? 0, 1, accuracy: 0.01)
+        XCTAssertEqual(hidingWidths.last ?? 1, 0, accuracy: 0.01)
+        XCTAssertEqual(showingWidths.first ?? 1, 0, accuracy: 0.01)
+        XCTAssertEqual(showingWidths.last ?? 0, 1, accuracy: 0.01)
+        assertMonotonic(hidingWidths, direction: .decreasing)
+        assertMonotonic(showingWidths, direction: .increasing)
     }
 
     // IC-064 G22：trait 明暗切换后描边颜色原地更新，无需重建页面。

@@ -41,10 +41,10 @@
 
 | 编号 | 断言或证据 | 当前状态 |
 |---|---|---|
-| G13～G18 | `testIC064G13ToG18PresentationSamplesMeetGeometryContract`，60Hz presentation 层双向采样、等比、中心、时长差、单调与结束后 300ms 稳定性 | 已编写，未在模拟器实跑 |
+| G13～G18 | `testIC064G13ToG18PresentationSamplesMeetGeometryContract`，60Hz presentation 层双向采样、等比缩放、中心、恒定完整 bounds/contentsRect、时长差、圆角单调与两方向结束后 300ms 稳定性 | 已编写，未在模拟器实跑 |
 | G19 | `testIC064G19FitBorderPixelsMatchDarkAndLightSamples`，三种构造样本、左右边界、@3x 像素取样 | 已编写，未在模拟器实跑 |
 | G20 | `testIC064G20FitBorderKeepsPhotoGeometryUnchanged` | 已编写，未在模拟器实跑 |
-| G21 | `testIC064G21FitBorderTracksScaleAndPresentationProgress` | 已编写，未在模拟器实跑 |
+| G21 | `testIC064G21FitBorderTracksScaleAndPresentationProgress`，Nx 归零及显隐双向视觉线宽连续性 | 已编写，未在模拟器实跑 |
 | G22 | `testIC064G22FitBorderUpdatesWithInterfaceStyle` | 已编写，未在模拟器实跑 |
 | G23 | 全工程搜索 `overrideUserInterfaceStyle` 赋值 | 通过，0 处 |
 | G24 | IC-063 G1～G12 测试仍存在；三个禁止改动文件相对基线均无差异 | 静态通过，未实跑 XCTest |
