@@ -288,6 +288,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 physicalSize: physicalSize,
                 presentationState: $0,
                 assetAspectRatio: screenAspectRatio,
+                isScreenshot: true,
                 configuration: configuration
             )
         }
@@ -428,8 +429,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // V8：内缩比例只改变实际显示尺寸，不改变视口，并遵守作用范围。
-    func testV8FitInsetRatioGeometryAndScopeAreCorrect() {
+    // V8 改写：内缩比例只作用于截图元数据，旧作用范围不再改变几何。
+    func testV8FitInsetRatioAppliesOnlyToScreenshotMetadata() {
         var zero = S2CalibrationConfiguration.factoryPlaceholder
         zero.fitInsetRatio = 0
         let zeroMetrics = metrics(configuration: zero)
@@ -456,28 +457,44 @@ final class S2CalibrationHarnessTests: XCTestCase {
             accuracy: 0.000_001
         )
 
-        let nonScreenRatio: CGFloat = 1
-        let scoped = S2ViewportLayout.metrics(
+        let croppedScreenshotRatio: CGFloat = 0.1823
+        let scopedScreenshot = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
-            assetAspectRatio: nonScreenRatio,
-            configuration: inset
-        )
-        XCTAssertEqual(scoped.oneXDisplaySize, scoped.aspectFitSize)
-
-        inset.fitInsetScope = .allPhotos
-        let global = S2ViewportLayout.metrics(
-            physicalSize: physicalSize,
-            presentationState: presentationState,
-            assetAspectRatio: nonScreenRatio,
+            assetAspectRatio: croppedScreenshotRatio,
+            isScreenshot: true,
             configuration: inset
         )
         XCTAssertEqual(
-            global.oneXDisplaySize.width,
-            global.aspectFitSize.width * 0.9,
+            scopedScreenshot.oneXDisplaySize.width,
+            scopedScreenshot.aspectFitSize.width * 0.9,
             accuracy: 0.000_001
         )
-        XCTAssertEqual(global.viewportSize, scoped.viewportSize)
+
+        inset.fitInsetScope = .allPhotos
+        let globalScreenshot = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: croppedScreenshotRatio,
+            isScreenshot: true,
+            configuration: inset
+        )
+        let ordinaryPhoto = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: screenAspectRatio,
+            isScreenshot: false,
+            configuration: inset
+        )
+        XCTAssertEqual(
+            globalScreenshot.oneXDisplaySize,
+            scopedScreenshot.oneXDisplaySize
+        )
+        XCTAssertEqual(
+            ordinaryPhoto.oneXDisplaySize,
+            ordinaryPhoto.aspectFitSize
+        )
+        XCTAssertFalse(ordinaryPhoto.isFramedPhoto)
     }
 
     // L1：顶部四个元素全部从系统顶部安全区下沿开始布局。
@@ -833,8 +850,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.viewportOffset, .zero)
     }
 
-    // D1 替代断言：屏幕比例照片按新出厂值内缩为视口短边的 0.70。
-    func testD1ReplacementScreenAspectFitInsetShrinksShortEdgeToSeventyPercent() {
+    // D1 再改写：截图按新出厂值等比适配到 0.70 视口框。
+    func testD1ScreenshotAspectFitShrinksToSeventyPercentViewport() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitInsetRatio = 0.30
         configuration.fitInsetScope = .screenAspectOnly
@@ -854,16 +871,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
             physicalSize: physicalSize,
             presentationState: presentationState,
             assetAspectRatio: 1 / screenAspectRatio,
+            isScreenshot: true,
             configuration: configuration
         )
         XCTAssertEqual(
             oppositeOrientation.oneXDisplaySize.width,
-            physicalSize.width * 0.70,
+            oppositeOrientation.aspectFitSize.width * 0.70,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
             oppositeOrientation.oneXDisplaySize.height,
-            physicalSize.height * 0.70,
+            oppositeOrientation.aspectFitSize.height * 0.70,
             accuracy: 0.000_001
         )
     }
@@ -877,19 +895,22 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(value.oneXDisplaySize, value.aspectFitSize)
     }
 
-    // D3：仅屏幕比例作用域不会改变非屏幕比例照片的 1x 显示。
-    func testD3ScreenAspectOnlyLeavesNonScreenPhotoUnchanged() {
+    // D3 改写：即使旧作用范围为全部照片，非截图的 1x 显示仍不变。
+    func testD3AllPhotosScopeLeavesNonScreenshotUnchanged() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitInsetRatio = 0.30
-        configuration.fitInsetScope = .screenAspectOnly
+        configuration.fitInsetScope = .allPhotos
         let value = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
-            assetAspectRatio: 1,
+            assetAspectRatio: screenAspectRatio,
+            isScreenshot: false,
             configuration: configuration
         )
 
         XCTAssertEqual(value.oneXDisplaySize, value.aspectFitSize)
+        XCTAssertEqual(value.oneXCornerRadius, 0)
+        XCTAssertFalse(value.isFramedPhoto)
     }
 
     // D4 替代断言：屏幕比例照片的原生目标矩形采用最小目标倍数 2。
@@ -929,6 +950,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             physicalSize: physicalSize,
             presentationState: presentationState,
             assetAspectRatio: assetAspectRatio,
+            isScreenshot: false,
             configuration: configuration
         )
         let expected = tryUnwrap(S2Geometry.aspectFillMultiplier(
@@ -1120,6 +1142,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             physicalSize: physicalSize,
             presentationState: presentationState,
             assetAspectRatio: 1.5,
+            isScreenshot: false,
             configuration: configuration
         )
 
@@ -1166,6 +1189,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             physicalSize: physicalSize,
             presentationState: presentationState,
             assetAspectRatio: 1.5,
+            isScreenshot: false,
             configuration: configuration
         )
         let expected = value.aspectFillMultiplier
@@ -1459,14 +1483,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(machine.pendingDeletionAssetIDs.contains(originalAssetID))
     }
 
-    // IC-063 G1：隐藏态 1x 的命中照片严格铺满物理屏幕。
-    func testIC063G1HiddenMatchedPhotoWindowFrameEqualsScreenBounds() {
+    // IC-063 G1 改写：隐藏态的屏幕比例截图等比适配物理屏幕。
+    func testIC063G1HiddenScreenAspectScreenshotMatchesScreenBounds() {
         let viewportSize = UIScreen.main.bounds.size
         let assetRatio = viewportSize.width / viewportSize.height
         let machine = makeMachine(interfaceVisibility: .hidden)
         let controller = makeNativePagerController(
             machine: machine,
             assetAspectRatio: assetRatio,
+            isScreenshot: true,
             viewportSize: viewportSize
         )
         let window = UIWindow(frame: UIScreen.main.bounds)
@@ -1484,43 +1509,63 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(frame.height, UIScreen.main.bounds.height, accuracy: 0.5)
     }
 
-    // IC-063 G2：显示态 1x 按 fitInsetRatio 内缩且四边对称。
-    func testIC063G2VisibleMatchedPhotoUsesInsetLayoutAndIsCentered() {
+    // IC-063 G2 改写：裁切截图在显示态等比内缩且四边居中。
+    func testIC063G2VisibleCroppedScreenshotUsesAspectFitInsetAndIsCentered() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
-        let nearToleranceRatio = screenAspectRatio * 1.009
+        let croppedScreenshotRatio: CGFloat = 0.1823
         let machine = makeMachine(configuration: configuration)
         let controller = makeNativePagerController(
             machine: machine,
             configuration: configuration,
-            assetAspectRatio: nearToleranceRatio
+            assetAspectRatio: croppedScreenshotRatio,
+            isScreenshot: true
         )
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
         let frame = tryUnwrap(page.zoomScrollView.visiblePresentationFrame())
         let expectedScale = 1 - CGFloat(configuration.fitInsetRatio)
+        let expectedFit = S2Geometry.aspectFitSize(
+            viewportSize: physicalSize,
+            assetAspectRatio: croppedScreenshotRatio
+        )
 
         XCTAssertEqual(
             frame.width,
-            physicalSize.width * expectedScale,
+            expectedFit.width * expectedScale,
             accuracy: 0.5
         )
         XCTAssertEqual(
             frame.height,
-            physicalSize.height * expectedScale,
+            expectedFit.height * expectedScale,
             accuracy: 0.5
         )
         XCTAssertEqual(frame.minX, physicalSize.width - frame.maxX, accuracy: 0.5)
         XCTAssertEqual(frame.minY, physicalSize.height - frame.maxY, accuracy: 0.5)
+        XCTAssertEqual(
+            page.cornerRadius,
+            CGFloat(configuration.fitCornerRadius)
+        )
+        XCTAssertEqual(
+            page.fitBorderLayer.borderWidth,
+            CGFloat(configuration.fitBorderWidth)
+        )
     }
 
-    // IC-063 G3：命中照片双击目标固定为 2，未命中照片仍取填满倍数。
-    func testIC063G3DoubleTapTargetUsesTwoOnlyForMatchedPhotos() {
+    // IC-063 G3 改写：双击仍按屏幕比例分类，不受截图元数据控制。
+    func testIC063G3DoubleTapTargetStillUsesScreenAspectClassification() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
-        let matched = metrics(configuration: configuration)
+        let screenRatioOrdinaryPhoto = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: screenAspectRatio,
+            isScreenshot: false,
+            configuration: configuration
+        )
         let nonMatchedRatio: CGFloat = 0.75
-        let nonMatched = S2ViewportLayout.metrics(
+        let croppedScreenshot = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
             assetAspectRatio: nonMatchedRatio,
+            isScreenshot: true,
             configuration: configuration
         )
         let fill = tryUnwrap(S2Geometry.aspectFillMultiplier(
@@ -1529,9 +1574,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ))
 
         XCTAssertEqual(configuration.minDoubleTapScale, 2, accuracy: 0.000_001)
-        XCTAssertEqual(matched.doubleTapTargetScale, 2, accuracy: 0.000_001)
-        XCTAssertFalse(nonMatched.isFramedPhoto)
-        XCTAssertEqual(nonMatched.doubleTapTargetScale, fill, accuracy: 0.000_001)
+        XCTAssertFalse(screenRatioOrdinaryPhoto.isFramedPhoto)
+        XCTAssertEqual(
+            screenRatioOrdinaryPhoto.doubleTapTargetScale,
+            2,
+            accuracy: 0.000_001
+        )
+        XCTAssertTrue(croppedScreenshot.isFramedPhoto)
+        XCTAssertEqual(
+            croppedScreenshot.doubleTapTargetScale,
+            fill,
+            accuracy: 0.000_001
+        )
     }
 
     // IC-063 G4：双击两向动画均保持原生倍率不动，终点同步帧视觉相等。
@@ -1722,6 +1776,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             machine: machine,
             calibration: calibration,
             assetAspectRatio: { _ in diagnosticAspectRatio },
+            assetIsScreenshot: { _ in true },
             assetPixelSize: { _ in
                 CGSize(width: diagnosticAspectRatio * 3_000, height: 3_000)
             },
@@ -1867,6 +1922,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             physicalSize: physicalSize,
             presentationState: presentationState,
             assetAspectRatio: assetAspectRatio,
+            isScreenshot: false,
             configuration: configuration
         )
         let machine = makeMachine(configuration: configuration)
@@ -1912,14 +1968,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // F2：命中内缩时应用参数圆角，未命中时圆角严格为零。
-    func testF2CornerRadiusAppliesOnlyToInsetPhotos() {
+    // F2 改写：圆角仅随截图元数据生效，普通照片严格为零。
+    func testF2CornerRadiusAppliesOnlyToScreenshots() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let matching = metrics(configuration: configuration)
         let nonMatching = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
-            assetAspectRatio: 1,
+            assetAspectRatio: screenAspectRatio,
+            isScreenshot: false,
             configuration: configuration
         )
         let machine = makeMachine(configuration: configuration)
@@ -1955,6 +2012,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 sheetState: .closed
             ),
             assetAspectRatio: 1,
+            isScreenshot: false,
             configuration: configuration
         )
         let hidden = S2ViewportLayout.metrics(
@@ -1965,6 +2023,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 sheetState: .closed
             ),
             assetAspectRatio: 1,
+            isScreenshot: false,
             configuration: configuration
         )
 
@@ -2804,6 +2863,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             machine: machine,
             calibration: calibration,
             assetAspectRatio: { _ in self.screenAspectRatio },
+            assetIsScreenshot: { _ in true },
             photoContent: { context in
                 AnyView(Color.clear.frame(
                     width: context.fittedSize.width,
@@ -2829,10 +2889,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         window.isHidden = true
     }
 
-    // Y2：容差内命中但比例不完全相等时，隐藏态仍严格填满两轴且圆角为零。
-    func testY2MatchedPhotoHiddenDisplayStrictlyEqualsViewportAndHasZeroRadius() {
+    // Y2 改写：比例偏离屏幕的截图在隐藏态等比适配全视口且圆角为零。
+    func testY2CroppedScreenshotHiddenDisplayUsesFullViewportAspectFit() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
-        let assetAspectRatio = screenAspectRatio * 1.008
+        let assetAspectRatio: CGFloat = 0.1823
         let visible = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: S2ViewportPresentationState(
@@ -2841,6 +2901,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 sheetState: .closed
             ),
             assetAspectRatio: assetAspectRatio,
+            isScreenshot: true,
             configuration: configuration
         )
         let hidden = S2ViewportLayout.metrics(
@@ -2851,28 +2912,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 sheetState: .closed
             ),
             assetAspectRatio: assetAspectRatio,
+            isScreenshot: true,
             configuration: configuration
         )
 
         XCTAssertTrue(hidden.isFramedPhoto)
         XCTAssertNotEqual(hidden.aspectFitSize, hidden.viewportSize)
-        XCTAssertEqual(
-            hidden.oneXDisplaySize.width,
-            hidden.viewportSize.width,
-            accuracy: 1
-        )
-        XCTAssertEqual(
-            hidden.oneXDisplaySize.height,
-            hidden.viewportSize.height,
-            accuracy: 1
-        )
+        XCTAssertEqual(hidden.oneXDisplaySize, hidden.aspectFitSize)
         XCTAssertEqual(hidden.oneXCornerRadius, 0)
 
         let machine = makeMachine(configuration: configuration)
         let controller = makeNativePagerController(
             machine: machine,
             configuration: configuration,
-            assetAspectRatio: assetAspectRatio
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: true
         )
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
         XCTAssertTrue(machine.handleSingleTap())
@@ -2880,23 +2934,23 @@ final class S2CalibrationHarnessTests: XCTestCase {
             controller,
             machine: machine,
             configuration: configuration,
-            assetAspectRatio: assetAspectRatio
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: true
         )
 
         let targetFrame = tryUnwrap(page.lastPresentationTransition).frame(at: 1)
         XCTAssertEqual(
             visible.oneXDisplaySize.width * targetFrame.scaleX,
-            hidden.viewportSize.width,
+            hidden.oneXDisplaySize.width,
             accuracy: 1
         )
         XCTAssertEqual(
             visible.oneXDisplaySize.height * targetFrame.scaleY,
-            hidden.viewportSize.height,
+            hidden.oneXDisplaySize.height,
             accuracy: 1
         )
         page.finishActivePresentationTransition()
-        XCTAssertEqual(page.fittedSize.width, physicalSize.width, accuracy: 1)
-        XCTAssertEqual(page.fittedSize.height, physicalSize.height, accuracy: 1)
+        XCTAssertEqual(page.fittedSize, hidden.oneXDisplaySize)
         XCTAssertEqual(page.cornerRadius, 0)
     }
 
@@ -2922,7 +2976,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let controller = makeNativePagerController(
             machine: machine,
             configuration: configuration,
-            assetAspectRatio: assetAspectRatio
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: false
         )
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
         let initialSize = page.fittedSize
@@ -2932,7 +2987,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             controller,
             machine: machine,
             configuration: configuration,
-            assetAspectRatio: assetAspectRatio
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: false
         )
 
         XCTAssertFalse(page.isPresentationTransitionActive)
@@ -3369,15 +3425,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-065 G31：命中屏幕比例时继续保持 IC-063 G1～G2 的铺满与内缩结果。
-    func testIC065G31MatchedPhotoKeepsIC063Geometry() {
+    // IC-065 G31 改写：截图元数据继续保持 IC-063 G1～G2 的等比与内缩结果。
+    func testIC065G31ScreenshotMetadataKeepsIC063Geometry() {
         let assetAspectRatio = screenAspectRatio * 1.008
         let states: [S2InterfaceVisibility] = [.hidden, .visible]
 
         for visibility in states {
             let hosted = makeIC065HostedPage(
                 assetAspectRatio: assetAspectRatio,
-                interfaceVisibility: visibility
+                interfaceVisibility: visibility,
+                isScreenshot: true
             )
             defer { hosted.window.isHidden = true }
             let expected = S2ViewportLayout.metrics(
@@ -3388,6 +3445,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     sheetState: .closed
                 ),
                 assetAspectRatio: assetAspectRatio,
+                isScreenshot: true,
                 configuration: .factoryPlaceholder
             )
             let frame = ic065PresentationFrameInWindow(
@@ -3466,6 +3524,132 @@ final class S2CalibrationHarnessTests: XCTestCase {
             return normalized.contains("pinch") &&
                 normalized.contains("anchor")
         })
+    }
+
+    // IC-067 G36：裁切截图在显示态等比适配 0.70 视口框，隐藏态等比适配全视口。
+    func testIC067G36CroppedScreenshotUsesMetadataDrivenAspectFitFrame() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let assetAspectRatio: CGFloat = 0.1823
+        let visible = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: S2ViewportPresentationState(
+                interfaceVisibility: .visible,
+                bottomStripState: .idle,
+                sheetState: .closed
+            ),
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: true,
+            configuration: configuration
+        )
+        let hidden = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: S2ViewportPresentationState(
+                interfaceVisibility: .hidden,
+                bottomStripState: .idle,
+                sheetState: .closed
+            ),
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: true,
+            configuration: configuration
+        )
+        let expectedScale = 1 - CGFloat(configuration.fitInsetRatio)
+
+        XCTAssertTrue(visible.isFramedPhoto)
+        XCTAssertEqual(
+            visible.oneXDisplaySize.width,
+            visible.aspectFitSize.width * expectedScale,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            visible.oneXDisplaySize.height,
+            visible.aspectFitSize.height * expectedScale,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            visible.oneXCornerRadius,
+            CGFloat(configuration.fitCornerRadius)
+        )
+        XCTAssertEqual(hidden.oneXDisplaySize, hidden.aspectFitSize)
+        XCTAssertEqual(hidden.oneXCornerRadius, 0)
+
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration,
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: true
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let frame = page.zoomScrollView.oneXPresentationFrame
+        XCTAssertEqual(frame.midX, physicalSize.width / 2, accuracy: 0.5)
+        XCTAssertEqual(frame.midY, physicalSize.height / 2, accuracy: 0.5)
+        XCTAssertEqual(
+            page.fitBorderLayer.borderWidth,
+            CGFloat(configuration.fitBorderWidth)
+        )
+    }
+
+    // IC-067 G37：普通照片两种 V 均使用全视口等比适配，且单击前后几何不变。
+    func testIC067G37NonScreenshotGeometryAndDecorationStayUnchanged() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let assetAspectRatio: CGFloat = 9.0 / 16.0
+        let visible = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: S2ViewportPresentationState(
+                interfaceVisibility: .visible,
+                bottomStripState: .idle,
+                sheetState: .closed
+            ),
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: false,
+            configuration: configuration
+        )
+        let hidden = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: S2ViewportPresentationState(
+                interfaceVisibility: .hidden,
+                bottomStripState: .idle,
+                sheetState: .closed
+            ),
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: false,
+            configuration: configuration
+        )
+
+        XCTAssertFalse(visible.isFramedPhoto)
+        XCTAssertEqual(visible.oneXDisplaySize, visible.aspectFitSize)
+        XCTAssertEqual(hidden.oneXDisplaySize, visible.oneXDisplaySize)
+        XCTAssertEqual(visible.oneXCornerRadius, 0)
+        XCTAssertEqual(hidden.oneXCornerRadius, 0)
+
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration,
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: false
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let before = tryUnwrap(
+            page.zoomScrollView.visiblePresentationFrame()
+        )
+        XCTAssertEqual(page.fitBorderLayer.borderWidth, 0)
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: false
+        )
+        let after = tryUnwrap(
+            page.zoomScrollView.visiblePresentationFrame()
+        )
+
+        XCTAssertEqual(after, before)
+        XCTAssertEqual(page.cornerRadius, 0)
+        XCTAssertEqual(page.fitBorderLayer.borderWidth, 0)
+        XCTAssertNil(page.lastPresentationTransition)
     }
 
     // IC-064 G13～G18：真实显示层采样同时满足等比、中心、双向与稳定性。
@@ -4040,6 +4224,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 calibrationState: calibrationState
             ),
             assetAspectRatio: screenAspectRatio,
+            isScreenshot: true,
             configuration: configuration
         )
     }
@@ -4056,6 +4241,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 sheetState: .closed
             ),
             assetAspectRatio: 1,
+            isScreenshot: false,
             configuration: configuration
         )
     }
@@ -4074,7 +4260,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     private func makeIC065HostedPage(
         assetAspectRatio: CGFloat,
-        interfaceVisibility: S2InterfaceVisibility = .visible
+        interfaceVisibility: S2InterfaceVisibility = .visible,
+        isScreenshot: Bool = true
     ) -> (
         window: UIWindow,
         machine: S2StateMachine,
@@ -4084,7 +4271,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let machine = makeMachine(interfaceVisibility: interfaceVisibility)
         let controller = makeNativePagerController(
             machine: machine,
-            assetAspectRatio: assetAspectRatio
+            assetAspectRatio: assetAspectRatio,
+            isScreenshot: isScreenshot
         )
         let window = UIWindow(
             frame: CGRect(origin: .zero, size: physicalSize)
@@ -4176,6 +4364,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         configuration: S2CalibrationConfiguration = .factoryPlaceholder,
         photoContent: ((String, CGSize, CGFloat, Int) -> AnyView)? = nil,
         assetAspectRatio: CGFloat? = nil,
+        isScreenshot: Bool = true,
         viewportSize: CGSize? = nil
     ) -> S2NativePagerViewController {
         let resolvedViewportSize = viewportSize ?? physicalSize
@@ -4191,6 +4380,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             configuration: configuration,
             photoContent: photoContent,
             assetAspectRatio: assetAspectRatio,
+            isScreenshot: isScreenshot,
             viewportSize: resolvedViewportSize
         )
         return controller
@@ -4202,6 +4392,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         configuration: S2CalibrationConfiguration,
         photoContent: ((String, CGSize, CGFloat, Int) -> AnyView)? = nil,
         assetAspectRatio: CGFloat? = nil,
+        isScreenshot: Bool = true,
         viewportSize: CGSize? = nil
     ) {
         let resolvedViewportSize = viewportSize ?? physicalSize
@@ -4215,6 +4406,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 physicalSize: resolvedViewportSize,
                 presentationState: state,
                 assetAspectRatio: assetAspectRatio ?? screenAspectRatio,
+                isScreenshot: isScreenshot,
                 configuration: configuration
             )
             let requestedScale = index == machine.currentIndex

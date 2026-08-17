@@ -227,6 +227,10 @@ final class CleanupCoordinator: ObservableObject {
         )
     }
 
+    func s2AssetIsScreenshot(for assetID: String) -> Bool {
+        loadedAssets[assetID]?.mediaSubtypes.contains(.photoScreenshot) == true
+    }
+
     func removeAsset(_ identifier: String) {
         guard let machine = s3Machine else {
             return

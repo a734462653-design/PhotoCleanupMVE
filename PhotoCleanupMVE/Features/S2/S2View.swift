@@ -78,6 +78,7 @@ struct S2View: View {
     @ObservedObject var calibration: S2CalibrationModel
 
     private let assetAspectRatio: (String) -> CGFloat
+    private let assetIsScreenshot: (String) -> Bool
     private let assetPixelSize: (String) -> CGSize
     private let photoContent: PhotoContent
     private let stripItemContent: StripItemContent
@@ -99,6 +100,7 @@ struct S2View: View {
         machine: S2StateMachine,
         calibration: S2CalibrationModel,
         assetAspectRatio: @escaping (String) -> CGFloat,
+        assetIsScreenshot: @escaping (String) -> Bool = { _ in false },
         assetPixelSize: @escaping (String) -> CGSize = { _ in .zero },
         photoContent: @escaping PhotoContent,
         stripItemContent: @escaping StripItemContent,
@@ -114,6 +116,7 @@ struct S2View: View {
         self.machine = machine
         self.calibration = calibration
         self.assetAspectRatio = assetAspectRatio
+        self.assetIsScreenshot = assetIsScreenshot
         self.assetPixelSize = assetPixelSize
         self.photoContent = photoContent
         self.stripItemContent = stripItemContent
@@ -136,6 +139,7 @@ struct S2View: View {
                 physicalSize: geometry.size,
                 presentationState: viewportPresentationState,
                 assetAspectRatio: ratio,
+                isScreenshot: assetIsScreenshot(machine.currentAssetID),
                 configuration: calibration.configuration
             )
 
@@ -215,6 +219,7 @@ struct S2View: View {
                 physicalSize: viewportSize,
                 presentationState: viewportPresentationState,
                 assetAspectRatio: assetAspectRatio(assetID),
+                isScreenshot: assetIsScreenshot(assetID),
                 configuration: calibration.configuration
             )
             let requestRevision = machine.imageRequestAssetID == assetID
@@ -224,7 +229,7 @@ struct S2View: View {
                 assetID: assetID,
                 fittedSize: pageMetrics.oneXDisplaySize,
                 requestBaseSize: pageMetrics.nativeZoomBaseSize,
-                contentMode: pageMetrics.isFramedPhoto ? .fill : .fit,
+                contentMode: .fit,
                 scale: index == machine.currentIndex
                     ? machine.imageRequestScale
                     : 1,
@@ -1376,6 +1381,7 @@ enum S2PreviewData {
                     ? CGFloat(3) / 4
                     : CGFloat(4) / 3
             },
+            assetIsScreenshot: { _ in true },
             photoContent: { _ in
                 AnyView(
                     ZStack {

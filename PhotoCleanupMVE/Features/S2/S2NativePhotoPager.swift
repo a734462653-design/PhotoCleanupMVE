@@ -1788,20 +1788,7 @@ final class S2NativeZoomPageController: UIViewController,
 
     private func resolvedFitBorderWidth() -> CGFloat {
         guard interfaceVisibility == .visible,
-              isFramedPhoto,
-              assetPixelSize.width > 0,
-              assetPixelSize.height > 0,
-              latestViewportSize.width > 0,
-              latestViewportSize.height > 0 else {
-            return 0
-        }
-        let assetAspectRatio = assetPixelSize.width / assetPixelSize.height
-        let viewportAspectRatio = latestViewportSize.width /
-            latestViewportSize.height
-        guard S2Geometry.isScreenAspectMatch(
-            assetAspectRatio: assetAspectRatio,
-            viewportAspectRatio: viewportAspectRatio
-        ) else {
+              isFramedPhoto else {
             return 0
         }
         return max(0, CGFloat(latestConfiguration.fitBorderWidth))
