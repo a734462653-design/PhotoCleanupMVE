@@ -41,8 +41,13 @@ final class IC067ScreenshotSubtypeProbeUITests: XCTestCase {
             ),
             object: result
         )
+        let waitResult = XCTWaiter.wait(for: [completed], timeout: 30)
+        print(
+            "IC067_G38_UI permissionHandled=" +
+                "\(handledPhotoAuthorization) result=\(result.label)"
+        )
         XCTAssertEqual(
-            XCTWaiter.wait(for: [completed], timeout: 30),
+            waitResult,
             .completed,
             "截图子类型探针未在三十秒内返回结果"
         )
