@@ -65,8 +65,10 @@ jobs:
           if [ "$test_status" -ne 0 ]; then
             failure_lines="$(
               /usr/bin/grep -E \
-                'PhotoCleanupMVE(UI)?Tests/.*error:|Test Case .* failed|IC067_G38' \
-                "$test_log" | tail -n 50 || true
+                'PhotoCleanupMVE(UI)?Tests/.*error:|Test Case .* failed|IC067_G38_UI permissionHandled=|IC067_G38_(PROBE|ERROR) (authorizationStatus|stage=)' \
+                "$test_log" |
+                /usr/bin/grep -v 'Checking `Expect predicate' |
+                tail -n 10 || true
             )"
             if [ -n "$failure_lines" ]; then
               while IFS= read -r failure_line; do
