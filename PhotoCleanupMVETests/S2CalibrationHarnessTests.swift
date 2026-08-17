@@ -2404,22 +2404,20 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // S5：关闭截图沉浸后，隐藏态继续保持手机框尺寸与圆角。
-    func testS5DisabledScreenshotImmersiveKeepsPhoneFrameWhenHidden() {
-        var configuration = S2CalibrationConfiguration.factoryPlaceholder
-        configuration.screenshotImmersiveOnHide = false
-        let visible = metrics(
-            visibility: .visible,
-            configuration: configuration
-        )
-        let hidden = metrics(
+    // S5 改写：旧沉浸开关不再接线，截图隐藏态始终等比适配全视口。
+    func testS5DisabledScreenshotImmersiveDoesNotChangeHiddenGeometry() {
+        let enabled = metrics(visibility: .hidden)
+        var disabledConfiguration = S2CalibrationConfiguration
+            .factoryPlaceholder
+        disabledConfiguration.screenshotImmersiveOnHide = false
+        let disabled = metrics(
             visibility: .hidden,
-            configuration: configuration
+            configuration: disabledConfiguration
         )
 
-        XCTAssertEqual(hidden.oneXDisplaySize, visible.oneXDisplaySize)
-        XCTAssertEqual(hidden.oneXCornerRadius, visible.oneXCornerRadius)
-        XCTAssertEqual(hidden.oneXCornerRadius, 28, accuracy: 0.000_001)
+        XCTAssertEqual(disabled.oneXDisplaySize, enabled.oneXDisplaySize)
+        XCTAssertEqual(disabled.oneXDisplaySize, disabled.aspectFitSize)
+        XCTAssertEqual(disabled.oneXCornerRadius, 0, accuracy: 0.000_001)
     }
 
     // S6：截图沉浸开关出厂值为开启并进入参数导出。
