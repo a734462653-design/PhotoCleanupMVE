@@ -36,6 +36,8 @@ struct PhotoCleanupMVEApp: App {
                             machine: machine,
                             calibration: coordinator.s2Calibration,
                             assetAspectRatio: coordinator.s2AssetAspectRatio,
+                            assetIsScreenshot:
+                                coordinator.s2AssetIsScreenshot,
                             assetPixelSize: coordinator.s2AssetPixelSize,
                             photoContent: { context in
                                 AnyView(

@@ -820,6 +820,7 @@ enum S2ViewportLayout {
         physicalSize: CGSize,
         presentationState: S2ViewportPresentationState,
         assetAspectRatio: CGFloat,
+        isScreenshot: Bool = false,
         configuration: S2CalibrationConfiguration
     ) -> S2ViewportMetrics {
         let viewportAspectRatio = physicalSize.height > 0
@@ -829,33 +830,19 @@ enum S2ViewportLayout {
             viewportSize: physicalSize,
             assetAspectRatio: assetAspectRatio
         )
-        let applies = insetApplies(
-            assetAspectRatio: assetAspectRatio,
-            viewportAspectRatio: viewportAspectRatio,
-            scope: configuration.fitInsetScope
-        )
         let matchesScreenAspect = S2Geometry.isScreenAspectMatch(
             assetAspectRatio: assetAspectRatio,
             viewportAspectRatio: viewportAspectRatio
         )
-        let fillsViewport = applies &&
-            presentationState.interfaceVisibility == .hidden &&
-                configuration.screenshotImmersiveOnHide
-        let keepsFrame = applies && !fillsViewport
+        let keepsFrame = isScreenshot &&
+            presentationState.interfaceVisibility == .visible
         let insetScale = keepsFrame
             ? max(0, 1 - CGFloat(configuration.fitInsetRatio))
             : 1
-        let usesViewportFrame = fillsViewport ||
-            (applies && matchesScreenAspect)
-        let displaySize = usesViewportFrame
-            ? CGSize(
-                width: physicalSize.width * insetScale,
-                height: physicalSize.height * insetScale
-            )
-            : CGSize(
-                width: fitSize.width * insetScale,
-                height: fitSize.height * insetScale
-            )
+        let displaySize = CGSize(
+            width: fitSize.width * insetScale,
+            height: fitSize.height * insetScale
+        )
         let fillMultiplier = S2Geometry.aspectFillMultiplier(
             viewportSize: physicalSize,
             assetAspectRatio: assetAspectRatio
@@ -865,14 +852,14 @@ enum S2ViewportLayout {
             assetAspectRatio: assetAspectRatio,
             viewportAspectRatio: viewportAspectRatio,
             aspectFitSize: fitSize,
-            nativeZoomBaseSize: applies ? physicalSize : fitSize,
-            isFramedPhoto: applies,
+            nativeZoomBaseSize: isScreenshot ? physicalSize : fitSize,
+            isFramedPhoto: isScreenshot,
             oneXDisplaySize: displaySize,
             oneXCornerRadius: keepsFrame
                 ? CGFloat(configuration.fitCornerRadius)
                 : 0,
             aspectFillMultiplier: fillMultiplier,
-            doubleTapTargetScale: applies
+            doubleTapTargetScale: matchesScreenAspect
                 ? CGFloat(configuration.minDoubleTapScale)
                 : fillMultiplier,
             bottomStripHeight: max(
