@@ -84,12 +84,10 @@ final class IC067RealInteractionUITests: XCTestCase {
         app.launchArguments = ["--ic067-real-interaction-probe"]
         app.launch()
 
-        let viewport = app.scrollViews["ic067.interaction.viewport"]
         let result = app.staticTexts["ic067.interaction.result"]
-        XCTAssertTrue(viewport.waitForExistence(timeout: 10))
         XCTAssertTrue(result.waitForExistence(timeout: 10))
 
-        viewport.pinch(withScale: 1.5, velocity: 1)
+        app.pinch(withScale: 1.5, velocity: 1)
         let enlarged = waitForResult(result, timeout: 10) { label in
             self.number("takeovers", in: label) >= 1
         }
@@ -99,7 +97,7 @@ final class IC067RealInteractionUITests: XCTestCase {
             enlarged
         )
 
-        viewport.pinch(withScale: 0.5, velocity: -1)
+        app.pinch(withScale: 0.5, velocity: -1)
         let returned = waitForResult(result, timeout: 10) { label in
             self.number("returns", in: label) >= 1
         }

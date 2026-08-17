@@ -1667,6 +1667,9 @@ final class S2NativeZoomPageController: UIViewController,
         _ scrollView: UIScrollView,
         with view: UIView?
     ) {
+        if scrollView === zoomScrollView {
+            owner?.reportNativePinchWillBegin()
+        }
         let pinchState = scrollView.pinchGestureRecognizer?.state
         guard scrollView === zoomScrollView,
               pinchState == .began || pinchState == .changed,
@@ -2280,6 +2283,10 @@ final class S2NativePagerViewController: UIViewController,
         ))
     }
 
+    func reportNativePinchWillBegin() {
+        realInteractionDiagnosticObserver?(.pinchWillBegin)
+    }
+
     func reportNativeOneXReturn(from page: S2NativeZoomPageController) {
         guard let frame = page.zoomScrollView.visiblePresentationFrame()
         else {
@@ -2706,9 +2713,10 @@ final class S2GeometryDiagnosticsCoordinator: ObservableObject {
     @Published private(set) var reportText = ""
     @Published private(set) var isExporting = false
     @Published private(set) var realInteractionReportText =
-        "IC067_INTERACTION_READY takeovers=0 returns=0"
+        "IC067_INTERACTION_READY rawPinches=0 takeovers=0 returns=0"
     private weak var controller: S2NativePagerViewController?
     private let capturesRealInteractions: Bool
+    private var rawPinchCount = 0
     private var takeoverCount = 0
     private var returnCount = 0
     private var latestTakeoverCenterOffset: CGFloat = -1
@@ -2766,6 +2774,8 @@ final class S2GeometryDiagnosticsCoordinator: ObservableObject {
         _ event: S2RealInteractionDiagnosticEvent
     ) {
         switch event {
+        case .pinchWillBegin:
+            rawPinchCount += 1
         case let .pinchTakeover(centerOffset):
             takeoverCount += 1
             latestTakeoverCenterOffset = centerOffset
@@ -2778,10 +2788,11 @@ final class S2GeometryDiagnosticsCoordinator: ObservableObject {
                 : "hidden"
         }
         realInteractionReportText = String(
-            format: "IC067_INTERACTION takeovers=%d " +
+            format: "IC067_INTERACTION rawPinches=%d takeovers=%d " +
                 "takeoverCenterOffset=%.6f returns=%d " +
                 "returnScaleDelta=%.6f returnFrameDeviation=%.6f " +
                 "returnVisibility=%@",
+            rawPinchCount,
             takeoverCount,
             latestTakeoverCenterOffset,
             returnCount,
@@ -2793,6 +2804,7 @@ final class S2GeometryDiagnosticsCoordinator: ObservableObject {
 }
 
 enum S2RealInteractionDiagnosticEvent {
+    case pinchWillBegin
     case pinchTakeover(centerOffset: CGFloat)
     case oneXReturn(
         scaleDelta: CGFloat,
