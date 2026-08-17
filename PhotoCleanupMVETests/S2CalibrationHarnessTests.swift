@@ -1835,7 +1835,19 @@ final class S2CalibrationHarnessTests: XCTestCase {
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
         XCTAssertNotNil(hostingController.view.window)
 
-        diagnostics.export()
+        let attachmentDeadline = Date(timeIntervalSinceNow: 2)
+        while !diagnostics.isExporting,
+              diagnostics.reportText.isEmpty,
+              Date() < attachmentDeadline {
+            diagnostics.export()
+            if !diagnostics.isExporting {
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+            }
+        }
+        XCTAssertTrue(
+            diagnostics.isExporting || !diagnostics.reportText.isEmpty,
+            "诊断协调器应在期限内挂载并开始导出"
+        )
         let deadline = Date(timeIntervalSinceNow: 10)
         while diagnostics.isExporting, Date() < deadline {
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
