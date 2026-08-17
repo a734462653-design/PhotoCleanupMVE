@@ -1,0 +1,24 @@
+# IC-068 真机过渡诊断
+格式版本=1
+场景=A 单击显示（问题方向）
+时钟=CACurrentMediaTime()
+采样频率下限Hz=60
+录制上限秒=5.000000
+起始绝对时间=500.000000000000000
+停止绝对时间=500.250000000000000
+记录总数=11
+顺序=全部记录按同一单调时钟严格递增
+逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,V,s
+离散事件字段=time,event,source,details
+---
+000001	time=0.000000000000000	kind=event	event=录制开始	source=调试面板	details=上限秒=5；采样频率下限Hz=60
+000002	time=0.001000000000000	kind=frame	animationKeys=[]	modelFrame=(x=0.000000,y=90.000000,w=300.000000,h=420.000000)	presentationFrame=nil	transform=(a=1.000000,b=0.000000,c=0.000000,d=1.000000,tx=0.000000,ty=0.000000)	zoomScale=1.000000	contentOffset=(x=0.000000,y=0.000000)	contentSize=(w=300.000000,h=600.000000)	V=隐藏	s=1.000000
+000003	time=0.050000000000000	kind=event	event=SwiftUI状态发布	source=S2StateMachine.handleSingleTap @Published(V)	details=V从隐藏变为显示
+000004	time=0.052000000000000	kind=event	event=viewDidLayoutSubviews	source=S2NativePagerViewController.viewDidLayoutSubviews	details=层级=外层
+000005	time=0.053000000000000	kind=event	event=抑制外层布局写入生效	source=S2NativePagerViewController.layoutNativePages	details=pageIndex=1
+000006	time=0.055000000000000	kind=event	event=照片动画调用	source=S2NativeZoomPageController.applyPageImmediately	details=operation=removeAllAnimations；key=*
+000007	time=0.056000000000000	kind=event	event=照片几何写入	source=S2NativeZoomScrollView.enforceOneXContentGeometry	details=frame=(x=45.000000,y=153.000000,w=210.000000,h=294.000000)；transform=(a=1.000000,b=0.000000,c=0.000000,d=1.000000,tx=0.000000,ty=0.000000)
+000008	time=0.057000000000000	kind=event	event=layoutSubviews	source=S2NativeZoomScrollView.layoutSubviews	details=层级=内层
+000009	time=0.058000000000000	kind=event	event=updateUIView	source=S2NativePhotoPager.updateUIViewController	details=写入照片几何=true
+000010	time=0.066666666666667	kind=frame	animationKeys=[]	modelFrame=(x=45.000000,y=153.000000,w=210.000000,h=294.000000)	presentationFrame=(x=44.800000,y=152.720000,w=210.400000,h=294.560000)	transform=(a=1.000000,b=0.000000,c=0.000000,d=1.000000,tx=0.000000,ty=0.000000)	zoomScale=1.000000	contentOffset=(x=0.000000,y=0.000000)	contentSize=(w=300.000000,h=600.000000)	V=显示	s=1.000000
+000011	time=0.250000000000000	kind=event	event=录制停止	source=调试面板	details=已保留记录数=11
