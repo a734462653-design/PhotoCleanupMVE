@@ -19,15 +19,24 @@ struct PhotoCleanupMVEApp: App {
         .arguments
         .contains("--ic067-real-interaction-probe")
 
+    @ViewBuilder
+    private func ic067Root<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+#if DEBUG
+        if isIC067RealInteractionProbe {
+            IC067RealInteractionProbeView()
+        } else {
+            content()
+        }
+#else
+        content()
+#endif
+    }
+
     var body: some Scene {
         WindowGroup {
-            Group {
-#if DEBUG
-                if isIC067RealInteractionProbe {
-                    IC067RealInteractionProbeView()
-                } else {
-#endif
-                Group {
+            ic067Root {
                 switch coordinator.route {
                 case .loading:
                     ProgressView(L10n.text("app.loading.photo_library"))
@@ -115,10 +124,6 @@ struct PhotoCleanupMVEApp: App {
                 case .completion:
                     S5View(coordinator: coordinator)
                 }
-                }
-#if DEBUG
-                }
-#endif
             }
 #if DEBUG
             .overlay(alignment: .topLeading) {
