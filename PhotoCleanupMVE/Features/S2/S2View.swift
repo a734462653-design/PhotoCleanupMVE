@@ -144,7 +144,7 @@ struct S2View: View {
             )
 
             ZStack {
-                Color.black
+                Color(uiColor: .systemBackground)
                     .ignoresSafeArea()
 
                 mainPhoto(
