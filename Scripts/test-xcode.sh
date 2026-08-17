@@ -47,11 +47,23 @@ screenshot_path="$temporary_dir/ic067-screen.png"
 xcrun simctl bootstatus "$destination_id" -b
 xcrun simctl io "$destination_id" screenshot "$screenshot_path"
 xcrun simctl addmedia "$destination_id" "$screenshot_path"
+
+xcodebuild \
+    build-for-testing \
+    -project "$project_path" \
+    -scheme "$scheme_name" \
+    -configuration Debug \
+    -destination "platform=iOS Simulator,id=$destination_id" \
+    -derivedDataPath "$temporary_dir/DerivedData"
+
+app_path="$temporary_dir/DerivedData/Build/Products/Debug-iphonesimulator/PhotoCleanupMVE.app"
+test -d "$app_path"
+xcrun simctl install "$destination_id" "$app_path"
 xcrun simctl privacy "$destination_id" grant photos \
     com.iphonephotomanagement.PhotoCleanupMVE
 
 xcodebuild \
-    test \
+    test-without-building \
     -project "$project_path" \
     -scheme "$scheme_name" \
     -configuration Debug \
