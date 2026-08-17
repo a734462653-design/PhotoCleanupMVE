@@ -628,6 +628,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             animationsEnabled: true,
             animationDurationMilliseconds: 180,
             presentationToggleDuration: 220,
+            presentationToggleDamping: 0.86,
             fitInsetRatio: 0.30,
             fitCornerRadius: 28,
             fitBorderWidth: 1,
@@ -673,6 +674,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(actual.exportText().contains(
             "presentationToggleDuration=220.000000"
         ))
+        XCTAssertTrue(actual.exportText().contains(
+            "presentationToggleDamping=0.860000"
+        ))
         XCTAssertTrue(actual.exportText().contains("fitBorderWidth=1.000000"))
         XCTAssertTrue(actual.exportText().contains("fitBorderDarkAlpha=0.090000"))
         XCTAssertTrue(actual.exportText().contains("fitBorderLightAlpha=0.055000"))
@@ -696,6 +700,36 @@ final class S2CalibrationHarnessTests: XCTestCase {
             actual.exportText().contains("singleTapDecisionWindowMilliseconds")
         )
         XCTAssertFalse(actual.exportText().contains("未标定"))
+    }
+
+    // IC-067 C5：面板状态表逐一覆盖全部配置字段，不为死参数补接生产逻辑。
+    func testIC067C5ParameterConnectionStatusesCoverEveryFieldExactlyOnce() {
+        let parameterNames = Mirror(
+            reflecting: S2CalibrationConfiguration.factoryPlaceholder
+        ).children.compactMap(\.label)
+        let connections = S2CalibrationConfiguration.parameterConnections
+        let connectionNames = connections.map(\.name)
+        let statuses = Dictionary(uniqueKeysWithValues: connections.map {
+            ($0.name, $0.status)
+        })
+
+        XCTAssertEqual(Set(connectionNames), Set(parameterNames))
+        XCTAssertEqual(connectionNames.count, parameterNames.count)
+        XCTAssertEqual(Set(connectionNames).count, connectionNames.count)
+        XCTAssertEqual(
+            statuses["singleTapMaximumMovement"],
+            .unwired
+        )
+        XCTAssertEqual(
+            statuses["gestureExclusivityPolicy"],
+            .unwired
+        )
+        XCTAssertEqual(statuses["fitInsetScope"], .unwired)
+        XCTAssertEqual(
+            statuses["presentationToggleDamping"],
+            .effective
+        )
+        XCTAssertEqual(statuses["pinchMaxScale"], .effective)
     }
 
     // P1 替代断言：Nx 平移由原生滚动容器接管并产生非零 contentOffset。
@@ -3459,57 +3493,29 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-065 G32：冻结 IC-064 交付报告中的双向逐帧宽度序列。
-    func testIC065G32IC064DeliveredWidthSequenceRemainsExact() {
-        let machine = makeMachine()
-        let controller = makeNativePagerController(machine: machine)
-        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        let hidingWidths: [CGFloat] = [
-            210.000, 210.000, 217.844, 224.675, 231.492, 238.315,
-            245.085, 251.904, 258.730, 265.534, 272.353, 279.176,
-            286.031, 292.821, 299.653, 300.000
-        ]
-        let showingWidths: [CGFloat] = [
-            300.000, 300.000, 287.290, 280.497, 273.712, 266.895,
-            260.095, 253.281, 246.460, 239.626, 232.759, 225.990,
-            219.187, 212.319, 210.000
-        ]
-
-        XCTAssertTrue(machine.handleSingleTap())
-        applyNativePagerController(
-            controller,
-            machine: machine,
-            configuration: .factoryPlaceholder
+    // IC-065 G32 改写：C8 替代线性序列后，两方向仍共用同一 spring。
+    func testIC065G32BothDirectionsUseSameSpringCurveAndDuration() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let curve = S2PresentationSpringCurve(
+            dampingRatio: configuration.presentationToggleDamping
         )
-        let hiding = tryUnwrap(page.lastPresentationTransition)
-        XCTAssertEqual(page.lastPresentationTransitionDuration, 0.22)
-        for expectedWidth in hidingWidths {
-            let progress = (expectedWidth - 210) / 90
+        let policy = S2AnimationPolicy(
+            configuration: configuration,
+            durationMilliseconds: configuration.presentationToggleDuration
+        )
+
+        XCTAssertEqual(policy.durationSeconds, 0.22, accuracy: 0.000_001)
+        for step in 0...100 {
+            let progress = CGFloat(step) / 100
+            let value = curve.value(at: progress)
+            let hidingWidth = 210 + 90 * value
+            let showingWidth = 300 - 90 * value
             XCTAssertEqual(
-                hiding.size(at: progress).width,
-                expectedWidth,
-                accuracy: 0.5
+                hidingWidth + showingWidth,
+                510,
+                accuracy: 0.000_001
             )
         }
-        page.finishActivePresentationTransition()
-
-        XCTAssertTrue(machine.handleSingleTap())
-        applyNativePagerController(
-            controller,
-            machine: machine,
-            configuration: .factoryPlaceholder
-        )
-        let showing = tryUnwrap(page.lastPresentationTransition)
-        XCTAssertEqual(page.lastPresentationTransitionDuration, 0.22)
-        for expectedWidth in showingWidths {
-            let progress = (300 - expectedWidth) / 90
-            XCTAssertEqual(
-                showing.size(at: progress).width,
-                expectedWidth,
-                accuracy: 0.5
-            )
-        }
-        page.finishActivePresentationTransition()
     }
 
     // IC-065 G34：校准参数中没有引入任何捏合锚点字段。
@@ -3650,7 +3656,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNil(page.lastPresentationTransition)
     }
 
-    // IC-064 G13～G18：真实显示层采样同时满足等比、中心、双向与稳定性。
+    // IC-064 G13～G18 改写：夹具显示层采样满足双向 spring 与稳定几何。
     func testIC064G13ToG18PresentationSamplesMeetGeometryContract() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -3671,6 +3677,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page: page,
             configuration: configuration
         )
+        let hidingLayoutReading = controller.presentationTapLayoutReading
         let hiddenFrame = page.zoomScrollView.visiblePresentationFrame()
         let hiddenStableSamples = captureStablePresentationWindow(
             page: page,
@@ -3682,6 +3689,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page: page,
             configuration: configuration
         )
+        let showingLayoutReading = controller.presentationTapLayoutReading
         let visibleFrame = page.zoomScrollView.visiblePresentationFrame()
         let visibleStableSamples = captureStablePresentationWindow(
             page: page,
@@ -3757,14 +3765,25 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(hiding.last?.frame.width ?? -1, 300, accuracy: 0.5)
         XCTAssertEqual(showing.first?.frame.width ?? -1, 300, accuracy: 0.5)
         XCTAssertEqual(showing.last?.frame.width ?? -1, 210, accuracy: 0.5)
-        assertMonotonic(
+        assertSpringOvershootAndConvergence(
             hiding.map(\.frame.width),
-            direction: .increasing
+            source: 210,
+            target: 300
         )
-        assertMonotonic(
+        assertSpringOvershootAndConvergence(
             showing.map(\.frame.width),
-            direction: .decreasing
+            source: 300,
+            target: 210
         )
+        for reading in [hidingLayoutReading, showingLayoutReading] {
+            XCTAssertGreaterThanOrEqual(reading.callbackCount, 1)
+            XCTAssertEqual(reading.photoFrameWriteCount, 0)
+            XCTAssertGreaterThanOrEqual(
+                reading.suppressedPhotoFrameWriteCount,
+                1
+            )
+            XCTAssertNotNil(reading.firstCallbackDelayMilliseconds)
+        }
         let hidingCornerRadii = hiding.map {
             $0.bounds.width > 0
                 ? $0.cornerRadius * $0.frame.width / $0.bounds.width
@@ -3780,7 +3799,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(showingCornerRadii.first ?? -1, 0, accuracy: 0.5)
         XCTAssertEqual(showingCornerRadii.last ?? -1, 28, accuracy: 0.5)
         assertMonotonic(hidingCornerRadii, direction: .decreasing)
-        assertMonotonic(showingCornerRadii, direction: .increasing)
+        assertSpringOvershootAndConvergence(
+            showingCornerRadii,
+            source: 0,
+            target: 28,
+            requiresMeasuredOvershoot: false
+        )
         printPresentationSummary(direction: "hiding", samples: hiding)
         printPresentationSummary(direction: "showing", samples: showing)
     }
@@ -3870,7 +3894,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(restoredFrame, frameWithBorder)
     }
 
-    // IC-064 G21：Nx 描边归零，显隐过渡中的视觉线宽连续收敛。
+    // IC-064 G21 改写：Nx 描边归零，spring 过冲后视觉线宽收敛。
     func testIC064G21FitBorderTracksScaleAndPresentationProgress() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let nxMachine = makeMachine(scale: 2, configuration: configuration)
@@ -3924,7 +3948,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(showingWidths.first ?? 1, 0, accuracy: 0.01)
         XCTAssertEqual(showingWidths.last ?? 0, 1, accuracy: 0.01)
         assertMonotonic(hidingWidths, direction: .decreasing)
-        assertMonotonic(showingWidths, direction: .increasing)
+        assertSpringOvershootAndConvergence(
+            showingWidths,
+            source: 0,
+            target: 1,
+            requiresMeasuredOvershoot: false
+        )
     }
 
     // IC-064 G22：trait 明暗切换后描边颜色原地更新，无需重建页面。
@@ -4078,6 +4107,87 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
+    // IC-067 G42（夹具驱动）：双向均有中间帧，外层回调不再覆写照片。
+    func testIC067G42BothDirectionsAnimateWithoutOuterLayoutPhotoWrites() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        let hiding = capturePresentationToggle(
+            machine: machine,
+            controller: controller,
+            page: page,
+            configuration: configuration
+        )
+        let hidingReading = controller.presentationTapLayoutReading
+        let showing = capturePresentationToggle(
+            machine: machine,
+            controller: controller,
+            page: page,
+            configuration: configuration
+        )
+        let showingReading = controller.presentationTapLayoutReading
+
+        XCTAssertGreaterThanOrEqual(hiding.count, 3)
+        XCTAssertGreaterThanOrEqual(showing.count, 3)
+        XCTAssertGreaterThan(
+            Set(hiding.map { Int(($0.frame.width * 1_000).rounded()) }).count,
+            3
+        )
+        XCTAssertGreaterThan(
+            Set(showing.map { Int(($0.frame.width * 1_000).rounded()) }).count,
+            3
+        )
+        for reading in [hidingReading, showingReading] {
+            XCTAssertGreaterThanOrEqual(reading.callbackCount, 1)
+            XCTAssertEqual(reading.photoFrameWriteCount, 0)
+            XCTAssertGreaterThanOrEqual(
+                reading.suppressedPhotoFrameWriteCount,
+                1
+            )
+        }
+    }
+
+    // IC-067 G43（夹具驱动）：允许阻尼范围内过冲不超过 10%，随后收敛。
+    func testIC067G43SpringOvershootAndConvergenceMeetC8() {
+        for damping in [0.6, 0.86, 1.0] {
+            let curve = S2PresentationSpringCurve(dampingRatio: damping)
+            let values = (0...1_000).map {
+                curve.value(at: CGFloat($0) / 1_000)
+            }
+            let peak = values.max() ?? 0
+
+            XCTAssertEqual(values.first ?? -1, 0, accuracy: 0.000_001)
+            XCTAssertEqual(values.last ?? -1, 1, accuracy: 0.000_001)
+            XCTAssertLessThanOrEqual(peak - 1, 0.10)
+            if damping < 1 {
+                XCTAssertGreaterThan(peak, 1)
+            }
+            let peakIndex = values.firstIndex(of: peak) ?? values.endIndex
+            if peakIndex < values.count - 1 {
+                assertMonotonic(
+                    Array(values[peakIndex...]),
+                    direction: .decreasing
+                )
+            }
+        }
+
+        let factory = S2PresentationSpringCurve(dampingRatio: 0.86)
+        XCTAssertLessThan(
+            factory.value(at: 0.000_1) / 0.000_1,
+            0.01
+        )
+    }
+
     // IC-064 C7：显隐动画使用独立 220ms 参数，不改动双击的 180ms 参数。
     func testIC064PresentationToggleUsesDedicatedDuration() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -4126,7 +4236,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     ) -> [IC064PresentationSample] {
         let sampler = IC064PresentationLayerSampler(page: page)
         sampler.start()
-        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        controller.viewDidLayoutSubviews()
         applyNativePagerController(
             controller,
             machine: machine,
@@ -4186,6 +4297,67 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 XCTAssertLessThanOrEqual(
                     next - 0.01,
                     previous,
+                    file: file,
+                    line: line
+                )
+            }
+        }
+    }
+
+    private func assertSpringOvershootAndConvergence(
+        _ values: [CGFloat],
+        source: CGFloat,
+        target: CGFloat,
+        requiresMeasuredOvershoot: Bool = true,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertGreaterThanOrEqual(values.count, 3, file: file, line: line)
+        let amplitude = abs(target - source)
+        if target > source {
+            let extreme = values.max() ?? source
+            XCTAssertLessThanOrEqual(
+                extreme,
+                target + amplitude * 0.10 + 0.01,
+                file: file,
+                line: line
+            )
+            if requiresMeasuredOvershoot {
+                XCTAssertGreaterThan(
+                    extreme,
+                    target,
+                    file: file,
+                    line: line
+                )
+            }
+            if let index = values.firstIndex(of: extreme) {
+                assertMonotonic(
+                    Array(values[index...]),
+                    direction: .decreasing,
+                    file: file,
+                    line: line
+                )
+            }
+        } else {
+            let extreme = values.min() ?? source
+            XCTAssertGreaterThanOrEqual(
+                extreme,
+                target - amplitude * 0.10 - 0.01,
+                file: file,
+                line: line
+            )
+            if requiresMeasuredOvershoot {
+                XCTAssertLessThan(
+                    extreme,
+                    target,
+                    file: file,
+                    line: line
+                )
+            }
+            if let index = values.firstIndex(of: extreme) {
+                assertMonotonic(
+                    Array(values[index...]),
+                    direction: .increasing,
                     file: file,
                     line: line
                 )

@@ -562,6 +562,39 @@
         }
       }
     },
+    "s2.calibration.connection.effective" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生效"
+          }
+        }
+      }
+    },
+    "s2.calibration.connection.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参数生产接线状态"
+          }
+        }
+      }
+    },
+    "s2.calibration.connection.unwired" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未接线"
+          }
+        }
+      }
+    },
     "s2.calibration.core_gesture_hint" : {
       "extractionState" : "manual",
       "localizations" : {

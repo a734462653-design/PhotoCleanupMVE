@@ -807,6 +807,9 @@ final class S2NativeZoomPageController: UIViewController,
     private var presentationDisplayLink: CADisplayLink?
     private var presentationTransitionStartTimestamp: CFTimeInterval?
     private var presentationTransitionDuration: TimeInterval = 0
+    private var presentationSpringCurve = S2PresentationSpringCurve(
+        dampingRatio: 0.86
+    )
     private var presentationSourceScale: CGFloat = 1
     private var presentationSourceVisualCornerRadius: CGFloat = 0
     private var presentationTargetVisualCornerRadius: CGFloat = 0
@@ -1415,6 +1418,9 @@ final class S2NativeZoomPageController: UIViewController,
         presentationTransitionCount += 1
         presentationTransitionGeneration += 1
         presentationTransitionDuration = animationPolicy.durationSeconds
+        presentationSpringCurve = S2PresentationSpringCurve(
+            dampingRatio: configuration.presentationToggleDamping
+        )
         presentationTransitionStartTimestamp = CACurrentMediaTime()
         presentationSourceScale = safeSourceScale
         presentationSourceVisualCornerRadius = sourceVisualCornerRadius
@@ -1444,16 +1450,22 @@ final class S2NativeZoomPageController: UIViewController,
                 zoomScrollView.presentationContentView else {
             return
         }
-        let value = min(1, max(0, progress))
+        let value = max(0, progress)
         let scale = presentationSourceScale +
             (1 - presentationSourceScale) * value
         let safeScale = max(0.000_001, scale)
-        let visualCornerRadius = presentationSourceVisualCornerRadius +
+        let visualCornerRadius = max(
+            0,
+            presentationSourceVisualCornerRadius +
             (presentationTargetVisualCornerRadius -
                 presentationSourceVisualCornerRadius) * value
-        let visualBorderWidth = presentationSourceVisualBorderWidth +
+        )
+        let visualBorderWidth = max(
+            0,
+            presentationSourceVisualBorderWidth +
             (presentationTargetVisualBorderWidth -
                 presentationSourceVisualBorderWidth) * value
+        )
         UIView.performWithoutAnimation {
             presentationContentView.transform = CGAffineTransform(
                 scaleX: scale,
@@ -1483,11 +1495,13 @@ final class S2NativeZoomPageController: UIViewController,
         let startTimestamp = presentationTransitionStartTimestamp ??
             displayLink.timestamp
         let elapsed = CACurrentMediaTime() - startTimestamp
-        let progress = presentationTransitionDuration > 0
+        let rawProgress = presentationTransitionDuration > 0
             ? CGFloat(elapsed / presentationTransitionDuration)
             : 1
-        applyPresentationTransitionProgress(progress)
-        if progress >= 1 {
+        applyPresentationTransitionProgress(
+            presentationSpringCurve.value(at: rawProgress)
+        )
+        if rawProgress >= 1 {
             finishPresentationTransition(
                 generation: presentationTransitionGeneration
             )
@@ -1889,6 +1903,13 @@ final class S2NativeZoomPageController: UIViewController,
     }
 }
 
+struct S2PresentationTapLayoutReading: Equatable {
+    var callbackCount = 0
+    var photoFrameWriteCount = 0
+    var suppressedPhotoFrameWriteCount = 0
+    var firstCallbackDelayMilliseconds: Double?
+}
+
 final class S2NativePagerViewController: UIViewController,
     UIScrollViewDelegate {
     let pagingScrollView = S2NativePagingScrollView()
@@ -1905,7 +1926,12 @@ final class S2NativePagerViewController: UIViewController,
     private var lastOuterDuration: TimeInterval = 0
     private var nXEdgePagingInteraction: S2NxEdgePagingInteraction?
     private var lastNXEdgePagingProjection: S2NxEdgePagingProjection?
+    private var pendingPresentationTapPageIndex: Int?
+    private var presentationTapStartTimestamp: CFTimeInterval?
+    private var isHandlingOuterLayoutCallback = false
     private(set) var nativeZoomReturnInvocationCount = 0
+    private(set) var presentationTapLayoutReading =
+        S2PresentationTapLayoutReading()
     var diagnosticsRun: S2GeometryDiagnosticsRun?
 
     override func loadView() {
@@ -1948,8 +1974,23 @@ final class S2NativePagerViewController: UIViewController,
         guard view.bounds.size.width > 0, view.bounds.size.height > 0 else {
             return
         }
+        if pendingPresentationTapPageIndex != nil {
+            presentationTapLayoutReading.callbackCount += 1
+            if presentationTapLayoutReading
+                .firstCallbackDelayMilliseconds == nil,
+               let presentationTapStartTimestamp {
+                presentationTapLayoutReading
+                    .firstCallbackDelayMilliseconds = max(
+                        0,
+                        (CACurrentMediaTime() -
+                            presentationTapStartTimestamp) * 1_000
+                    )
+            }
+        }
         viewportSize = view.bounds.size
+        isHandlingOuterLayoutCallback = true
         layoutNativePages()
+        isHandlingOuterLayoutCallback = false
     }
 
     func apply(
@@ -2005,6 +2046,10 @@ final class S2NativePagerViewController: UIViewController,
                 isCurrent: page.index == machine.currentIndex,
                 viewportSize: viewportSize
             )
+            if pendingPresentationTapPageIndex == page.index {
+                pendingPresentationTapPageIndex = nil
+                presentationTapStartTimestamp = nil
+            }
         }
 
         settledIndex = machine.currentIndex
@@ -2026,6 +2071,8 @@ final class S2NativePagerViewController: UIViewController,
             $0.doubleTapTransitionObserver = nil
         }
         outerDragStartDate = nil
+        pendingPresentationTapPageIndex = nil
+        presentationTapStartTimestamp = nil
         lastOuterTranslation = .zero
         nXEdgePagingInteraction = nil
         lastNXEdgePagingProjection = nil
@@ -2176,7 +2223,15 @@ final class S2NativePagerViewController: UIViewController,
               page.index == machine.currentIndex else {
             return false
         }
-        return machine.handleSingleTap()
+        pendingPresentationTapPageIndex = page.index
+        presentationTapStartTimestamp = CACurrentMediaTime()
+        presentationTapLayoutReading = S2PresentationTapLayoutReading()
+        let handled = machine.handleSingleTap()
+        if !handled {
+            pendingPresentationTapPageIndex = nil
+            presentationTapStartTimestamp = nil
+        }
+        return handled
     }
 
     @discardableResult
@@ -2495,19 +2550,32 @@ final class S2NativePagerViewController: UIViewController,
         )
         for (index, controller) in pageControllers {
             controller.view.frame = pagingScrollView.frameForPage(at: index)
+            let canApplyNativeState =
+                !controller.isDoubleTapTransitionActive &&
+                !controller.isPresentationTransitionActive &&
+                !controller.zoomScrollView.isTracking &&
+                !controller.zoomScrollView.isDragging &&
+                !controller.zoomScrollView.isDecelerating &&
+                !controller.zoomScrollView.isZooming
             if let machine,
-               !controller.isDoubleTapTransitionActive,
-               !controller.isPresentationTransitionActive,
-               !controller.zoomScrollView.isTracking,
-               !controller.zoomScrollView.isDragging,
-               !controller.zoomScrollView.isDecelerating,
-               !controller.zoomScrollView.isZooming {
+               canApplyNativeState,
+               index != pendingPresentationTapPageIndex {
+                if isHandlingOuterLayoutCallback,
+                   pendingPresentationTapPageIndex != nil,
+                   index == machine.currentIndex {
+                    presentationTapLayoutReading.photoFrameWriteCount += 1
+                }
                 controller.zoomScrollView.applyNativeState(
                     scale: index == machine.currentIndex ? machine.scale : 1,
                     viewportOffset: index == machine.currentIndex
                         ? machine.viewportOffset
                         : .zero
                 )
+            } else if canApplyNativeState,
+                      index == pendingPresentationTapPageIndex,
+                      isHandlingOuterLayoutCallback {
+                presentationTapLayoutReading
+                    .suppressedPhotoFrameWriteCount += 1
             }
         }
         if !pagingScrollView.isTracking &&

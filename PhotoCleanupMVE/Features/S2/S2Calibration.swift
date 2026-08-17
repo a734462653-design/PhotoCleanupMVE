@@ -13,6 +13,27 @@ enum S2GestureExclusivityPolicy: String, CaseIterable, Codable, Equatable {
     case singleDragBeforePinch
 }
 
+enum S2CalibrationParameterConnectionStatus: Equatable {
+    case effective
+    case unwired
+
+    var title: String {
+        switch self {
+        case .effective:
+            return L10n.text("s2.calibration.connection.effective")
+        case .unwired:
+            return L10n.text("s2.calibration.connection.unwired")
+        }
+    }
+}
+
+struct S2CalibrationParameterConnection: Identifiable, Equatable {
+    let name: String
+    let status: S2CalibrationParameterConnectionStatus
+
+    var id: String { name }
+}
+
 struct S2CalibrationConfiguration: Codable, Equatable {
     static let schemaVersion = 1
 
@@ -47,6 +68,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var animationsEnabled: Bool
     var animationDurationMilliseconds: Double
     var presentationToggleDuration: Double
+    var presentationToggleDamping: Double
     var fitInsetRatio: Double
     var fitCornerRadius: Double
     var fitBorderWidth: Double
@@ -97,6 +119,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         animationsEnabled: true,
         animationDurationMilliseconds: 180,
         presentationToggleDuration: 220,
+        presentationToggleDamping: 0.86,
         fitInsetRatio: 0.30,
         fitCornerRadius: 28,
         fitBorderWidth: 1,
@@ -165,6 +188,8 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             pinchTouchCount > 0 &&
             animationDurationMilliseconds >= 0 &&
             presentationToggleDuration >= 0 &&
+            presentationToggleDamping >= 0.6 &&
+            presentationToggleDamping <= 1 &&
             fitInsetRatio >= 0 && fitInsetRatio < 0.5 &&
             fitCornerRadius >= 0 &&
             fitBorderWidth >= 0 &&
@@ -209,6 +234,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("animationsEnabled", String(animationsEnabled)),
             ("animationDurationMilliseconds", formatted(animationDurationMilliseconds)),
             ("presentationToggleDuration", formatted(presentationToggleDuration)),
+            ("presentationToggleDamping", formatted(presentationToggleDamping)),
             ("fitInsetRatio", formatted(fitInsetRatio)),
             ("fitCornerRadius", formatted(fitCornerRadius)),
             ("fitBorderWidth", formatted(fitBorderWidth)),
@@ -236,6 +262,80 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             value
         )
     }
+}
+
+extension S2CalibrationConfiguration {
+    static let parameterConnections: [S2CalibrationParameterConnection] = [
+        .init(name: "pinchMaxScale", status: .effective),
+        .init(name: "zoomSnapBackThreshold", status: .effective),
+        .init(name: "minDoubleTapScale", status: .effective),
+        .init(name: "doubleTapAnchorStrategy", status: .effective),
+        .init(name: "edgePagingTriggerDistance", status: .effective),
+        .init(name: "edgePagingTriggerVelocity", status: .effective),
+        .init(name: "verticalSwipeDistance", status: .effective),
+        .init(name: "verticalSwipeVelocity", status: .effective),
+        .init(
+            name: "verticalSwipeMaximumDurationMilliseconds",
+            status: .unwired
+        ),
+        .init(name: "horizontalSwipeDistance", status: .unwired),
+        .init(name: "horizontalSwipeVelocity", status: .unwired),
+        .init(
+            name: "horizontalSwipeMaximumDurationMilliseconds",
+            status: .unwired
+        ),
+        .init(name: "pinchMinimumScaleDelta", status: .unwired),
+        .init(name: "pinchMinimumVelocityPerSecond", status: .effective),
+        .init(
+            name: "pinchMaximumDurationMilliseconds",
+            status: .effective
+        ),
+        .init(name: "mainDragMinimumDistance", status: .unwired),
+        .init(name: "mainDragMinimumVelocity", status: .unwired),
+        .init(
+            name: "mainDragMaximumDurationMilliseconds",
+            status: .unwired
+        ),
+        .init(name: "singleTapMaximumMovement", status: .unwired),
+        .init(
+            name: "singleTapMaximumDurationMilliseconds",
+            status: .unwired
+        ),
+        .init(
+            name: "doubleTapDecisionWindowMilliseconds",
+            status: .unwired
+        ),
+        .init(name: "singleTapTouchCount", status: .effective),
+        .init(name: "doubleTapTouchCount", status: .effective),
+        .init(name: "singleDragTouchCount", status: .effective),
+        .init(name: "pinchTouchCount", status: .effective),
+        .init(name: "gestureExclusivityPolicy", status: .unwired),
+        .init(name: "scaleChangeRequestPolicy", status: .effective),
+        .init(name: "degradedPreviewPolicy", status: .effective),
+        .init(name: "animationsEnabled", status: .effective),
+        .init(name: "animationDurationMilliseconds", status: .effective),
+        .init(name: "presentationToggleDuration", status: .effective),
+        .init(name: "presentationToggleDamping", status: .effective),
+        .init(name: "fitInsetRatio", status: .effective),
+        .init(name: "fitCornerRadius", status: .effective),
+        .init(name: "fitBorderWidth", status: .effective),
+        .init(name: "fitBorderDarkAlpha", status: .effective),
+        .init(name: "fitBorderLightAlpha", status: .effective),
+        .init(name: "fitInsetScope", status: .unwired),
+        .init(name: "screenshotImmersiveOnHide", status: .unwired),
+        .init(name: "pageSpacing", status: .effective),
+        .init(name: "hapticOnPhotoSwitch", status: .effective),
+        .init(name: "bottomStripCurrentItemSize", status: .effective),
+        .init(name: "bottomStripNeighborItemWidth", status: .effective),
+        .init(name: "bottomStripNeighborItemHeight", status: .effective),
+        .init(name: "bottomStripItemSpacing", status: .effective),
+        .init(name: "bottomStripEdgeFadeWidth", status: .unwired),
+        .init(
+            name: "bottomStripDragMinimumDistance",
+            status: .effective
+        ),
+        .init(name: "bottomStripSwitchDistance", status: .effective)
+    ]
 }
 
 extension S2CalibrationConfiguration {
@@ -271,6 +371,7 @@ extension S2CalibrationConfiguration {
         case animationsEnabled
         case animationDurationMilliseconds
         case presentationToggleDuration
+        case presentationToggleDamping
         case fitInsetRatio
         case fitCornerRadius
         case fitBorderWidth
@@ -324,6 +425,7 @@ extension S2CalibrationConfiguration {
             animationsEnabled: try values.decode(Bool.self, forKey: .animationsEnabled),
             animationDurationMilliseconds: try values.decode(Double.self, forKey: .animationDurationMilliseconds),
             presentationToggleDuration: try values.decodeIfPresent(Double.self, forKey: .presentationToggleDuration) ?? 220,
+            presentationToggleDamping: try values.decodeIfPresent(Double.self, forKey: .presentationToggleDamping) ?? 0.86,
             fitInsetRatio: try values.decode(Double.self, forKey: .fitInsetRatio),
             fitCornerRadius: try values.decodeIfPresent(Double.self, forKey: .fitCornerRadius) ?? 28,
             fitBorderWidth: try values.decodeIfPresent(Double.self, forKey: .fitBorderWidth) ?? 1,
@@ -376,6 +478,7 @@ extension S2CalibrationConfiguration {
         try values.encode(animationsEnabled, forKey: .animationsEnabled)
         try values.encode(animationDurationMilliseconds, forKey: .animationDurationMilliseconds)
         try values.encode(presentationToggleDuration, forKey: .presentationToggleDuration)
+        try values.encode(presentationToggleDamping, forKey: .presentationToggleDamping)
         try values.encode(fitInsetRatio, forKey: .fitInsetRatio)
         try values.encode(fitCornerRadius, forKey: .fitCornerRadius)
         try values.encode(fitBorderWidth, forKey: .fitBorderWidth)
@@ -414,6 +517,46 @@ struct S2AnimationPolicy: Equatable {
 
     var durationSeconds: TimeInterval {
         shouldAnimate ? durationMilliseconds / 1_000 : 0
+    }
+}
+
+struct S2PresentationSpringCurve: Equatable {
+    let dampingRatio: Double
+    private let naturalFrequency: Double = 8
+
+    init(dampingRatio: Double) {
+        self.dampingRatio = dampingRatio
+    }
+
+    func value(at normalizedTime: CGFloat) -> CGFloat {
+        let time = Double(max(0, normalizedTime))
+        if time >= 1 {
+            return 1
+        }
+        if dampingRatio >= 0.999_999 {
+            let decay = exp(-naturalFrequency * time)
+            return CGFloat(1 - (1 + naturalFrequency * time) * decay)
+        }
+        let residual = sqrt(max(0.000_001, 1 - dampingRatio * dampingRatio))
+        let dampedFrequency = naturalFrequency * residual
+        let peakTime = Double.pi / dampedFrequency
+        if peakTime < 1, time > peakTime {
+            let peakOvershoot = exp(
+                -dampingRatio * Double.pi / residual
+            )
+            let tailProgress = min(
+                1,
+                max(0, (time - peakTime) / (1 - peakTime))
+            )
+            let smoothTail = tailProgress * tailProgress *
+                (3 - 2 * tailProgress)
+            return CGFloat(1 + peakOvershoot * (1 - smoothTail))
+        }
+        let decay = exp(-dampingRatio * naturalFrequency * time)
+        return CGFloat(1 - decay * (
+            cos(dampedFrequency * time) +
+                dampingRatio / residual * sin(dampedFrequency * time)
+        ))
     }
 }
 

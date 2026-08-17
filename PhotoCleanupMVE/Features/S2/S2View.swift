@@ -686,6 +686,15 @@ struct S2View: View {
                 }
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
                 S2CalibrationSliderRow(
+                    title: "presentationToggleDamping",
+                    value: calibrationBinding(
+                        \.presentationToggleDamping
+                    ),
+                    range: 0.6...1,
+                    step: 0.01
+                )
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                S2CalibrationSliderRow(
                     title: "fitInsetRatio",
                     value: calibrationBinding(\.fitInsetRatio),
                     range: 0...0.45,
@@ -741,6 +750,17 @@ struct S2View: View {
                     Text(verbatim: "hapticOnPhotoSwitch")
                 }
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+
+                Text(L10n.text("s2.calibration.connection.title"))
+                ForEach(S2CalibrationConfiguration.parameterConnections) {
+                    parameter in
+                    HStack {
+                        Text(verbatim: parameter.name)
+                        Spacer()
+                        Text(parameter.status.title)
+                    }
+                    .font(.caption)
+                }
 
                 Text(L10n.text("s2.calibration.navigation.title"))
                 ForEach(S2AssetAspectCategory.allCases, id: \.self) { category in
