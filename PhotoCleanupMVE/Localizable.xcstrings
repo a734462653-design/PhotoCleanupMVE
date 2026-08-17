@@ -650,6 +650,116 @@
         }
       }
     },
+    "s2.calibration.transition_diagnostics.export" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出文本"
+          }
+        }
+      }
+    },
+    "s2.calibration.transition_diagnostics.recording" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在录制，最多五秒"
+          }
+        }
+      }
+    },
+    "s2.calibration.transition_diagnostics.scenario" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "录制场景"
+          }
+        }
+      }
+    },
+    "s2.calibration.transition_diagnostics.scenario_a" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A 单击显示（问题方向）"
+          }
+        }
+      }
+    },
+    "s2.calibration.transition_diagnostics.scenario_b" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "B 单击隐藏（对照组）"
+          }
+        }
+      }
+    },
+    "s2.calibration.transition_diagnostics.scenario_c" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "C 捏合起始"
+          }
+        }
+      }
+    },
+    "s2.calibration.transition_diagnostics.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制或分享诊断文本"
+          }
+        }
+      }
+    },
+    "s2.calibration.transition_diagnostics.start" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始录制"
+          }
+        }
+      }
+    },
+    "s2.calibration.transition_diagnostics.stop" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止录制"
+          }
+        }
+      }
+    },
+    "s2.calibration.transition_diagnostics.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "诊断录制"
+          }
+        }
+      }
+    },
     "s2.calibration.navigation.empty" : {
       "extractionState" : "manual",
       "localizations" : {

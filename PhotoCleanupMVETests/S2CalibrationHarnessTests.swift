@@ -4214,6 +4214,193 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(existingPolicy.durationSeconds, 0.18, accuracy: 0.000_001)
     }
 
+    // IC-068 G47：录制关闭时不产生记录，也不改变统一入口的几何结果。
+    func testIC068G47RecorderOffHasNoDiagnosticSideEffect() {
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator(
+            clock: { 1_000 }
+        )
+        let scrollView = makeNativeZoomScrollView()
+        scrollView.transitionDiagnostics = diagnostics
+        let contentView = tryUnwrap(scrollView.presentationContentView)
+        let targetTransform = CGAffineTransform(
+            a: 0.75,
+            b: 0.1,
+            c: -0.1,
+            d: 0.75,
+            tx: 3,
+            ty: -4
+        )
+
+        scrollView.writePhotoGeometry(reason: .cornerMaskReset) {
+            $0.transform = targetTransform
+        }
+        diagnostics.recordInnerLayoutSubviews()
+        diagnostics.recordUpdateUIView(wrotePhotoGeometry: true)
+        diagnostics.export()
+
+        XCTAssertEqual(contentView.transform, targetTransform)
+        XCTAssertTrue(diagnostics.recordedEntries.isEmpty)
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
+        XCTAssertTrue(diagnostics.reportText.isEmpty)
+    }
+
+    // IC-068 G48：统一入口与收敛前的赋值顺序、frame 和 transform 完全一致。
+    func testIC068G48UnifiedPhotoGeometryWriteIsExactlyEquivalent() {
+        let scrollView = makeNativeZoomScrollView()
+        let managedView = tryUnwrap(scrollView.presentationContentView)
+        let directView = UIView()
+        directView.bounds = managedView.bounds
+        directView.center = managedView.center
+        directView.transform = CGAffineTransform(
+            scaleX: 0.91,
+            y: 0.91
+        )
+        managedView.transform = directView.transform
+        let targetBounds = CGRect(
+            x: 0,
+            y: 0,
+            width: 237,
+            height: 411
+        )
+        let targetCenter = CGPoint(x: 147.5, y: 299.25)
+
+        directView.transform = .identity
+        directView.bounds = targetBounds
+        directView.center = targetCenter
+        scrollView.writePhotoGeometry(
+            reason: .enforceOneXContentGeometry
+        ) { contentView in
+            contentView.transform = .identity
+            contentView.bounds = targetBounds
+            contentView.center = targetCenter
+        }
+
+        XCTAssertEqual(managedView.bounds, directView.bounds)
+        XCTAssertEqual(managedView.center, directView.center)
+        XCTAssertEqual(managedView.frame, directView.frame)
+        XCTAssertEqual(managedView.transform, directView.transform)
+        XCTAssertEqual(
+            managedView.layer.affineTransform(),
+            directView.layer.affineTransform()
+        )
+    }
+
+    // IC-068 G49：导出协议包含全部逐帧字段、空动画键和全部离散事件族。
+    func testIC068G49ExportContainsCompleteUnifiedSchema() {
+        let sample = S2OnDeviceTransitionFrameSample(
+            animationKeys: [],
+            modelFrame: CGRect(x: 10, y: 20, width: 30, height: 40),
+            presentationFrame: CGRect(x: 11, y: 21, width: 29, height: 39),
+            transform: CGAffineTransform(
+                a: 0.7,
+                b: 0,
+                c: 0,
+                d: 0.7,
+                tx: 2,
+                ty: 3
+            ),
+            zoomScale: 1,
+            contentOffset: CGPoint(x: 4, y: 5),
+            contentSize: CGSize(width: 300, height: 600),
+            visibility: .hidden,
+            scale: 1
+        )
+        let eventNames = [
+            "SwiftUI状态发布",
+            "updateUIView",
+            "layoutSubviews",
+            "viewDidLayoutSubviews",
+            "照片几何写入",
+            "照片动画调用:add(animation:)",
+            "照片动画调用:removeAnimation",
+            "照片动画调用:removeAllAnimations",
+            "CATransaction提交边界",
+            "抑制外层布局写入生效"
+        ]
+        var records = [S2OnDeviceTransitionRecord(
+            timestamp: 500,
+            sequence: 0,
+            payload: .frame(sample)
+        )]
+        records.append(contentsOf: eventNames.enumerated().map { pair in
+            let (index, name) = pair
+            return S2OnDeviceTransitionRecord(
+                timestamp: 500 + Double(index + 1) / 100,
+                sequence: index + 1,
+                payload: .event(
+                    name: name,
+                    source: "测试来源",
+                    details: "key=测试键；写入照片几何=true"
+                )
+            )
+        })
+
+        let text = S2OnDeviceTransitionText.export(
+            scenario: .tapShow,
+            startedAt: 500,
+            stoppedAt: 500.2,
+            records: records
+        )
+        let requiredFields = [
+            "时钟=CACurrentMediaTime()",
+            "采样频率下限Hz=60",
+            "录制上限秒=5.000000",
+            "animationKeys=[]",
+            "modelFrame=",
+            "presentationFrame=",
+            "transform=(a=",
+            "zoomScale=",
+            "contentOffset=",
+            "contentSize=",
+            "V=隐藏",
+            "s=1.000000",
+            "source=测试来源",
+            "details=key=测试键"
+        ]
+        for field in requiredFields {
+            XCTAssertTrue(text.contains(field), "缺少导出字段：\(field)")
+        }
+        for eventName in eventNames {
+            XCTAssertTrue(text.contains("event=\(eventName)"))
+        }
+    }
+
+    // IC-068 G50：相同或回退的时钟读数仍被归一为严格递增的统一事件流。
+    func testIC068G50UnifiedClockRecordsAreStrictlyOrdered() {
+        var readings: [CFTimeInterval] = [
+            800,
+            800,
+            799,
+            800,
+            800,
+            800,
+            800
+        ]
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator {
+            readings.isEmpty ? 800 : readings.removeFirst()
+        }
+        let machine = makeMachine(interfaceVisibility: .hidden)
+        let controller = makeNativePagerController(machine: machine)
+        diagnostics.attach(controller)
+        diagnostics.start()
+        diagnostics.recordUpdateUIView(wrotePhotoGeometry: false)
+        diagnostics.recordInnerLayoutSubviews()
+        diagnostics.recordOuterViewDidLayoutSubviews()
+        diagnostics.stop()
+        diagnostics.export()
+
+        XCTAssertGreaterThanOrEqual(diagnostics.recordedEntries.count, 6)
+        XCTAssertTrue(zip(
+            diagnostics.recordedEntries,
+            diagnostics.recordedEntries.dropFirst()
+        ).allSatisfy { pair in
+            pair.0.timestamp < pair.1.timestamp
+        })
+        XCTAssertTrue(diagnostics.reportText.contains(
+            "顺序=全部记录按同一单调时钟严格递增"
+        ))
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
     private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(

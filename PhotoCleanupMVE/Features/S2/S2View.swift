@@ -95,6 +95,8 @@ struct S2View: View {
     @State private var statusBarHidden: Bool
     @StateObject private var geometryDiagnostics:
         S2GeometryDiagnosticsCoordinator
+    @StateObject private var transitionDiagnostics:
+        S2OnDeviceTransitionDiagnosticsCoordinator
 
     init(
         machine: S2StateMachine,
@@ -111,7 +113,9 @@ struct S2View: View {
         onRecentAlbumRequest: @escaping (S2AlbumActionRequest) -> Void = { _ in },
         photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback = .live,
         geometryDiagnostics: S2GeometryDiagnosticsCoordinator =
-            S2GeometryDiagnosticsCoordinator()
+            S2GeometryDiagnosticsCoordinator(),
+        transitionDiagnostics: S2OnDeviceTransitionDiagnosticsCoordinator =
+            S2OnDeviceTransitionDiagnosticsCoordinator()
     ) {
         self.machine = machine
         self.calibration = calibration
@@ -127,6 +131,9 @@ struct S2View: View {
         self.onRecentAlbumRequest = onRecentAlbumRequest
         self.photoSwitchHapticFeedback = photoSwitchHapticFeedback
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
+        _transitionDiagnostics = StateObject(
+            wrappedValue: transitionDiagnostics
+        )
         _statusBarHidden = State(
             initialValue: machine.interfaceVisibility == .hidden
         )
@@ -270,7 +277,8 @@ struct S2View: View {
             onLongPress: {
                 calibrationOverlayState.toggleAccessControls()
             },
-            diagnosticsCoordinator: geometryDiagnostics
+            diagnosticsCoordinator: geometryDiagnostics,
+            transitionDiagnosticsCoordinator: transitionDiagnostics
         )
         .frame(width: viewportSize.width, height: viewportSize.height)
         .clipped()
@@ -808,6 +816,62 @@ struct S2View: View {
                         .font(.system(.caption2, design: .monospaced))
                         .textSelection(.enabled)
                 }
+
+                Divider()
+                Text(L10n.text(
+                    "s2.calibration.transition_diagnostics.title"
+                ))
+                Picker(
+                    L10n.text(
+                        "s2.calibration.transition_diagnostics.scenario"
+                    ),
+                    selection: $transitionDiagnostics.selectedScenario
+                ) {
+                    ForEach(S2OnDeviceTransitionScenario.allCases) {
+                        scenario in
+                        Text(transitionDiagnosticScenarioTitle(scenario))
+                            .tag(scenario)
+                    }
+                }
+                .disabled(transitionDiagnostics.isRecording)
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                Button(L10n.text(
+                    "s2.calibration.transition_diagnostics.start"
+                )) {
+                    transitionDiagnostics.start()
+                }
+                .disabled(!transitionDiagnostics.canStart)
+                .s2MinimumTouchTarget()
+                Button(L10n.text(
+                    "s2.calibration.transition_diagnostics.stop"
+                )) {
+                    transitionDiagnostics.stop()
+                }
+                .disabled(!transitionDiagnostics.isRecording)
+                .s2MinimumTouchTarget()
+                Button(L10n.text(
+                    "s2.calibration.transition_diagnostics.export"
+                )) {
+                    transitionDiagnostics.export()
+                }
+                .disabled(!transitionDiagnostics.canExport)
+                .s2MinimumTouchTarget()
+                if transitionDiagnostics.isRecording {
+                    ProgressView(L10n.text(
+                        "s2.calibration.transition_diagnostics.recording"
+                    ))
+                }
+                if !transitionDiagnostics.reportText.isEmpty {
+                    ShareLink(item: transitionDiagnostics.reportText) {
+                        Text(L10n.text(
+                            "s2.calibration.transition_diagnostics.share"
+                        ))
+                    }
+                    .s2MinimumTouchTarget()
+                    Text(verbatim: transitionDiagnostics.reportText)
+                        .font(.system(.caption2, design: .monospaced))
+                        .textSelection(.enabled)
+                }
                 Button(L10n.text("s2.calibration.restore_factory")) {
                     calibration.restoreFactoryPlaceholder()
                 }
@@ -1041,6 +1105,25 @@ struct S2View: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             action()
+        }
+    }
+
+    private func transitionDiagnosticScenarioTitle(
+        _ scenario: S2OnDeviceTransitionScenario
+    ) -> String {
+        switch scenario {
+        case .tapShow:
+            return L10n.text(
+                "s2.calibration.transition_diagnostics.scenario_a"
+            )
+        case .tapHide:
+            return L10n.text(
+                "s2.calibration.transition_diagnostics.scenario_b"
+            )
+        case .pinchStart:
+            return L10n.text(
+                "s2.calibration.transition_diagnostics.scenario_c"
+            )
         }
     }
 }

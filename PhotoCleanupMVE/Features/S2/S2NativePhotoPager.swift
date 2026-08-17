@@ -127,10 +127,13 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
     let pages: [S2NativePageContent]
     let onLongPress: () -> Void
     let diagnosticsCoordinator: S2GeometryDiagnosticsCoordinator
+    let transitionDiagnosticsCoordinator:
+        S2OnDeviceTransitionDiagnosticsCoordinator
 
     func makeUIViewController(context _: Context) -> S2NativePagerViewController {
         let controller = S2NativePagerViewController()
         diagnosticsCoordinator.attach(controller)
+        transitionDiagnosticsCoordinator.attach(controller)
         return controller
     }
 
@@ -139,12 +142,19 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
         context _: Context
     ) {
         diagnosticsCoordinator.attach(controller)
+        transitionDiagnosticsCoordinator.attach(controller)
+        let geometryWriteCount = transitionDiagnosticsCoordinator
+            .photoGeometryWriteCount
         controller.apply(
             machine: machine,
             configuration: configuration,
             viewportSize: viewportSize,
             pages: pages,
             onLongPress: onLongPress
+        )
+        transitionDiagnosticsCoordinator.recordUpdateUIView(
+            wrotePhotoGeometry: transitionDiagnosticsCoordinator
+                .photoGeometryWriteCount > geometryWriteCount
         )
     }
 
@@ -253,6 +263,8 @@ final class S2NativeZoomScrollView: UIScrollView {
     private(set) var lastMinimumZoomScaleAnimationWasAnimated: Bool?
     private(set) var independentContentOffsetWriteCount = 0
     private(set) var isApplyingNativeState = false
+    weak var transitionDiagnostics:
+        S2OnDeviceTransitionDiagnosticsCoordinator?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -323,6 +335,7 @@ final class S2NativeZoomScrollView: UIScrollView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        transitionDiagnostics?.recordInnerLayoutSubviews()
         let nextInset = UIEdgeInsets(
             top: max(0, (bounds.height - contentSize.height) / 2),
             left: max(0, (bounds.width - contentSize.width) / 2),
@@ -521,6 +534,9 @@ final class S2NativeZoomScrollView: UIScrollView {
         setNeedsLayout()
         layoutIfNeeded()
         CATransaction.commit()
+        transitionDiagnostics?.recordCATransactionCommit(
+            source: "S2NativeZoomScrollView.prepareForNativeZoom"
+        )
     }
 
     func restoreOneXGeometry() {
@@ -598,6 +614,33 @@ final class S2NativeZoomScrollView: UIScrollView {
         }
     }
 
+    func writePhotoGeometry(
+        reason: S2PhotoGeometryWriteReason,
+        mutation: (UIView) -> Void
+    ) {
+        guard let contentView = presentationContentView else {
+            return
+        }
+        mutation(contentView)
+        transitionDiagnostics?.recordPhotoGeometryWrite(
+            frame: contentView.layer.frame,
+            transform: contentView.layer.affineTransform(),
+            reason: reason
+        )
+    }
+
+    func removeAllPhotoAnimations(source: String) {
+        guard let photoLayer = presentationContentView?.layer else {
+            return
+        }
+        transitionDiagnostics?.recordPhotoAnimationOperation(
+            operation: "removeAllAnimations",
+            key: "*",
+            source: source
+        )
+        photoLayer.removeAllAnimations()
+    }
+
     private var oneXNativeBaseOrigin: CGPoint {
         CGPoint(
             x: (viewportSize.width - nativeZoomBaseSize.width) / 2,
@@ -610,7 +653,7 @@ final class S2NativeZoomScrollView: UIScrollView {
             return
         }
         guard let zoomContentView,
-              let contentView = presentationContentView else {
+              presentationContentView != nil else {
             return
         }
         zoomContentView.transform = .identity
@@ -622,12 +665,15 @@ final class S2NativeZoomScrollView: UIScrollView {
             x: viewportSize.width / 2,
             y: viewportSize.height / 2
         )
-        contentView.transform = .identity
-        contentView.bounds = CGRect(origin: .zero, size: fittedSize)
-        contentView.center = CGPoint(
-            x: zoomContentView.bounds.midX,
-            y: zoomContentView.bounds.midY
-        )
+        writePhotoGeometry(reason: .enforceOneXContentGeometry) {
+            contentView in
+            contentView.transform = .identity
+            contentView.bounds = CGRect(origin: .zero, size: fittedSize)
+            contentView.center = CGPoint(
+                x: zoomContentView.bounds.midX,
+                y: zoomContentView.bounds.midY
+            )
+        }
         contentInset = .zero
         contentSize = viewportSize
         if contentOffset != .zero {
@@ -639,7 +685,7 @@ final class S2NativeZoomScrollView: UIScrollView {
 
     private func prepareNativeZoomGeometry() {
         guard let zoomContentView,
-              let contentView = presentationContentView else {
+              presentationContentView != nil else {
             return
         }
         if abs(zoomScale - minimumZoomScale) <= 0.000_001 {
@@ -648,15 +694,18 @@ final class S2NativeZoomScrollView: UIScrollView {
                 origin: .zero,
                 size: nativeZoomBaseSize
             )
-            contentView.transform = .identity
-            contentView.bounds = CGRect(
-                origin: .zero,
-                size: nativeZoomBaseSize
-            )
-            contentView.center = CGPoint(
-                x: zoomContentView.bounds.midX,
-                y: zoomContentView.bounds.midY
-            )
+            writePhotoGeometry(reason: .prepareNativeZoomGeometry) {
+                contentView in
+                contentView.transform = .identity
+                contentView.bounds = CGRect(
+                    origin: .zero,
+                    size: nativeZoomBaseSize
+                )
+                contentView.center = CGPoint(
+                    x: zoomContentView.bounds.midX,
+                    y: zoomContentView.bounds.midY
+                )
+            }
             contentSize = nativeZoomBaseSize
         }
     }
@@ -782,6 +831,12 @@ final class S2NativeZoomPageController: UIViewController,
     let fitBorderLayer = CALayer()
     private let hostingController: UIHostingController<AnyView>
     private weak var owner: S2NativePagerViewController?
+    weak var transitionDiagnostics:
+        S2OnDeviceTransitionDiagnosticsCoordinator? {
+        didSet {
+            zoomScrollView.transitionDiagnostics = transitionDiagnostics
+        }
+    }
     private var assetID: String
     private var interfaceVisibility: S2InterfaceVisibility
     private var isFramedPhoto: Bool
@@ -897,6 +952,7 @@ final class S2NativeZoomPageController: UIViewController,
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        zoomScrollView.transitionDiagnostics = transitionDiagnostics
         additionalSafeAreaInsets = .zero
         zoomScrollView.delegate = self
         hostingController.view.backgroundColor = .clear
@@ -1467,10 +1523,14 @@ final class S2NativeZoomPageController: UIViewController,
                 presentationSourceVisualBorderWidth) * value
         )
         UIView.performWithoutAnimation {
-            presentationContentView.transform = CGAffineTransform(
-                scaleX: scale,
-                y: scale
-            )
+            self.zoomScrollView.writePhotoGeometry(
+                reason: .presentationTransitionProgress
+            ) { contentView in
+                contentView.transform = CGAffineTransform(
+                    scaleX: scale,
+                    y: scale
+                )
+            }
             presentationContentView.layer.cornerRadius =
                 visualCornerRadius / safeScale
             presentationContentView.layer.borderWidth = 0
@@ -1513,8 +1573,7 @@ final class S2NativeZoomPageController: UIViewController,
               presentationTransitionGeneration == generation else {
             return
         }
-        guard let presentationContentView =
-                zoomScrollView.presentationContentView else {
+        guard zoomScrollView.presentationContentView != nil else {
             presentationDisplayLink?.invalidate()
             presentationDisplayLink = nil
             presentationTransitionStartTimestamp = nil
@@ -1526,9 +1585,15 @@ final class S2NativeZoomPageController: UIViewController,
         presentationDisplayLink?.invalidate()
         presentationDisplayLink = nil
         presentationTransitionStartTimestamp = nil
-        presentationContentView.layer.removeAllAnimations()
+        zoomScrollView.removeAllPhotoAnimations(
+            source: "S2NativeZoomPageController.finishPresentationTransition"
+        )
         UIView.performWithoutAnimation {
-            presentationContentView.transform = .identity
+            self.zoomScrollView.writePhotoGeometry(
+                reason: .presentationTransitionFinish
+            ) { contentView in
+                contentView.transform = .identity
+            }
             self.applyCornerMask()
             self.zoomScrollView.layoutIfNeeded()
         }
@@ -1592,7 +1657,9 @@ final class S2NativeZoomPageController: UIViewController,
         presentationDisplayLink?.invalidate()
         presentationDisplayLink = nil
         presentationTransitionStartTimestamp = nil
-        zoomScrollView.presentationContentView?.layer.removeAllAnimations()
+        zoomScrollView.removeAllPhotoAnimations(
+            source: "S2NativeZoomPageController.applyPageImmediately"
+        )
         isPresentationTransitionActive = false
         pendingPresentationPage = nil
         assetID = page.assetID
@@ -1802,7 +1869,10 @@ final class S2NativeZoomPageController: UIViewController,
             ? 0
             : max(0, cornerRadius)
         let borderWidth = isNx ? 0 : resolvedFitBorderWidth()
-        hostingController.view.transform = .identity
+        zoomScrollView.writePhotoGeometry(reason: .cornerMaskReset) {
+            contentView in
+            contentView.transform = .identity
+        }
         hostingController.view.layer.cornerRadius = resolvedRadius
         hostingController.view.layer.cornerCurve = .continuous
         hostingController.view.layer.borderWidth = 0
@@ -1933,6 +2003,14 @@ final class S2NativePagerViewController: UIViewController,
     private(set) var presentationTapLayoutReading =
         S2PresentationTapLayoutReading()
     var diagnosticsRun: S2GeometryDiagnosticsRun?
+    weak var transitionDiagnostics:
+        S2OnDeviceTransitionDiagnosticsCoordinator? {
+        didSet {
+            pageControllers.values.forEach {
+                $0.transitionDiagnostics = transitionDiagnostics
+            }
+        }
+    }
 
     override func loadView() {
         let rootView = UIView()
@@ -1971,6 +2049,7 @@ final class S2NativePagerViewController: UIViewController,
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        transitionDiagnostics?.recordOuterViewDidLayoutSubviews()
         guard view.bounds.size.width > 0, view.bounds.size.height > 0 else {
             return
         }
@@ -2030,6 +2109,7 @@ final class S2NativePagerViewController: UIViewController,
                     page: page,
                     owner: self
                 )
+                controller.transitionDiagnostics = transitionDiagnostics
                 addChild(controller)
                 pagingScrollView.addSubview(controller.view)
                 controller.prioritizeVerticalSwipe(
@@ -2226,7 +2306,14 @@ final class S2NativePagerViewController: UIViewController,
         pendingPresentationTapPageIndex = page.index
         presentationTapStartTimestamp = CACurrentMediaTime()
         presentationTapLayoutReading = S2PresentationTapLayoutReading()
+        let previousVisibility = machine.interfaceVisibility
         let handled = machine.handleSingleTap()
+        if handled, previousVisibility != machine.interfaceVisibility {
+            transitionDiagnostics?.recordSwiftUIStatePublication(
+                from: previousVisibility,
+                to: machine.interfaceVisibility
+            )
+        }
         if !handled {
             pendingPresentationTapPageIndex = nil
             presentationTapStartTimestamp = nil
@@ -2576,6 +2663,9 @@ final class S2NativePagerViewController: UIViewController,
                       isHandlingOuterLayoutCallback {
                 presentationTapLayoutReading
                     .suppressedPhotoFrameWriteCount += 1
+                transitionDiagnostics?.recordOuterLayoutSuppression(
+                    pageIndex: index
+                )
             }
         }
         if !pagingScrollView.isTracking &&
@@ -3350,5 +3440,473 @@ final class S2GeometryDiagnosticsRun {
 
     private func visibilityText(_ value: S2InterfaceVisibility) -> String {
         value == .visible ? "显示" : "隐藏"
+    }
+}
+
+enum S2OnDeviceTransitionScenario: String, CaseIterable, Identifiable {
+    case tapShow
+    case tapHide
+    case pinchStart
+
+    var id: String { rawValue }
+
+    var exportTitle: String {
+        switch self {
+        case .tapShow:
+            return "A 单击显示（问题方向）"
+        case .tapHide:
+            return "B 单击隐藏（对照组）"
+        case .pinchStart:
+            return "C 捏合起始"
+        }
+    }
+}
+
+enum S2PhotoGeometryWriteReason: String {
+    case enforceOneXContentGeometry =
+        "S2NativeZoomScrollView.enforceOneXContentGeometry"
+    case prepareNativeZoomGeometry =
+        "S2NativeZoomScrollView.prepareNativeZoomGeometry"
+    case presentationTransitionProgress =
+        "S2NativeZoomPageController.applyPresentationTransitionProgress"
+    case presentationTransitionFinish =
+        "S2NativeZoomPageController.finishPresentationTransition"
+    case cornerMaskReset =
+        "S2NativeZoomPageController.applyCornerMask"
+}
+
+struct S2OnDeviceTransitionFrameSample: Equatable {
+    let animationKeys: [String]
+    let modelFrame: CGRect?
+    let presentationFrame: CGRect?
+    let transform: CGAffineTransform?
+    let zoomScale: CGFloat?
+    let contentOffset: CGPoint?
+    let contentSize: CGSize?
+    let visibility: S2InterfaceVisibility?
+    let scale: CGFloat?
+}
+
+enum S2OnDeviceTransitionPayload: Equatable {
+    case frame(S2OnDeviceTransitionFrameSample)
+    case event(name: String, source: String, details: String)
+}
+
+struct S2OnDeviceTransitionRecord: Equatable {
+    let timestamp: CFTimeInterval
+    let sequence: Int
+    let payload: S2OnDeviceTransitionPayload
+}
+
+final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
+    ObservableObject {
+    static let recordingLimitSeconds: CFTimeInterval = 5
+    static let minimumSamplingFramesPerSecond = 60
+
+    @Published var selectedScenario: S2OnDeviceTransitionScenario = .tapShow
+    @Published private(set) var isRecording = false
+    @Published private(set) var reportText = ""
+
+    private(set) var recordedEntries: [S2OnDeviceTransitionRecord] = []
+    private(set) var photoGeometryWriteCount = 0
+    private weak var controller: S2NativePagerViewController?
+    private let clock: () -> CFTimeInterval
+    private var recordedScenario: S2OnDeviceTransitionScenario?
+    private var recordingStartedAt: CFTimeInterval?
+    private var recordingStoppedAt: CFTimeInterval?
+    private var displayLink: CADisplayLink?
+    private var timeoutWorkItem: DispatchWorkItem?
+
+    init(clock: @escaping () -> CFTimeInterval = { CACurrentMediaTime() }) {
+        self.clock = clock
+        super.init()
+    }
+
+    deinit {
+        displayLink?.invalidate()
+        timeoutWorkItem?.cancel()
+    }
+
+    var canStart: Bool {
+        controller != nil && !isRecording
+    }
+
+    var canExport: Bool {
+        !isRecording && !recordedEntries.isEmpty
+    }
+
+    func attach(_ controller: S2NativePagerViewController) {
+        if self.controller !== controller, isRecording {
+            finishRecording(source: "控制器切换自动停止")
+        }
+        self.controller = controller
+        controller.transitionDiagnostics = self
+    }
+
+    func detach(_ controller: S2NativePagerViewController) {
+        guard self.controller === controller else {
+            return
+        }
+        if isRecording {
+            finishRecording(source: "控制器卸载自动停止")
+        }
+        controller.transitionDiagnostics = nil
+        self.controller = nil
+    }
+
+    func start() {
+        guard !isRecording, controller != nil else {
+            return
+        }
+        displayLink?.invalidate()
+        timeoutWorkItem?.cancel()
+        recordedEntries = []
+        photoGeometryWriteCount = 0
+        reportText = ""
+        recordedScenario = selectedScenario
+        let startedAt = clock()
+        recordingStartedAt = startedAt
+        recordingStoppedAt = nil
+        isRecording = true
+        append(
+            timestamp: startedAt,
+            payload: .event(
+                name: "录制开始",
+                source: "调试面板",
+                details: "上限秒=5；采样频率下限Hz=60"
+            )
+        )
+        captureFrame()
+
+        let displayLink = CADisplayLink(
+            target: self,
+            selector: #selector(captureDisplayFrame(_:))
+        )
+        let maximum = max(
+            Self.minimumSamplingFramesPerSecond,
+            UIScreen.main.maximumFramesPerSecond
+        )
+        displayLink.preferredFrameRateRange = CAFrameRateRange(
+            minimum: Float(Self.minimumSamplingFramesPerSecond),
+            maximum: Float(maximum),
+            preferred: Float(maximum)
+        )
+        self.displayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
+
+        let timeout = DispatchWorkItem { [weak self] in
+            self?.finishRecording(source: "五秒上限自动停止")
+        }
+        timeoutWorkItem = timeout
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Self.recordingLimitSeconds,
+            execute: timeout
+        )
+    }
+
+    func stop() {
+        finishRecording(source: "调试面板")
+    }
+
+    func export() {
+        guard canExport,
+              let scenario = recordedScenario,
+              let startedAt = recordingStartedAt else {
+            return
+        }
+        reportText = S2OnDeviceTransitionText.export(
+            scenario: scenario,
+            startedAt: startedAt,
+            stoppedAt: recordingStoppedAt ??
+                recordedEntries.last?.timestamp ?? startedAt,
+            records: recordedEntries
+        )
+    }
+
+    func captureFrame() {
+        guard isRecording else {
+            return
+        }
+        let machine = controller?.diagnosticMachine
+        let scrollView = controller?.diagnosticCurrentPage?.zoomScrollView
+        let photoLayer = scrollView?.presentationContentView?.layer
+        append(payload: .frame(S2OnDeviceTransitionFrameSample(
+            animationKeys: photoLayer?.animationKeys() ?? [],
+            modelFrame: photoLayer?.frame,
+            presentationFrame: photoLayer?.presentation()?.frame,
+            transform: photoLayer?.affineTransform(),
+            zoomScale: scrollView?.zoomScale,
+            contentOffset: scrollView?.contentOffset,
+            contentSize: scrollView?.contentSize,
+            visibility: machine?.interfaceVisibility,
+            scale: machine?.scale
+        )))
+    }
+
+    func recordSwiftUIStatePublication(
+        from previous: S2InterfaceVisibility,
+        to next: S2InterfaceVisibility
+    ) {
+        recordEvent(
+            name: "SwiftUI状态发布",
+            source: "S2StateMachine.handleSingleTap @Published(V)",
+            details: "V从\(S2OnDeviceTransitionText.visibility(previous))" +
+                "变为\(S2OnDeviceTransitionText.visibility(next))"
+        )
+    }
+
+    func recordUpdateUIView(wrotePhotoGeometry: Bool) {
+        recordEvent(
+            name: "updateUIView",
+            source: "S2NativePhotoPager.updateUIViewController",
+            details: "写入照片几何=\(wrotePhotoGeometry)"
+        )
+    }
+
+    func recordInnerLayoutSubviews() {
+        recordEvent(
+            name: "layoutSubviews",
+            source: "S2NativeZoomScrollView.layoutSubviews",
+            details: "层级=内层"
+        )
+    }
+
+    func recordOuterViewDidLayoutSubviews() {
+        recordEvent(
+            name: "viewDidLayoutSubviews",
+            source: "S2NativePagerViewController.viewDidLayoutSubviews",
+            details: "层级=外层"
+        )
+    }
+
+    func recordPhotoGeometryWrite(
+        frame: CGRect,
+        transform: CGAffineTransform,
+        reason: S2PhotoGeometryWriteReason
+    ) {
+        guard isRecording else {
+            return
+        }
+        photoGeometryWriteCount += 1
+        append(payload: .event(
+            name: "照片几何写入",
+            source: reason.rawValue,
+            details: "frame=\(S2OnDeviceTransitionText.rect(frame))；" +
+                "transform=\(S2OnDeviceTransitionText.transform(transform))"
+        ))
+    }
+
+    func recordPhotoAnimationOperation(
+        operation: String,
+        key: String,
+        source: String
+    ) {
+        recordEvent(
+            name: "照片动画调用",
+            source: source,
+            details: "operation=\(operation)；key=\(key)"
+        )
+    }
+
+    func recordCATransactionCommit(source: String) {
+        recordEvent(
+            name: "CATransaction提交边界",
+            source: source,
+            details: "commit=true"
+        )
+    }
+
+    func recordOuterLayoutSuppression(pageIndex: Int) {
+        recordEvent(
+            name: "抑制外层布局写入生效",
+            source: "S2NativePagerViewController.layoutNativePages",
+            details: "pageIndex=\(pageIndex)"
+        )
+    }
+
+    private func finishRecording(source: String) {
+        guard isRecording else {
+            return
+        }
+        append(payload: .event(
+            name: "录制停止",
+            source: source,
+            details: "已保留记录数=\(recordedEntries.count + 1)"
+        ))
+        recordingStoppedAt = recordedEntries.last?.timestamp ?? clock()
+        isRecording = false
+        displayLink?.invalidate()
+        displayLink = nil
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+    }
+
+    @objc private func captureDisplayFrame(_ displayLink: CADisplayLink) {
+        guard displayLink === self.displayLink,
+              let startedAt = recordingStartedAt else {
+            displayLink.invalidate()
+            return
+        }
+        if clock() - startedAt >= Self.recordingLimitSeconds {
+            finishRecording(source: "五秒上限自动停止")
+            return
+        }
+        captureFrame()
+    }
+
+    private func recordEvent(
+        name: String,
+        source: String,
+        details: String
+    ) {
+        guard isRecording else {
+            return
+        }
+        append(payload: .event(
+            name: name,
+            source: source,
+            details: details
+        ))
+    }
+
+    private func append(
+        timestamp: CFTimeInterval? = nil,
+        payload: S2OnDeviceTransitionPayload
+    ) {
+        let proposedTimestamp = timestamp ?? clock()
+        let resolvedTimestamp: CFTimeInterval
+        if let previous = recordedEntries.last?.timestamp {
+            resolvedTimestamp = max(proposedTimestamp, previous.nextUp)
+        } else {
+            resolvedTimestamp = proposedTimestamp
+        }
+        recordedEntries.append(S2OnDeviceTransitionRecord(
+            timestamp: resolvedTimestamp,
+            sequence: recordedEntries.count,
+            payload: payload
+        ))
+    }
+}
+
+enum S2OnDeviceTransitionText {
+    static func export(
+        scenario: S2OnDeviceTransitionScenario,
+        startedAt: CFTimeInterval,
+        stoppedAt: CFTimeInterval,
+        records: [S2OnDeviceTransitionRecord]
+    ) -> String {
+        let sortedRecords = records.sorted {
+            if $0.timestamp == $1.timestamp {
+                return $0.sequence < $1.sequence
+            }
+            return $0.timestamp < $1.timestamp
+        }
+        var lines = [
+            "# IC-068 真机过渡诊断",
+            "格式版本=1",
+            "场景=\(scenario.exportTitle)",
+            "时钟=CACurrentMediaTime()",
+            "采样频率下限Hz=\(S2OnDeviceTransitionDiagnosticsCoordinator.minimumSamplingFramesPerSecond)",
+            "录制上限秒=\(number(S2OnDeviceTransitionDiagnosticsCoordinator.recordingLimitSeconds))",
+            "起始绝对时间=\(timestamp(startedAt))",
+            "停止绝对时间=\(timestamp(stoppedAt))",
+            "记录总数=\(sortedRecords.count)",
+            "顺序=全部记录按同一单调时钟严格递增",
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,V,s",
+            "离散事件字段=time,event,source,details",
+            "---"
+        ]
+        for (index, record) in sortedRecords.enumerated() {
+            let prefix = String(format: "%06d", index + 1) +
+                "\ttime=\(timestamp(record.timestamp - startedAt))"
+            switch record.payload {
+            case let .frame(sample):
+                lines.append(prefix +
+                    "\tkind=frame" +
+                    "\tanimationKeys=\(animationKeys(sample.animationKeys))" +
+                    "\tmodelFrame=\(optionalRect(sample.modelFrame))" +
+                    "\tpresentationFrame=\(optionalRect(sample.presentationFrame))" +
+                    "\ttransform=\(optionalTransform(sample.transform))" +
+                    "\tzoomScale=\(optionalNumber(sample.zoomScale))" +
+                    "\tcontentOffset=\(optionalPoint(sample.contentOffset))" +
+                    "\tcontentSize=\(optionalSize(sample.contentSize))" +
+                    "\tV=\(sample.visibility.map(visibility) ?? "nil")" +
+                    "\ts=\(optionalNumber(sample.scale))")
+            case let .event(name, source, details):
+                lines.append(prefix +
+                    "\tkind=event" +
+                    "\tevent=\(name)" +
+                    "\tsource=\(source)" +
+                    "\tdetails=\(details)")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    static func visibility(_ value: S2InterfaceVisibility) -> String {
+        value == .visible ? "显示" : "隐藏"
+    }
+
+    static func rect(_ value: CGRect) -> String {
+        "(x=\(number(value.minX)),y=\(number(value.minY))," +
+            "w=\(number(value.width)),h=\(number(value.height)))"
+    }
+
+    static func transform(_ value: CGAffineTransform) -> String {
+        "(a=\(number(value.a)),b=\(number(value.b))," +
+            "c=\(number(value.c)),d=\(number(value.d))," +
+            "tx=\(number(value.tx)),ty=\(number(value.ty)))"
+    }
+
+    private static func timestamp(_ value: CFTimeInterval) -> String {
+        String(
+            format: "%.15f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            value
+        )
+    }
+
+    private static func number<T: BinaryFloatingPoint>(_ value: T) -> String {
+        String(
+            format: "%.6f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            Double(value)
+        )
+    }
+
+    private static func animationKeys(_ values: [String]) -> String {
+        "[" + values.map {
+            "\"\($0.replacingOccurrences(of: "\"", with: "\\\""))\""
+        }.joined(separator: ",") + "]"
+    }
+
+    private static func optionalRect(_ value: CGRect?) -> String {
+        value.map(rect) ?? "nil"
+    }
+
+    private static func optionalTransform(
+        _ value: CGAffineTransform?
+    ) -> String {
+        value.map(transform) ?? "nil"
+    }
+
+    private static func optionalNumber<T: BinaryFloatingPoint>(
+        _ value: T?
+    ) -> String {
+        value.map(number) ?? "nil"
+    }
+
+    private static func optionalPoint(_ value: CGPoint?) -> String {
+        guard let value else {
+            return "nil"
+        }
+        return "(x=\(number(value.x)),y=\(number(value.y)))"
+    }
+
+    private static func optionalSize(_ value: CGSize?) -> String {
+        guard let value else {
+            return "nil"
+        }
+        return "(w=\(number(value.width)),h=\(number(value.height)))"
     }
 }
