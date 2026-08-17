@@ -3201,70 +3201,267 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(disabled.durationSeconds, 0)
     }
 
-    // IC-065 改造前证据：以 60Hz 记录原生捏合接管前后的 window frame。
-    func testIC065BaselinePinchStartFrameProbe() {
+    // IC-065 G26：高度受限、窄于视口的完整适配照片在 1x 水平居中。
+    func testIC065G26WidthLimitedOneXIsHorizontallyCentered() {
+        let hosted = makeIC065HostedPage(assetAspectRatio: 478.0 / 2_622.0)
+        defer { hosted.window.isHidden = true }
+        let frame = ic065PresentationFrameInWindow(
+            page: hosted.page,
+            window: hosted.window
+        )
+
+        XCTAssertLessThan(frame.width, hosted.window.bounds.width)
+        XCTAssertEqual(
+            frame.midX,
+            hosted.window.bounds.midX,
+            accuracy: 0.5
+        )
+    }
+
+    // IC-065 G27：宽度受限、矮于视口的完整适配照片在 1x 垂直居中。
+    func testIC065G27HeightLimitedOneXIsVerticallyCentered() {
+        let hosted = makeIC065HostedPage(assetAspectRatio: 9.0 / 16.0)
+        defer { hosted.window.isHidden = true }
+        let frame = ic065PresentationFrameInWindow(
+            page: hosted.page,
+            window: hosted.window
+        )
+
+        XCTAssertLessThan(frame.height, hosted.window.bounds.height)
+        XCTAssertEqual(
+            frame.midY,
+            hosted.window.bounds.midY,
+            accuracy: 0.5
+        )
+    }
+
+    // IC-065 G28～G29：60Hz presentation 轨迹在接管首帧及全程保持小尺寸方向居中。
+    func testIC065G28ToG29PinchTrackHasNoCenterJump() {
         let samples: [(String, CGFloat)] = [
             ("width_limited", 478.0 / 2_622.0),
             ("height_limited", 9.0 / 16.0)
         ]
+        let scales: [CGFloat] = [1.001, 1.05, 1.10, 1.25, 1.50, 2, 3, 4]
 
         for (name, assetAspectRatio) in samples {
-            let machine = makeMachine()
-            let controller = makeNativePagerController(
-                machine: machine,
+            let hosted = makeIC065HostedPage(
                 assetAspectRatio: assetAspectRatio
             )
-            let window = UIWindow(
-                frame: CGRect(origin: .zero, size: physicalSize)
-            )
-            window.rootViewController = controller
-            window.isHidden = false
-            defer { window.isHidden = true }
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
-            let page = tryUnwrap(
-                controller.pageControllers[machine.currentIndex]
-            )
-            let scrollView = page.zoomScrollView
+            defer { hosted.window.isHidden = true }
+            let scrollView = hosted.page.zoomScrollView
             let sampler = IC065PinchPresentationSampler(
                 scrollView: scrollView,
-                window: window
+                window: hosted.window
             )
 
             sampler.start()
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
             scrollView.prepareForNativeZoom()
             sampler.mark("pinch_began")
-            scrollView.setZoomScale(1.001, animated: false)
-            scrollView.setNeedsLayout()
-            scrollView.layoutIfNeeded()
-            sampler.mark("scale_1_001")
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+            RunLoop.main.run(
+                until: Date(timeIntervalSinceNow: 1.0 / 60.0)
+            )
+            for scale in scales {
+                scrollView.setZoomScale(scale, animated: false)
+                scrollView.setNeedsLayout()
+                scrollView.layoutIfNeeded()
+                sampler.mark(String(format: "scale_%.3f", scale))
+                RunLoop.main.run(
+                    until: Date(timeIntervalSinceNow: 1.0 / 60.0)
+                )
+            }
             let trace = sampler.stop()
 
-            XCTAssertGreaterThanOrEqual(trace.count, 5)
+            let oneX = tryUnwrap(trace.first { $0.phase == "one_x" })
+            let pinchBegan = tryUnwrap(
+                trace.first { $0.phase == "pinch_began" }
+            )
+            let firstGrowth = tryUnwrap(
+                trace.first { $0.phase == "scale_1.001" }
+            )
+            XCTAssertLessThanOrEqual(
+                abs(pinchBegan.frameInWindow.midX - oneX.frameInWindow.midX),
+                0.5
+            )
+            XCTAssertLessThanOrEqual(
+                abs(pinchBegan.frameInWindow.midY - oneX.frameInWindow.midY),
+                0.5
+            )
+            XCTAssertLessThanOrEqual(
+                abs(firstGrowth.frameInWindow.midX -
+                    pinchBegan.frameInWindow.midX),
+                0.5
+            )
+            XCTAssertLessThanOrEqual(
+                abs(firstGrowth.frameInWindow.midY -
+                    pinchBegan.frameInWindow.midY),
+                0.5
+            )
+            XCTAssertGreaterThanOrEqual(trace.count, scales.count * 2)
             for (index, sample) in trace.enumerated() {
-                print(String(format:
-                    "IC065_BASELINE_FRAME sample=%@ index=%d phase=%@ time=%.6f scale=%.6f frame=(%.6f,%.6f,%.6f,%.6f) contentSize=(%.6f,%.6f) contentOffset=(%.6f,%.6f) inset=(%.6f,%.6f,%.6f,%.6f)",
-                    name,
-                    index,
-                    sample.phase,
-                    sample.timestamp,
-                    sample.zoomScale,
-                    sample.frameInWindow.minX,
-                    sample.frameInWindow.minY,
-                    sample.frameInWindow.width,
-                    sample.frameInWindow.height,
-                    sample.contentSize.width,
-                    sample.contentSize.height,
-                    sample.contentOffset.x,
-                    sample.contentOffset.y,
-                    sample.contentInset.top,
-                    sample.contentInset.left,
-                    sample.contentInset.bottom,
-                    sample.contentInset.right
-                ))
+                let frame = sample.frameInWindow
+                let viewport = hosted.window.bounds
+                if frame.width < viewport.width - 0.5 {
+                    XCTAssertEqual(
+                        frame.midX,
+                        viewport.midX,
+                        accuracy: 0.5,
+                        "样本=\(name)，序号=\(index)"
+                    )
+                }
+                if frame.height < viewport.height - 0.5 {
+                    XCTAssertEqual(
+                        frame.midY,
+                        viewport.midY,
+                        accuracy: 0.5,
+                        "样本=\(name)，序号=\(index)"
+                    )
+                }
             }
         }
+    }
+
+    // IC-065 G30：大于视口的方向只使用原生内容边界，不增加额外余量。
+    func testIC065G30OversizedDirectionsUseNativeContentBounds() {
+        for assetAspectRatio in [CGFloat(478.0 / 2_622.0), 9.0 / 16.0] {
+            let hosted = makeIC065HostedPage(
+                assetAspectRatio: assetAspectRatio
+            )
+            defer { hosted.window.isHidden = true }
+            let scrollView = hosted.page.zoomScrollView
+            scrollView.prepareForNativeZoom()
+
+            for scale in [CGFloat(1.001), 2, 4] {
+                scrollView.setZoomScale(scale, animated: false)
+                scrollView.setNeedsLayout()
+                scrollView.layoutIfNeeded()
+                let maximumOffset = CGPoint(
+                    x: max(0, scrollView.contentSize.width -
+                        scrollView.bounds.width),
+                    y: max(0, scrollView.contentSize.height -
+                        scrollView.bounds.height)
+                )
+                if scrollView.contentSize.width >
+                    scrollView.bounds.width + 0.5 {
+                    XCTAssertEqual(scrollView.contentInset.left, 0)
+                    XCTAssertEqual(scrollView.contentInset.right, 0)
+                    XCTAssertGreaterThanOrEqual(scrollView.contentOffset.x, 0)
+                    XCTAssertLessThanOrEqual(
+                        scrollView.contentOffset.x,
+                        maximumOffset.x
+                    )
+                }
+                if scrollView.contentSize.height >
+                    scrollView.bounds.height + 0.5 {
+                    XCTAssertEqual(scrollView.contentInset.top, 0)
+                    XCTAssertEqual(scrollView.contentInset.bottom, 0)
+                    XCTAssertGreaterThanOrEqual(scrollView.contentOffset.y, 0)
+                    XCTAssertLessThanOrEqual(
+                        scrollView.contentOffset.y,
+                        maximumOffset.y
+                    )
+                }
+            }
+        }
+    }
+
+    // IC-065 G31：命中屏幕比例时继续保持 IC-063 G1～G2 的铺满与内缩结果。
+    func testIC065G31MatchedPhotoKeepsIC063Geometry() {
+        let assetAspectRatio = screenAspectRatio * 1.008
+        let states: [S2InterfaceVisibility] = [.hidden, .visible]
+
+        for visibility in states {
+            let hosted = makeIC065HostedPage(
+                assetAspectRatio: assetAspectRatio,
+                interfaceVisibility: visibility
+            )
+            defer { hosted.window.isHidden = true }
+            let expected = S2ViewportLayout.metrics(
+                physicalSize: physicalSize,
+                presentationState: S2ViewportPresentationState(
+                    interfaceVisibility: visibility,
+                    bottomStripState: .idle,
+                    sheetState: .closed
+                ),
+                assetAspectRatio: assetAspectRatio,
+                configuration: .factoryPlaceholder
+            )
+            let frame = ic065PresentationFrameInWindow(
+                page: hosted.page,
+                window: hosted.window
+            )
+
+            XCTAssertTrue(expected.isFramedPhoto)
+            XCTAssertEqual(frame.size.width, expected.oneXDisplaySize.width)
+            XCTAssertEqual(frame.size.height, expected.oneXDisplaySize.height)
+            XCTAssertEqual(frame.midX, hosted.window.bounds.midX, accuracy: 0.5)
+            XCTAssertEqual(frame.midY, hosted.window.bounds.midY, accuracy: 0.5)
+        }
+    }
+
+    // IC-065 G32：冻结 IC-064 交付报告中的双向逐帧宽度序列。
+    func testIC065G32IC064DeliveredWidthSequenceRemainsExact() {
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let hidingWidths: [CGFloat] = [
+            210.000, 210.000, 217.844, 224.675, 231.492, 238.315,
+            245.085, 251.904, 258.730, 265.534, 272.353, 279.176,
+            286.031, 292.821, 299.653, 300.000
+        ]
+        let showingWidths: [CGFloat] = [
+            300.000, 300.000, 287.290, 280.497, 273.712, 266.895,
+            260.095, 253.281, 246.460, 239.626, 232.759, 225.990,
+            219.187, 212.319, 210.000
+        ]
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        let hiding = tryUnwrap(page.lastPresentationTransition)
+        XCTAssertEqual(page.lastPresentationTransitionDuration, 0.22)
+        for expectedWidth in hidingWidths {
+            let progress = (expectedWidth - 210) / 90
+            XCTAssertEqual(
+                hiding.size(at: progress).width,
+                expectedWidth,
+                accuracy: 0.5
+            )
+        }
+        page.finishActivePresentationTransition()
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        let showing = tryUnwrap(page.lastPresentationTransition)
+        XCTAssertEqual(page.lastPresentationTransitionDuration, 0.22)
+        for expectedWidth in showingWidths {
+            let progress = (300 - expectedWidth) / 90
+            XCTAssertEqual(
+                showing.size(at: progress).width,
+                expectedWidth,
+                accuracy: 0.5
+            )
+        }
+        page.finishActivePresentationTransition()
+    }
+
+    // IC-065 G34：校准参数中没有引入任何捏合锚点字段。
+    func testIC065G34DoesNotAddPinchAnchorParameters() {
+        let parameterNames = Mirror(
+            reflecting: S2CalibrationConfiguration.factoryPlaceholder
+        ).children.compactMap(\.label)
+        XCTAssertFalse(parameterNames.contains {
+            let normalized = $0.lowercased()
+            return normalized.contains("pinch") &&
+                normalized.contains("anchor")
+        })
     }
 
     // IC-064 G13～G18：真实显示层采样同时满足等比、中心、双向与稳定性。
@@ -3869,6 +4066,43 @@ final class S2CalibrationHarnessTests: XCTestCase {
             showsRecentAlbumAction: true,
             calibrationState: calibrationState
         )
+    }
+
+    private func makeIC065HostedPage(
+        assetAspectRatio: CGFloat,
+        interfaceVisibility: S2InterfaceVisibility = .visible
+    ) -> (
+        window: UIWindow,
+        machine: S2StateMachine,
+        controller: S2NativePagerViewController,
+        page: S2NativeZoomPageController
+    ) {
+        let machine = makeMachine(interfaceVisibility: interfaceVisibility)
+        let controller = makeNativePagerController(
+            machine: machine,
+            assetAspectRatio: assetAspectRatio
+        )
+        let window = UIWindow(
+            frame: CGRect(origin: .zero, size: physicalSize)
+        )
+        window.rootViewController = controller
+        window.isHidden = false
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let page = tryUnwrap(
+            controller.pageControllers[machine.currentIndex]
+        )
+        return (window, machine, controller, page)
+    }
+
+    private func ic065PresentationFrameInWindow(
+        page: S2NativeZoomPageController,
+        window: UIWindow
+    ) -> CGRect {
+        let scrollView = page.zoomScrollView
+        let contentView = tryUnwrap(scrollView.presentationContentView)
+        let zoomContentView = tryUnwrap(scrollView.zoomContentView)
+        let layer = contentView.layer.presentation() ?? contentView.layer
+        return zoomContentView.convert(layer.frame, to: window)
     }
 
     private func makeMachine(

@@ -323,12 +323,6 @@ final class S2NativeZoomScrollView: UIScrollView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        if abs(zoomScale - minimumZoomScale) <= 0.000_001 {
-            if contentInset != .zero {
-                contentInset = .zero
-            }
-            return
-        }
         let nextInset = UIEdgeInsets(
             top: max(0, (bounds.height - contentSize.height) / 2),
             left: max(0, (bounds.width - contentSize.width) / 2),
