@@ -3115,10 +3115,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
             configuration: configuration
         )
         let hiddenFrame = page.zoomScrollView.visiblePresentationFrame()
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.30))
-        XCTAssertEqual(
-            page.zoomScrollView.visiblePresentationFrame(),
-            hiddenFrame
+        let hiddenStableSamples = captureStablePresentationWindow(
+            page: page,
+            duration: 0.30
         )
         let showing = capturePresentationToggle(
             machine: machine,
@@ -3127,14 +3126,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
             configuration: configuration
         )
         let visibleFrame = page.zoomScrollView.visiblePresentationFrame()
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.30))
-        XCTAssertEqual(
-            page.zoomScrollView.visiblePresentationFrame(),
-            visibleFrame
+        let visibleStableSamples = captureStablePresentationWindow(
+            page: page,
+            duration: 0.30
         )
 
         XCTAssertGreaterThanOrEqual(hiding.count, 3)
         XCTAssertGreaterThanOrEqual(showing.count, 3)
+        XCTAssertGreaterThanOrEqual(hiddenStableSamples.count, 3)
+        XCTAssertGreaterThanOrEqual(visibleStableSamples.count, 3)
+        XCTAssertTrue(hiddenStableSamples.allSatisfy { $0.frame == hiddenFrame })
+        XCTAssertTrue(visibleStableSamples.allSatisfy { $0.frame == visibleFrame })
         XCTAssertEqual(
             hiding.last?.timestamp ?? 0,
             showing.last?.timestamp ?? 0,
@@ -3210,6 +3212,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(showingCornerRadii.last ?? -1, 28, accuracy: 0.5)
         assertMonotonic(hidingCornerRadii, direction: .decreasing)
         assertMonotonic(showingCornerRadii, direction: .increasing)
+        printPresentationSummary(direction: "hiding", samples: hiding)
+        printPresentationSummary(direction: "showing", samples: showing)
     }
 
     // IC-064 G19：三种系统样本的左右描边像素均落入目标容差。
@@ -3226,6 +3230,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
             style: .light,
             photoGray: 237
         )
+
+        print("IC064_BORDER_PIXELS scene=dark_black values=\(darkBlack)")
+        print("IC064_BORDER_PIXELS scene=light_black values=\(lightBlack)")
+        print("IC064_BORDER_PIXELS scene=light_gray_237 values=\(lightGray)")
 
         for value in darkBlack {
             XCTAssertEqual(Double(value), 25, accuracy: 6)
@@ -3248,17 +3256,51 @@ final class S2CalibrationHarnessTests: XCTestCase {
             configuration: configuration
         )
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let frameWithBorder = page.zoomScrollView.visiblePresentationFrame()
+
+        var borderlessConfiguration = configuration
+        borderlessConfiguration.fitBorderWidth = 0
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: borderlessConfiguration
+        )
+        let borderlessPage = tryUnwrap(
+            controller.pageControllers[machine.currentIndex]
+        )
+        let borderWidthWithoutBorder = borderlessPage.zoomScrollView
+            .presentationContentView?.layer.borderWidth ?? -1
+        let frameWithoutBorder = borderlessPage.zoomScrollView
+            .visiblePresentationFrame()
+
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        let restoredPage = tryUnwrap(
+            controller.pageControllers[machine.currentIndex]
+        )
+        let restoredFrame = restoredPage.zoomScrollView
+            .visiblePresentationFrame()
 
         XCTAssertEqual(
-            page.zoomScrollView.presentationContentView?.layer.borderWidth ?? -1,
+            borderWidthWithoutBorder,
+            0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            restoredPage.zoomScrollView.presentationContentView?
+                .layer.borderWidth ?? -1,
             1,
             accuracy: 0.000_001
         )
+        XCTAssertTrue(page === borderlessPage)
+        XCTAssertTrue(page === restoredPage)
         XCTAssertEqual(page.fittedSize, value.oneXDisplaySize)
-        XCTAssertEqual(
-            page.zoomScrollView.visiblePresentationFrame()?.size,
-            value.oneXDisplaySize
-        )
+        XCTAssertEqual(frameWithBorder?.size, value.oneXDisplaySize)
+        XCTAssertEqual(frameWithoutBorder, frameWithBorder)
+        XCTAssertEqual(restoredFrame, frameWithBorder)
     }
 
     // IC-064 G21：Nx 描边归零，显隐过渡中的视觉线宽连续收敛。
@@ -3425,6 +3467,32 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
         XCTAssertFalse(page.isPresentationTransitionActive)
         return sampler.stop()
+    }
+
+    private func captureStablePresentationWindow(
+        page: S2NativeZoomPageController,
+        duration: TimeInterval
+    ) -> [IC064PresentationSample] {
+        let sampler = IC064PresentationLayerSampler(page: page)
+        sampler.start()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: duration))
+        return sampler.stop()
+    }
+
+    private func printPresentationSummary(
+        direction: String,
+        samples: [IC064PresentationSample]
+    ) {
+        let widths = samples.map {
+            String(format: "%.3f", $0.frame.width)
+        }.joined(separator: ",")
+        print(String(format:
+            "IC064_FINAL_CURVE direction=%@ samples=%d duration=%.6f widths=%@",
+            direction,
+            samples.count,
+            samples.last?.timestamp ?? 0,
+            widths
+        ))
     }
 
     private func assertMonotonic(
