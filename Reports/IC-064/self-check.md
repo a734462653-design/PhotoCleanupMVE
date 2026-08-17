@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-本地代码、测试夹具与 Windows 可执行的静态门禁已完成。经用户明确授权，CI #68 已在继承提交上取得改造前真实曲线，并以真实退出结果证明 384 项基线 XCTest 全部通过。最终实现的模拟器断言、描边像素、测试总数与 IPA 仍须由下一次 CI 补齐，本报告在该证据取得前不声称完整验收通过。
+本地静态门禁与获准的 GitHub CI 均已通过。CI #68 在继承提交上取得改造前真实曲线并证明 384 项基线 XCTest 全部通过；CI #72 在最终产品与测试代码提交 `d1318c4bb2c0d937bd5ce9213d474516cd8a6c85` 上执行 389 项 XCTest、0 失败，真实退出码 0，并成功生成与上传未签名 IPA。H3～H6 仍按任务边界保留给负责人真机并排判定。
 
 ## 输入与边界
 
@@ -46,33 +46,41 @@
 - 单击显隐使用独立的 `presentationToggleDuration=220.000000` 毫秒；既有双击动画仍使用 `animationDurationMilliseconds=180.000000`。
 - 动画开始前一次性提交终态布局；照片层从源态的中心等比 transform 连续收敛到 identity，完成后不再提交第二份几何。
 - 两个方向共用同一条线性动画路径，锚点固定为照片层中心和视口中心。
-- 圆角和描边与 transform 在同一动画事务中连续变化；中断重入时从当前 presentation 层的视觉 frame、圆角和描边继续。
-- 内缩态描边使用照片层自身的 `borderWidth`，不增加照片总尺寸；深色模式为白色 0.09，浅色模式为黑色 0.055。
+- 圆角和描边与 transform 共用同一条 220ms 线性显示刷新进度；中断重入时从当前 presentation 层的视觉 frame、圆角和描边继续。
+- 内缩态描边使用照片内容之上的专用内层描边层，不增加照片总尺寸且不会与窗口底色错误合成；深色模式为白色 0.09，浅色模式为黑色 0.055。
 - 描边仅在 `s=1`、`V=显示`、框显且命中屏幕比例时出现；Nx 下宽度为 0；trait 明暗切换时原地刷新颜色。
 - `fitBorderWidth`、`fitBorderDarkAlpha`、`fitBorderLightAlpha` 与 `presentationToggleDuration` 已接入 debug 面板并支持实时持久化与导出。
+
+## 改造后过渡曲线
+
+CI #72 使用同一 60Hz `CADisplayLink` 与 `layer.presentation()` 夹具实测。产品线性进度的标定时长为 220ms；下列采样窗口从点击前源态帧开始，到结束回调后的最终捕获为止，因此包含下一次显示刷新，实测总窗口为 232.640～237.756ms。两个方向总窗口相差 5.116ms，且均包含 13 个以上不同的中间宽度，不再出现首帧跳终点。
+
+- 内缩→铺满：16 帧，237.756ms；宽度序列 `210.000, 210.000, 217.844, 224.675, 231.492, 238.315, 245.085, 251.904, 258.730, 265.534, 272.353, 279.176, 286.031, 292.821, 299.653, 300.000`。
+- 铺满→内缩：15 帧，232.640ms；宽度序列 `300.000, 300.000, 287.290, 280.497, 273.712, 266.895, 260.095, 253.281, 246.460, 239.626, 232.759, 225.990, 219.187, 212.319, 210.000`。
+- 所有中间帧保持视口中心锚、等比 transform 与完整 `contentsRect`；点击后的动画帧使用一次性提交的固定目标 bounds。双向结束回调后的 300ms 稳定窗口内 frame 变化均为 0。
 
 ## G13～G25 状态
 
 | 编号 | 断言或证据 | 当前状态 |
 |---|---|---|
-| G13～G18 | `testIC064G13ToG18PresentationSamplesMeetGeometryContract`，60Hz presentation 层双向采样、等比缩放、中心、恒定完整 bounds/contentsRect、时长差、圆角单调与两方向结束后 300ms 稳定性 | 已编写，未在模拟器实跑 |
-| G19 | `testIC064G19FitBorderPixelsMatchDarkAndLightSamples`，三种构造样本、左右边界、@3x 像素取样 | 已编写，未在模拟器实跑 |
-| G20 | `testIC064G20FitBorderKeepsPhotoGeometryUnchanged` | 已编写，未在模拟器实跑 |
-| G21 | `testIC064G21FitBorderTracksScaleAndPresentationProgress`，Nx 归零及显隐双向视觉线宽连续性 | 已编写，未在模拟器实跑 |
-| G22 | `testIC064G22FitBorderUpdatesWithInterfaceStyle` | 已编写，未在模拟器实跑 |
+| G13～G18 | `testIC064G13ToG18PresentationSamplesMeetGeometryContract`，60Hz presentation 层双向采样、等比缩放、中心、点击后固定完整 bounds/contentsRect、时长差、多个不同中间帧、圆角单调与两方向结束后 300ms 稳定性 | CI #72 通过 |
+| G19 | `testIC064G19FitBorderPixelsMatchDarkAndLightSamples`，三种构造样本、左右边界、@3x 真实视图层级像素取样 | CI #72 通过 |
+| G20 | `testIC064G20FitBorderKeepsPhotoGeometryUnchanged` | CI #72 通过 |
+| G21 | `testIC064G21FitBorderTracksScaleAndPresentationProgress`，Nx 归零及显隐双向视觉线宽连续性 | CI #72 通过 |
+| G22 | `testIC064G22FitBorderUpdatesWithInterfaceStyle` | CI #72 通过 |
 | G23 | 全工程搜索 `overrideUserInterfaceStyle` 赋值 | 通过，0 处 |
-| G24 | IC-063 G1～G12 测试仍存在；三个禁止改动文件相对基线均无差异 | 静态通过，未实跑 XCTest |
-| G25 | XCTest 静态函数总数 | 389，未实跑 XCTest |
+| G24 | IC-063 G1～G12 测试仍存在；三个禁止改动文件相对基线均无差异 | CI #72 全量回归通过 |
+| G25 | XCTest 静态函数总数与实跑总数 | 389；CI #72 实跑 389，0 失败 |
 
 ## 描边像素比对
 
-模拟器实测尚未取得，不填写虚构像素值。测试已按以下目标编写：
+以下数值来自 CI #72 的 iPhone 16、iOS 18.5 模拟器，使用 @3x `drawHierarchy` 真实视图层级截图读取照片左右边界：
 
-| 场景 | 左侧目标 | 右侧目标 | 当前结果 |
+| 场景 | 左侧目标 | 右侧目标 | 实测结果 |
 |---|---:|---:|---|
-| 深色模式、边缘灰度 2 | 25±6 | 25±6 | 未实跑 |
-| 浅色模式、边缘灰度 2 | 2±4 | 2±4 | 未实跑 |
-| 浅色模式、边缘灰度 237 | 224±6 | 224±6 | 未实跑 |
+| 深色模式、边缘灰度 2 | 25±6 | 25±6 | 左 25、右 25，通过 |
+| 浅色模式、边缘灰度 2 | 2±4 | 2±4 | 左 2、右 2，通过 |
+| 浅色模式、边缘灰度 237 | 224±6 | 224±6 | 左 224、右 224，通过 |
 
 ## 本地自验
 
@@ -90,7 +98,10 @@
 - 基线被测提交：`2dda2ffd63ac7b5b670d76a7bcbd40c83ed3a5f0`。
 - 基线 XCTest：执行 384 项，0 失败；“运行 XCTest”步骤结论 `success`，脚本把被测命令真实状态原样作为步骤退出码，因此真实退出码为 0。
 - 基线未签名 IPA：639678 字节，SHA-256 `fb53da36bbecb33e6de55d35fa8c860d783948719c6c67c029954c28d336ed68`；Actions Artifact 上传成功。
-- 最终实现 CI：待目标分支推进后取得。
+- 最终实现 CI：[iOS 构建与自验 #72](https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/31994638427)，结论 `success`；被测提交 `d1318c4bb2c0d937bd5ce9213d474516cd8a6c85`。
+- 最终 XCTest 原文：`Executed 389 tests, with 0 failures (0 unexpected) in 28.557 (49.329) seconds`；“运行 XCTest”步骤结论 `success`，脚本真实退出码为 0。
+- 最终未签名 IPA：646902 字节，SHA-256 `617474a14d0d75dfe6bef1978a5c9bae37fe5a956ac42aeea6e50d7787a028ca`。
+- Actions Artifact：`PhotoCleanupMVE-unsigned-d1318c4bb2c0`，Artifact ID `9276486248`，上传成功；归档摘要显示 632KB，Artifact digest 为 `sha256:7828dcc006f2807e7bdc6c3fe628d0d71adf7203920ef2b3d0848498c82980ef`。
 
 ## IC-063 遗留说明
 

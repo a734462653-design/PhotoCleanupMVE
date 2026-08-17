@@ -6,9 +6,10 @@
    - 新增 `presentationToggleDuration` 与三项描边参数，补齐默认值、校验、兼容解码、持久化和导出。
    - 保留既有双击动画参数与静止态几何参数。
 2. `PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift`
-   - 将 s=1 显隐改为终态预提交后的中心等比 transform 动画。
+   - 将 s=1 显隐改为终态预提交后由显示刷新逐帧推进的 220ms 中心等比 transform 动画。
    - 动画圆角与描边，消除完成后的二次几何提交。
-   - 按屏幕比例、倍率与 trait 应用描边。
+   - 使用照片内容之上的专用内层描边层，按屏幕比例、倍率与 trait 应用描边。
+   - 同一内容版本的显隐切换不重建照片内容，保持图片请求计数为零。
 3. `PhotoCleanupMVE/Features/S2/S2View.swift`
    - 在 debug 面板接入显隐时长和三项描边参数。
 
@@ -16,10 +17,10 @@
 
 4. `PhotoCleanupMVETests/S2CalibrationHarnessTests.swift`
    - 新增 60Hz `layer.presentation()` 测量夹具。
-   - 新增 G13～G22、独立显隐时长及三场景 @3x 描边像素断言。
+   - 新增 G13～G22、独立显隐时长及三场景 @3x 真实视图层级描边像素断言。
    - 更新原有显隐测试以匹配动画开始前提交终态几何的时序。
 5. `Reports/IC-064/self-check.md`
-   - 记录静态结果、待补的模拟器/CI 证据及 IC-063 两项遗留说明。
+   - 记录改造前后实测曲线、CI #72 全量结果、描边像素、IPA 校验及 IC-063 两项遗留说明。
 6. `Reports/IC-064/change-list.md`
    - 本变更清单。
 
