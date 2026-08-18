@@ -256,6 +256,7 @@ final class S2NativeZoomScrollView: UIScrollView {
     private(set) var fittedSize = CGSize.zero
     private(set) var nativeZoomBaseSize = CGSize.zero
     private(set) var viewportSize = CGSize.zero
+    private(set) var hasResolvedAssetGeometry = true
     private(set) var nativeZoomInvocationCount = 0
     private(set) var lastNativeZoomRect: CGRect?
     private(set) var minimumZoomScaleAnimationInvocationCount = 0
@@ -281,7 +282,8 @@ final class S2NativeZoomScrollView: UIScrollView {
         fittedSize: CGSize,
         nativeZoomBaseSize: CGSize,
         viewportSize: CGSize,
-        maximumZoomScale: CGFloat
+        maximumZoomScale: CGFloat,
+        assetPixelSize: CGSize? = nil
     ) {
         let nextMaximumScale = max(1, maximumZoomScale)
         self.maximumZoomScale = nextMaximumScale
@@ -322,6 +324,9 @@ final class S2NativeZoomScrollView: UIScrollView {
         self.fittedSize = nextFittedSize
         self.nativeZoomBaseSize = nextNativeZoomBaseSize
         self.viewportSize = nextViewportSize
+        hasResolvedAssetGeometry = assetPixelSize.map {
+            $0.width > 0 && $0.height > 0
+        } ?? true
 
         if zoomScale > nextMaximumScale {
             setZoomScale(nextMaximumScale, animated: false)
@@ -521,15 +526,22 @@ final class S2NativeZoomScrollView: UIScrollView {
         return target
     }
 
+    @discardableResult
     func prepareForNativeZoom(
         synchronizedUpdates: () -> Void = {}
-    ) {
+    ) -> Bool {
         guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
-            return
+            return false
+        }
+        guard hasResolvedAssetGeometry else {
+            return false
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        prepareNativeZoomGeometry()
+        guard prepareNativeZoomGeometry() else {
+            CATransaction.commit()
+            return false
+        }
         synchronizedUpdates()
         setNeedsLayout()
         layoutIfNeeded()
@@ -537,6 +549,7 @@ final class S2NativeZoomScrollView: UIScrollView {
         transitionDiagnostics?.recordCATransactionCommit(
             source: "S2NativeZoomScrollView.prepareForNativeZoom"
         )
+        return true
     }
 
     func restoreOneXGeometry() {
@@ -683,10 +696,14 @@ final class S2NativeZoomScrollView: UIScrollView {
         layoutIfNeeded()
     }
 
-    private func prepareNativeZoomGeometry() {
+    @discardableResult
+    private func prepareNativeZoomGeometry() -> Bool {
+        guard hasResolvedAssetGeometry else {
+            return false
+        }
         guard let zoomContentView,
               presentationContentView != nil else {
-            return
+            return false
         }
         if abs(zoomScale - minimumZoomScale) <= 0.000_001 {
             zoomContentView.transform = .identity
@@ -708,6 +725,7 @@ final class S2NativeZoomScrollView: UIScrollView {
             }
             contentSize = nativeZoomBaseSize
         }
+        return true
     }
 
     private func configureNativeZoom() {
@@ -975,7 +993,8 @@ final class S2NativeZoomPageController: UIViewController,
             fittedSize: fittedSize,
             nativeZoomBaseSize: nativeZoomBaseSize,
             viewportSize: latestViewportSize,
-            maximumZoomScale: 1
+            maximumZoomScale: 1,
+            assetPixelSize: assetPixelSize
         )
         applyCornerMask()
         hostingController.didMove(toParent: self)
@@ -1097,7 +1116,8 @@ final class S2NativeZoomPageController: UIViewController,
                     fittedSize: fittedSize,
                     nativeZoomBaseSize: nativeZoomBaseSize,
                     viewportSize: viewportSize,
-                    maximumZoomScale: CGFloat(configuration.pinchMaxScale)
+                    maximumZoomScale: CGFloat(configuration.pinchMaxScale),
+                    assetPixelSize: assetPixelSize
                 )
                 zoomScrollView.applyNativeState(
                     scale: isCurrent ? scale : 1,
@@ -1721,7 +1741,8 @@ final class S2NativeZoomPageController: UIViewController,
             fittedSize: fittedSize,
             nativeZoomBaseSize: nativeZoomBaseSize,
             viewportSize: latestViewportSize,
-            maximumZoomScale: CGFloat(configuration.pinchMaxScale)
+            maximumZoomScale: CGFloat(configuration.pinchMaxScale),
+            assetPixelSize: assetPixelSize
         )
         applyCornerMask()
         zoomScrollView.layoutIfNeeded()

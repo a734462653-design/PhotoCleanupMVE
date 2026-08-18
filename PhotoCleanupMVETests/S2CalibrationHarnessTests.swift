@@ -4537,6 +4537,65 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.fittedSize, visibleSize)
     }
 
+    // IC-069 G56：已解析资产使用真实适配尺寸，未知资产不写猜测几何。
+    func testIC069G56PinchTakeoverRequiresResolvedAssetGeometry() {
+        let resolvedScrollView = S2NativeZoomScrollView(
+            frame: CGRect(origin: .zero, size: physicalSize)
+        )
+        let resolvedContent = UIView()
+        let resolvedSize = CGSize(width: 109.38, height: 600)
+        resolvedScrollView.configure(
+            contentView: resolvedContent,
+            fittedSize: resolvedSize,
+            nativeZoomBaseSize: resolvedSize,
+            viewportSize: physicalSize,
+            maximumZoomScale: 4,
+            assetPixelSize: CGSize(width: 547, height: 3_000)
+        )
+        resolvedScrollView.applyNativeState(scale: 1, viewportOffset: .zero)
+        let resolvedBefore = resolvedScrollView.oneXPresentationFrame
+
+        XCTAssertTrue(resolvedScrollView.prepareForNativeZoom())
+        XCTAssertEqual(
+            resolvedScrollView.oneXPresentationFrame,
+            resolvedBefore
+        )
+
+        let unresolvedScrollView = S2NativeZoomScrollView(
+            frame: CGRect(origin: .zero, size: physicalSize)
+        )
+        let unresolvedContent = UIView()
+        unresolvedScrollView.configure(
+            contentView: unresolvedContent,
+            fittedSize: resolvedSize,
+            nativeZoomBaseSize: CGSize(width: 300, height: 225),
+            viewportSize: physicalSize,
+            maximumZoomScale: 4,
+            assetPixelSize: .zero
+        )
+        unresolvedScrollView.applyNativeState(scale: 1, viewportOffset: .zero)
+        let unresolvedFrame = unresolvedContent.frame
+        let unresolvedBounds = unresolvedContent.bounds
+        let unresolvedCenter = unresolvedContent.center
+        let unresolvedTransform = unresolvedContent.transform
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        let diagnosticController = makeNativePagerController(
+            machine: makeMachine()
+        )
+        diagnostics.attach(diagnosticController)
+        unresolvedScrollView.transitionDiagnostics = diagnostics
+        diagnostics.start()
+
+        XCTAssertFalse(unresolvedScrollView.prepareForNativeZoom())
+
+        diagnostics.stop()
+        XCTAssertEqual(unresolvedContent.frame, unresolvedFrame)
+        XCTAssertEqual(unresolvedContent.bounds, unresolvedBounds)
+        XCTAssertEqual(unresolvedContent.center, unresolvedCenter)
+        XCTAssertEqual(unresolvedContent.transform, unresolvedTransform)
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
     private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(
