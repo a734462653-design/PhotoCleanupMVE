@@ -196,16 +196,22 @@ final class S2NativePagingScrollView: UIScrollView {
         pageWidth = max(0, viewportSize.width)
         viewportHeight = max(0, viewportSize.height)
         self.itemCount = max(0, itemCount)
-        frame = CGRect(
+        let nextFrame = CGRect(
             x: -self.pageSpacing / 2,
             y: 0,
             width: pageStride,
             height: viewportHeight
         )
-        contentSize = CGSize(
+        if frame != nextFrame {
+            frame = nextFrame
+        }
+        let nextContentSize = CGSize(
             width: CGFloat(self.itemCount) * pageStride,
             height: viewportHeight
         )
+        if contentSize != nextContentSize {
+            contentSize = nextContentSize
+        }
     }
 
     func frameForPage(at index: Int) -> CGRect {
@@ -666,34 +672,62 @@ final class S2NativeZoomScrollView: UIScrollView {
             return
         }
         guard let zoomContentView,
-              presentationContentView != nil else {
+              let presentationContentView else {
             return
         }
-        zoomContentView.transform = .identity
-        zoomContentView.bounds = CGRect(
+        var geometryChanged = false
+        let targetZoomBounds = CGRect(
             origin: .zero,
             size: nativeZoomBaseSize
         )
-        zoomContentView.center = CGPoint(
+        let targetZoomCenter = CGPoint(
             x: viewportSize.width / 2,
             y: viewportSize.height / 2
         )
-        writePhotoGeometry(reason: .enforceOneXContentGeometry) {
-            contentView in
-            contentView.transform = .identity
-            contentView.bounds = CGRect(origin: .zero, size: fittedSize)
-            contentView.center = CGPoint(
-                x: zoomContentView.bounds.midX,
-                y: zoomContentView.bounds.midY
-            )
+        if zoomContentView.transform != .identity {
+            zoomContentView.transform = .identity
+            geometryChanged = true
         }
-        contentInset = .zero
-        contentSize = viewportSize
+        if zoomContentView.bounds != targetZoomBounds {
+            zoomContentView.bounds = targetZoomBounds
+            geometryChanged = true
+        }
+        if zoomContentView.center != targetZoomCenter {
+            zoomContentView.center = targetZoomCenter
+            geometryChanged = true
+        }
+        let targetPhotoBounds = CGRect(origin: .zero, size: fittedSize)
+        let targetPhotoCenter = CGPoint(
+            x: targetZoomBounds.midX,
+            y: targetZoomBounds.midY
+        )
+        if presentationContentView.transform != .identity ||
+            presentationContentView.bounds != targetPhotoBounds ||
+            presentationContentView.center != targetPhotoCenter {
+            writePhotoGeometry(reason: .enforceOneXContentGeometry) {
+                contentView in
+                contentView.transform = .identity
+                contentView.bounds = targetPhotoBounds
+                contentView.center = targetPhotoCenter
+            }
+            geometryChanged = true
+        }
+        if contentInset != .zero {
+            contentInset = .zero
+            geometryChanged = true
+        }
+        if contentSize != viewportSize {
+            contentSize = viewportSize
+            geometryChanged = true
+        }
         if contentOffset != .zero {
             setContentOffset(.zero, animated: false)
+            geometryChanged = true
         }
-        setNeedsLayout()
-        layoutIfNeeded()
+        if geometryChanged {
+            setNeedsLayout()
+            layoutIfNeeded()
+        }
     }
 
     @discardableResult
@@ -1933,23 +1967,48 @@ final class S2NativeZoomPageController: UIViewController,
             ? 0
             : max(0, cornerRadius)
         let borderWidth = isNx ? 0 : resolvedFitBorderWidth()
-        zoomScrollView.writePhotoGeometry(reason: .cornerMaskReset) {
-            contentView in
-            contentView.transform = .identity
+        if hostingController.view.transform != .identity {
+            zoomScrollView.writePhotoGeometry(reason: .cornerMaskReset) {
+                contentView in
+                contentView.transform = .identity
+            }
         }
-        hostingController.view.layer.cornerRadius = resolvedRadius
-        hostingController.view.layer.cornerCurve = .continuous
-        hostingController.view.layer.borderWidth = 0
+        let photoLayer = hostingController.view.layer
+        if photoLayer.cornerRadius != resolvedRadius {
+            photoLayer.cornerRadius = resolvedRadius
+        }
+        photoLayer.cornerCurve = .continuous
+        if photoLayer.borderWidth != 0 {
+            photoLayer.borderWidth = 0
+        }
         applyBorderColor()
-        hostingController.view.layer.masksToBounds = resolvedRadius > 0
-        fitBorderLayer.frame = hostingController.view.bounds
-        fitBorderLayer.cornerRadius = resolvedRadius
+        let shouldMask = resolvedRadius > 0
+        if photoLayer.masksToBounds != shouldMask {
+            photoLayer.masksToBounds = shouldMask
+        }
+        if fitBorderLayer.frame != hostingController.view.bounds {
+            fitBorderLayer.frame = hostingController.view.bounds
+        }
+        if fitBorderLayer.cornerRadius != resolvedRadius {
+            fitBorderLayer.cornerRadius = resolvedRadius
+        }
         fitBorderLayer.cornerCurve = .continuous
-        fitBorderLayer.borderWidth = borderWidth
-        fitBorderLayer.removeFromSuperlayer()
-        hostingController.view.layer.addSublayer(fitBorderLayer)
-        zoomScrollView.zoomContentView?.layer.cornerRadius = 0
-        zoomScrollView.zoomContentView?.layer.masksToBounds = false
+        if fitBorderLayer.borderWidth != borderWidth {
+            fitBorderLayer.borderWidth = borderWidth
+        }
+        if fitBorderLayer.superlayer !== photoLayer ||
+            photoLayer.sublayers?.last !== fitBorderLayer {
+            fitBorderLayer.removeFromSuperlayer()
+            photoLayer.addSublayer(fitBorderLayer)
+        }
+        if let zoomLayer = zoomScrollView.zoomContentView?.layer {
+            if zoomLayer.cornerRadius != 0 {
+                zoomLayer.cornerRadius = 0
+            }
+            if zoomLayer.masksToBounds {
+                zoomLayer.masksToBounds = false
+            }
+        }
     }
 
     private func resolvedFitBorderWidth() -> CGFloat {
@@ -2700,7 +2759,10 @@ final class S2NativePagerViewController: UIViewController,
             pageSpacing: CGFloat(configuration.pageSpacing)
         )
         for (index, controller) in pageControllers {
-            controller.view.frame = pagingScrollView.frameForPage(at: index)
+            let pageFrame = pagingScrollView.frameForPage(at: index)
+            if controller.view.frame != pageFrame {
+                controller.view.frame = pageFrame
+            }
             let canApplyNativeState =
                 !controller.isDoubleTapTransitionActive &&
                 !controller.isPresentationTransitionActive &&
@@ -2735,8 +2797,12 @@ final class S2NativePagerViewController: UIViewController,
         if !pagingScrollView.isTracking &&
             !pagingScrollView.isDragging &&
             !pagingScrollView.isDecelerating {
-            pagingScrollView.contentOffset = pagingScrollView
-                .contentOffsetForPage(at: settledIndex)
+            let settledOffset = pagingScrollView.contentOffsetForPage(
+                at: settledIndex
+            )
+            if pagingScrollView.contentOffset != settledOffset {
+                pagingScrollView.contentOffset = settledOffset
+            }
         }
         isApplyingSnapshot = previousApplyingState
     }

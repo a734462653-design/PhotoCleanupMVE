@@ -4596,6 +4596,30 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
     }
 
+    // IC-069 G57：无输入的一秒布局窗口内不重复写照片几何。
+    func testIC069G57StableLayoutWritesNoPhotoGeometryForOneSecond() {
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.start()
+        let deadline = Date(timeIntervalSinceNow: 1)
+
+        while Date() < deadline {
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+        }
+
+        diagnostics.stop()
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
     private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(
