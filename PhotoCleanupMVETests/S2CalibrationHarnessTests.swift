@@ -2356,6 +2356,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
             visibility: .hidden,
             configuration: configuration
         )
+        let visible = metrics(
+            visibility: .visible,
+            configuration: configuration
+        )
 
         XCTAssertTrue(hidden.isFramedPhoto)
         XCTAssertEqual(
@@ -2383,8 +2387,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
         XCTAssertTrue(page.isPresentationTransitionActive)
-        XCTAssertEqual(page.fittedSize, hidden.oneXDisplaySize)
-        XCTAssertEqual(page.cornerRadius, hidden.oneXCornerRadius)
+        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
+        XCTAssertEqual(page.cornerRadius, visible.oneXCornerRadius)
         XCTAssertEqual(
             page.lastPresentationTransitionDuration,
             0.22,
@@ -2526,7 +2530,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         page.finishActivePresentationTransition()
     }
 
-    // X2：终态几何在动画开始前提交，照片显示层只承载等比 transform。
+    // X2：动画期间保留源态 frame 基准，显示层只承载终点等比 transform。
     func testX2ImmersiveTransitionKeepsLayoutSizeAndUsesTransform() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -2545,21 +2549,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page.zoomScrollView.presentationContentView
         ).transform
         XCTAssertTrue(page.isPresentationTransitionActive)
-        XCTAssertEqual(page.fittedSize, transition.targetSize)
-        XCTAssertEqual(page.zoomScrollView.fittedSize, transition.targetSize)
+        XCTAssertEqual(page.fittedSize, transition.layoutSize)
+        XCTAssertEqual(page.zoomScrollView.fittedSize, transition.layoutSize)
         XCTAssertEqual(page.zoomScrollView.contentSize, contentSize)
         XCTAssertEqual(
             page.zoomScrollView.presentationContentView?.bounds.size,
-            transition.targetSize
+            transition.layoutSize
         )
-        let sourceScale = min(
-            transition.layoutSize.width / transition.targetSize.width,
-            transition.layoutSize.height / transition.targetSize.height
-        )
-        XCTAssertEqual(transform.a, sourceScale, accuracy: 0.000_001)
+        XCTAssertEqual(transform.a, transition.targetScale, accuracy: 0.000_001)
         XCTAssertEqual(transform.b, 0, accuracy: 0.000_001)
         XCTAssertEqual(transform.c, 0, accuracy: 0.000_001)
-        XCTAssertEqual(transform.d, sourceScale, accuracy: 0.000_001)
+        XCTAssertEqual(transform.d, transition.targetScale, accuracy: 0.000_001)
         page.finishActivePresentationTransition()
     }
 
@@ -2597,7 +2597,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(
             hidingContentView.layer.cornerRadius *
                 abs(hidingContentView.transform.a),
-            hiding.frame(at: 0).cornerRadius,
+            hiding.frame(at: 1).cornerRadius,
             accuracy: 0.000_001
         )
         page.finishActivePresentationTransition()
@@ -2627,7 +2627,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(
             showingContentView.layer.cornerRadius *
                 abs(showingContentView.transform.a),
-            showing.frame(at: 0).cornerRadius,
+            showing.frame(at: 1).cornerRadius,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
@@ -2763,9 +2763,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
         let transition = tryUnwrap(page.lastPresentationTransition)
         XCTAssertTrue(page.isPresentationTransitionActive)
-        XCTAssertEqual(page.fittedSize, hidden.oneXDisplaySize)
+        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
         XCTAssertEqual(page.presentationTransitionCount, 1)
-        XCTAssertEqual(page.presentationGeometryCommitCount, 1)
+        XCTAssertEqual(page.presentationGeometryCommitCount, 0)
         XCTAssertNotEqual(transition.targetScale, 1, accuracy: 0.000_001)
         page.finishActivePresentationTransition()
 
@@ -4476,6 +4476,65 @@ final class S2CalibrationHarnessTests: XCTestCase {
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
 
         XCTAssertEqual(thumbnailAppearCount, initialAppearCount)
+    }
+
+    // IC-069 G54/G55：双向均以源态 frame 为基准，首末帧严格命中两端。
+    func testIC069G54AndG55BothDirectionsUseSourceGeometryBaseline() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let visibleSize = metrics(
+            visibility: .visible,
+            configuration: configuration
+        ).oneXDisplaySize
+        let hiddenSize = metrics(
+            visibility: .hidden,
+            configuration: configuration
+        ).oneXDisplaySize
+
+        func assertSequence(source: CGSize, target: CGSize) {
+            let scales = page.lastPresentationScaleKeyframes
+            XCTAssertGreaterThanOrEqual(scales.count, 3)
+            let sizes = scales.map {
+                CGSize(width: source.width * $0, height: source.height * $0)
+            }
+            XCTAssertEqual(sizes.first?.width ?? 0, source.width, accuracy: 0.5)
+            XCTAssertEqual(sizes.first?.height ?? 0, source.height, accuracy: 0.5)
+            XCTAssertEqual(sizes.last?.width ?? 0, target.width, accuracy: 0.5)
+            XCTAssertEqual(sizes.last?.height ?? 0, target.height, accuracy: 0.5)
+            let middle = sizes[sizes.count / 2]
+            XCTAssertNotEqual(middle, source)
+            XCTAssertNotEqual(middle, target)
+            XCTAssertEqual(
+                tryUnwrap(page.lastPresentationTransition).layoutSize,
+                source
+            )
+            XCTAssertEqual(page.fittedSize, source)
+        }
+
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        assertSequence(source: visibleSize, target: hiddenSize)
+        page.finishActivePresentationTransition()
+        XCTAssertEqual(page.fittedSize, hiddenSize)
+
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        assertSequence(source: hiddenSize, target: visibleSize)
+        page.finishActivePresentationTransition()
+        XCTAssertEqual(page.fittedSize, visibleSize)
     }
 
     private let physicalSize = CGSize(width: 300, height: 600)
