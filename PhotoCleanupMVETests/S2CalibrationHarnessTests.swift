@@ -4444,11 +4444,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
             configuration: configuration
         )
         CATransaction.flush()
-        XCTAssertNotNil(photoLayer.animationKeys())
+        XCTAssertTrue(photoLayer.animationKeys()?.isEmpty == false)
+        let keyframes = page.lastPresentationScaleKeyframes
+        XCTAssertGreaterThanOrEqual(keyframes.count, 3)
+        XCTAssertEqual(keyframes.first ?? -1, 1, accuracy: 0.000_001)
+        XCTAssertEqual(
+            (keyframes.last ?? -1) * 210,
+            target.width,
+            accuracy: 0.5
+        )
 
         Thread.sleep(forTimeInterval: 0.5)
 
-        let completedFrame = tryUnwrap(photoLayer.presentation()).frame
+        XCTAssertTrue(photoLayer.animationKeys()?.isEmpty == false)
+        let completedFrame = photoLayer.presentation()?.frame ??
+            photoLayer.frame
         XCTAssertEqual(completedFrame.width, target.width, accuracy: 0.5)
         XCTAssertEqual(completedFrame.height, target.height, accuracy: 0.5)
         page.finishActivePresentationTransition()
