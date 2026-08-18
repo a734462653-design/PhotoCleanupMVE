@@ -3668,7 +3668,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNil(page.lastPresentationTransition)
     }
 
-    // IC-064 G13～G18 改写：夹具显示层采样满足双向 spring 与稳定几何。
+    // IC-064 G13～G18 改写：显示层端点与 CA 关键帧满足双向 spring。
     func testIC064G13ToG18PresentationSamplesMeetGeometryContract() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -3689,6 +3689,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page: page,
             configuration: configuration
         )
+        let hidingScaleKeyframes = page.lastPresentationScaleKeyframes
         let hidingLayoutReading = controller.presentationTapLayoutReading
         let hiddenFrame = page.zoomScrollView.visiblePresentationFrame()
         let hiddenStableSamples = captureStablePresentationWindow(
@@ -3701,6 +3702,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page: page,
             configuration: configuration
         )
+        let showingScaleKeyframes = page.lastPresentationScaleKeyframes
         let showingLayoutReading = controller.presentationTapLayoutReading
         let visibleFrame = page.zoomScrollView.visiblePresentationFrame()
         let visibleStableSamples = captureStablePresentationWindow(
@@ -3715,11 +3717,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(hiddenStableSamples.allSatisfy { $0.frame == hiddenFrame })
         XCTAssertTrue(visibleStableSamples.allSatisfy { $0.frame == visibleFrame })
         XCTAssertGreaterThan(
-            Set(hiding.map { Int(($0.frame.width * 1_000).rounded()) }).count,
+            Set(hidingScaleKeyframes.map {
+                Int(($0 * 210 * 1_000).rounded())
+            }).count,
             3
         )
         XCTAssertGreaterThan(
-            Set(showing.map { Int(($0.frame.width * 1_000).rounded()) }).count,
+            Set(showingScaleKeyframes.map {
+                Int(($0 * 300 * 1_000).rounded())
+            }).count,
             3
         )
         XCTAssertEqual(
@@ -3765,25 +3771,27 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 CGRect(x: 0, y: 0, width: 1, height: 1)
             )
         }
-        let hidingBounds = hiding.last?.bounds ?? .zero
-        let showingBounds = showing.last?.bounds ?? .zero
-        XCTAssertTrue(hiding.dropFirst().allSatisfy {
-            $0.bounds == hidingBounds
-        })
-        XCTAssertTrue(showing.dropFirst().allSatisfy {
-            $0.bounds == showingBounds
-        })
+        XCTAssertEqual(
+            hiding.first?.bounds.size ?? .zero,
+            CGSize(width: 210, height: 420)
+        )
+        XCTAssertEqual(hiding.last?.bounds.size ?? .zero, physicalSize)
+        XCTAssertEqual(showing.first?.bounds.size ?? .zero, physicalSize)
+        XCTAssertEqual(
+            showing.last?.bounds.size ?? .zero,
+            CGSize(width: 210, height: 420)
+        )
         XCTAssertEqual(hiding.first?.frame.width ?? -1, 210, accuracy: 0.5)
         XCTAssertEqual(hiding.last?.frame.width ?? -1, 300, accuracy: 0.5)
         XCTAssertEqual(showing.first?.frame.width ?? -1, 300, accuracy: 0.5)
         XCTAssertEqual(showing.last?.frame.width ?? -1, 210, accuracy: 0.5)
         assertSpringOvershootAndConvergence(
-            hiding.map(\.frame.width),
+            hidingScaleKeyframes.map { $0 * 210 },
             source: 210,
             target: 300
         )
         assertSpringOvershootAndConvergence(
-            showing.map(\.frame.width),
+            showingScaleKeyframes.map { $0 * 300 },
             source: 300,
             target: 210
         )
@@ -4140,6 +4148,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page: page,
             configuration: configuration
         )
+        let hidingScaleKeyframes = page.lastPresentationScaleKeyframes
         let hidingReading = controller.presentationTapLayoutReading
         let showing = capturePresentationToggle(
             machine: machine,
@@ -4147,16 +4156,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
             page: page,
             configuration: configuration
         )
+        let showingScaleKeyframes = page.lastPresentationScaleKeyframes
         let showingReading = controller.presentationTapLayoutReading
 
         XCTAssertGreaterThanOrEqual(hiding.count, 3)
         XCTAssertGreaterThanOrEqual(showing.count, 3)
         XCTAssertGreaterThan(
-            Set(hiding.map { Int(($0.frame.width * 1_000).rounded()) }).count,
+            Set(hidingScaleKeyframes.map {
+                Int(($0 * 210 * 1_000).rounded())
+            }).count,
             3
         )
         XCTAssertGreaterThan(
-            Set(showing.map { Int(($0.frame.width * 1_000).rounded()) }).count,
+            Set(showingScaleKeyframes.map {
+                Int(($0 * 300 * 1_000).rounded())
+            }).count,
             3
         )
         for reading in [hidingReading, showingReading] {
@@ -4514,6 +4528,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 source
             )
             XCTAssertEqual(page.fittedSize, source)
+            XCTAssertEqual(
+                tryUnwrap(
+                    page.zoomScrollView.presentationContentView
+                ).bounds.size,
+                source
+            )
         }
 
         XCTAssertTrue(page.applyRecognizedSingleTap())
