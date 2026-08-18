@@ -4620,6 +4620,55 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
     }
 
+    // IC-069 G58：几何写入与内外层布局事件均可定位到页面和资产。
+    func testIC069G58GeometryDiagnosticsIdentifyPageAndAsset() {
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.start()
+
+        page.zoomScrollView.writePhotoGeometry(reason: .cornerMaskReset) {
+            $0.transform = $0.transform
+        }
+        page.zoomScrollView.setNeedsLayout()
+        page.zoomScrollView.layoutIfNeeded()
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        diagnostics.stop()
+
+        let requiredNames = Set([
+            "照片几何写入",
+            "layoutSubviews",
+            "viewDidLayoutSubviews"
+        ])
+        let validContexts = Set(
+            machine.orderedAssetIDs.enumerated().map {
+                "pageIndex=\($0.offset)；" +
+                    "assetLocalIdentifier=\($0.element)"
+            }
+        )
+        var recordedNames = Set<String>()
+        for record in diagnostics.recordedEntries {
+            guard case let .event(name, _, details) = record.payload,
+                  requiredNames.contains(name) else {
+                continue
+            }
+            recordedNames.insert(name)
+            XCTAssertTrue(
+                validContexts.contains { details.contains($0) },
+                "诊断事件缺少匹配的页面与资产标识：\(details)"
+            )
+        }
+        XCTAssertEqual(recordedNames, requiredNames)
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
     private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(

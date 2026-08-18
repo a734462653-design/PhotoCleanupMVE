@@ -270,6 +270,8 @@ final class S2NativeZoomScrollView: UIScrollView {
     private(set) var lastMinimumZoomScaleAnimationWasAnimated: Bool?
     private(set) var independentContentOffsetWriteCount = 0
     private(set) var isApplyingNativeState = false
+    private var diagnosticPageIndex: Int?
+    private var diagnosticAssetLocalIdentifier: String?
     weak var transitionDiagnostics:
         S2OnDeviceTransitionDiagnosticsCoordinator?
 
@@ -346,7 +348,10 @@ final class S2NativeZoomScrollView: UIScrollView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        transitionDiagnostics?.recordInnerLayoutSubviews()
+        transitionDiagnostics?.recordInnerLayoutSubviews(
+            pageIndex: diagnosticPageIndex,
+            assetLocalIdentifier: diagnosticAssetLocalIdentifier
+        )
         let nextInset = UIEdgeInsets(
             top: max(0, (bounds.height - contentSize.height) / 2),
             left: max(0, (bounds.width - contentSize.width) / 2),
@@ -644,8 +649,18 @@ final class S2NativeZoomScrollView: UIScrollView {
         transitionDiagnostics?.recordPhotoGeometryWrite(
             frame: contentView.layer.frame,
             transform: contentView.layer.affineTransform(),
-            reason: reason
+            reason: reason,
+            pageIndex: diagnosticPageIndex,
+            assetLocalIdentifier: diagnosticAssetLocalIdentifier
         )
+    }
+
+    func updateDiagnosticContext(
+        pageIndex: Int,
+        assetLocalIdentifier: String
+    ) {
+        diagnosticPageIndex = pageIndex
+        diagnosticAssetLocalIdentifier = assetLocalIdentifier
     }
 
     func removeAllPhotoAnimations(source: String) {
@@ -887,6 +902,10 @@ final class S2NativeZoomPageController: UIViewController,
         S2OnDeviceTransitionDiagnosticsCoordinator? {
         didSet {
             zoomScrollView.transitionDiagnostics = transitionDiagnostics
+            zoomScrollView.updateDiagnosticContext(
+                pageIndex: index,
+                assetLocalIdentifier: assetID
+            )
         }
     }
     private var assetID: String
@@ -957,6 +976,10 @@ final class S2NativeZoomPageController: UIViewController,
         interfaceVisibility
     }
 
+    var diagnosticAssetLocalIdentifier: String {
+        assetID
+    }
+
     var diagnosticAdditionalSafeAreaInsets: UIEdgeInsets {
         hostingController.additionalSafeAreaInsets
     }
@@ -1008,6 +1031,10 @@ final class S2NativeZoomPageController: UIViewController,
     override func viewDidLoad() {
         super.viewDidLoad()
         zoomScrollView.transitionDiagnostics = transitionDiagnostics
+        zoomScrollView.updateDiagnosticContext(
+            pageIndex: index,
+            assetLocalIdentifier: assetID
+        )
         additionalSafeAreaInsets = .zero
         zoomScrollView.delegate = self
         hostingController.view.backgroundColor = .clear
@@ -1760,6 +1787,10 @@ final class S2NativeZoomPageController: UIViewController,
         isPresentationTransitionActive = false
         pendingPresentationPage = nil
         assetID = page.assetID
+        zoomScrollView.updateDiagnosticContext(
+            pageIndex: index,
+            assetLocalIdentifier: assetID
+        )
         interfaceVisibility = page.interfaceVisibility
         isFramedPhoto = page.isFramedPhoto
         fittedSize = page.fittedSize
@@ -2172,7 +2203,12 @@ final class S2NativePagerViewController: UIViewController,
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        transitionDiagnostics?.recordOuterViewDidLayoutSubviews()
+        let currentPage = diagnosticCurrentPage
+        transitionDiagnostics?.recordOuterViewDidLayoutSubviews(
+            pageIndex: currentPage?.index,
+            assetLocalIdentifier:
+                currentPage?.diagnosticAssetLocalIdentifier
+        )
         guard view.bounds.size.width > 0, view.bounds.size.height > 0 else {
             return
         }
@@ -2790,7 +2826,9 @@ final class S2NativePagerViewController: UIViewController,
                 presentationTapLayoutReading
                     .suppressedPhotoFrameWriteCount += 1
                 transitionDiagnostics?.recordOuterLayoutSuppression(
-                    pageIndex: index
+                    pageIndex: index,
+                    assetLocalIdentifier:
+                        controller.diagnosticAssetLocalIdentifier
                 )
             }
         }
@@ -3791,26 +3829,40 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         )
     }
 
-    func recordInnerLayoutSubviews() {
+    func recordInnerLayoutSubviews(
+        pageIndex: Int? = nil,
+        assetLocalIdentifier: String? = nil
+    ) {
         recordEvent(
             name: "layoutSubviews",
             source: "S2NativeZoomScrollView.layoutSubviews",
-            details: "层级=内层"
+            details: "层级=内层；" + diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
         )
     }
 
-    func recordOuterViewDidLayoutSubviews() {
+    func recordOuterViewDidLayoutSubviews(
+        pageIndex: Int? = nil,
+        assetLocalIdentifier: String? = nil
+    ) {
         recordEvent(
             name: "viewDidLayoutSubviews",
             source: "S2NativePagerViewController.viewDidLayoutSubviews",
-            details: "层级=外层"
+            details: "层级=外层；" + diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
         )
     }
 
     func recordPhotoGeometryWrite(
         frame: CGRect,
         transform: CGAffineTransform,
-        reason: S2PhotoGeometryWriteReason
+        reason: S2PhotoGeometryWriteReason,
+        pageIndex: Int? = nil,
+        assetLocalIdentifier: String? = nil
     ) {
         guard isRecording else {
             return
@@ -3820,7 +3872,11 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             name: "照片几何写入",
             source: reason.rawValue,
             details: "frame=\(S2OnDeviceTransitionText.rect(frame))；" +
-                "transform=\(S2OnDeviceTransitionText.transform(transform))"
+                "transform=\(S2OnDeviceTransitionText.transform(transform))；" +
+                diagnosticContext(
+                    pageIndex: pageIndex,
+                    assetLocalIdentifier: assetLocalIdentifier
+                )
         ))
     }
 
@@ -3844,12 +3900,27 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         )
     }
 
-    func recordOuterLayoutSuppression(pageIndex: Int) {
+    func recordOuterLayoutSuppression(
+        pageIndex: Int,
+        assetLocalIdentifier: String? = nil
+    ) {
         recordEvent(
             name: "抑制外层布局写入生效",
             source: "S2NativePagerViewController.layoutNativePages",
-            details: "pageIndex=\(pageIndex)"
+            details: diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
         )
+    }
+
+    private func diagnosticContext(
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) -> String {
+        let pageIndexText = pageIndex.map { String($0) } ?? "nil"
+        return "pageIndex=\(pageIndexText)；" +
+            "assetLocalIdentifier=\(assetLocalIdentifier ?? "nil")"
     }
 
     private func finishRecording(source: String) {
