@@ -4401,6 +4401,83 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ))
     }
 
+    // IC-069 G53：主线程停摆超过动画时长时，渲染层仍到达终态。
+    func testIC069G53PresentationLayerFinishesWhileMainThreadIsBlocked() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let photoLayer = tryUnwrap(
+            page.zoomScrollView.presentationContentView?.layer
+        )
+        let target = metrics(
+            visibility: .hidden,
+            configuration: configuration
+        ).oneXDisplaySize
+
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        CATransaction.flush()
+        XCTAssertNotNil(photoLayer.animationKeys())
+
+        Thread.sleep(forTimeInterval: 0.5)
+
+        let completedFrame = tryUnwrap(photoLayer.presentation()).frame
+        XCTAssertEqual(completedFrame.width, target.width, accuracy: 0.5)
+        XCTAssertEqual(completedFrame.height, target.height, accuracy: 0.5)
+        page.finishActivePresentationTransition()
+    }
+
+    // IC-069 R1b：显隐切换不重建缩略条，因而不重复进入图片请求路径。
+    func testIC069R1bPresentationToggleKeepsThumbnailViewsAlive() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let calibration = S2CalibrationModel(
+            persistence: S2DiscardingCalibrationPersistence()
+        )
+        var thumbnailAppearCount = 0
+        let view = S2View(
+            machine: machine,
+            calibration: calibration,
+            assetAspectRatio: { _ in self.screenAspectRatio },
+            assetIsScreenshot: { _ in true },
+            photoContent: { _ in AnyView(Color.clear) },
+            stripItemContent: { _ in
+                AnyView(Color.clear.onAppear {
+                    thumbnailAppearCount += 1
+                })
+            },
+            albumPickerContent: { _, _ in AnyView(EmptyView()) }
+        )
+        let controller = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        let initialAppearCount = thumbnailAppearCount
+        XCTAssertGreaterThan(initialAppearCount, 0)
+
+        XCTAssertTrue(machine.handleSingleTap())
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertTrue(machine.handleSingleTap())
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+
+        XCTAssertEqual(thumbnailAppearCount, initialAppearCount)
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
     private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(

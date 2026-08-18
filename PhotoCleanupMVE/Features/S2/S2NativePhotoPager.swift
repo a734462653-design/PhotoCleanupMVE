@@ -859,8 +859,9 @@ final class S2NativeZoomPageController: UIViewController,
     private(set) var lastTapDecisionReading: S2TapDecisionReading?
     private var pendingPresentationPage: S2NativePageContent?
     private var presentationTransitionGeneration = 0
-    private var presentationDisplayLink: CADisplayLink?
-    private var presentationTransitionStartTimestamp: CFTimeInterval?
+    private static let presentationAnimationKey =
+        "S2NativeZoomPageController.presentationTransition"
+    private var presentationCompletionWorkItem: DispatchWorkItem?
     private var presentationTransitionDuration: TimeInterval = 0
     private var presentationSpringCurve = S2PresentationSpringCurve(
         dampingRatio: 0.86
@@ -1477,7 +1478,6 @@ final class S2NativeZoomPageController: UIViewController,
         presentationSpringCurve = S2PresentationSpringCurve(
             dampingRatio: configuration.presentationToggleDamping
         )
-        presentationTransitionStartTimestamp = CACurrentMediaTime()
         presentationSourceScale = safeSourceScale
         presentationSourceVisualCornerRadius = sourceVisualCornerRadius
         presentationTargetVisualCornerRadius = targetLayerCornerRadius
@@ -1492,80 +1492,112 @@ final class S2NativeZoomPageController: UIViewController,
                 sourceVisualCornerRadius > 0 ||
                     targetLayerCornerRadius > 0
         }
-        applyPresentationTransitionProgress(0)
-        let displayLink = CADisplayLink(
-            target: self,
-            selector: #selector(advancePresentationTransition(_:))
+        addPresentationLayerAnimations(
+            to: presentationContentView,
+            duration: presentationTransitionDuration
         )
-        presentationDisplayLink = displayLink
-        displayLink.add(to: .main, forMode: .common)
+        let generation = presentationTransitionGeneration
+        let completion = DispatchWorkItem { [weak self] in
+            self?.finishPresentationTransition(generation: generation)
+        }
+        presentationCompletionWorkItem = completion
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + presentationTransitionDuration,
+            execute: completion
+        )
     }
 
-    private func applyPresentationTransitionProgress(_ progress: CGFloat) {
-        guard let presentationContentView =
-                zoomScrollView.presentationContentView else {
-            return
-        }
-        let value = max(0, progress)
-        let scale = presentationSourceScale +
-            (1 - presentationSourceScale) * value
-        let safeScale = max(0.000_001, scale)
-        let visualCornerRadius = max(
-            0,
-            presentationSourceVisualCornerRadius +
-            (presentationTargetVisualCornerRadius -
-                presentationSourceVisualCornerRadius) * value
-        )
-        let visualBorderWidth = max(
-            0,
-            presentationSourceVisualBorderWidth +
-            (presentationTargetVisualBorderWidth -
-                presentationSourceVisualBorderWidth) * value
-        )
-        UIView.performWithoutAnimation {
-            self.zoomScrollView.writePhotoGeometry(
-                reason: .presentationTransitionProgress
-            ) { contentView in
-                contentView.transform = CGAffineTransform(
-                    scaleX: scale,
-                    y: scale
-                )
-            }
-            presentationContentView.layer.cornerRadius =
-                visualCornerRadius / safeScale
-            presentationContentView.layer.borderWidth = 0
-            presentationContentView.layer.masksToBounds =
-                visualCornerRadius > 0
-            self.fitBorderLayer.cornerRadius =
-                visualCornerRadius / safeScale
-            self.fitBorderLayer.borderWidth =
-                visualBorderWidth / safeScale
-            self.fitBorderLayer.borderColor =
-                self.resolvedFitBorderColor()
-        }
-    }
-
-    @objc private func advancePresentationTransition(
-        _ displayLink: CADisplayLink
+    private func addPresentationLayerAnimations(
+        to presentationContentView: UIView,
+        duration: TimeInterval
     ) {
-        guard displayLink === presentationDisplayLink else {
-            displayLink.invalidate()
-            return
-        }
-        let startTimestamp = presentationTransitionStartTimestamp ??
-            displayLink.timestamp
-        let elapsed = CACurrentMediaTime() - startTimestamp
-        let rawProgress = presentationTransitionDuration > 0
-            ? CGFloat(elapsed / presentationTransitionDuration)
-            : 1
-        applyPresentationTransitionProgress(
-            presentationSpringCurve.value(at: rawProgress)
-        )
-        if rawProgress >= 1 {
-            finishPresentationTransition(
-                generation: presentationTransitionGeneration
+        let sampleCount = max(2, Int(ceil(duration * 120)) + 1)
+        let progressValues = (0..<sampleCount).map { index in
+            presentationSpringCurve.value(
+                at: CGFloat(index) / CGFloat(sampleCount - 1)
             )
         }
+        let scales = progressValues.map { value in
+            presentationSourceScale + (1 - presentationSourceScale) * value
+        }
+        let visualCornerRadii = progressValues.map { value in
+            max(
+                0,
+                presentationSourceVisualCornerRadius +
+                    (presentationTargetVisualCornerRadius -
+                        presentationSourceVisualCornerRadius) * value
+            )
+        }
+        let visualBorderWidths = progressValues.map { value in
+            max(
+                0,
+                presentationSourceVisualBorderWidth +
+                    (presentationTargetVisualBorderWidth -
+                        presentationSourceVisualBorderWidth) * value
+            )
+        }
+        let keyTimes = (0..<sampleCount).map { index in
+            NSNumber(value: Double(index) / Double(sampleCount - 1))
+        }
+        let layerCornerRadii = zip(visualCornerRadii, scales).map { pair in
+            NSNumber(value: Double(
+                pair.0 / max(0.000_001, pair.1)
+            ))
+        }
+        let layerBorderWidths = zip(visualBorderWidths, scales).map { pair in
+            NSNumber(value: Double(
+                pair.0 / max(0.000_001, pair.1)
+            ))
+        }
+
+        let scaleAnimation = CAKeyframeAnimation(keyPath: "transform.scale")
+        scaleAnimation.values = scales.map { NSNumber(value: Double($0)) }
+        scaleAnimation.keyTimes = keyTimes
+        let cornerAnimation = CAKeyframeAnimation(keyPath: "cornerRadius")
+        cornerAnimation.values = layerCornerRadii
+        cornerAnimation.keyTimes = keyTimes
+        let photoGroup = presentationAnimationGroup(
+            animations: [scaleAnimation, cornerAnimation],
+            duration: duration
+        )
+        transitionDiagnostics?.recordPhotoAnimationOperation(
+            operation: "add(animation:)",
+            key: Self.presentationAnimationKey,
+            source: "S2NativeZoomPageController.startPresentationTransition"
+        )
+        presentationContentView.layer.add(
+            photoGroup,
+            forKey: Self.presentationAnimationKey
+        )
+
+        let borderCornerAnimation = CAKeyframeAnimation(
+            keyPath: "cornerRadius"
+        )
+        borderCornerAnimation.values = layerCornerRadii
+        borderCornerAnimation.keyTimes = keyTimes
+        let borderWidthAnimation = CAKeyframeAnimation(keyPath: "borderWidth")
+        borderWidthAnimation.values = layerBorderWidths
+        borderWidthAnimation.keyTimes = keyTimes
+        fitBorderLayer.add(
+            presentationAnimationGroup(
+                animations: [borderCornerAnimation, borderWidthAnimation],
+                duration: duration
+            ),
+            forKey: Self.presentationAnimationKey
+        )
+    }
+
+    private func presentationAnimationGroup(
+        animations: [CAAnimation],
+        duration: TimeInterval
+    ) -> CAAnimationGroup {
+        let group = CAAnimationGroup()
+        animations.forEach { $0.duration = duration }
+        group.animations = animations
+        group.duration = duration
+        group.fillMode = .both
+        group.isRemovedOnCompletion = false
+        return group
     }
 
     private func finishPresentationTransition(generation: Int) {
@@ -1574,20 +1606,18 @@ final class S2NativeZoomPageController: UIViewController,
             return
         }
         guard zoomScrollView.presentationContentView != nil else {
-            presentationDisplayLink?.invalidate()
-            presentationDisplayLink = nil
-            presentationTransitionStartTimestamp = nil
+            presentationCompletionWorkItem?.cancel()
+            presentationCompletionWorkItem = nil
             isPresentationTransitionActive = false
             pendingPresentationPage = nil
             return
         }
-        applyPresentationTransitionProgress(1)
-        presentationDisplayLink?.invalidate()
-        presentationDisplayLink = nil
-        presentationTransitionStartTimestamp = nil
+        presentationCompletionWorkItem?.cancel()
+        presentationCompletionWorkItem = nil
         zoomScrollView.removeAllPhotoAnimations(
             source: "S2NativeZoomPageController.finishPresentationTransition"
         )
+        fitBorderLayer.removeAnimation(forKey: Self.presentationAnimationKey)
         UIView.performWithoutAnimation {
             self.zoomScrollView.writePhotoGeometry(
                 reason: .presentationTransitionFinish
@@ -1654,9 +1684,8 @@ final class S2NativeZoomPageController: UIViewController,
         onlyIfContentVersionChanged: Bool = false
     ) {
         presentationTransitionGeneration += 1
-        presentationDisplayLink?.invalidate()
-        presentationDisplayLink = nil
-        presentationTransitionStartTimestamp = nil
+        presentationCompletionWorkItem?.cancel()
+        presentationCompletionWorkItem = nil
         zoomScrollView.removeAllPhotoAnimations(
             source: "S2NativeZoomPageController.applyPageImmediately"
         )

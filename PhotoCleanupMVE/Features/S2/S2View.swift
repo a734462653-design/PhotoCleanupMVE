@@ -158,12 +158,13 @@ struct S2View: View {
                     viewportSize: viewportMetrics.viewportSize
                 )
 
-                if machine.interfaceVisibility == .visible {
-                    interfaceOverlay(
-                        bottomStripHeight: viewportMetrics.bottomStripHeight,
-                        safeAreaInsets: safeAreaInsets
-                    )
-                }
+                interfaceOverlay(
+                    bottomStripHeight: viewportMetrics.bottomStripHeight,
+                    safeAreaInsets: safeAreaInsets
+                )
+                .opacity(machine.interfaceVisibility == .visible ? 1 : 0)
+                .allowsHitTesting(machine.interfaceVisibility == .visible)
+                .accessibilityHidden(machine.interfaceVisibility != .visible)
 
                 calibrationOverlay(
                     metrics: viewportMetrics,
