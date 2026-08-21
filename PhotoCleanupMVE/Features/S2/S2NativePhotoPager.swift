@@ -352,15 +352,39 @@ final class S2NativeZoomScrollView: UIScrollView {
             pageIndex: diagnosticPageIndex,
             assetLocalIdentifier: diagnosticAssetLocalIdentifier
         )
+        applyJointCentering()
+    }
+
+    /// IC-070 R5：`contentInset` 与 `contentOffset` 的联合居中在同一次布局
+    /// 提交内一并写入。内容在某方向小于视口时，该方向唯一合法的偏移是
+    /// `-inset`；任何外部写入的过期偏移都会在本次布局内被纠正，不留空档。
+    /// 内容大于视口的方向不改动偏移，保留 `s > 1` 的平移边界语义。
+    @discardableResult
+    private func applyJointCentering() -> Bool {
         let nextInset = UIEdgeInsets(
             top: max(0, (bounds.height - contentSize.height) / 2),
             left: max(0, (bounds.width - contentSize.width) / 2),
             bottom: max(0, (bounds.height - contentSize.height) / 2),
             right: max(0, (bounds.width - contentSize.width) / 2)
         )
+        var changed = false
         if contentInset != nextInset {
             contentInset = nextInset
+            changed = true
         }
+        var nextOffset = contentOffset
+        if contentSize.width <= bounds.width + 0.000_001 {
+            nextOffset.x = -nextInset.left
+        }
+        if contentSize.height <= bounds.height + 0.000_001 {
+            nextOffset.y = -nextInset.top
+        }
+        if abs(nextOffset.x - contentOffset.x) > 0.000_001 ||
+            abs(nextOffset.y - contentOffset.y) > 0.000_001 {
+            contentOffset = nextOffset
+            changed = true
+        }
+        return changed
     }
 
     func performDoubleTapZoom(
@@ -773,6 +797,7 @@ final class S2NativeZoomScrollView: UIScrollView {
                 )
             }
             contentSize = nativeZoomBaseSize
+            applyJointCentering()
         }
         return true
     }

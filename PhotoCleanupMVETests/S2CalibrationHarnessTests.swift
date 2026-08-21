@@ -4586,6 +4586,86 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
+    // IC-070 G75/G76（夹具驱动，真机未覆盖）：接管帧与接管前一帧居中量一致；
+    // 接管全过程含对抗性的过期 offset 写入，inset+offset 联合居中逐帧连续。
+    func testIC070G75AndG76TakeoverKeepsJointCenteringEveryFrame() {
+        let samples: [(String, CGFloat)] = [
+            ("3_4", 3.0 / 4.0),
+            ("narrow", 478.0 / 2_622.0)
+        ]
+        for (name, assetAspectRatio) in samples {
+            let hosted = makeIC065HostedPage(
+                assetAspectRatio: assetAspectRatio,
+                isScreenshot: false
+            )
+            defer { hosted.window.isHidden = true }
+            let scrollView = hosted.page.zoomScrollView
+            let viewport = hosted.window.bounds
+            let assertCentered: (String) -> Void = { phase in
+                let frame = self.ic065PresentationFrameInWindow(
+                    page: hosted.page,
+                    window: hosted.window
+                )
+                let inset = scrollView.contentInset
+                let offset = scrollView.contentOffset
+                let message = "样本=\(name)，阶段=\(phase)，" +
+                    "frame=\(frame)，inset=\(inset)，offset=\(offset)"
+                if frame.width < viewport.width - 0.5 {
+                    XCTAssertEqual(
+                        frame.midX,
+                        viewport.midX,
+                        accuracy: 0.5,
+                        message
+                    )
+                    XCTAssertEqual(offset.x, -inset.left, accuracy: 0.5, message)
+                }
+                if frame.height < viewport.height - 0.5 {
+                    XCTAssertEqual(
+                        frame.midY,
+                        viewport.midY,
+                        accuracy: 0.5,
+                        message
+                    )
+                    XCTAssertEqual(offset.y, -inset.top, accuracy: 0.5, message)
+                }
+            }
+
+            let before = ic065PresentationFrameInWindow(
+                page: hosted.page,
+                window: hosted.window
+            )
+            assertCentered("one_x")
+            XCTAssertTrue(scrollView.prepareForNativeZoom())
+            let takeover = ic065PresentationFrameInWindow(
+                page: hosted.page,
+                window: hosted.window
+            )
+            // G76：接管帧与接管前一帧的可见居中量之差 ≤ 0.5pt。
+            XCTAssertEqual(takeover.midX, before.midX, accuracy: 0.5, name)
+            XCTAssertEqual(takeover.midY, before.midY, accuracy: 0.5, name)
+            assertCentered("takeover_sync")
+
+            // 对抗：模拟 UIKit 捏合处理在同一帧用过期 inset 写回 offset=0，
+            // 联合居中必须在本次布局提交内恢复。
+            scrollView.contentOffset = .zero
+            scrollView.layoutIfNeeded()
+            assertCentered("stale_offset_then_layout")
+            scrollView.contentOffset = .zero
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.0 / 60.0))
+            assertCentered("stale_offset_then_runloop")
+
+            let scales: [CGFloat] = [1.001, 1.005269, 1.05, 1.25, 1.5, 2, 3]
+            for scale in scales {
+                scrollView.setZoomScale(scale, animated: false)
+                scrollView.setNeedsLayout()
+                scrollView.layoutIfNeeded()
+                assertCentered(String(format: "scale_%.6f", scale))
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.0 / 60.0))
+                assertCentered(String(format: "scale_%.6f_next_frame", scale))
+            }
+        }
+    }
+
     // IC-068 G50：相同或回退的时钟读数仍被归一为严格递增的统一事件流。
     func testIC068G50UnifiedClockRecordsAreStrictlyOrdered() {
         var readings: [CFTimeInterval] = [
