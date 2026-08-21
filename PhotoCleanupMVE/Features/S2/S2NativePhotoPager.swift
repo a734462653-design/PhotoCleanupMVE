@@ -1809,6 +1809,9 @@ final class S2NativeZoomPageController: UIViewController,
         zoomScrollView.removeAllPhotoAnimations(
             source: "S2NativeZoomPageController.applyPageImmediately"
         )
+        removeFitBorderAnimations(
+            source: "S2NativeZoomPageController.applyPageImmediately"
+        )
         isPresentationTransitionActive = false
         pendingPresentationPage = nil
         assetID = page.assetID
@@ -2016,7 +2019,30 @@ final class S2NativeZoomPageController: UIViewController,
         return true
     }
 
+    /// IC-070 R6：描边层与照片层共用同一组过渡关键帧，但过渡动画组以
+    /// `isRemovedOnCompletion = false` 挂载。过渡收口只清照片层动画时，
+    /// 描边层会停留在过渡末帧的层内半径与线宽（例如 28/0.7、1/0.7），
+    /// 而照片层已复位到 28 与恒等变换——描边因此比照片圆角更圆并向内收。
+    /// 收口与非过渡期的几何提交必须把描边层动画一并移除。
+    private func removeFitBorderAnimations(source: String) {
+        guard let keys = fitBorderLayer.animationKeys(),
+              !keys.isEmpty else {
+            return
+        }
+        transitionDiagnostics?.recordPhotoAnimationOperation(
+            operation: "removeAllAnimations",
+            key: "fitBorderLayer.*",
+            source: source
+        )
+        fitBorderLayer.removeAllAnimations()
+    }
+
     private func applyCornerMask(forceNx: Bool = false) {
+        if !isPresentationTransitionActive {
+            removeFitBorderAnimations(
+                source: "S2NativeZoomPageController.applyCornerMask"
+            )
+        }
         let isNx = forceNx || zoomScrollView.zoomScale >
             zoomScrollView.minimumZoomScale + 0.000_001
         let resolvedRadius = isNx

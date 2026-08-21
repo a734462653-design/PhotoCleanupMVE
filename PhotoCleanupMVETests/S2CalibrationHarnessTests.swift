@@ -4508,14 +4508,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
             ("factory", .factoryPlaceholder, 237)
         ]
         for (label, configuration, photoGray) in variants {
-            let rendered = renderFramedPageForBorderScan(
+            let scene = makeBorderScanScene(
                 style: .light,
                 photoGray: photoGray,
                 configuration: configuration
             )
-            defer { rendered.window.isHidden = true }
+            defer { scene.window.isHidden = true }
+            let rendered = renderBorderScan(scene)
             let frame = rendered.frame
-            let page = rendered.page
+            let page = scene.page
             let photoLayer = tryUnwrap(
                 page.zoomScrollView.presentationContentView
             ).layer
@@ -4663,6 +4664,254 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.0 / 60.0))
                 assertCentered(String(format: "scale_%.6f_next_frame", scale))
             }
+        }
+    }
+
+    // IC-070 G77：四角 45° 对角线由外向内首个非背景像素为描边像素；
+    // 描边在直边与圆角处的可见宽度之差 ≤ 0.5pt。初始态与隐藏→显示之后各验一次。
+    func testIC070G77FitBorderIsConcentricAtCornersBeforeAndAfterToggle() {
+        // 测试专用：把浅色描边 alpha 提到 1 以分离描边与照片灰度；出厂值不变。
+        var configuration = S2CalibrationConfiguration.factoryPlaceholder
+        configuration.fitBorderLightAlpha = 1
+        let photoGray = 237
+        let scene = makeBorderScanScene(
+            style: .light,
+            photoGray: photoGray,
+            configuration: configuration
+        )
+        defer { scene.window.isHidden = true }
+
+        assertFitBorderConcentric(
+            scene: scene,
+            phase: "initial",
+            photoGray: photoGray
+        )
+
+        _ = capturePresentationToggle(
+            machine: scene.machine,
+            controller: scene.controller,
+            page: scene.page,
+            configuration: configuration
+        )
+        _ = capturePresentationToggle(
+            machine: scene.machine,
+            controller: scene.controller,
+            page: scene.page,
+            configuration: configuration
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertEqual(
+            scene.page.diagnosticInterfaceVisibility,
+            .visible
+        )
+        assertFitBorderConcentric(
+            scene: scene,
+            phase: "after_hide_show",
+            photoGray: photoGray
+        )
+    }
+
+    // IC-070 G78：过渡期间描边层与照片层使用同一组圆角关键帧，逐帧之差 ≤ 0.5pt；
+    // 过渡收口后两层均无残留动画，描边层半径与线宽回到当前页目标值。
+    func testIC070G78FitBorderCornerRadiusTracksPhotoThroughTransition() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let photoLayer = tryUnwrap(
+            page.zoomScrollView.presentationContentView
+        ).layer
+        let key = "S2NativeZoomPageController.presentationTransition"
+
+        _ = capturePresentationToggle(
+            machine: machine,
+            controller: controller,
+            page: page,
+            configuration: configuration
+        )
+        XCTAssertEqual(page.fitBorderLayer.animationKeys() ?? [], [])
+
+        XCTAssertTrue(page.applyRecognizedSingleTap())
+        controller.viewDidLayoutSubviews()
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        XCTAssertTrue(page.isPresentationTransitionActive)
+        let photoGroup = tryUnwrap(
+            photoLayer.animation(forKey: key) as? CAAnimationGroup
+        )
+        let borderGroup = tryUnwrap(
+            page.fitBorderLayer.animation(forKey: key) as? CAAnimationGroup
+        )
+        let photoRadii = keyframeValues(photoGroup, keyPath: "cornerRadius")
+        let borderRadii = keyframeValues(borderGroup, keyPath: "cornerRadius")
+        XCTAssertGreaterThan(photoRadii.count, 2)
+        XCTAssertEqual(photoRadii.count, borderRadii.count)
+        for (index, pair) in zip(photoRadii, borderRadii).enumerated() {
+            XCTAssertEqual(pair.0, pair.1, accuracy: 0.5, "关键帧=\(index)")
+        }
+
+        var presentationPairs = 0
+        let deadline = Date(timeIntervalSinceNow: 1)
+        while page.isPresentationTransitionActive, Date() < deadline {
+            if let photo = photoLayer.presentation(),
+               let border = page.fitBorderLayer.presentation() {
+                XCTAssertEqual(
+                    photo.cornerRadius,
+                    border.cornerRadius,
+                    accuracy: 0.5
+                )
+                presentationPairs += 1
+            }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.005))
+        }
+        XCTAssertFalse(page.isPresentationTransitionActive)
+        print("IC070_G78 presentationPairs=\(presentationPairs) " +
+            "keyframes=\(photoRadii.count)")
+
+        XCTAssertEqual(page.fitBorderLayer.animationKeys() ?? [], [])
+        XCTAssertEqual(photoLayer.animationKeys() ?? [], [])
+        XCTAssertEqual(
+            page.fitBorderLayer.cornerRadius,
+            photoLayer.cornerRadius,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            page.fitBorderLayer.cornerRadius,
+            CGFloat(configuration.fitCornerRadius),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            page.fitBorderLayer.borderWidth,
+            CGFloat(configuration.fitBorderWidth),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(photoLayer.affineTransform(), .identity)
+        if let border = page.fitBorderLayer.presentation(),
+           let photo = photoLayer.presentation() {
+            XCTAssertEqual(border.cornerRadius, photo.cornerRadius, accuracy: 0.5)
+            XCTAssertEqual(
+                border.borderWidth,
+                CGFloat(configuration.fitBorderWidth),
+                accuracy: 0.01
+            )
+        }
+    }
+
+    private func keyframeValues(
+        _ group: CAAnimationGroup,
+        keyPath: String
+    ) -> [CGFloat] {
+        let animation = group.animations?
+            .compactMap { $0 as? CAKeyframeAnimation }
+            .first { $0.keyPath == keyPath }
+        return (animation?.values as? [NSNumber])?.map {
+            CGFloat($0.doubleValue)
+        } ?? []
+    }
+
+    private func assertFitBorderConcentric(
+        scene: BorderScanScene,
+        phase: String,
+        photoGray: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let rendered = renderBorderScan(scene)
+        let frame = rendered.frame
+        let step: CGFloat = 1.0 / 3.0
+        let diagonals: [(String, CGPoint, CGVector)] = [
+            ("topLeft", CGPoint(x: frame.minX, y: frame.minY),
+             CGVector(dx: step, dy: step)),
+            ("topRight", CGPoint(x: frame.maxX, y: frame.minY),
+             CGVector(dx: -step, dy: step)),
+            ("bottomLeft", CGPoint(x: frame.minX, y: frame.maxY),
+             CGVector(dx: step, dy: -step)),
+            ("bottomRight", CGPoint(x: frame.maxX, y: frame.maxY),
+             CGVector(dx: -step, dy: -step))
+        ]
+        let edges: [(String, CGPoint, CGVector)] = [
+            ("left", CGPoint(x: frame.minX - 2, y: frame.midY),
+             CGVector(dx: step, dy: 0)),
+            ("right", CGPoint(x: frame.maxX + 2, y: frame.midY),
+             CGVector(dx: -step, dy: 0)),
+            ("top", CGPoint(x: frame.midX, y: frame.minY - 2),
+             CGVector(dx: 0, dy: step)),
+            ("bottom", CGPoint(x: frame.midX, y: frame.maxY + 2),
+             CGVector(dx: 0, dy: -step))
+        ]
+        var cornerWidths: [CGFloat] = []
+        for (name, corner, direction) in diagonals {
+            let start = CGPoint(
+                x: corner.x - direction.dx * 6,
+                y: corner.y - direction.dy * 6
+            )
+            let grays = grayRun(
+                image: rendered.image,
+                from: start,
+                step: direction,
+                count: 60
+            )
+            let reading = borderScanReading(grays: grays, photoGray: photoGray)
+            let width = reading.coverage * sqrt(2) / 3
+            cornerWidths.append(width)
+            print("IC070_G77 phase=\(phase) path=diag_\(name) " +
+                "first=\(reading.firstNonBackground.map(String.init) ?? "nil") " +
+                "width=\(width) grays=\(grays)")
+            let first = tryUnwrap(reading.firstNonBackground, file: file, line: line)
+            XCTAssertLessThan(
+                first,
+                photoGray - 3,
+                "阶段=\(phase)，角=\(name)：首个非背景像素不是描边",
+                file: file,
+                line: line
+            )
+        }
+        var edgeWidths: [CGFloat] = []
+        for (name, start, direction) in edges {
+            let grays = grayRun(
+                image: rendered.image,
+                from: start,
+                step: direction,
+                count: 18
+            )
+            let reading = borderScanReading(grays: grays, photoGray: photoGray)
+            let width = reading.coverage / 3
+            edgeWidths.append(width)
+            print("IC070_G77 phase=\(phase) path=edge_\(name) " +
+                "width=\(width) grays=\(grays)")
+        }
+        let edgeWidth = edgeWidths.reduce(0, +) / CGFloat(edgeWidths.count)
+        let cornerWidth = cornerWidths.reduce(0, +) / CGFloat(cornerWidths.count)
+        print("IC070_G77 phase=\(phase) edgeWidth=\(edgeWidth) " +
+            "cornerWidth=\(cornerWidth)")
+        XCTAssertEqual(
+            edgeWidth,
+            1,
+            accuracy: 0.34,
+            "阶段=\(phase)：直边描边宽度",
+            file: file,
+            line: line
+        )
+        for (index, width) in cornerWidths.enumerated() {
+            XCTAssertEqual(
+                width,
+                edgeWidth,
+                accuracy: 0.5,
+                "阶段=\(phase)，角序号=\(index)：圆角与直边宽度差",
+                file: file,
+                line: line
+            )
         }
     }
 
@@ -5217,16 +5466,19 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ]
     }
 
-    private func renderFramedPageForBorderScan(
+    private struct BorderScanScene {
+        let window: UIWindow
+        let host: UIViewController
+        let controller: S2NativePagerViewController
+        let machine: S2StateMachine
+        let page: S2NativeZoomPageController
+    }
+
+    private func makeBorderScanScene(
         style: UIUserInterfaceStyle,
         photoGray: Int,
         configuration: S2CalibrationConfiguration
-    ) -> (
-        window: UIWindow,
-        page: S2NativeZoomPageController,
-        frame: CGRect,
-        image: UIImage
-    ) {
+    ) -> BorderScanScene {
         let machine = makeMachine(configuration: configuration)
         let controller = makeNativePagerController(
             machine: machine,
@@ -5259,25 +5511,62 @@ final class S2CalibrationHarnessTests: XCTestCase {
         window.isHidden = false
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
         host.view.layoutIfNeeded()
-
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        let contentView = tryUnwrap(
-            page.zoomScrollView.presentationContentView
+        return BorderScanScene(
+            window: window,
+            host: host,
+            controller: controller,
+            machine: machine,
+            page: page
         )
-        let frame = contentView.convert(contentView.bounds, to: host.view)
+    }
+
+    private func renderBorderScan(
+        _ scene: BorderScanScene
+    ) -> (frame: CGRect, image: UIImage) {
+        scene.host.view.layoutIfNeeded()
+        let contentView = tryUnwrap(
+            scene.page.zoomScrollView.presentationContentView
+        )
+        let frame = contentView.convert(contentView.bounds, to: scene.host.view)
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 3
         format.opaque = true
         let image = UIGraphicsImageRenderer(
-            bounds: host.view.bounds,
+            bounds: scene.host.view.bounds,
             format: format
         ).image { _ in
-            _ = host.view.drawHierarchy(
-                in: host.view.bounds,
+            _ = scene.host.view.drawHierarchy(
+                in: scene.host.view.bounds,
                 afterScreenUpdates: true
             )
         }
-        return (window, page, frame, image)
+        return (frame, image)
+    }
+
+    /// 扫描读数：首个非背景样本灰度，以及照片区域之前的描边覆盖量（样本数）。
+    private func borderScanReading(
+        grays: [Int],
+        photoGray: Int
+    ) -> (firstNonBackground: Int?, coverage: CGFloat) {
+        var first: Int?
+        var coverage: CGFloat = 0
+        for gray in grays {
+            if gray >= 250 {
+                if first != nil {
+                    break
+                }
+                continue
+            }
+            if first == nil {
+                first = gray
+            }
+            if gray >= photoGray - 3 {
+                break
+            }
+            coverage += CGFloat(255 - gray) / 255
+        }
+        return (first, coverage)
     }
 
     private func grayRun(
