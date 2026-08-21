@@ -4649,11 +4649,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
             // 对抗：模拟 UIKit 捏合处理在同一帧用过期 inset 写回 offset=0，
             // 联合居中必须在本次布局提交内恢复。
             scrollView.contentOffset = .zero
+            assertCentered("stale_offset_immediate")
+            scrollView.contentOffset = .zero
             scrollView.layoutIfNeeded()
             assertCentered("stale_offset_then_layout")
             scrollView.contentOffset = .zero
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.0 / 60.0))
             assertCentered("stale_offset_then_runloop")
+            scrollView.setContentOffset(CGPoint(x: 0, y: 0), animated: false)
+            assertCentered("stale_setContentOffset_immediate")
 
             let scales: [CGFloat] = [1.001, 1.005269, 1.05, 1.25, 1.5, 2, 3]
             for scale in scales {

@@ -355,6 +355,35 @@ final class S2NativeZoomScrollView: UIScrollView {
         applyJointCentering()
     }
 
+    /// IC-070 R5：`contentOffset` 即 `bounds.origin`，UIKit 自身的捏合处理与
+    /// 外部调用写入偏移都经过这里，且不会随之触发 `layoutSubviews`。
+    /// 内容小于视口的方向在写入瞬间就钳回 `-contentInset`，过期偏移
+    /// 不会留到下一帧；内容大于视口的方向原样放行。
+    override var bounds: CGRect {
+        didSet {
+            guard !isCorrectingJointCenteringOffset else {
+                return
+            }
+            let size = bounds.size
+            var origin = bounds.origin
+            if contentSize.width <= size.width + 0.000_001 {
+                origin.x = -contentInset.left
+            }
+            if contentSize.height <= size.height + 0.000_001 {
+                origin.y = -contentInset.top
+            }
+            guard abs(origin.x - bounds.origin.x) > 0.000_001 ||
+                abs(origin.y - bounds.origin.y) > 0.000_001 else {
+                return
+            }
+            isCorrectingJointCenteringOffset = true
+            bounds = CGRect(origin: origin, size: size)
+            isCorrectingJointCenteringOffset = false
+        }
+    }
+
+    private var isCorrectingJointCenteringOffset = false
+
     /// IC-070 R5：`contentInset` 与 `contentOffset` 的联合居中在同一次布局
     /// 提交内一并写入。内容在某方向小于视口时，该方向唯一合法的偏移是
     /// `-inset`；任何外部写入的过期偏移都会在本次布局内被纠正，不留空档。
