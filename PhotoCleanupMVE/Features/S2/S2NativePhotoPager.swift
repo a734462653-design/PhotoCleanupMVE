@@ -3649,6 +3649,8 @@ struct S2OnDeviceTransitionFrameSample: Equatable {
     let zoomScale: CGFloat?
     let contentOffset: CGPoint?
     let contentSize: CGSize?
+    let contentInset: UIEdgeInsets?
+    let adjustedContentInset: UIEdgeInsets?
     let visibility: S2InterfaceVisibility?
     let scale: CGFloat?
 }
@@ -3804,6 +3806,8 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             zoomScale: scrollView?.zoomScale,
             contentOffset: scrollView?.contentOffset,
             contentSize: scrollView?.contentSize,
+            contentInset: scrollView?.contentInset,
+            adjustedContentInset: scrollView?.adjustedContentInset,
             visibility: machine?.interfaceVisibility,
             scale: machine?.scale
         )))
@@ -4011,7 +4015,7 @@ enum S2OnDeviceTransitionText {
             "停止绝对时间=\(timestamp(stoppedAt))",
             "记录总数=\(sortedRecords.count)",
             "顺序=全部记录按同一单调时钟严格递增",
-            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,V,s",
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,contentInset,adjustedContentInset,V,s",
             "离散事件字段=time,event,source,details",
             "---"
         ]
@@ -4029,6 +4033,8 @@ enum S2OnDeviceTransitionText {
                     "\tzoomScale=\(optionalNumber(sample.zoomScale))" +
                     "\tcontentOffset=\(optionalPoint(sample.contentOffset))" +
                     "\tcontentSize=\(optionalSize(sample.contentSize))" +
+                    "\tcontentInset=\(optionalInsets(sample.contentInset))" +
+                    "\tadjustedContentInset=\(optionalInsets(sample.adjustedContentInset))" +
                     "\tV=\(sample.visibility.map(visibility) ?? "nil")" +
                     "\ts=\(optionalNumber(sample.scale))")
             case let .event(name, source, details):
@@ -4107,5 +4113,13 @@ enum S2OnDeviceTransitionText {
             return "nil"
         }
         return "(w=\(number(value.width)),h=\(number(value.height)))"
+    }
+
+    private static func optionalInsets(_ value: UIEdgeInsets?) -> String {
+        guard let value else {
+            return "nil"
+        }
+        return "(top=\(number(value.top)),left=\(number(value.left))," +
+            "bottom=\(number(value.bottom)),right=\(number(value.right)))"
     }
 }

@@ -4316,6 +4316,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
             zoomScale: 1,
             contentOffset: CGPoint(x: 4, y: 5),
             contentSize: CGSize(width: 300, height: 600),
+            contentInset: UIEdgeInsets(top: 6, left: 7, bottom: 8, right: 9),
+            adjustedContentInset: UIEdgeInsets(
+                top: 10,
+                left: 11,
+                bottom: 12,
+                right: 13
+            ),
             visibility: .hidden,
             scale: 1
         )
@@ -4377,6 +4384,47 @@ final class S2CalibrationHarnessTests: XCTestCase {
         for eventName in eventNames {
             XCTAssertTrue(text.contains("event=\(eventName)"))
         }
+    }
+
+    // IC-070 G79：逐帧字段含 contentInset 与 adjustedContentInset，且采自真实滚动视图。
+    func testIC070G79FrameSamplesExportContentInsetFields() {
+        let hosted = makeIC065HostedPage(
+            assetAspectRatio: 3.0 / 4.0,
+            isScreenshot: false
+        )
+        defer { hosted.window.isHidden = true }
+        let scrollView = hosted.page.zoomScrollView
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(hosted.controller)
+        diagnostics.start()
+        XCTAssertTrue(scrollView.prepareForNativeZoom())
+        diagnostics.captureFrame()
+        diagnostics.stop()
+        diagnostics.export()
+
+        let text = diagnostics.reportText
+        XCTAssertTrue(text.contains(
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame," +
+                "transform,zoomScale,contentOffset,contentSize," +
+                "contentInset,adjustedContentInset,V,s"
+        ))
+        let frames = diagnostics.recordedEntries.compactMap {
+            record -> S2OnDeviceTransitionFrameSample? in
+            if case let .frame(sample) = record.payload {
+                return sample
+            }
+            return nil
+        }
+        XCTAssertGreaterThanOrEqual(frames.count, 2)
+        let last = tryUnwrap(frames.last)
+        XCTAssertEqual(last.contentInset, scrollView.contentInset)
+        XCTAssertEqual(
+            last.adjustedContentInset,
+            scrollView.adjustedContentInset
+        )
+        XCTAssertTrue(text.contains("\tcontentInset=(top="))
+        XCTAssertTrue(text.contains("\tadjustedContentInset=(top="))
+        XCTAssertFalse(text.contains("contentInset=nil"))
     }
 
     // IC-068 G50：相同或回退的时钟读数仍被归一为严格递增的统一事件流。
