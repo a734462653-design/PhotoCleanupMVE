@@ -4427,6 +4427,165 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(text.contains("contentInset=nil"))
     }
 
+    // IC-070 R5 实测探针（夹具驱动，不做断言）：打印接管各步的
+    // inset/offset/contentSize 与可见中心，并模拟 UIKit 在同一帧写入过期 offset。
+    func testIC070R5TakeoverCenteringProbe() {
+        let hosted = makeIC065HostedPage(
+            assetAspectRatio: 3.0 / 4.0,
+            isScreenshot: false
+        )
+        defer { hosted.window.isHidden = true }
+        let scrollView = hosted.page.zoomScrollView
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(hosted.controller)
+        diagnostics.start()
+        let viewport = hosted.window.bounds
+        let probe: (String) -> Void = { label in
+            diagnostics.captureFrame()
+            let frame = self.ic065PresentationFrameInWindow(
+                page: hosted.page,
+                window: hosted.window
+            )
+            let inset = scrollView.contentInset
+            print(String(
+                format: "IC070_R5_PROBE step=%@ zoom=%.6f " +
+                    "offset=(%.3f,%.3f) " +
+                    "inset=(t=%.3f,l=%.3f,b=%.3f,r=%.3f) " +
+                    "contentSize=(%.3f,%.3f) " +
+                    "visibleMid=(%.3f,%.3f) viewportMid=(%.3f,%.3f) " +
+                    "dy=%.3f",
+                label,
+                scrollView.zoomScale,
+                scrollView.contentOffset.x,
+                scrollView.contentOffset.y,
+                inset.top,
+                inset.left,
+                inset.bottom,
+                inset.right,
+                scrollView.contentSize.width,
+                scrollView.contentSize.height,
+                frame.midX,
+                frame.midY,
+                viewport.midX,
+                viewport.midY,
+                frame.midY - viewport.midY
+            ))
+        }
+
+        probe("one_x")
+        XCTAssertTrue(scrollView.prepareForNativeZoom())
+        probe("takeover_sync")
+        scrollView.contentOffset = .zero
+        probe("uikit_stale_offset_zero")
+        scrollView.setZoomScale(1.005269, animated: false)
+        probe("zoom_1.005269_before_layout")
+        scrollView.setNeedsLayout()
+        scrollView.layoutIfNeeded()
+        probe("zoom_1.005269_after_layout")
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.0 / 60.0))
+        probe("next_runloop_frame")
+        for scale in [1.05, 1.25, 2.0] as [CGFloat] {
+            scrollView.setZoomScale(scale, animated: false)
+            scrollView.setNeedsLayout()
+            scrollView.layoutIfNeeded()
+            probe(String(format: "zoom_%.3f", scale))
+        }
+        diagnostics.stop()
+        diagnostics.export()
+        for line in diagnostics.reportText.split(separator: "\n")
+        where line.contains("kind=frame") {
+            print("IC070_R5_EXPORT \(line)")
+        }
+    }
+
+    // IC-070 R6 实测探针（夹具驱动，不做断言）：沿四角 45° 对角线与直边扫描
+    // 像素灰度，并打印描边层运行时属性。
+    func testIC070R6BorderConcentricityProbe() {
+        var opaqueBorder = S2CalibrationConfiguration.factoryPlaceholder
+        opaqueBorder.fitBorderLightAlpha = 1
+        let variants: [(String, S2CalibrationConfiguration, Int)] = [
+            ("opaque_border", opaqueBorder, 237),
+            ("factory", .factoryPlaceholder, 237)
+        ]
+        for (label, configuration, photoGray) in variants {
+            let rendered = renderFramedPageForBorderScan(
+                style: .light,
+                photoGray: photoGray,
+                configuration: configuration
+            )
+            defer { rendered.window.isHidden = true }
+            let frame = rendered.frame
+            let page = rendered.page
+            let photoLayer = tryUnwrap(
+                page.zoomScrollView.presentationContentView
+            ).layer
+            print(String(
+                format: "IC070_R6_LAYER config=%@ frame=(%.3f,%.3f,%.3f,%.3f) " +
+                    "photoRadius=%.3f photoMasks=%d photoCurve=%@ " +
+                    "borderFrame=(%.3f,%.3f,%.3f,%.3f) borderRadius=%.3f " +
+                    "borderWidth=%.3f borderCurve=%@ superlayerIsPhoto=%d",
+                label,
+                frame.minX, frame.minY, frame.width, frame.height,
+                photoLayer.cornerRadius,
+                photoLayer.masksToBounds ? 1 : 0,
+                photoLayer.cornerCurve.rawValue,
+                page.fitBorderLayer.frame.minX,
+                page.fitBorderLayer.frame.minY,
+                page.fitBorderLayer.frame.width,
+                page.fitBorderLayer.frame.height,
+                page.fitBorderLayer.cornerRadius,
+                page.fitBorderLayer.borderWidth,
+                page.fitBorderLayer.cornerCurve.rawValue,
+                page.fitBorderLayer.superlayer === photoLayer ? 1 : 0
+            ))
+            let step: CGFloat = 1.0 / 3.0
+            let corners: [(String, CGPoint, CGVector)] = [
+                ("topLeft", CGPoint(x: frame.minX, y: frame.minY),
+                 CGVector(dx: step, dy: step)),
+                ("topRight", CGPoint(x: frame.maxX, y: frame.minY),
+                 CGVector(dx: -step, dy: step)),
+                ("bottomLeft", CGPoint(x: frame.minX, y: frame.maxY),
+                 CGVector(dx: step, dy: -step)),
+                ("bottomRight", CGPoint(x: frame.maxX, y: frame.maxY),
+                 CGVector(dx: -step, dy: -step))
+            ]
+            for (name, corner, direction) in corners {
+                let start = CGPoint(
+                    x: corner.x - direction.dx * 6,
+                    y: corner.y - direction.dy * 6
+                )
+                let grays = grayRun(
+                    image: rendered.image,
+                    from: start,
+                    step: direction,
+                    count: 60
+                )
+                print("IC070_R6_SCAN config=\(label) path=diag_\(name) " +
+                    "start=(\(start.x),\(start.y)) grays=\(grays)")
+            }
+            let edges: [(String, CGPoint, CGVector)] = [
+                ("left", CGPoint(x: frame.minX - 2, y: frame.midY),
+                 CGVector(dx: step, dy: 0)),
+                ("right", CGPoint(x: frame.maxX + 2, y: frame.midY),
+                 CGVector(dx: -step, dy: 0)),
+                ("top", CGPoint(x: frame.midX, y: frame.minY - 2),
+                 CGVector(dx: 0, dy: step)),
+                ("bottom", CGPoint(x: frame.midX, y: frame.maxY + 2),
+                 CGVector(dx: 0, dy: -step))
+            ]
+            for (name, start, direction) in edges {
+                let grays = grayRun(
+                    image: rendered.image,
+                    from: start,
+                    step: direction,
+                    count: 18
+                )
+                print("IC070_R6_SCAN config=\(label) path=edge_\(name) " +
+                    "start=(\(start.x),\(start.y)) grays=\(grays)")
+            }
+        }
+    }
+
     // IC-068 G50：相同或回退的时钟读数仍被归一为严格递增的统一事件流。
     func testIC068G50UnifiedClockRecordsAreStrictlyOrdered() {
         var readings: [CFTimeInterval] = [
@@ -4976,6 +5135,86 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 point: CGPoint(x: frame.maxX - 0.5, y: frame.midY)
             )
         ]
+    }
+
+    private func renderFramedPageForBorderScan(
+        style: UIUserInterfaceStyle,
+        photoGray: Int,
+        configuration: S2CalibrationConfiguration
+    ) -> (
+        window: UIWindow,
+        page: S2NativeZoomPageController,
+        frame: CGRect,
+        image: UIImage
+    ) {
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration,
+            photoContent: { _, size, _, _ in
+                AnyView(
+                    Color(
+                        UIColor(
+                            white: CGFloat(photoGray) / 255,
+                            alpha: 1
+                        )
+                    )
+                    .frame(width: size.width, height: size.height)
+                )
+            }
+        )
+        let host = UIViewController()
+        host.view.frame = CGRect(origin: .zero, size: physicalSize)
+        host.view.backgroundColor = style == .dark ? .black : .white
+        host.addChild(controller)
+        controller.view.frame = host.view.bounds
+        host.view.addSubview(controller.view)
+        controller.didMove(toParent: host)
+        host.setOverrideTraitCollection(
+            UITraitCollection(userInterfaceStyle: style),
+            forChild: controller
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = host
+        window.isHidden = false
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        host.view.layoutIfNeeded()
+
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let contentView = tryUnwrap(
+            page.zoomScrollView.presentationContentView
+        )
+        let frame = contentView.convert(contentView.bounds, to: host.view)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 3
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(
+            bounds: host.view.bounds,
+            format: format
+        ).image { _ in
+            _ = host.view.drawHierarchy(
+                in: host.view.bounds,
+                afterScreenUpdates: true
+            )
+        }
+        return (window, page, frame, image)
+    }
+
+    private func grayRun(
+        image: UIImage,
+        from start: CGPoint,
+        step: CGVector,
+        count: Int
+    ) -> [Int] {
+        (0..<count).map { index in
+            pixelGray(
+                image: image,
+                point: CGPoint(
+                    x: start.x + step.dx * CGFloat(index),
+                    y: start.y + step.dy * CGFloat(index)
+                )
+            )
+        }
     }
 
     private func viewportBackgroundPixelGray(
