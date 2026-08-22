@@ -94,6 +94,18 @@ struct S2NxEdgePagingInteraction: Equatable {
     let distanceToPreviousBoundary: CGFloat
     let distanceToNextBoundary: CGFloat
 
+    /// IC-082 R2（v15 决策 4 原文"画面已平移贴边"）：拖动开始时，缩放后内容在拖动
+    /// 方向上的边界已与视口边界重合（距离 ≤ 0.5 pt）才算贴边起始；否则本次拖动
+    /// 无论溢出多少都不翻页。
+    static let edgeTolerance: CGFloat = 0.5
+
+    func startedAtPagingEdge(for direction: S2PageDirection) -> Bool {
+        let distance = direction == .next
+            ? distanceToNextBoundary
+            : distanceToPreviousBoundary
+        return distance <= Self.edgeTolerance
+    }
+
     func projection(translationX: CGFloat) -> S2NxEdgePagingProjection {
         let translation = translationX - translationOriginX
         guard translation != 0 else {
@@ -2945,8 +2957,8 @@ final class S2NativePagerViewController: UIViewController,
             resetNXEdgePaging(animated: configuration.animationsEnabled)
             return
         }
-        _ = interaction
-        let startedAtPagingEdge = projection.overflowDistance > 0
+        // IC-082 R2：贴边起始由拖动开始时的边界距离判定，不再由本次溢出量判定。
+        let startedAtPagingEdge = interaction.startedAtPagingEdge(for: direction)
         let accepted = machine.handleHorizontalSwipe(
             direction: direction,
             startedAtPagingEdge: startedAtPagingEdge,

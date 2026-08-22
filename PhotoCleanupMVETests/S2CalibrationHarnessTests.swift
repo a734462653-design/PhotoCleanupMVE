@@ -207,7 +207,7 @@ private final class IC065PinchPresentationSampler: NSObject {
 final class S2CalibrationHarnessTests: XCTestCase {
     private var nativeZoomDelegates: [S2NativeZoomTestDelegate] = []
 
-    // V1：界面显隐不改变全屏物理视口。
+    // V1ï¼çé¢æ¾éä¸æ¹åå¨å±ç©çè§å£ã
     func testV1InterfaceVisibilityKeepsViewportSizeEqual() {
         let visible = metrics(
             visibility: .visible,
@@ -224,7 +224,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(visible.viewportSize, physicalSize)
     }
 
-    // V2：横栏静止态与滑动态保持相同视口和固定外层高度。
+    // V2ï¼æ¨ªæ éæ­¢æä¸æ»å¨æä¿æç¸åè§å£ååºå®å¤å±é«åº¦ã
     func testV2BottomStripStatesKeepViewportSizeAndHeightEqual() {
         let idle = metrics(
             visibility: .visible,
@@ -241,7 +241,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(idle.bottomStripHeight, dragging.bottomStripHeight)
     }
 
-    // V3：系统 sheet 只遮挡输入，不改变主图视口。
+    // V3ï¼ç³»ç» sheet åªé®æ¡è¾å¥ï¼ä¸æ¹åä¸»å¾è§å£ã
     func testV3SheetPresentationKeepsViewportSizeEqual() {
         let closed = metrics(
             visibility: .visible,
@@ -257,7 +257,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(closed.viewportSize, presented.viewportSize)
     }
 
-    // V4 替代断言：界面状态只可改变框显照片的 1x 呈现，不改变缩放基准。
+    // V4 æ¿ä»£æ­è¨ï¼çé¢ç¶æåªå¯æ¹åæ¡æ¾ç§çç 1x åç°ï¼ä¸æ¹åç¼©æ¾åºåã
     func testV4ReplacementPresentationStatesPreserveViewportAndZoomBaselines() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitInsetRatio = 0.08
@@ -310,7 +310,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // V5：销毁并重建模型后，进程持久化介质仍能读回全部配置。
+    // V5ï¼éæ¯å¹¶éå»ºæ¨¡ååï¼è¿ç¨æä¹åä»è´¨ä»è½è¯»åå¨é¨éç½®ã
     func testV5ParametersSurviveProcessModelRestart() {
         let suiteName = "S2CalibrationHarnessTests.V5.\(UUID().uuidString)"
         let defaults = tryUnwrap(UserDefaults(suiteName: suiteName))
@@ -348,7 +348,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(restarted.exportText().contains("hapticOnPhotoSwitch=false"))
         XCTAssertTrue(
             restarted.exportText().contains(
-                "valueStatus=④项目判断默认值，可修订"
+                "valueStatus=â£é¡¹ç®å¤æ­é»è®¤å¼ï¼å¯ä¿®è®¢"
             )
         )
 
@@ -360,7 +360,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // V6：四种策略组合从面板配置进入状态机并驱动同一请求判定器。
+    // V6ï¼åç§ç­ç¥ç»åä»é¢æ¿éç½®è¿å¥ç¶ææºå¹¶é©±å¨åä¸è¯·æ±å¤å®å¨ã
     func testV6AllFourImageRequestStrategiesTakeEffectImmediately() {
         let timings = S2ScaleChangeImageRequestPolicy.allCases
         let previews = S2DegradedPreviewPolicy.allCases
@@ -408,7 +408,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // V7：无匹配素材时返回具名空结果并保留当前照片。
+    // V7ï¼æ å¹éç´ ææ¶è¿åå·åç©ºç»æå¹¶ä¿çå½åç§çã
     func testV7MissingAspectCategoryReturnsExplicitEmptyResult() {
         let machine = makeMachine()
         let originalAssetID = machine.currentAssetID
@@ -429,7 +429,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // V8 改写：内缩比例只作用于截图元数据，旧作用范围不再改变几何。
+    // V8 æ¹åï¼åç¼©æ¯ä¾åªä½ç¨äºæªå¾åæ°æ®ï¼æ§ä½ç¨èå´ä¸åæ¹åå ä½ã
     func testV8FitInsetRatioAppliesOnlyToScreenshotMetadata() {
         var zero = S2CalibrationConfiguration.factoryPlaceholder
         zero.fitInsetRatio = 0
@@ -496,7 +496,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(ordinaryPhoto.isFramedPhoto)
     }
 
-    // L1：顶部三个元素全部从系统顶部安全区下沿开始布局（IC-075 起为三件）。
+    // L1ï¼é¡¶é¨ä¸ä¸ªåç´ å¨é¨ä»ç³»ç»é¡¶é¨å®å¨åºä¸æ²¿å¼å§å¸å±ï¼IC-075 èµ·ä¸ºä¸ä»¶ï¼ã
     func testL1TopOverlayFramesRespectSafeAreaTop() {
         let snapshot = overlaySnapshot()
 
@@ -506,7 +506,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // L2：底部操作与照片横栏都不进入主屏幕指示条区域。
+    // L2ï¼åºé¨æä½ä¸ç§çæ¨ªæ é½ä¸è¿å¥ä¸»å±å¹æç¤ºæ¡åºåã
     func testL2BottomOverlayFramesRespectHomeIndicator() {
         let snapshot = overlaySnapshot()
         let safeBottom = overlayPhysicalSize.height -
@@ -518,8 +518,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-075 G104：顶部三帧互不重叠、均在顶部区域内；返回与确认页入口 ≥ 44pt；
-    // 可点击帧含帧 0 与帧 2、不含序号帧 1。
+    // IC-075 G104ï¼é¡¶é¨ä¸å¸§äºä¸éå ãåå¨é¡¶é¨åºååï¼è¿åä¸ç¡®è®¤é¡µå¥å£ â¥ 44ptï¼
+    // å¯ç¹å»å¸§å«å¸§ 0 ä¸å¸§ 2ãä¸å«åºå·å¸§ 1ã
     func testIC075G104TopBarHasThreeElementsWithClickableEnds() {
         let snapshot = overlaySnapshot()
         let frames = snapshot.topElementFrames
@@ -535,7 +535,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         for (index, frame) in frames.enumerated() {
             XCTAssertTrue(
                 topBounds.insetBy(dx: -0.001, dy: -0.001).contains(frame),
-                "顶部元素 \(index) 应落在顶部区域内：\(frame)"
+                "é¡¶é¨åç´  \(index) åºè½å¨é¡¶é¨åºååï¼\(frame)"
             )
         }
         for first in frames.indices {
@@ -564,7 +564,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(clickable.contains(frames[1]))
     }
 
-    // L3：返回、序号与确认页入口三个顶部元素之间均保留间距。
+    // L3ï¼è¿åãåºå·ä¸ç¡®è®¤é¡µå¥å£ä¸ä¸ªé¡¶é¨åç´ ä¹é´åä¿çé´è·ã
     func testL3TopOverlayFramesDoNotIntersect() {
         let frames = overlaySnapshot().topElementFrames
 
@@ -572,13 +572,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
             for secondIndex in frames.indices where secondIndex > firstIndex {
                 XCTAssertFalse(
                     frames[firstIndex].intersects(frames[secondIndex]),
-                    "顶部元素 \(firstIndex) 与 \(secondIndex) 不应相交"
+                    "é¡¶é¨åç´  \(firstIndex) ä¸ \(secondIndex) ä¸åºç¸äº¤"
                 )
             }
         }
     }
 
-    // L4：产品浮层、横栏与后台控制条的全部触控区域至少为 44 pt。
+    // L4ï¼äº§åæµ®å±ãæ¨ªæ ä¸åå°æ§å¶æ¡çå¨é¨è§¦æ§åºåè³å°ä¸º 44 ptã
     func testL4ClickableOverlayControlsMeetMinimumTouchTarget() {
         let state = S2CalibrationOverlayState(
             controlsVisible: true,
@@ -602,7 +602,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // L5：两个后台面板分别打开、关闭及同时打开都不改变视口。
+    // L5ï¼ä¸¤ä¸ªåå°é¢æ¿åå«æå¼ãå³é­ååæ¶æå¼é½ä¸æ¹åè§å£ã
     func testL5CalibrationPanelsDoNotChangeViewportSize() {
         var state = S2CalibrationOverlayState.initial
         let initial = metrics(calibrationState: state).viewportSize
@@ -622,7 +622,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(metrics(calibrationState: state).viewportSize, initial)
     }
 
-    // L6：首次启动无面板、无控制条，也没有占据主界面的入口帧。
+    // L6ï¼é¦æ¬¡å¯å¨æ é¢æ¿ãæ æ§å¶æ¡ï¼ä¹æ²¡æå æ®ä¸»çé¢çå¥å£å¸§ã
     func testL6CalibrationPanelsStartHiddenWithoutVisibleEntry() {
         let state = S2CalibrationOverlayState.initial
         let snapshot = overlaySnapshot(calibrationState: state)
@@ -639,7 +639,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(revealed.readingsVisible)
     }
 
-    // L7：完整出厂配置包含 IC-064 的显隐时长与描边定案。
+    // L7ï¼å®æ´åºåéç½®åå« IC-064 çæ¾éæ¶é¿ä¸æè¾¹å®æ¡ã
     func testL7FactoryDefaultsMatchSystemParityDecision() {
         let expected = S2CalibrationConfiguration(
             pinchMaxScaleFloor: 4,
@@ -697,7 +697,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "valueStatus=④项目判断默认值，可修订"
+                "valueStatus=â£é¡¹ç®å¤æ­é»è®¤å¼ï¼å¯ä¿®è®¢"
             )
         )
         XCTAssertTrue(
@@ -732,10 +732,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(
             actual.exportText().contains("singleTapDecisionWindowMilliseconds")
         )
-        XCTAssertFalse(actual.exportText().contains("未标定"))
+        XCTAssertFalse(actual.exportText().contains("æªæ å®"))
     }
 
-    // IC-067 C5：面板状态表逐一覆盖全部配置字段，不为死参数补接生产逻辑。
+    // IC-067 C5ï¼é¢æ¿ç¶æè¡¨éä¸è¦çå¨é¨éç½®å­æ®µï¼ä¸ä¸ºæ­»åæ°è¡¥æ¥çäº§é»è¾ã
     func testIC067C5ParameterConnectionStatusesCoverEveryFieldExactlyOnce() {
         let parameterNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
@@ -763,7 +763,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(statuses["edgePagingTriggerDistance"], .effective)
     }
 
-    // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion=2 与 v15 规格基线。
+    // IC-074 G96ï¼éç½®å­æ®µæ° 33 ä¸ªï¼å¯¼åº 37 è¡ï¼å« schemaVersion=2 ä¸ v15 è§æ ¼åºçº¿ã
     func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
@@ -788,11 +788,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
         for name in fieldNames {
             XCTAssertTrue(exportedNames.contains(name), name)
         }
-        // 导出行 = 4 个头部键 + 33 个字段，没有任何废止参数残留。
+        // å¯¼åºè¡ = 4 ä¸ªå¤´é¨é® + 33 ä¸ªå­æ®µï¼æ²¡æä»»ä½åºæ­¢åæ°æ®çã
         XCTAssertEqual(exportedNames.count, fieldNames.count + 4)
     }
 
-    // IC-074 G97：登记表 33 条、双状态；decided 集合恰为 v15 第十一节第 1、2 部分已存在的 16 项。
+    // IC-074 G97ï¼ç»è®°è¡¨ 33 æ¡ãåç¶æï¼decided éåæ°ä¸º v15 ç¬¬åä¸èç¬¬ 1ã2 é¨åå·²å­å¨ç 16 é¡¹ã
     func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
         let connections = S2CalibrationConfiguration.parameterConnections
         XCTAssertEqual(connections.count, 37)
@@ -836,10 +836,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-077 G127（原生分页控制器夹具 + 脚本化假策略计数；页窗口按 S2View.mainPhoto 规则为当前页 ±1）：
-    // 捏合中连续 10 次 s 变化 0 次请求；捏合结束 1 次；双击到达目标倍率 1 次（退出与进入各 1）；
-    // 翻页后新进窗口的一页 1 次、离开窗口的一页旧请求被取消、成为当前页的一页不重复请求；
-    // 视口尺寸变化当前页 1 次。
+    // IC-077 G127ï¼åçåé¡µæ§å¶å¨å¤¹å· + èæ¬ååç­ç¥è®¡æ°ï¼é¡µçªå£æ S2View.mainPhoto è§åä¸ºå½åé¡µ Â±1ï¼ï¼
+    // æåä¸­è¿ç»­ 10 æ¬¡ s åå 0 æ¬¡è¯·æ±ï¼æåç»æ 1 æ¬¡ï¼åå»å°è¾¾ç®æ åç 1 æ¬¡ï¼éåºä¸è¿å¥å 1ï¼ï¼
+    // ç¿»é¡µåæ°è¿çªå£çä¸é¡µ 1 æ¬¡ãç¦»å¼çªå£çä¸é¡µæ§è¯·æ±è¢«åæ¶ãæä¸ºå½åé¡µçä¸é¡µä¸éå¤è¯·æ±ï¼
+    // è§å£å°ºå¯¸ååå½åé¡µ 1 æ¬¡ã
     func testIC077G127RequestThrottlingAcrossPinchDoubleTapPagingAndViewport() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let assetIDs = ["asset-1", "asset-2", "asset-3", "asset-4", "asset-5"]
@@ -934,14 +934,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
         applyWindowedPages()
         let current = "asset-2"
-        XCTAssertEqual(strategy.requestCount(for: current), 1, "初始请求一次")
+        XCTAssertEqual(strategy.requestCount(for: current), 1, "åå§è¯·æ±ä¸æ¬¡")
         XCTAssertEqual(strategy.requestCount(for: "asset-1"), 1)
         XCTAssertEqual(strategy.requestCount(for: "asset-3"), 1)
-        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 0, "窗口外不请求")
+        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 0, "çªå£å¤ä¸è¯·æ±")
         let firstPageRequestID = strategy.requests.first { $0.assetID == "asset-1" }?.id
         XCTAssertNotNil(firstPageRequestID)
 
-        // 捏合：连续 s 变化 0 次请求。
+        // æåï¼è¿ç»­ s åå 0 æ¬¡è¯·æ±ã
         XCTAssertTrue(machine.beginPinch())
         for step in 1...10 {
             machine.reportNativeViewport(
@@ -950,56 +950,56 @@ final class S2CalibrationHarnessTests: XCTestCase {
             )
             applyWindowedPages()
         }
-        XCTAssertEqual(strategy.requestCount(for: current), 1, "捏合中不得请求")
+        XCTAssertEqual(strategy.requestCount(for: current), 1, "æåä¸­ä¸å¾è¯·æ±")
 
-        // 捏合结束 1 次。
+        // æåç»æ 1 æ¬¡ã
         XCTAssertNotNil(machine.finishNativePinch(
             scale: 2,
             viewportOffset: .zero,
             accepted: true
         ))
         applyWindowedPages()
-        XCTAssertEqual(strategy.requestCount(for: current), 2, "捏合结束请求一次")
+        XCTAssertEqual(strategy.requestCount(for: current), 2, "æåç»æè¯·æ±ä¸æ¬¡")
 
-        // 双击退出 Nx 到达 s=1：1 次；再双击进入目标倍率：1 次。
+        // åå»éåº Nx å°è¾¾ s=1ï¼1 æ¬¡ï¼ååå»è¿å¥ç®æ åçï¼1 æ¬¡ã
         XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
         XCTAssertEqual(machine.zoomState, .oneX)
         applyWindowedPages()
-        XCTAssertEqual(strategy.requestCount(for: current), 3, "双击退出请求一次")
+        XCTAssertEqual(strategy.requestCount(for: current), 3, "åå»éåºè¯·æ±ä¸æ¬¡")
         XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
         XCTAssertEqual(machine.zoomState, .nX)
         applyWindowedPages()
-        XCTAssertEqual(strategy.requestCount(for: current), 4, "双击进入请求一次")
+        XCTAssertEqual(strategy.requestCount(for: current), 4, "åå»è¿å¥è¯·æ±ä¸æ¬¡")
         XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
         applyWindowedPages()
         XCTAssertEqual(machine.zoomState, .oneX)
-        XCTAssertEqual(strategy.requestCount(for: "asset-1"), 1, "相邻页不受影响")
+        XCTAssertEqual(strategy.requestCount(for: "asset-1"), 1, "ç¸é»é¡µä¸åå½±å")
 
-        // 翻页：新进窗口的 asset-4 请求一次；离开窗口的 asset-1 旧请求被取消；当前页不重复请求。
+        // ç¿»é¡µï¼æ°è¿çªå£ç asset-4 è¯·æ±ä¸æ¬¡ï¼ç¦»å¼çªå£ç asset-1 æ§è¯·æ±è¢«åæ¶ï¼å½åé¡µä¸éå¤è¯·æ±ã
         let beforePaging = strategy.requestCount
         XCTAssertTrue(machine.handleNativePageChange(to: 2))
         applyWindowedPages()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 1, "翻页后新页请求一次")
-        XCTAssertEqual(strategy.requestCount(for: "asset-3"), 1, "成为当前页不重复请求")
-        XCTAssertEqual(strategy.requestCount - beforePaging, 1, "翻页只新增一次请求")
-        // IC-079 起分页控制器保留 currentIndex ± 2 内的页：asset-1 在翻到索引 2 时仍保留，
-        // 再翻一页到索引 3 才离开窗口；离开窗口的页旧请求被取消的语义不变。
+        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 1, "ç¿»é¡µåæ°é¡µè¯·æ±ä¸æ¬¡")
+        XCTAssertEqual(strategy.requestCount(for: "asset-3"), 1, "æä¸ºå½åé¡µä¸éå¤è¯·æ±")
+        XCTAssertEqual(strategy.requestCount - beforePaging, 1, "ç¿»é¡µåªæ°å¢ä¸æ¬¡è¯·æ±")
+        // IC-079 èµ·åé¡µæ§å¶å¨ä¿ç currentIndex Â± 2 åçé¡µï¼asset-1 å¨ç¿»å°ç´¢å¼ 2 æ¶ä»ä¿çï¼
+        // åç¿»ä¸é¡µå°ç´¢å¼ 3 æç¦»å¼çªå£ï¼ç¦»å¼çªå£çé¡µæ§è¯·æ±è¢«åæ¶çè¯­ä¹ä¸åã
         XCTAssertFalse(
             strategy.cancelledIDs.contains(firstPageRequestID ?? PHInvalidImageRequestID),
-            "仍在保留半径内的页不取消"
+            "ä»å¨ä¿çåå¾åçé¡µä¸åæ¶"
         )
         XCTAssertTrue(machine.handleNativePageChange(to: 3))
         applyWindowedPages()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-        XCTAssertEqual(strategy.requestCount(for: "asset-5"), 1, "再翻页后新页请求一次")
-        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 1, "成为当前页不重复请求")
+        XCTAssertEqual(strategy.requestCount(for: "asset-5"), 1, "åç¿»é¡µåæ°é¡µè¯·æ±ä¸æ¬¡")
+        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 1, "æä¸ºå½åé¡µä¸éå¤è¯·æ±")
         XCTAssertTrue(
             strategy.cancelledIDs.contains(firstPageRequestID ?? PHInvalidImageRequestID),
-            "离开窗口的页应取消旧请求"
+            "ç¦»å¼çªå£çé¡µåºåæ¶æ§è¯·æ±"
         )
 
-        // 视口尺寸变化：当前页请求一次。
+        // è§å£å°ºå¯¸ååï¼å½åé¡µè¯·æ±ä¸æ¬¡ã
         let beforeResize = strategy.requestCount(for: "asset-4")
         applyWindowedPages(
             viewportSize: CGSize(
@@ -1011,11 +1011,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(
             strategy.requestCount(for: "asset-4") - beforeResize,
             1,
-            "视口尺寸变化请求一次"
+            "è§å£å°ºå¯¸ååè¯·æ±ä¸æ¬¡"
         )
     }
 
-    // IC-078 G132：`pinchMaxScale` 取值规则断言表（视口 402×874 pt、displayScale 3、F 按全视口 aspectFit）。
+    // IC-078 G132ï¼`pinchMaxScale` åå¼è§åæ­è¨è¡¨ï¼è§å£ 402Ã874 ptãdisplayScale 3ãF æå¨è§å£ aspectFitï¼ã
     func testIC078G132PinchMaxScaleRuleTable() throws {
         let viewport = CGSize(width: 402, height: 874)
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -1053,7 +1053,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 value
             )
         }
-        // 基准尺寸为零、倍率非法时取 floor；ceiling < floor 时按 floor 封顶。
+        // åºåå°ºå¯¸ä¸ºé¶ãåçéæ³æ¶å floorï¼ceiling < floor æ¶æ floor å°é¡¶ã
         XCTAssertEqual(
             S2PinchMaxScaleRule.pinchMaxScale(
                 assetPixelSize: CGSize(width: 8_000, height: 6_000),
@@ -1084,14 +1084,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
             ),
             4
         )
-        // `zoomSnapBackThreshold ≤ pinchMaxScaleFloor` 与 `ceiling ≥ floor` 校验。
+        // `zoomSnapBackThreshold â¤ pinchMaxScaleFloor` ä¸ `ceiling â¥ floor` æ ¡éªã
         var invalid = configuration
         invalid.zoomSnapBackThreshold = 4.5
         XCTAssertNil(invalid.resolvedParameters)
         invalid = configuration
         invalid.pinchMaxScaleCeiling = 3
         XCTAssertNil(invalid.resolvedParameters)
-        // 导出与登记表不再含单一 `pinchMaxScale`。
+        // å¯¼åºä¸ç»è®°è¡¨ä¸åå«åä¸ `pinchMaxScale`ã
         let exported = configuration.exportText()
         XCTAssertFalse(exported.contains("pinchMaxScale="))
         XCTAssertTrue(exported.contains("pinchMaxScaleFloor=4"))
@@ -1103,8 +1103,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-078 G135（夹具驱动）：每页 maximumZoomScale 按各自资产取值；像素尺寸后到时更新一次，
-    // contentOffset / contentSize / contentInset / 照片 frame 不变，照片几何写入事件 0 条。
+    // IC-078 G135ï¼å¤¹å·é©±å¨ï¼ï¼æ¯é¡µ maximumZoomScale æåèªèµäº§åå¼ï¼åç´ å°ºå¯¸åå°æ¶æ´æ°ä¸æ¬¡ï¼
+    // contentOffset / contentSize / contentInset / ç§ç frame ä¸åï¼ç§çå ä½åå¥äºä»¶ 0 æ¡ã
     func testIC078G135PerPageMaximumZoomScaleFollowsAssetWithoutGeometryWrites() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(
@@ -1128,7 +1128,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
         let first = tryUnwrap(controller.pageControllers[0])
         let second = tryUnwrap(controller.pageControllers[1])
-        // 像素尺寸未解析（未登记几何）：两页均为 floor。
+        // åç´ å°ºå¯¸æªè§£æï¼æªç»è®°å ä½ï¼ï¼ä¸¤é¡µåä¸º floorã
         XCTAssertEqual(first.zoomScrollView.maximumZoomScale, 4, accuracy: 0.000_001)
         XCTAssertEqual(second.zoomScrollView.maximumZoomScale, 4, accuracy: 0.000_001)
         XCTAssertEqual(machine.pinchMaxScale(for: "asset-2"), 4)
@@ -1151,7 +1151,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let secondBefore = snapshot(second)
         let writesBefore = diagnostics.photoGeometryWriteCount
 
-        // 像素尺寸后到：asset-1 小图 → floor；asset-2 大图 → 1:1 像素倍率。
+        // åç´ å°ºå¯¸åå°ï¼asset-1 å°å¾ â floorï¼asset-2 å¤§å¾ â 1:1 åç´ åçã
         let pixelSizes: [String: CGSize] = [
             "asset-1": CGSize(width: 600, height: 1_200),
             "asset-2": CGSize(width: 8_000, height: 6_000)
@@ -1194,9 +1194,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(second.zoomScrollView.zoomScale, 1)
     }
 
-    // IC-079 G139：场景 D 逐帧字段与三类新事件按 R1 清单存在（导出头部声明 + 真实采样行 + 样例事件）。
+    // IC-079 G139ï¼åºæ¯ D éå¸§å­æ®µä¸ä¸ç±»æ°äºä»¶æ R1 æ¸åå­å¨ï¼å¯¼åºå¤´é¨å£°æ + çå®éæ ·è¡ + æ ·ä¾äºä»¶ï¼ã
     func testIC079G139FastPagingScenarioExportsWindowFieldsAndEvents() {
-        XCTAssertEqual(S2OnDeviceTransitionScenario.fastPaging.exportTitle, "D 快速连续翻页")
+        XCTAssertEqual(S2OnDeviceTransitionScenario.fastPaging.exportTitle, "D å¿«éè¿ç»­ç¿»é¡µ")
         XCTAssertTrue(S2OnDeviceTransitionScenario.allCases.contains(.fastPaging))
 
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -1226,15 +1226,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
         diagnostics.captureFrame()
         diagnostics.recordPageLifecycle(created: true, pageIndex: 3, assetLocalIdentifier: "asset-4")
         diagnostics.recordPageLifecycle(created: false, pageIndex: 0, assetLocalIdentifier: "asset-1")
-        diagnostics.recordPagingContentOffsetWrite(offsetX: 320, animated: false, source: "测试来源")
+        diagnostics.recordPagingContentOffsetWrite(offsetX: 320, animated: false, source: "æµè¯æ¥æº")
         diagnostics.recordNativePageChange(from: 1, to: 2, accepted: true)
         diagnostics.stop()
         diagnostics.export()
 
         let text = diagnostics.reportText
-        XCTAssertTrue(text.contains("场景=D 快速连续翻页"))
+        XCTAssertTrue(text.contains("åºæ¯=D å¿«éè¿ç»­ç¿»é¡µ"))
         XCTAssertTrue(text.contains(
-            "逐帧字段=time,animationKeys,modelFrame,presentationFrame," +
+            "éå¸§å­æ®µ=time,animationKeys,modelFrame,presentationFrame," +
                 "transform,zoomScale,contentOffset,contentSize," +
                 "contentInset,adjustedContentInset,V,s," +
                 "pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating," +
@@ -1251,12 +1251,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(text.contains("\tsettledIndex=1"))
         XCTAssertTrue(text.contains("\tpageIndicesPresent=[0,1,2]"))
         XCTAssertTrue(text.contains("\tpageLoadStates=[0=unknown,1=displayed,2=loading]"))
-        XCTAssertTrue(text.contains("event=页创建\tsource=S2NativePagerViewController.apply\tdetails=pageIndex=3；asset=asset-4"))
-        XCTAssertTrue(text.contains("event=页移除\tsource=S2NativePagerViewController.apply\tdetails=pageIndex=0；asset=asset-1"))
-        XCTAssertTrue(text.contains("event=外层setContentOffset\tsource=测试来源\tdetails=x=320.000000；animated=false"))
-        XCTAssertTrue(text.contains("event=handleNativePageChange\tsource=S2NativePagerViewController.finishNativePaging\tdetails=from=1；to=2；accepted=true"))
+        XCTAssertTrue(text.contains("event=é¡µåå»º\tsource=S2NativePagerViewController.apply\tdetails=pageIndex=3ï¼asset=asset-4"))
+        XCTAssertTrue(text.contains("event=é¡µç§»é¤\tsource=S2NativePagerViewController.apply\tdetails=pageIndex=0ï¼asset=asset-1"))
+        XCTAssertTrue(text.contains("event=å¤å±setContentOffset\tsource=æµè¯æ¥æº\tdetails=x=320.000000ï¼animated=false"))
+        XCTAssertTrue(text.contains("event=handleNativePageChange\tsource=S2NativePagerViewController.finishNativePaging\tdetails=from=1ï¼to=2ï¼accepted=true"))
 
-        // 关闭录制时零副作用：记录数不变。
+        // å³é­å½å¶æ¶é¶å¯ä½ç¨ï¼è®°å½æ°ä¸åã
         let countAfterStop = diagnostics.recordedEntries.count
         diagnostics.recordPageLifecycle(created: true, pageIndex: 9, assetLocalIdentifier: "x")
         diagnostics.recordPagingContentOffsetWrite(offsetX: 1, animated: true, source: "x")
@@ -1264,9 +1264,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(diagnostics.recordedEntries.count, countAfterStop)
     }
 
-    // IC-079 G141（夹具驱动，真机未覆盖）：生产页窗口 + 页内容提供者。连续两次滚动到 i+2：
-    // 经过 i+1 与到达 i+2 时页控制器均已存在；滚动期间外层 setContentOffset(animated:false) 写入 0 次；
-    // 结算后 currentIndex == i+2、各页 scale == 1、V 不变；最后一页再滑无越界页创建。
+    // IC-079 G141ï¼å¤¹å·é©±å¨ï¼çæºæªè¦çï¼ï¼çäº§é¡µçªå£ + é¡µåå®¹æä¾èãè¿ç»­ä¸¤æ¬¡æ»å¨å° i+2ï¼
+    // ç»è¿ i+1 ä¸å°è¾¾ i+2 æ¶é¡µæ§å¶å¨åå·²å­å¨ï¼æ»å¨æé´å¤å± setContentOffset(animated:false) åå¥ 0 æ¬¡ï¼
+    // ç»ç®å currentIndex == i+2ãåé¡µ scale == 1ãV ä¸åï¼æåä¸é¡µåæ»æ è¶çé¡µåå»ºã
     func testIC079G141FastPagingKeepsPagesPresentWithoutOffsetWrites() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let assetIDs = (1...6).map { "asset-\($0)" }
@@ -1342,7 +1342,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         func nonAnimatedOffsetWriteCount() -> Int {
             diagnostics.recordedEntries.filter {
                 if case let .event(name, _, details) = $0.payload {
-                    return name == "外层setContentOffset" && details.hasSuffix("animated=false")
+                    return name == "å¤å±setContentOffset" && details.hasSuffix("animated=false")
                 }
                 return false
             }.count
@@ -1354,7 +1354,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(controller.diagnosticPageIndicesPresent, [0, 1, 2])
         let writesBeforeScrolling = nonAnimatedOffsetWriteCount()
 
-        // 第一次滚动到 i+1 并滚停；SwiftUI 尚未刷新时立即开始第二次滚动。
+        // ç¬¬ä¸æ¬¡æ»å¨å° i+1 å¹¶æ»åï¼SwiftUI å°æªå·æ°æ¶ç«å³å¼å§ç¬¬äºæ¬¡æ»å¨ã
         controller.scrollViewWillBeginDragging(paging)
         paging.setContentOffset(
             CGPoint(x: paging.contentOffsetForPage(at: 1).x + paging.pageStride * 0.5, y: 0),
@@ -1369,17 +1369,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
             CGPoint(x: paging.contentOffsetForPage(at: 2).x + paging.pageStride * 0.5, y: 0),
             animated: false
         )
-        XCTAssertNotNil(controller.pageControllers[2], "经过 i+1 时页存在")
-        XCTAssertNotNil(controller.pageControllers[3], "滚向 i+2 时目标页已存在")
+        XCTAssertNotNil(controller.pageControllers[2], "ç»è¿ i+1 æ¶é¡µå­å¨")
+        XCTAssertNotNil(controller.pageControllers[3], "æ»å i+2 æ¶ç®æ é¡µå·²å­å¨")
         paging.setContentOffset(paging.contentOffsetForPage(at: 3), animated: false)
-        XCTAssertNotNil(controller.pageControllers[3], "到达 i+2 时页存在")
-        XCTAssertNotNil(controller.pageControllers[4], "i+2 的下一页已预先存在")
+        XCTAssertNotNil(controller.pageControllers[3], "å°è¾¾ i+2 æ¶é¡µå­å¨")
+        XCTAssertNotNil(controller.pageControllers[4], "i+2 çä¸ä¸é¡µå·²é¢åå­å¨")
         controller.scrollViewDidEndDecelerating(paging)
 
         XCTAssertEqual(
             nonAnimatedOffsetWriteCount() - writesBeforeScrolling,
             0,
-            "滚动期间不得有非动画偏移写入"
+            "æ»å¨æé´ä¸å¾æéå¨ç»åç§»åå¥"
         )
         XCTAssertEqual(machine.currentIndex, 3)
         XCTAssertEqual(machine.scale, 1)
@@ -1389,7 +1389,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             XCTAssertEqual(pageController.zoomScrollView.zoomScale, 1, accuracy: 0.000_001)
         }
 
-        // SwiftUI 刷新：窗口 2…4 保留，按需创建的页在保留半径内不被移除。
+        // SwiftUI å·æ°ï¼çªå£ 2â¦4 ä¿çï¼æéåå»ºçé¡µå¨ä¿çåå¾åä¸è¢«ç§»é¤ã
         applyProductionWindow()
         XCTAssertEqual(controller.diagnosticPageIndicesPresent, [1, 2, 3, 4, 5].filter {
             controller.pageControllers[$0] != nil
@@ -1397,10 +1397,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNotNil(controller.pageControllers[2])
         XCTAssertNotNil(controller.pageControllers[3])
         XCTAssertNotNil(controller.pageControllers[4])
-        XCTAssertNil(controller.pageControllers[0], "超出保留半径的页被移除")
+        XCTAssertNil(controller.pageControllers[0], "è¶åºä¿çåå¾çé¡µè¢«ç§»é¤")
         XCTAssertEqual(paging.contentOffset, paging.contentOffsetForPage(at: 3))
 
-        // 序列边界：最后一页再滑，无越界页创建。
+        // åºåè¾¹çï¼æåä¸é¡µåæ»ï¼æ è¶çé¡µåå»ºã
         XCTAssertTrue(machine.handleNativePageChange(to: 5))
         applyProductionWindow()
         controller.scrollViewWillBeginDragging(paging)
@@ -1415,8 +1415,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.currentIndex, 5)
     }
 
-    // IC-079 R1 夹具探针（仅打印，不做断言）：生产页窗口（当前页 ±1）下，第一页滚停后、
-    // SwiftUI 刷新（重新 apply）前立即开始第二次滚动到 i+2，逐步打印 pageIndicesPresent 与 contentOffset。
+    // IC-079 R1 å¤¹å·æ¢éï¼ä»æå°ï¼ä¸åæ­è¨ï¼ï¼çäº§é¡µçªå£ï¼å½åé¡µ Â±1ï¼ä¸ï¼ç¬¬ä¸é¡µæ»ååã
+    // SwiftUI å·æ°ï¼éæ° applyï¼åç«å³å¼å§ç¬¬äºæ¬¡æ»å¨å° i+2ï¼éæ­¥æå° pageIndicesPresent ä¸ contentOffsetã
     func testIC079R1FastPagingWindowProbe() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let assetIDs = (1...6).map { "asset-\($0)" }
@@ -1488,42 +1488,42 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let paging = controller.pagingScrollView
         func dump(_ step: String) {
             let target = paging.pageIndex(forContentOffsetX: paging.contentOffset.x)
-            print("[IC-079 探针] \(step)：currentIndex=\(machine.currentIndex) settledIndex=\(controller.settledIndex) contentOffsetX=\(paging.contentOffset.x) 偏移所在页=\(target) pageIndicesPresent=\(controller.diagnosticPageIndicesPresent) 目标页存在=\(controller.pageControllers[target] != nil)")
+            print("[IC-079 æ¢é] \(step)ï¼currentIndex=\(machine.currentIndex) settledIndex=\(controller.settledIndex) contentOffsetX=\(paging.contentOffset.x) åç§»æå¨é¡µ=\(target) pageIndicesPresent=\(controller.diagnosticPageIndicesPresent) ç®æ é¡µå­å¨=\(controller.pageControllers[target] != nil)")
         }
 
         applyProductionWindow()
-        dump("0 初始（窗口 i±1）")
-        // 第一次滚动：到 i+1 并滚停（原生减速结束回调）。
+        dump("0 åå§ï¼çªå£ iÂ±1ï¼")
+        // ç¬¬ä¸æ¬¡æ»å¨ï¼å° i+1 å¹¶æ»åï¼åçåéç»æåè°ï¼ã
         paging.setContentOffset(paging.contentOffsetForPage(at: 2), animated: false)
-        dump("1 第一次滚动到 i+1（滚停前）")
+        dump("1 ç¬¬ä¸æ¬¡æ»å¨å° i+1ï¼æ»ååï¼")
         controller.scrollViewDidEndDecelerating(paging)
-        dump("2 第一次滚停（finishNativePaging 后，SwiftUI 尚未刷新）")
-        // 第二次滚动在 SwiftUI 刷新前立即开始：目标 i+2。
+        dump("2 ç¬¬ä¸æ¬¡æ»åï¼finishNativePaging åï¼SwiftUI å°æªå·æ°ï¼")
+        // ç¬¬äºæ¬¡æ»å¨å¨ SwiftUI å·æ°åç«å³å¼å§ï¼ç®æ  i+2ã
         paging.setContentOffset(paging.contentOffsetForPage(at: 3), animated: false)
-        dump("3 第二次滚动到 i+2（刷新前）")
+        dump("3 ç¬¬äºæ¬¡æ»å¨å° i+2ï¼å·æ°åï¼")
         controller.scrollViewDidEndDecelerating(paging)
-        dump("4 第二次滚停（finishNativePaging 后）")
+        dump("4 ç¬¬äºæ¬¡æ»åï¼finishNativePaging åï¼")
         applyProductionWindow()
-        dump("5 SwiftUI 刷新（重新 apply 窗口）后")
-        // 边界：最后一页再滑。
+        dump("5 SwiftUI å·æ°ï¼éæ° apply çªå£ï¼å")
+        // è¾¹çï¼æåä¸é¡µåæ»ã
         _ = machine.handleNativePageChange(to: 5)
         applyProductionWindow()
         paging.setContentOffset(CGPoint(x: paging.contentOffsetForPage(at: 5).x + 80, y: 0), animated: false)
-        dump("6 最后一页再滑 80pt（越界）")
+        dump("6 æåä¸é¡µåæ» 80ptï¼è¶çï¼")
         controller.scrollViewDidEndDecelerating(paging)
-        dump("7 越界滚停")
+        dump("7 è¶çæ»å")
 
         diagnostics.stop()
         diagnostics.export()
         for line in diagnostics.reportText.split(separator: "\n")
         where line.contains("kind=event") &&
-            (line.contains("外层setContentOffset") || line.contains("页创建") ||
-                line.contains("页移除") || line.contains("handleNativePageChange")) {
-            print("[IC-079 探针事件] \(line)")
+            (line.contains("å¤å±setContentOffset") || line.contains("é¡µåå»º") ||
+                line.contains("é¡µç§»é¤") || line.contains("handleNativePageChange")) {
+            print("[IC-079 æ¢éäºä»¶] \(line)")
         }
     }
 
-    // P1 替代断言：Nx 平移由原生滚动容器接管并产生非零 contentOffset。
+    // P1 æ¿ä»£æ­è¨ï¼Nx å¹³ç§»ç±åçæ»å¨å®¹å¨æ¥ç®¡å¹¶äº§çéé¶ contentOffsetã
     func testP1NxSingleFingerDragProducesNonzeroPan() {
         let scrollView = makeNativeZoomScrollView()
         scrollView.applyNativeState(
@@ -1537,7 +1537,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNotEqual(scrollView.reportedViewportOffset(), .zero)
     }
 
-    // P2 替代断言：边缘目标交给 UIScrollView 后由其原生边界钳制。
+    // P2 æ¿ä»£æ­è¨ï¼è¾¹ç¼ç®æ äº¤ç» UIScrollView åç±å¶åçè¾¹çé³å¶ã
     func testP2NxPanStopsAtContentBoundaryWithoutExtraMargin() {
         let scrollView = makeNativeZoomScrollView()
         _ = scrollView.performDoubleTapZoom(
@@ -1552,7 +1552,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(scrollView.bouncesZoom)
     }
 
-    // P3 替代断言：1x 时内层原生平移关闭，手势交给外层分页或竖滑语义。
+    // P3 æ¿ä»£æ­è¨ï¼1x æ¶åå±åçå¹³ç§»å³é­ï¼æå¿äº¤ç»å¤å±åé¡µæç«æ»è¯­ä¹ã
     func testP3OneXSingleFingerDragDoesNotPanPhoto() {
         let scrollView = makeNativeZoomScrollView()
         scrollView.applyNativeState(
@@ -1565,7 +1565,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(scrollView.reportedViewportOffset(), .zero)
     }
 
-    // R1 替代断言：原生捏合上报期间请求倍率不变，结束后只发一次请求信号。
+    // R1 æ¿ä»£æ­è¨ï¼åçæåä¸æ¥æé´è¯·æ±åçä¸åï¼ç»æååªåä¸æ¬¡è¯·æ±ä¿¡å·ã
     func testR1PinchRequestsExactlyOnceAfterPinchEnded() {
         let machine = makeMachine()
         let strategy = S2CalibrationConfiguration.factoryPlaceholder
@@ -1600,7 +1600,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.imageRequestAssetID, machine.currentAssetID)
     }
 
-    // R2（IC-077 改写）：出厂 degradedPreviewPolicy=.display，降质预览进入显示序列并由最终图原位替换。
+    // R2ï¼IC-077 æ¹åï¼ï¼åºå degradedPreviewPolicy=.displayï¼éè´¨é¢è§è¿å¥æ¾ç¤ºåºåå¹¶ç±æç»å¾åä½æ¿æ¢ã
     func testR2PinchDoesNotReplaceWithDegradedPreview() {
         let strategy = S2CalibrationConfiguration.factoryPlaceholder
             .imageRequestStrategy
@@ -1618,7 +1618,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(displayed, [.degradedPreview, .finalImage])
     }
 
-    // T1 替代断言：原生 contentOffset 令当前页与相邻页等量、同向、单调跟手。
+    // T1 æ¿ä»£æ­è¨ï¼åç contentOffset ä»¤å½åé¡µä¸ç¸é»é¡µç­éãååãåè°è·æã
     func testT1AdjacentPageTracksFingerWithSameSignAndMonotonicOffset() {
         let paging = makeNativePagingScrollView()
         let restingCurrent = paging.visibleFrameForPage(at: 1).minX
@@ -1645,7 +1645,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // T2 替代断言：原生分页已启用，未跨半页的落点仍报告当前分页单元。
+    // T2 æ¿ä»£æ­è¨ï¼åçåé¡µå·²å¯ç¨ï¼æªè·¨åé¡µçè½ç¹ä»æ¥åå½ååé¡µååã
     func testT2BelowSnapThresholdReturnsToCurrentPage() {
         let paging = makeNativePagingScrollView()
         let currentOffset = paging.contentOffsetForPage(at: 1).x
@@ -1659,7 +1659,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // T3 替代断言：分页单元尺寸固定；原生落页上报后缩放归一。
+    // T3 æ¿ä»£æ­è¨ï¼åé¡µååå°ºå¯¸åºå®ï¼åçè½é¡µä¸æ¥åç¼©æ¾å½ä¸ã
     func testT3PagingKeepsPhotoSizeAndResetsScaleAfterSwitch() {
         let machine = makeMachine(scale: 2)
         let paging = makeNativePagingScrollView()
@@ -1675,7 +1675,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.viewportOffset, .zero)
     }
 
-    // D1 再改写：截图按新出厂值等比适配到 0.70 视口框。
+    // D1 åæ¹åï¼æªå¾ææ°åºåå¼ç­æ¯ééå° 0.70 è§å£æ¡ã
     func testD1ScreenshotAspectFitShrinksToSeventyPercentViewport() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitInsetRatio = 0.30
@@ -1705,7 +1705,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // D2：内缩比例为零时，1x 显示严格等于纯等比适配。
+    // D2ï¼åç¼©æ¯ä¾ä¸ºé¶æ¶ï¼1x æ¾ç¤ºä¸¥æ ¼ç­äºçº¯ç­æ¯ééã
     func testD2ZeroFitInsetMatchesPureAspectFit() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitInsetRatio = 0
@@ -1714,7 +1714,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(value.oneXDisplaySize, value.aspectFitSize)
     }
 
-    // D3 改写：即使旧作用范围为全部照片，非截图的 1x 显示仍不变。
+    // D3 æ¹åï¼å³ä½¿æ§ä½ç¨èå´ä¸ºå¨é¨ç§çï¼éæªå¾ç 1x æ¾ç¤ºä»ä¸åã
     func testD3AllPhotosScopeLeavesNonScreenshotUnchanged() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitInsetRatio = 0.30
@@ -1731,7 +1731,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(value.isFramedPhoto)
     }
 
-    // D4 替代断言：屏幕比例照片的原生目标矩形采用最小目标倍数 2。
+    // D4 æ¿ä»£æ­è¨ï¼å±å¹æ¯ä¾ç§ççåçç®æ ç©å½¢éç¨æå°ç®æ åæ° 2ã
     func testD4ScreenAspectDoubleTapUsesMinimumScale() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let value = metrics(configuration: configuration)
@@ -1758,7 +1758,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // D5 替代断言：非屏幕比例照片只采用填满倍数，不再与最小倍数取大。
+    // D5 æ¿ä»£æ­è¨ï¼éå±å¹æ¯ä¾ç§çåªéç¨å¡«æ»¡åæ°ï¼ä¸åä¸æå°åæ°åå¤§ã
     func testD5ReplacementNonScreenDoubleTapUsesAspectFillScale() {
         let assetAspectRatio: CGFloat = 0.75
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -1793,7 +1793,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // D6 替代断言：左边缘双击交给原生 zoom 后，内容左边界贴齐视口。
+    // D6 æ¿ä»£æ­è¨ï¼å·¦è¾¹ç¼åå»äº¤ç»åç zoom åï¼åå®¹å·¦è¾¹çè´´é½è§å£ã
     func testD6LeftEdgeDoubleTapAlignsLeftContentBoundary() {
         let scrollView = makeNativeZoomScrollView()
 
@@ -1806,7 +1806,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(frame.minX, 0, accuracy: 0.000_001)
     }
 
-    // D7 替代断言：右、上、下边缘双击均由原生边界钳制贴齐视口。
+    // D7 æ¿ä»£æ­è¨ï¼å³ãä¸ãä¸è¾¹ç¼åå»åç±åçè¾¹çé³å¶è´´é½è§å£ã
     func testD7RightTopAndBottomEdgeDoubleTapAlignsEachBoundary() {
         let locationsAndAssertions: [
             (CGPoint, (CGRect, CGRect) -> CGFloat)
@@ -1847,7 +1847,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // D8 替代断言：原生双击退出 Nx 后 scrollView 与状态机同时归一。
+    // D8 æ¿ä»£æ­è¨ï¼åçåå»éåº Nx å scrollView ä¸ç¶ææºåæ¶å½ä¸ã
     func testD8DoubleTapExitResetsScaleAndOffset() {
         let value = metrics()
         let machine = makeMachine()
@@ -1875,7 +1875,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(scrollView.zoomScale, 1)
     }
 
-    // E1 再替代断言：UIKit 宣告双击失败后，单击回调才切换显隐。
+    // E1 åæ¿ä»£æ­è¨ï¼UIKit å®£ååå»å¤±è´¥åï¼åå»åè°æåæ¢æ¾éã
     func testE1ReplacementSingleTapRunsAfterDoubleTapFailure() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -1890,7 +1890,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.interfaceVisibility, .hidden)
     }
 
-    // E2 再替代断言：双击识别成功时不产生单击显隐动作。
+    // E2 åæ¿ä»£æ­è¨ï¼åå»è¯å«æåæ¶ä¸äº§çåå»æ¾éå¨ä½ã
     func testE2ReplacementDoubleTapSuppressesSingleTapAction() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -1909,7 +1909,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.interfaceVisibility, initialVisibility)
     }
 
-    // E3 再替代断言：两次分别被 UIKit 裁决的单击各生效一次。
+    // E3 åæ¿ä»£æ­è¨ï¼ä¸¤æ¬¡åå«è¢« UIKit è£å³çåå»åçæä¸æ¬¡ã
     func testE3ReplacementTwoResolvedSingleTapsToggleTwice() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -1921,7 +1921,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.scale, 1)
     }
 
-    // E4 再替代断言：原生双击回调与直接双击入口结果完全一致。
+    // E4 åæ¿ä»£æ­è¨ï¼åçåå»åè°ä¸ç´æ¥åå»å¥å£ç»æå®å¨ä¸è´ã
     func testE4ReplacementRecognizedDoubleTapMatchesDirectDoubleTap() {
         for visibility in [
             S2InterfaceVisibility.visible,
@@ -1952,7 +1952,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // E5：读数模型同时暴露照片、视口宽高比和实际双击目标倍数。
+    // E5ï¼è¯»æ°æ¨¡ååæ¶æ´é²ç§çãè§å£å®½é«æ¯åå®éåå»ç®æ åæ°ã
     func testE5ReadingsExposeAspectRatiosAndDoubleTapTargetScale() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let value = S2ViewportLayout.metrics(
@@ -1969,7 +1969,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(value.doubleTapTargetScale, 3, accuracy: 0.000_001)
     }
 
-    // E6：打开实时读数时关闭长参数面板，避免读数被挤出可见区域。
+    // E6ï¼æå¼å®æ¶è¯»æ°æ¶å³é­é¿åæ°é¢æ¿ï¼é¿åè¯»æ°è¢«æ¤åºå¯è§åºåã
     func testE6ReadingsAndParameterPanelsAreMutuallyExclusive() {
         var state = S2CalibrationOverlayState.initial
         state.toggleAccessControls()
@@ -1985,7 +1985,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(state.readingsVisible)
     }
 
-    // N1：主图使用原生可缩放容器，倍率上下限分别为 1 与 pinchMaxScaleFloor（IC-078：像素尺寸未解析时的值）。
+    // N1ï¼ä¸»å¾ä½¿ç¨åçå¯ç¼©æ¾å®¹å¨ï¼åçä¸ä¸éåå«ä¸º 1 ä¸ pinchMaxScaleFloorï¼IC-078ï¼åç´ å°ºå¯¸æªè§£ææ¶çå¼ï¼ã
     func testN1NativeZoomContainerUsesConfiguredMinimumAndMaximumScale() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let scrollView = makeNativeZoomScrollView(configuration: configuration)
@@ -1999,7 +1999,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // N2 替代断言：双击调用原生 zoom(to:)，目标矩形采用分类后的目标倍数。
+    // N2 æ¿ä»£æ­è¨ï¼åå»è°ç¨åç zoom(to:)ï¼ç®æ ç©å½¢éç¨åç±»åçç®æ åæ°ã
     func testN2DoubleTapInvokesNativeZoomWithResolvedTargetScale() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let value = S2ViewportLayout.metrics(
@@ -2027,7 +2027,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // N3：原生分页已开启，相邻分页单元间距等于 pageSpacing。
+    // N3ï¼åçåé¡µå·²å¼å¯ï¼ç¸é»åé¡µååé´è·ç­äº pageSpacingã
     func testN3NativePagingUsesConfiguredPageSpacing() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let paging = makeNativePagingScrollView(configuration: configuration)
@@ -2043,7 +2043,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // N4：pageSpacing 出厂值与参数导出均为 20。
+    // N4ï¼pageSpacing åºåå¼ä¸åæ°å¯¼åºåä¸º 20ã
     func testN4PageSpacingFactoryDefaultIsTwentyPoints() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
 
@@ -2053,7 +2053,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // N5：Nx 单击只切换显隐，不改变原生或状态机视口。
+    // N5ï¼Nx åå»åªåæ¢æ¾éï¼ä¸æ¹ååçæç¶ææºè§å£ã
     func testN5NxSingleTapTogglesInterfaceWithoutChangingNativeViewport() {
         let originalOffset = CGSize(width: 24, height: 16)
         let machine = makeMachine(scale: 2, viewportOffset: originalOffset)
@@ -2070,7 +2070,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(scrollView.contentOffset, nativeOffset)
     }
 
-    // N6：1x 单击继续切换界面显隐。
+    // N6ï¼1x åå»ç»§ç»­åæ¢çé¢æ¾éã
     func testN6OneXSingleTapTogglesInterfaceVisibility() {
         let machine = makeMachine(scale: 1)
 
@@ -2080,7 +2080,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.viewportOffset, .zero)
     }
 
-    // N7：原生分页落到新照片时，状态机缩放与偏移归一。
+    // N7ï¼åçåé¡µè½å°æ°ç§çæ¶ï¼ç¶ææºç¼©æ¾ä¸åç§»å½ä¸ã
     func testN7NativePageChangeResetsZoomToOne() {
         let machine = makeMachine(
             scale: 2,
@@ -2094,7 +2094,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.imageRequestScale, 1)
     }
 
-    // N8：原生捏合过程中不请求，结束后只发出一次请求修订。
+    // N8ï¼åçæåè¿ç¨ä¸­ä¸è¯·æ±ï¼ç»æååªååºä¸æ¬¡è¯·æ±ä¿®è®¢ã
     func testN8NativePinchRequestsZeroDuringGestureAndOnceAfterEnd() {
         let machine = makeMachine()
 
@@ -2118,7 +2118,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.imageRequestScale, 1.8, accuracy: 0.000_001)
     }
 
-    // IC-063：原生基准切换布局尺寸时，不把捏合开始误报为图片视口变化。
+    // IC-063ï¼åçåºååæ¢å¸å±å°ºå¯¸æ¶ï¼ä¸ææåå¼å§è¯¯æ¥ä¸ºå¾çè§å£ååã
     func testIC063NativeBaseResizeIssuesNoImageRequestBeforePinchEnd() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let requestCounter = S2ImageRequestCounter()
@@ -2157,7 +2157,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(requestCounter.requestCount, 0)
     }
 
-    // G1：1x 上滑达到既有阈值后标记触摸开始时的当前资产。
+    // G1ï¼1x ä¸æ»è¾¾å°æ¢æéå¼åæ è®°è§¦æ¸å¼å§æ¶çå½åèµäº§ã
     func testG1OneXSwipeUpMarksCurrentAsset() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -2179,7 +2179,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(machine.pendingDeletionAssetIDs.contains(originalAssetID))
     }
 
-    // G2 替代断言：Nx 竖向滑动由原生平移接管，不进入标记识别器。
+    // G2 æ¿ä»£æ­è¨ï¼Nx ç«åæ»å¨ç±åçå¹³ç§»æ¥ç®¡ï¼ä¸è¿å¥æ è®°è¯å«å¨ã
     func testG2NxVerticalSwipeRecognizerYieldsToNativePan() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(scale: 2, configuration: configuration)
@@ -2196,7 +2196,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.scale, 2)
     }
 
-    // G9：Nx 上滑不得改变待删集合 D 或当前序号 c。
+    // G9ï¼Nx ä¸æ»ä¸å¾æ¹åå¾å éå D æå½ååºå· cã
     func testG9NxSwipeUpLeavesDeletionSetAndCurrentIndexUnchanged() {
         let machine = makeMachine(scale: 2)
         let controller = makeNativePagerController(machine: machine)
@@ -2211,7 +2211,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.currentIndex, originalIndex)
     }
 
-    // G10：Nx 下滑不得改变待删集合 D 或当前序号 c。
+    // G10ï¼Nx ä¸æ»ä¸å¾æ¹åå¾å éå D æå½ååºå· cã
     func testG10NxSwipeDownLeavesDeletionSetAndCurrentIndexUnchanged() {
         let machine = makeMachine(
             scale: 2,
@@ -2229,7 +2229,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.currentIndex, originalIndex)
     }
 
-    // G11：Nx 竖向拖动由 UIScrollView 改变 y 偏移，且结果留在内容边界内。
+    // G11ï¼Nx ç«åæå¨ç± UIScrollView æ¹å y åç§»ï¼ä¸ç»æçå¨åå®¹è¾¹çåã
     func testG11NxVerticalPanChangesContentOffsetWithinNativeBounds() {
         let machine = makeMachine(scale: 2)
         let controller = makeNativePagerController(machine: machine)
@@ -2265,7 +2265,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // G12：捏合吸附回严格 1x 后，竖向标记语义立即恢复。
+    // G12ï¼æåå¸éåä¸¥æ ¼ 1x åï¼ç«åæ è®°è¯­ä¹ç«å³æ¢å¤ã
     func testG12PinchSnapBackImmediatelyRestoresSwipeUpMarking() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(
@@ -2300,7 +2300,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(machine.pendingDeletionAssetIDs.contains(originalAssetID))
     }
 
-    // IC-063 G1 改写：隐藏态的屏幕比例截图等比适配物理屏幕。
+    // IC-063 G1 æ¹åï¼éèæçå±å¹æ¯ä¾æªå¾ç­æ¯ééç©çå±å¹ã
     func testIC063G1HiddenScreenAspectScreenshotMatchesScreenBounds() {
         let viewportSize = UIScreen.main.bounds.size
         let assetRatio = viewportSize.width / viewportSize.height
@@ -2326,7 +2326,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(frame.height, UIScreen.main.bounds.height, accuracy: 0.5)
     }
 
-    // IC-063 G2 改写：裁切截图在显示态等比内缩且四边居中。
+    // IC-063 G2 æ¹åï¼è£åæªå¾å¨æ¾ç¤ºæç­æ¯åç¼©ä¸åè¾¹å±ä¸­ã
     func testIC063G2VisibleCroppedScreenshotUsesAspectFitInsetAndIsCentered() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let croppedScreenshotRatio: CGFloat = 0.1823
@@ -2367,7 +2367,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-063 G3 改写：双击仍按屏幕比例分类，不受截图元数据控制。
+    // IC-063 G3 æ¹åï¼åå»ä»æå±å¹æ¯ä¾åç±»ï¼ä¸åæªå¾åæ°æ®æ§å¶ã
     func testIC063G3DoubleTapTargetStillUsesScreenAspectClassification() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let screenRatioOrdinaryPhoto = S2ViewportLayout.metrics(
@@ -2405,7 +2405,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-063 G4：双击两向动画均保持原生倍率不动，终点同步帧视觉相等。
+    // IC-063 G4ï¼åå»ä¸¤åå¨ç»åä¿æåçåçä¸å¨ï¼ç»ç¹åæ­¥å¸§è§è§ç¸ç­ã
     func testIC063G4DoubleTapSynchronizationPreservesWindowFrameBothWays() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -2439,8 +2439,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertLessThanOrEqual(
             entrySynchronization.maximumDifference,
             0.5,
-            "进入同步前=\(entrySynchronization.beforeWindowFrame)，" +
-                "同步后=\(entrySynchronization.afterWindowFrame)"
+            "è¿å¥åæ­¥å=\(entrySynchronization.beforeWindowFrame)ï¼" +
+                "åæ­¥å=\(entrySynchronization.afterWindowFrame)"
         )
 
         let nxScale = page.zoomScrollView.zoomScale
@@ -2472,8 +2472,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             XCTAssertLessThanOrEqual(
                 reading.maximumDifference,
                 0.5,
-                "进度=\(progress)，进入帧=\(reading.beforeWindowFrame)，" +
-                    "退出反向帧=\(reading.afterWindowFrame)"
+                "è¿åº¦=\(progress)ï¼è¿å¥å¸§=\(reading.beforeWindowFrame)ï¼" +
+                    "éåºååå¸§=\(reading.afterWindowFrame)"
             )
             XCTAssertEqual(
                 entryTransition.cornerRadius(at: progress),
@@ -2488,7 +2488,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-063 G5：Nx 切换 V 不改变任何原生几何量或圆角。
+    // IC-063 G5ï¼Nx åæ¢ V ä¸æ¹åä»»ä½åçå ä½éæåè§ã
     func testIC063G5NxVisibilityTogglePreservesNativeGeometryAndCorner() {
         let machine = makeMachine(
             scale: 2,
@@ -2521,7 +2521,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-063 G6：Nx 延迟显隐目标在退出时只提交一次。
+    // IC-063 G6ï¼Nx å»¶è¿æ¾éç®æ å¨éåºæ¶åªæäº¤ä¸æ¬¡ã
     func testIC063G6NxDeferredPresentationCommitsExactlyOnceOnExit() {
         let machine = makeMachine(scale: 2)
         let controller = makeNativePagerController(machine: machine)
@@ -2551,7 +2551,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.presentationGeometryCommitCount, 1)
     }
 
-    // IC-063 G7：内外滚动视图运行时均明确关闭安全区自动 inset。
+    // IC-063 G7ï¼åå¤æ»å¨è§å¾è¿è¡æ¶åæç¡®å³é­å®å¨åºèªå¨ insetã
     func testIC063G7AllPhotoScrollViewsReadBackNeverAdjustment() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -2569,7 +2569,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.diagnosticAdditionalSafeAreaInsets, .zero)
     }
 
-    // IC-063 G8：新旧几何契约共用同一测试靶，不以替代状态机规避回归。
+    // IC-063 G8ï¼æ°æ§å ä½å¥çº¦å±ç¨åä¸æµè¯é¶ï¼ä¸ä»¥æ¿ä»£ç¶ææºè§é¿åå½ã
     func testIC063G8NativePagerStillUsesOriginalStateMachineInstance() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -2580,7 +2580,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(controller.diagnosticMachine?.currentAssetID, machine.currentAssetID)
     }
 
-    // 内置诊断：自动完成八类时机采样并输出可复制报告。
+    // åç½®è¯æ­ï¼èªå¨å®æå«ç±»æ¶æºéæ ·å¹¶è¾åºå¯å¤å¶æ¥åã
     func testIC063AutomaticGeometryDiagnosticsExportsAllRequiredStages() {
         let screenBounds = UIScreen.main.bounds
         let diagnosticAspectRatio = screenBounds.width / screenBounds.height
@@ -2629,7 +2629,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
         XCTAssertTrue(
             diagnostics.isExporting || !diagnostics.reportText.isEmpty,
-            "诊断协调器应在期限内挂载并开始导出"
+            "è¯æ­åè°å¨åºå¨æéåæè½½å¹¶å¼å§å¯¼åº"
         )
         let deadline = Date(timeIntervalSinceNow: 10)
         while diagnostics.isExporting, Date() < deadline {
@@ -2638,52 +2638,52 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
         let report = diagnostics.reportText
         XCTAssertFalse(diagnostics.isExporting)
-        XCTAssertTrue(report.contains("中间帧门禁：通过"))
-        XCTAssertTrue(report.contains("V=显示、s=1 稳定态"))
-        XCTAssertTrue(report.contains("单击后 V=隐藏、s=1 稳定态"))
-        XCTAssertTrue(report.contains("双击进入 Nx：动画结束稳定态"))
-        XCTAssertTrue(report.contains("双击退出 Nx：动画结束稳定态"))
+        XCTAssertTrue(report.contains("ä¸­é´å¸§é¨ç¦ï¼éè¿"))
+        XCTAssertTrue(report.contains("V=æ¾ç¤ºãs=1 ç¨³å®æ"))
+        XCTAssertTrue(report.contains("åå»å V=éèãs=1 ç¨³å®æ"))
+        XCTAssertTrue(report.contains("åå»è¿å¥ Nxï¼å¨ç»ç»æç¨³å®æ"))
+        XCTAssertTrue(report.contains("åå»éåº Nxï¼å¨ç»ç»æç¨³å®æ"))
         XCTAssertGreaterThanOrEqual(
-            report.components(separatedBy: "双击进入 Nx：动画中间帧").count - 1,
+            report.components(separatedBy: "åå»è¿å¥ Nxï¼å¨ç»ä¸­é´å¸§").count - 1,
             3
         )
         XCTAssertGreaterThanOrEqual(
-            report.components(separatedBy: "双击退出 Nx：动画中间帧").count - 1,
+            report.components(separatedBy: "åå»éåº Nxï¼å¨ç»ä¸­é´å¸§").count - 1,
             5
         )
-        XCTAssertTrue(report.contains("Q1："))
-        XCTAssertTrue(report.contains("Q2："))
-        XCTAssertTrue(report.contains("Q3："))
-        XCTAssertTrue(report.contains("Q4："))
+        XCTAssertTrue(report.contains("Q1ï¼"))
+        XCTAssertTrue(report.contains("Q2ï¼"))
+        XCTAssertTrue(report.contains("Q3ï¼"))
+        XCTAssertTrue(report.contains("Q4ï¼"))
         XCTAssertTrue(report.contains(
-            "Q1：顶部空白 0.000000px；contentInset=0.000000px，" +
-                "safeAreaInsets=0.000000px，aspectFit=0.000000px；" +
-                "加和=0.000000px。"
+            "Q1ï¼é¡¶é¨ç©ºç½ 0.000000pxï¼contentInset=0.000000pxï¼" +
+                "safeAreaInsets=0.000000pxï¼aspectFit=0.000000pxï¼" +
+                "å å=0.000000pxã"
         ))
         XCTAssertTrue(report.contains(
-            "Q2：s>1 全部样本内层 transform 恒等=true"
+            "Q2ï¼s>1 å¨é¨æ ·æ¬åå± transform æç­=true"
         ))
-        XCTAssertTrue(report.contains("稳定 Nx zoomScale=2.000000"))
-        XCTAssertTrue(report.contains("进入动画原生 zoomScale 恒定=true"))
-        XCTAssertTrue(report.contains("退出动画原生 zoomScale 恒定=true"))
+        XCTAssertTrue(report.contains("ç¨³å® Nx zoomScale=2.000000"))
+        XCTAssertTrue(report.contains("è¿å¥å¨ç»åç zoomScale æå®=true"))
+        XCTAssertTrue(report.contains("éåºå¨ç»åç zoomScale æå®=true"))
         XCTAssertTrue(report.contains(
-            "zoomScale 与内层 transform 同时非默认=false"
-        ))
-        XCTAssertTrue(report.contains(
-            "动画帧内层 transform 恒等=true"
+            "zoomScale ä¸åå± transform åæ¶éé»è®¤=false"
         ))
         XCTAssertTrue(report.contains(
-            "专用过渡层 transform 全部六元组分量单调=true"
+            "å¨ç»å¸§åå± transform æç­=true"
         ))
-        XCTAssertTrue(report.contains("动画帧 contentOffset 无跳变=true"))
         XCTAssertTrue(report.contains(
-            "Q4：V=显示时状态栏隐藏=false；" +
-                "V=隐藏时状态栏隐藏=true。"
+            "ä¸ç¨è¿æ¸¡å± transform å¨é¨å­åç»åéåè°=true"
+        ))
+        XCTAssertTrue(report.contains("å¨ç»å¸§ contentOffset æ è·³å=true"))
+        XCTAssertTrue(report.contains(
+            "Q4ï¼V=æ¾ç¤ºæ¶ç¶ææ éè=falseï¼" +
+                "V=éèæ¶ç¶ææ éè=trueã"
         ))
         print("IC063_DIAGNOSTICS_SAMPLE_BEGIN\n\(report)\nIC063_DIAGNOSTICS_SAMPLE_END")
     }
 
-    // G3 替代断言：原生双击不执行也不撤销任何单击显隐动作。
+    // G3 æ¿ä»£æ­è¨ï¼åçåå»ä¸æ§è¡ä¹ä¸æ¤éä»»ä½åå»æ¾éå¨ä½ã
     func testG3ReplacementNativeDoubleTapDoesNotApplyOrRevertSingleTap() {
         let targetScale = metrics().doubleTapTargetScale
         let machine = makeMachine()
@@ -2704,7 +2704,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.interfaceVisibility, initialVisibility)
     }
 
-    // G4 替代断言：两次由 UIKit 分别裁决的单击切换两次且不改倍率。
+    // G4 æ¿ä»£æ­è¨ï¼ä¸¤æ¬¡ç± UIKit åå«è£å³çåå»åæ¢ä¸¤æ¬¡ä¸ä¸æ¹åçã
     func testG4ReplacementTwoUIKitResolvedSingleTapsToggleTwiceWithoutZoom() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -2716,7 +2716,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.scale, 1)
     }
 
-    // M1：命中屏幕比例内缩判定时，双击只采用最小目标倍数。
+    // M1ï¼å½ä¸­å±å¹æ¯ä¾åç¼©å¤å®æ¶ï¼åå»åªéç¨æå°ç®æ åæ°ã
     func testM1ScreenAspectDoubleTapUsesMinimumScale() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let value = metrics(configuration: configuration)
@@ -2743,7 +2743,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // M2：未命中屏幕比例判定时，双击只采用填满视口倍数。
+    // M2ï¼æªå½ä¸­å±å¹æ¯ä¾å¤å®æ¶ï¼åå»åªéç¨å¡«æ»¡è§å£åæ°ã
     func testM2NonScreenPhotoDoubleTapUsesAspectFillScale() {
         let assetAspectRatio: CGFloat = 0.75
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -2786,7 +2786,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // F1：0.30 内缩令屏幕比例照片的 1x 短边等于视口短边的 0.70。
+    // F1ï¼0.30 åç¼©ä»¤å±å¹æ¯ä¾ç§çç 1x ç­è¾¹ç­äºè§å£ç­è¾¹ç 0.70ã
     func testF1FactoryInsetShrinksShortEdgeToSeventyPercent() {
         let value = metrics()
 
@@ -2797,7 +2797,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // F2 改写：圆角仅随截图元数据生效，普通照片严格为零。
+    // F2 æ¹åï¼åè§ä»éæªå¾åæ°æ®çæï¼æ®éç§çä¸¥æ ¼ä¸ºé¶ã
     func testF2CornerRadiusAppliesOnlyToScreenshots() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let matching = metrics(configuration: configuration)
@@ -2830,7 +2830,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // F3 替代断言：非框显照片在界面显隐前后的尺寸与圆角完全一致。
+    // F3 æ¿ä»£æ­è¨ï¼éæ¡æ¾ç§çå¨çé¢æ¾éååçå°ºå¯¸ä¸åè§å®å¨ä¸è´ã
     func testF3ReplacementNonFramedPhotoKeepsGeometryAcrossVisibility() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let visible = S2ViewportLayout.metrics(
@@ -2861,7 +2861,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(hidden.oneXCornerRadius, visible.oneXCornerRadius)
     }
 
-    // F4：内缩只改变 1x 显示尺寸，不改变视口或填满倍数基准。
+    // F4ï¼åç¼©åªæ¹å 1x æ¾ç¤ºå°ºå¯¸ï¼ä¸æ¹åè§å£æå¡«æ»¡åæ°åºåã
     func testF4InsetDoesNotChangeViewportOrAspectFillMultiplier() {
         var withoutInset = S2CalibrationConfiguration.factoryPlaceholder
         withoutInset.fitInsetRatio = 0
@@ -2877,9 +2877,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-082 G152：场景 E `nxEdgePaging` 逐帧追加三个字段、三类事件逐条存在；关闭录制零副作用。
+    // IC-082 G152ï¼åºæ¯ E `nxEdgePaging` éå¸§è¿½å ä¸ä¸ªå­æ®µãä¸ç±»äºä»¶éæ¡å­å¨ï¼å³é­å½å¶é¶å¯ä½ç¨ã
     func testIC082G152NxEdgePagingScenarioExportsFieldsAndEvents() {
-        XCTAssertEqual(S2OnDeviceTransitionScenario.nxEdgePaging.exportTitle, "E Nx 贴边翻页")
+        XCTAssertEqual(S2OnDeviceTransitionScenario.nxEdgePaging.exportTitle, "E Nx è´´è¾¹ç¿»é¡µ")
         XCTAssertTrue(S2OnDeviceTransitionScenario.allCases.contains(.nxEdgePaging))
 
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -2923,16 +2923,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
         diagnostics.export()
 
         let text = diagnostics.reportText
-        XCTAssertTrue(text.contains("场景=E Nx 贴边翻页"))
+        XCTAssertTrue(text.contains("åºæ¯=E Nx è´´è¾¹ç¿»é¡µ"))
         XCTAssertTrue(text.contains(
-            "逐帧字段=time,animationKeys,modelFrame,presentationFrame," +
+            "éå¸§å­æ®µ=time,animationKeys,modelFrame,presentationFrame," +
                 "transform,zoomScale,contentOffset,contentSize," +
                 "contentInset,adjustedContentInset,V,s," +
                 "pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating," +
                 "currentIndex,settledIndex,pageIndicesPresent,pageLoadStates," +
                 "nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance"
         ))
-        // 非贴边拖动期间三个字段为 nil；内层 contentOffset / contentSize / zoomScale 与外层偏移既有字段同在。
+        // éè´´è¾¹æå¨æé´ä¸ä¸ªå­æ®µä¸º nilï¼åå± contentOffset / contentSize / zoomScale ä¸å¤å±åç§»æ¢æå­æ®µåå¨ã
         XCTAssertTrue(text.contains("\tnxDistanceToPreviousBoundary=nil\tnxDistanceToNextBoundary=nil\tnxOverflowDistance=nil"))
         XCTAssertTrue(text.contains("\tzoomScale=1.000000\tcontentOffset="))
         XCTAssertTrue(text.contains("\tcontentSize="))
@@ -2941,15 +2941,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(text.contains("\tcurrentIndex=1"))
         XCTAssertTrue(text.contains(
             "event=beginNXEdgePaging\tsource=S2NativePagerViewController.beginNXEdgePaging" +
-                "\tdetails=restingPagingOffsetX=320.000000；distanceToPreviousBoundary=20.000000；distanceToNextBoundary=0.000000"
+                "\tdetails=restingPagingOffsetX=320.000000ï¼distanceToPreviousBoundary=20.000000ï¼distanceToNextBoundary=0.000000"
         ))
         XCTAssertTrue(text.contains(
             "event=handleHorizontalSwipe\tsource=S2NativePagerViewController.finishNXEdgePaging" +
-                "\tdetails=direction=next；startedAtPagingEdge=true；distance=60.000000；velocity=300.000000；accepted=true"
+                "\tdetails=direction=nextï¼startedAtPagingEdge=trueï¼distance=60.000000ï¼velocity=300.000000ï¼accepted=true"
         ))
         XCTAssertTrue(text.contains(
             "event=synchronizeNativeStateToMachine\tsource=S2NativePagerViewController.synchronizeNativeStateToMachine" +
-                "\tdetails=animatedPaging=true；currentIndex=2；s=1.000000"
+                "\tdetails=animatedPaging=trueï¼currentIndex=2ï¼s=1.000000"
         ))
 
         let countAfterStop = diagnostics.recordedEntries.count
@@ -2960,14 +2960,77 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(diagnostics.recordedEntries.count, countAfterStop)
     }
 
-    // IC-082 R1 夹具探针（仅打印，不做断言）：两条序列下旧判定（溢出 > 0）与新判定（起始距离 ≤ 0.5）
-    // 各自给出的 startedAtPagingEdge 与翻页结果。
+    // IC-082 G153（R2）：贴边起始由拖动开始时的边界距离判定。
+    // 起始不贴边（20pt）+ 溢出 60pt + 阈值速度 → 不翻页；起始贴边 + 同样溢出 → 翻页；
+    // 起始贴边 + 溢出 39pt → 不翻页。
+    func testIC082G153NxEdgePagingRequiresEdgeAtDragStart() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let velocity = CGFloat(configuration.edgePagingTriggerVelocity)
+
+        let offEdge = S2NxEdgePagingInteraction(
+            restingPagingOffsetX: 320,
+            pageStride: 320,
+            translationOriginX: 0,
+            distanceToPreviousBoundary: 0,
+            distanceToNextBoundary: 20
+        )
+        XCTAssertFalse(offEdge.startedAtPagingEdge(for: .next))
+        XCTAssertTrue(offEdge.startedAtPagingEdge(for: .previous))
+        let offEdgeProjection = offEdge.projection(translationX: -80)
+        XCTAssertEqual(offEdgeProjection.direction, .next)
+        XCTAssertEqual(offEdgeProjection.overflowDistance, 60)
+        let offEdgeMachine = makeMachine(scale: 2, configuration: configuration)
+        XCTAssertFalse(offEdgeMachine.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: offEdge.startedAtPagingEdge(for: .next),
+            distance: offEdgeProjection.overflowDistance,
+            velocity: velocity
+        ))
+        XCTAssertEqual(offEdgeMachine.currentIndex, 1)
+        XCTAssertEqual(offEdgeMachine.scale, 2)
+
+        let atEdge = S2NxEdgePagingInteraction(
+            restingPagingOffsetX: 320,
+            pageStride: 320,
+            translationOriginX: 0,
+            distanceToPreviousBoundary: 120,
+            distanceToNextBoundary: 0.4
+        )
+        XCTAssertTrue(atEdge.startedAtPagingEdge(for: .next))
+        XCTAssertFalse(atEdge.startedAtPagingEdge(for: .previous))
+        let atEdgeProjection = atEdge.projection(translationX: -60.4)
+        XCTAssertEqual(atEdgeProjection.overflowDistance, 60, accuracy: 0.000_001)
+        let atEdgeMachine = makeMachine(scale: 2, configuration: configuration)
+        XCTAssertTrue(atEdgeMachine.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: atEdge.startedAtPagingEdge(for: .next),
+            distance: atEdgeProjection.overflowDistance,
+            velocity: velocity
+        ))
+        XCTAssertEqual(atEdgeMachine.currentIndex, 2)
+        XCTAssertEqual(atEdgeMachine.scale, 1)
+
+        let shortProjection = atEdge.projection(translationX: -39.4)
+        XCTAssertEqual(shortProjection.overflowDistance, 39, accuracy: 0.000_001)
+        let shortMachine = makeMachine(scale: 2, configuration: configuration)
+        XCTAssertFalse(shortMachine.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: atEdge.startedAtPagingEdge(for: .next),
+            distance: shortProjection.overflowDistance,
+            velocity: velocity
+        ))
+        XCTAssertEqual(shortMachine.currentIndex, 1)
+        XCTAssertEqual(shortMachine.scale, 2)
+    }
+
+    // IC-082 R1 å¤¹å·æ¢éï¼ä»æå°ï¼ä¸åæ­è¨ï¼ï¼ä¸¤æ¡åºåä¸æ§å¤å®ï¼æº¢åº > 0ï¼ä¸æ°å¤å®ï¼èµ·å§è·ç¦» â¤ 0.5ï¼
+    // åèªç»åºç startedAtPagingEdge ä¸ç¿»é¡µç»æã
     func testIC082R1NxEdgePagingStartConditionProbe() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let velocity = CGFloat(configuration.edgePagingTriggerVelocity)
         let sequences: [(String, CGFloat)] = [
-            ("起始距边界 20pt、拖动溢出 60pt 松手", 20),
-            ("起始贴边、溢出 60pt 松手", 0)
+            ("èµ·å§è·è¾¹ç 20ptãæå¨æº¢åº 60pt æ¾æ", 20),
+            ("èµ·å§è´´è¾¹ãæº¢åº 60pt æ¾æ", 0)
         ]
         for (title, distanceToNext) in sequences {
             let interaction = S2NxEdgePagingInteraction(
@@ -2979,7 +3042,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             )
             let projection = interaction.projection(translationX: -(60 + distanceToNext))
             let legacyStarted = projection.overflowDistance > 0
-            let started = distanceToNext <= 0.5
+            let started = interaction.startedAtPagingEdge(for: .next)
             let legacyMachine = makeMachine(scale: 2, configuration: configuration)
             let legacyResult = legacyMachine.handleHorizontalSwipe(
                 direction: .next,
@@ -2995,14 +3058,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 velocity: velocity
             )
             print(
-                "[IC-082 探针] \(title)：overflow=\(projection.overflowDistance) " +
-                    "旧判定 startedAtPagingEdge=\(legacyStarted) 翻页=\(legacyResult) currentIndex=\(legacyMachine.currentIndex)；" +
-                    "新判定 startedAtPagingEdge=\(started) 翻页=\(result) currentIndex=\(machine.currentIndex)"
+                "[IC-082 æ¢é] \(title)ï¼overflow=\(projection.overflowDistance) " +
+                    "æ§å¤å® startedAtPagingEdge=\(legacyStarted) ç¿»é¡µ=\(legacyResult) currentIndex=\(legacyMachine.currentIndex)ï¼" +
+                    "æ°å¤å® startedAtPagingEdge=\(started) ç¿»é¡µ=\(result) currentIndex=\(machine.currentIndex)"
             )
         }
     }
 
-    // B1：Nx 内容到边界后，继续拖动的溢出量等量带动外层分页。
+    // B1ï¼Nx åå®¹å°è¾¹çåï¼ç»§ç»­æå¨çæº¢åºéç­éå¸¦å¨å¤å±åé¡µã
     func testB1NxBoundaryContinuationProducesPagingDisplacement() {
         let interaction = S2NxEdgePagingInteraction(
             restingPagingOffsetX: 320,
@@ -3018,7 +3081,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(projection.pagingContentOffsetX, 380)
     }
 
-    // B2：Nx 边界翻页未同时达到距离与速度阈值时回弹且 c 不变。
+    // B2ï¼Nx è¾¹çç¿»é¡µæªåæ¶è¾¾å°è·ç¦»ä¸éåº¦éå¼æ¶åå¼¹ä¸ c ä¸åã
     func testB2NxBoundaryPagingBelowThresholdKeepsCurrentIndex() {
         let machine = makeMachine(scale: 2)
         let originalIndex = machine.currentIndex
@@ -3033,7 +3096,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.scale, 2)
     }
 
-    // B3：Nx 边界翻页完成后，新照片倍率严格归一为 1。
+    // B3ï¼Nx è¾¹çç¿»é¡µå®æåï¼æ°ç§çåçä¸¥æ ¼å½ä¸ä¸º 1ã
     func testB3NxBoundaryPagingCompletionResetsNewPhotoScale() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(scale: 2, configuration: configuration)
@@ -3049,7 +3112,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.viewportOffset, .zero)
     }
 
-    // H1 替代断言：开启参数时也只有缩略图拖动换片发出触觉。
+    // H1 æ¿ä»£æ­è¨ï¼å¼å¯åæ°æ¶ä¹åªæç¼©ç¥å¾æå¨æ¢çååºè§¦è§ã
     func testH1ReplacementEnabledHapticFiresOnlyForBottomStripChanges() {
         var hapticCount = 0
         let feedback = S2PhotoSwitchHapticFeedback {
@@ -3099,7 +3162,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(hapticCount, 1)
     }
 
-    // H2 替代断言：关闭参数后缩略图变化也不发触觉。
+    // H2 æ¿ä»£æ­è¨ï¼å³é­åæ°åç¼©ç¥å¾ååä¹ä¸åè§¦è§ã
     func testH2ReplacementDisabledPhotoSwitchHapticDoesNotFire() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.hapticOnPhotoSwitch = false
@@ -3134,7 +3197,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(hapticCount, 0)
     }
 
-    // K1：单击识别器显式等待双击识别器失败。
+    // K1ï¼åå»è¯å«å¨æ¾å¼ç­å¾åå»è¯å«å¨å¤±è´¥ã
     func testK1SingleTapRequiresDoubleTapRecognizerToFail() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -3151,7 +3214,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.doubleTapRecognizer.numberOfTapsRequired, 2)
     }
 
-    // K2：双击全程不切换显隐，最终倍率等于分类后的目标倍数。
+    // K2ï¼åå»å¨ç¨ä¸åæ¢æ¾éï¼æç»åçç­äºåç±»åçç®æ åæ°ã
     func testK2DoubleTapNeverChangesInterfaceVisibilityAndReachesTargetScale() {
         for visibility in [
             S2InterfaceVisibility.visible,
@@ -3194,7 +3257,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // K3：UIKit 宣告双击失败后，单击回调只切换一次显隐。
+    // K3ï¼UIKit å®£ååå»å¤±è´¥åï¼åå»åè°åªåæ¢ä¸æ¬¡æ¾éã
     func testK3SingleTapAfterDoubleTapFailureTogglesVisibilityExactlyOnce() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -3210,7 +3273,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.scale, 1)
     }
 
-    // K4：双击裁决诊断目标出厂值为 200 毫秒并实际参与达标判断。
+    // K4ï¼åå»è£å³è¯æ­ç®æ åºåå¼ä¸º 200 æ¯«ç§å¹¶å®éåä¸è¾¾æ å¤æ­ã
     func testK4DoubleTapDecisionWindowFactoryDefaultIsTwoHundredMilliseconds() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let policy = S2TapDecisionDiagnosticPolicy(
@@ -3244,7 +3307,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // S1：框显照片在显示态使用 70% 短边和 28 点圆角。
+    // S1ï¼æ¡æ¾ç§çå¨æ¾ç¤ºæä½¿ç¨ 70% ç­è¾¹å 28 ç¹åè§ã
     func testS1FramedPhotoVisibleStateUsesSeventyPercentShortEdgeAndRadiusTwentyEight() {
         let value = metrics(visibility: .visible)
 
@@ -3257,7 +3320,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(value.oneXCornerRadius, 28, accuracy: 0.000_001)
     }
 
-    // S2 替代断言：框显照片隐藏后两轴严格填满视口且圆角归零。
+    // S2 æ¿ä»£æ­è¨ï¼æ¡æ¾ç§çéèåä¸¤è½´ä¸¥æ ¼å¡«æ»¡è§å£ä¸åè§å½é¶ã
     func testS2FramedPhotoHiddenStateFitsViewportWithoutCroppingAndHasZeroRadius() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let hidden = metrics(
@@ -3325,7 +3388,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(directPage.lastPresentationTransitionDuration, 0)
     }
 
-    // S3：非框显照片在显示态与隐藏态的尺寸及圆角严格相等。
+    // S3ï¼éæ¡æ¾ç§çå¨æ¾ç¤ºæä¸éèæçå°ºå¯¸ååè§ä¸¥æ ¼ç¸ç­ã
     func testS3NonFramedPhotoGeometryIsEqualAcrossVisibilityStates() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let visible = nonFramedMetrics(
@@ -3343,7 +3406,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(hidden.oneXCornerRadius, visible.oneXCornerRadius)
     }
 
-    // S4：截图沉浸显隐不改变视口、填满倍数或双击目标倍数。
+    // S4ï¼æªå¾æ²æµ¸æ¾éä¸æ¹åè§å£ãå¡«æ»¡åæ°æåå»ç®æ åæ°ã
     func testS4ImmersiveTogglePreservesViewportFillMultiplierAndDoubleTapTarget() {
         let visible = metrics(visibility: .visible)
         let hidden = metrics(visibility: .hidden)
@@ -3362,7 +3425,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // X1：缩放变换的实际锚点固定在物理视口中心。
+    // X1ï¼ç¼©æ¾åæ¢çå®ééç¹åºå®å¨ç©çè§å£ä¸­å¿ã
     func testX1ImmersiveTransitionUsesViewportCenterAnchoredScaleTransform() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -3412,7 +3475,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         page.finishActivePresentationTransition()
     }
 
-    // X2：动画期间保留源态 frame 基准，显示层只承载终点等比 transform。
+    // X2ï¼å¨ç»æé´ä¿çæºæ frame åºåï¼æ¾ç¤ºå±åªæ¿è½½ç»ç¹ç­æ¯ transformã
     func testX2ImmersiveTransitionKeepsLayoutSizeAndUsesTransform() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -3445,7 +3508,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         page.finishActivePresentationTransition()
     }
 
-    // X3：圆角与缩放共用线性进度，两个方向的端点和中点连续。
+    // X3ï¼åè§ä¸ç¼©æ¾å±ç¨çº¿æ§è¿åº¦ï¼ä¸¤ä¸ªæ¹åçç«¯ç¹åä¸­ç¹è¿ç»­ã
     func testX3CornerRadiusInterpolatesContinuouslyInBothDirections() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -3525,7 +3588,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // X4：关闭动画后不保留任何过渡态，目标几何一次到位。
+    // X4ï¼å³é­å¨ç»åä¸ä¿çä»»ä½è¿æ¸¡æï¼ç®æ å ä½ä¸æ¬¡å°ä½ã
     func testX4DisabledAnimationsReachEndpointWithoutTransition() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.animationsEnabled = false
@@ -3560,7 +3623,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // X5：Nx 显隐切换前后五项原生几何量及照片可见框严格相等。
+    // X5ï¼Nx æ¾éåæ¢ååäºé¡¹åçå ä½éåç§çå¯è§æ¡ä¸¥æ ¼ç¸ç­ã
     func testX5NxVisibilityTogglePreservesAllNativeGeometry() {
         let originalOffset = CGSize(width: 24, height: 16)
         let machine = makeMachine(
@@ -3601,7 +3664,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.presentationTransitionCount, 0)
     }
 
-    // X6：Nx 延迟目标在实际回到 1x 后只提交一次并达到当前显隐端点。
+    // X6ï¼Nx å»¶è¿ç®æ å¨å®éåå° 1x ååªæäº¤ä¸æ¬¡å¹¶è¾¾å°å½åæ¾éç«¯ç¹ã
     func testX6NxDeferredPresentationAppliesOnceAfterReturningToOneX() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(
@@ -3667,7 +3730,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.presentationGeometryCommitCount, 1)
     }
 
-    // X7：Nx 未切换显隐时，退出只执行既有缩放归一，不新增呈现提交。
+    // X7ï¼Nx æªåæ¢æ¾éæ¶ï¼éåºåªæ§è¡æ¢æç¼©æ¾å½ä¸ï¼ä¸æ°å¢åç°æäº¤ã
     func testX7NxExitWithoutVisibilityToggleKeepsExistingBehavior() {
         let machine = makeMachine(
             scale: 2,
@@ -3699,7 +3762,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.cornerRadius, visible.oneXCornerRadius)
     }
 
-    // X8：过渡未结束前不替换照片内容，真实图像请求计数保持为零。
+    // X8ï¼è¿æ¸¡æªç»æåä¸æ¿æ¢ç§çåå®¹ï¼çå®å¾åè¯·æ±è®¡æ°ä¿æä¸ºé¶ã
     func testX8ImmersiveAnimationIssuesZeroImageRequests() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.animationDurationMilliseconds = 1_000
@@ -3761,7 +3824,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         window.isHidden = true
     }
 
-    // Y1：系统状态栏随界面隐藏态隐藏、随显示态恢复，并共用显隐时长。
+    // Y1ï¼ç³»ç»ç¶ææ éçé¢éèæéèãéæ¾ç¤ºææ¢å¤ï¼å¹¶å±ç¨æ¾éæ¶é¿ã
     func testY1StatusBarTracksHiddenAndVisibleInterfaceStates() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let visibleAppearance = S2StatusBarAppearance(
@@ -3815,7 +3878,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         window.isHidden = true
     }
 
-    // Y2 改写：比例偏离屏幕的截图在隐藏态等比适配全视口且圆角为零。
+    // Y2 æ¹åï¼æ¯ä¾åç¦»å±å¹çæªå¾å¨éèæç­æ¯ééå¨è§å£ä¸åè§ä¸ºé¶ã
     func testY2CroppedScreenshotHiddenDisplayUsesFullViewportAspectFit() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let assetAspectRatio: CGFloat = 0.1823
@@ -3880,7 +3943,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.cornerRadius, 0)
     }
 
-    // Y3：未命中照片在两种界面状态下的尺寸和圆角均保持不变。
+    // Y3ï¼æªå½ä¸­ç§çå¨ä¸¤ç§çé¢ç¶æä¸çå°ºå¯¸ååè§åä¿æä¸åã
     func testY3NonMatchingPhotoGeometryRemainsUnchangedInBothVisibilityStates() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let assetAspectRatio: CGFloat = 1
@@ -3922,7 +3985,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.cornerRadius, initialRadius)
     }
 
-    // Y4 替代断言：双击退出只由专用过渡层驱动，原生倍率在同步前不变。
+    // Y4 æ¿ä»£æ­è¨ï¼åå»éåºåªç±ä¸ç¨è¿æ¸¡å±é©±å¨ï¼åçåçå¨åæ­¥åä¸åã
     func testY4DoubleTapExitUsesSingleNativeMinimumZoomAnimationWithoutOffsetWrite() {
         let machine = makeMachine(
             scale: 2,
@@ -3956,7 +4019,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // Y5：低于吸附阈值的捏合归位继续使用原生 UIScrollView 动画。
+    // Y5ï¼ä½äºå¸ééå¼çæåå½ä½ç»§ç»­ä½¿ç¨åç UIScrollView å¨ç»ã
     func testY5PinchSnapBackUsesSameSingleNativeMinimumZoomAnimationPath() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(
@@ -4001,7 +4064,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // Y6：原生退出完成后归一倍率与偏移，并按当前隐藏态提交沉浸终点。
+    // Y6ï¼åçéåºå®æåå½ä¸åçä¸åç§»ï¼å¹¶æå½åéèææäº¤æ²æµ¸ç»ç¹ã
     func testY6ZoomExitCompletionNormalizesStateAndAppliesCurrentPresentation() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(
@@ -4039,7 +4102,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.presentationGeometryCommitCount, 1)
     }
 
-    // 图像请求回归：Nx 无显隐几何变化时，捏合结束请求仍按既有策略执行。
+    // å¾åè¯·æ±åå½ï¼Nx æ æ¾éå ä½ååæ¶ï¼æåç»æè¯·æ±ä»ææ¢æç­ç¥æ§è¡ã
     func testIC061NxPinchEndedStillUpdatesImageRequestWithoutPresentationChange() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let requestCounter = S2ImageRequestCounter()
@@ -4091,7 +4154,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         window.isHidden = true
     }
 
-    // A1：原生左右分页成功切换照片时触觉调用次数仍为零。
+    // A1ï¼åçå·¦å³åé¡µæååæ¢ç§çæ¶è§¦è§è°ç¨æ¬¡æ°ä»ä¸ºé¶ã
     func testA1NativePagingPhotoSwitchProducesNoHaptic() {
         var hapticCount = 0
         let feedback = S2PhotoSwitchHapticFeedback {
@@ -4109,7 +4172,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(hapticCount, 0)
     }
 
-    // A2：缩略图拖动每跨过一张当前项就恰好触发一次触觉。
+    // A2ï¼ç¼©ç¥å¾æå¨æ¯è·¨è¿ä¸å¼ å½åé¡¹å°±æ°å¥½è§¦åä¸æ¬¡è§¦è§ã
     func testA2BottomStripCurrentItemChangesProduceExactlyNHaptics() {
         let assets = (1...8).map { "asset-\($0)" }
         let machine = makeMachine(
@@ -4141,7 +4204,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(hapticCount, expectedChanges)
     }
 
-    // A3：关闭触觉参数后，任何照片切换来源都不会触发触觉。
+    // A3ï¼å³é­è§¦è§åæ°åï¼ä»»ä½ç§çåæ¢æ¥æºé½ä¸ä¼è§¦åè§¦è§ã
     func testA3DisabledPhotoSwitchHapticProducesNoHaptic() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.hapticOnPhotoSwitch = false
@@ -4170,7 +4233,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(hapticCount, 0)
     }
 
-    // 动画回归：统一策略在关闭开关时把显式时长归零。
+    // å¨ç»åå½ï¼ç»ä¸ç­ç¥å¨å³é­å¼å³æ¶ææ¾å¼æ¶é¿å½é¶ã
     func testIC055AnimationPolicyDisablesCalibratedAnimations() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         let enabled = S2AnimationPolicy(configuration: configuration)
@@ -4183,7 +4246,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(disabled.durationSeconds, 0)
     }
 
-    // IC-065 G26：高度受限、窄于视口的完整适配照片在 1x 水平居中。
+    // IC-065 G26ï¼é«åº¦åéãçªäºè§å£çå®æ´ééç§çå¨ 1x æ°´å¹³å±ä¸­ã
     func testIC065G26WidthLimitedOneXIsHorizontallyCentered() {
         let hosted = makeIC065HostedPage(assetAspectRatio: 478.0 / 2_622.0)
         defer { hosted.window.isHidden = true }
@@ -4200,7 +4263,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-065 G27：宽度受限、矮于视口的完整适配照片在 1x 垂直居中。
+    // IC-065 G27ï¼å®½åº¦åéãç®äºè§å£çå®æ´ééç§çå¨ 1x åç´å±ä¸­ã
     func testIC065G27HeightLimitedOneXIsVerticallyCentered() {
         let hosted = makeIC065HostedPage(assetAspectRatio: 9.0 / 16.0)
         defer { hosted.window.isHidden = true }
@@ -4217,7 +4280,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-065 G28～G29：60Hz presentation 轨迹在接管首帧及全程保持小尺寸方向居中。
+    // IC-065 G28ï½G29ï¼60Hz presentation è½¨è¿¹å¨æ¥ç®¡é¦å¸§åå¨ç¨ä¿æå°å°ºå¯¸æ¹åå±ä¸­ã
     func testIC065G28ToG29PinchTrackHasNoCenterJump() {
         let samples: [(String, CGFloat)] = [
             ("width_limited", 478.0 / 2_622.0),
@@ -4288,7 +4351,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                         frame.midX,
                         viewport.midX,
                         accuracy: 0.5,
-                        "样本=\(name)，序号=\(index)"
+                        "æ ·æ¬=\(name)ï¼åºå·=\(index)"
                     )
                 }
                 if frame.height < viewport.height - 0.5 {
@@ -4296,14 +4359,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
                         frame.midY,
                         viewport.midY,
                         accuracy: 0.5,
-                        "样本=\(name)，序号=\(index)"
+                        "æ ·æ¬=\(name)ï¼åºå·=\(index)"
                     )
                 }
             }
         }
     }
 
-    // IC-065 G30：大于视口的方向只使用原生内容边界，不增加额外余量。
+    // IC-065 G30ï¼å¤§äºè§å£çæ¹ååªä½¿ç¨åçåå®¹è¾¹çï¼ä¸å¢å é¢å¤ä½éã
     func testIC065G30OversizedDirectionsUseNativeContentBounds() {
         let assetAspectRatios: [CGFloat] = [
             478.0 / 2_622.0,
@@ -4351,7 +4414,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-065 G31 改写：截图元数据继续保持 IC-063 G1～G2 的等比与内缩结果。
+    // IC-065 G31 æ¹åï¼æªå¾åæ°æ®ç»§ç»­ä¿æ IC-063 G1ï½G2 çç­æ¯ä¸åç¼©ç»æã
     func testIC065G31ScreenshotMetadataKeepsIC063Geometry() {
         let assetAspectRatio = screenAspectRatio * 1.008
         let states: [S2InterfaceVisibility] = [.hidden, .visible]
@@ -4387,7 +4450,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-065 G32 改写：C8 替代线性序列后，两方向仍共用同一 spring。
+    // IC-065 G32 æ¹åï¼C8 æ¿ä»£çº¿æ§åºååï¼ä¸¤æ¹åä»å±ç¨åä¸ springã
     func testIC065G32BothDirectionsUseSameSpringCurveAndDuration() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let curve = S2PresentationSpringCurve(
@@ -4412,7 +4475,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-065 G34：校准参数中没有引入任何捏合锚点字段。
+    // IC-065 G34ï¼æ ¡ååæ°ä¸­æ²¡æå¼å¥ä»»ä½æåéç¹å­æ®µã
     func testIC065G34DoesNotAddPinchAnchorParameters() {
         let parameterNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
@@ -4424,7 +4487,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         })
     }
 
-    // IC-067 G36：裁切截图在显示态等比适配 0.70 视口框，隐藏态等比适配全视口。
+    // IC-067 G36ï¼è£åæªå¾å¨æ¾ç¤ºæç­æ¯éé 0.70 è§å£æ¡ï¼éèæç­æ¯ééå¨è§å£ã
     func testIC067G36CroppedScreenshotUsesMetadataDrivenAspectFitFrame() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let assetAspectRatio: CGFloat = 0.1823
@@ -4487,7 +4550,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-067 G37：普通照片两种 V 均使用全视口等比适配，且单击前后几何不变。
+    // IC-067 G37ï¼æ®éç§çä¸¤ç§ V åä½¿ç¨å¨è§å£ç­æ¯ééï¼ä¸åå»ååå ä½ä¸åã
     func testIC067G37NonScreenshotGeometryAndDecorationStayUnchanged() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let assetAspectRatio: CGFloat = 9.0 / 16.0
@@ -4550,7 +4613,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNil(page.lastPresentationTransition)
     }
 
-    // IC-064 G13～G18 改写：显示层端点与 CA 关键帧满足双向 spring。
+    // IC-064 G13ï½G18 æ¹åï¼æ¾ç¤ºå±ç«¯ç¹ä¸ CA å³é®å¸§æ»¡è¶³åå springã
     func testIC064G13ToG18PresentationSamplesMeetGeometryContract() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -4711,7 +4774,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         printPresentationSummary(direction: "showing", samples: showing)
     }
 
-    // IC-064 G19：三种系统样本的左右描边像素均落入目标容差。
+    // IC-064 G19ï¼ä¸ç§ç³»ç»æ ·æ¬çå·¦å³æè¾¹åç´ åè½å¥ç®æ å®¹å·®ã
     func testIC064G19FitBorderPixelsMatchDarkAndLightSamples() {
         let darkBlack = fitBorderPixelGrays(
             style: .dark,
@@ -4741,7 +4804,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-064 G20：1pt 描边位于照片层内，不改变照片总尺寸。
+    // IC-064 G20ï¼1pt æè¾¹ä½äºç§çå±åï¼ä¸æ¹åç§çæ»å°ºå¯¸ã
     func testIC064G20FitBorderKeepsPhotoGeometryUnchanged() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let value = metrics(configuration: configuration)
@@ -4796,7 +4859,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(restoredFrame, frameWithBorder)
     }
 
-    // IC-064 G21 改写：Nx 描边归零，spring 过冲后视觉线宽收敛。
+    // IC-064 G21 æ¹åï¼Nx æè¾¹å½é¶ï¼spring è¿å²åè§è§çº¿å®½æ¶æã
     func testIC064G21FitBorderTracksScaleAndPresentationProgress() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let nxMachine = makeMachine(scale: 2, configuration: configuration)
@@ -4858,7 +4921,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-064 G22：trait 明暗切换后描边颜色原地更新，无需重建页面。
+    // IC-064 G22ï¼trait ææåæ¢åæè¾¹é¢è²åå°æ´æ°ï¼æ ééå»ºé¡µé¢ã
     func testIC064G22FitBorderUpdatesWithInterfaceStyle() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -4905,7 +4968,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-067 G39：同一个 S2 页面随 trait 原地切换纯黑与纯白背景。
+    // IC-067 G39ï¼åä¸ä¸ª S2 é¡µé¢é trait åå°åæ¢çº¯é»ä¸çº¯ç½èæ¯ã
     func testIC067G39ViewportBackgroundTracksInterfaceStyle() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -4946,7 +5009,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(lightGray, 255, accuracy: 3)
     }
 
-    // IC-067 G40（夹具驱动）：接管几何与蒙版更新处于同一禁动画事务。
+    // IC-067 G40ï¼å¤¹å·é©±å¨ï¼ï¼æ¥ç®¡å ä½ä¸èçæ´æ°å¤äºåä¸ç¦å¨ç»äºå¡ã
     func testIC067G40PinchTakeoverCommitsCenteredGeometrySynchronously() {
         let hosted = makeIC065HostedPage(
             assetAspectRatio: screenAspectRatio,
@@ -4971,7 +5034,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(frame.midY, hosted.window.bounds.midY, accuracy: 0.5)
     }
 
-    // IC-067 G41（夹具驱动）：严格回到 1x 时恢复当前 V 的目标几何。
+    // IC-067 G41ï¼å¤¹å·é©±å¨ï¼ï¼ä¸¥æ ¼åå° 1x æ¶æ¢å¤å½å V çç®æ å ä½ã
     func testIC067G41OneXReturnRestoresCurrentVisibilityGeometry() {
         for visibility in [S2InterfaceVisibility.visible, .hidden] {
             let hosted = makeIC065HostedPage(
@@ -5009,7 +5072,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-067 G42（夹具驱动）：双向均有中间帧，外层回调不再覆写照片。
+    // IC-067 G42ï¼å¤¹å·é©±å¨ï¼ï¼åååæä¸­é´å¸§ï¼å¤å±åè°ä¸åè¦åç§çã
     func testIC067G42BothDirectionsAnimateWithoutOuterLayoutPhotoWrites() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -5065,7 +5128,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-067 G43（夹具驱动）：允许阻尼范围内过冲不超过 10%，随后收敛。
+    // IC-067 G43ï¼å¤¹å·é©±å¨ï¼ï¼åè®¸é»å°¼èå´åè¿å²ä¸è¶è¿ 10%ï¼éåæ¶æã
     func testIC067G43SpringOvershootAndConvergenceMeetC8() {
         for damping in [0.6, 0.86, 1.0] {
             let curve = S2PresentationSpringCurve(dampingRatio: damping)
@@ -5096,7 +5159,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-064 C7：显隐动画使用独立 220ms 参数，不改动双击的 180ms 参数。
+    // IC-064 C7ï¼æ¾éå¨ç»ä½¿ç¨ç¬ç« 220ms åæ°ï¼ä¸æ¹å¨åå»ç 180ms åæ°ã
     func testIC064PresentationToggleUsesDedicatedDuration() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let togglePolicy = S2AnimationPolicy(
@@ -5110,7 +5173,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(existingPolicy.durationSeconds, 0.18, accuracy: 0.000_001)
     }
 
-    // IC-068 G47：录制关闭时不产生记录，也不改变统一入口的几何结果。
+    // IC-068 G47ï¼å½å¶å³é­æ¶ä¸äº§çè®°å½ï¼ä¹ä¸æ¹åç»ä¸å¥å£çå ä½ç»æã
     func testIC068G47RecorderOffHasNoDiagnosticSideEffect() {
         let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator(
             clock: { 1_000 }
@@ -5140,7 +5203,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(diagnostics.reportText.isEmpty)
     }
 
-    // IC-068 G48：统一入口与收敛前的赋值顺序、frame 和 transform 完全一致。
+    // IC-068 G48ï¼ç»ä¸å¥å£ä¸æ¶æåçèµå¼é¡ºåºãframe å transform å®å¨ä¸è´ã
     func testIC068G48UnifiedPhotoGeometryWriteIsExactlyEquivalent() {
         let scrollView = makeNativeZoomScrollView()
         let managedView = tryUnwrap(scrollView.presentationContentView)
@@ -5181,7 +5244,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-068 G49：导出协议包含全部逐帧字段、空动画键和全部离散事件族。
+    // IC-068 G49ï¼å¯¼åºåè®®åå«å¨é¨éå¸§å­æ®µãç©ºå¨ç»é®åå¨é¨ç¦»æ£äºä»¶æã
     func testIC068G49ExportContainsCompleteUnifiedSchema() {
         let sample = S2OnDeviceTransitionFrameSample(
             animationKeys: [],
@@ -5209,16 +5272,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
             scale: 1
         )
         let eventNames = [
-            "SwiftUI状态发布",
+            "SwiftUIç¶æåå¸",
             "updateUIView",
             "layoutSubviews",
             "viewDidLayoutSubviews",
-            "照片几何写入",
-            "照片动画调用:add(animation:)",
-            "照片动画调用:removeAnimation",
-            "照片动画调用:removeAllAnimations",
-            "CATransaction提交边界",
-            "抑制外层布局写入生效"
+            "ç§çå ä½åå¥",
+            "ç§çå¨ç»è°ç¨:add(animation:)",
+            "ç§çå¨ç»è°ç¨:removeAnimation",
+            "ç§çå¨ç»è°ç¨:removeAllAnimations",
+            "CATransactionæäº¤è¾¹ç",
+            "æå¶å¤å±å¸å±åå¥çæ"
         ]
         var records = [S2OnDeviceTransitionRecord(
             timestamp: 500,
@@ -5232,8 +5295,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 sequence: index + 1,
                 payload: .event(
                     name: name,
-                    source: "测试来源",
-                    details: "key=测试键；写入照片几何=true"
+                    source: "æµè¯æ¥æº",
+                    details: "key=æµè¯é®ï¼åå¥ç§çå ä½=true"
                 )
             )
         })
@@ -5245,9 +5308,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
             records: records
         )
         let requiredFields = [
-            "时钟=CACurrentMediaTime()",
-            "采样频率下限Hz=60",
-            "录制上限秒=5.000000",
+            "æ¶é=CACurrentMediaTime()",
+            "éæ ·é¢çä¸éHz=60",
+            "å½å¶ä¸éç§=5.000000",
             "animationKeys=[]",
             "modelFrame=",
             "presentationFrame=",
@@ -5255,20 +5318,20 @@ final class S2CalibrationHarnessTests: XCTestCase {
             "zoomScale=",
             "contentOffset=",
             "contentSize=",
-            "V=隐藏",
+            "V=éè",
             "s=1.000000",
-            "source=测试来源",
-            "details=key=测试键"
+            "source=æµè¯æ¥æº",
+            "details=key=æµè¯é®"
         ]
         for field in requiredFields {
-            XCTAssertTrue(text.contains(field), "缺少导出字段：\(field)")
+            XCTAssertTrue(text.contains(field), "ç¼ºå°å¯¼åºå­æ®µï¼\(field)")
         }
         for eventName in eventNames {
             XCTAssertTrue(text.contains("event=\(eventName)"))
         }
     }
 
-    // IC-070 G79：逐帧字段含 contentInset 与 adjustedContentInset，且采自真实滚动视图。
+    // IC-070 G79ï¼éå¸§å­æ®µå« contentInset ä¸ adjustedContentInsetï¼ä¸éèªçå®æ»å¨è§å¾ã
     func testIC070G79FrameSamplesExportContentInsetFields() {
         let hosted = makeIC065HostedPage(
             assetAspectRatio: 3.0 / 4.0,
@@ -5286,7 +5349,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
         let text = diagnostics.reportText
         XCTAssertTrue(text.contains(
-            "逐帧字段=time,animationKeys,modelFrame,presentationFrame," +
+            "éå¸§å­æ®µ=time,animationKeys,modelFrame,presentationFrame," +
                 "transform,zoomScale,contentOffset,contentSize," +
                 "contentInset,adjustedContentInset,V,s"
         ))
@@ -5309,8 +5372,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(text.contains("contentInset=nil"))
     }
 
-    // IC-070 R5 实测探针（夹具驱动，不做断言）：打印接管各步的
-    // inset/offset/contentSize 与可见中心，并模拟 UIKit 在同一帧写入过期 offset。
+    // IC-070 R5 å®æµæ¢éï¼å¤¹å·é©±å¨ï¼ä¸åæ­è¨ï¼ï¼æå°æ¥ç®¡åæ­¥ç
+    // inset/offset/contentSize ä¸å¯è§ä¸­å¿ï¼å¹¶æ¨¡æ UIKit å¨åä¸å¸§åå¥è¿æ offsetã
     func testIC070R5TakeoverCenteringProbe() {
         let hosted = makeIC065HostedPage(
             assetAspectRatio: 3.0 / 4.0,
@@ -5380,8 +5443,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-070 R6 实测探针（夹具驱动，不做断言）：沿四角 45° 对角线与直边扫描
-    // 像素灰度，并打印描边层运行时属性。
+    // IC-070 R6 å®æµæ¢éï¼å¤¹å·é©±å¨ï¼ä¸åæ­è¨ï¼ï¼æ²¿åè§ 45Â° å¯¹è§çº¿ä¸ç´è¾¹æ«æ
+    // åç´ ç°åº¦ï¼å¹¶æå°æè¾¹å±è¿è¡æ¶å±æ§ã
     func testIC070R6BorderConcentricityProbe() {
         var opaqueBorder = S2CalibrationConfiguration.factoryPlaceholder
         opaqueBorder.fitBorderLightAlpha = 1
@@ -5469,8 +5532,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-070 G75/G76（夹具驱动，真机未覆盖）：接管帧与接管前一帧居中量一致；
-    // 接管全过程含对抗性的过期 offset 写入，inset+offset 联合居中逐帧连续。
+    // IC-070 G75/G76ï¼å¤¹å·é©±å¨ï¼çæºæªè¦çï¼ï¼æ¥ç®¡å¸§ä¸æ¥ç®¡åä¸å¸§å±ä¸­éä¸è´ï¼
+    // æ¥ç®¡å¨è¿ç¨å«å¯¹ææ§çè¿æ offset åå¥ï¼inset+offset èåå±ä¸­éå¸§è¿ç»­ã
     func testIC070G75AndG76TakeoverKeepsJointCenteringEveryFrame() {
         let samples: [(String, CGFloat)] = [
             ("3_4", 3.0 / 4.0),
@@ -5491,8 +5554,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 )
                 let inset = scrollView.contentInset
                 let offset = scrollView.contentOffset
-                let message = "样本=\(name)，阶段=\(phase)，" +
-                    "frame=\(frame)，inset=\(inset)，offset=\(offset)"
+                let message = "æ ·æ¬=\(name)ï¼é¶æ®µ=\(phase)ï¼" +
+                    "frame=\(frame)ï¼inset=\(inset)ï¼offset=\(offset)"
                 if frame.width < viewport.width - 0.5 {
                     XCTAssertEqual(
                         frame.midX,
@@ -5523,13 +5586,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 page: hosted.page,
                 window: hosted.window
             )
-            // G76：接管帧与接管前一帧的可见居中量之差 ≤ 0.5pt。
+            // G76ï¼æ¥ç®¡å¸§ä¸æ¥ç®¡åä¸å¸§çå¯è§å±ä¸­éä¹å·® â¤ 0.5ptã
             XCTAssertEqual(takeover.midX, before.midX, accuracy: 0.5, name)
             XCTAssertEqual(takeover.midY, before.midY, accuracy: 0.5, name)
             assertCentered("takeover_sync")
 
-            // 对抗：模拟 UIKit 捏合处理在同一帧用过期 inset 写回 offset=0，
-            // 联合居中必须在本次布局提交内恢复。
+            // å¯¹æï¼æ¨¡æ UIKit æåå¤çå¨åä¸å¸§ç¨è¿æ inset åå offset=0ï¼
+            // èåå±ä¸­å¿é¡»å¨æ¬æ¬¡å¸å±æäº¤åæ¢å¤ã
             scrollView.contentOffset = .zero
             assertCentered("stale_offset_immediate")
             scrollView.contentOffset = .zero
@@ -5553,10 +5616,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // IC-070 G77：四角 45° 对角线由外向内首个非背景像素为描边像素；
-    // 描边在直边与圆角处的可见宽度之差 ≤ 0.5pt。初始态与隐藏→显示之后各验一次。
+    // IC-070 G77ï¼åè§ 45Â° å¯¹è§çº¿ç±å¤ååé¦ä¸ªéèæ¯åç´ ä¸ºæè¾¹åç´ ï¼
+    // æè¾¹å¨ç´è¾¹ä¸åè§å¤çå¯è§å®½åº¦ä¹å·® â¤ 0.5ptãåå§æä¸éèâæ¾ç¤ºä¹ååéªä¸æ¬¡ã
     func testIC070G77FitBorderIsConcentricAtCornersBeforeAndAfterToggle() {
-        // 测试专用：把浅色描边 alpha 提到 1 以分离描边与照片灰度；出厂值不变。
+        // æµè¯ä¸ç¨ï¼ææµè²æè¾¹ alpha æå° 1 ä»¥åç¦»æè¾¹ä¸ç§çç°åº¦ï¼åºåå¼ä¸åã
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitBorderLightAlpha = 1
         let photoGray = 237
@@ -5597,8 +5660,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-070 G78：过渡期间描边层与照片层使用同一组圆角关键帧，逐帧之差 ≤ 0.5pt；
-    // 过渡收口后两层均无残留动画，描边层半径与线宽回到当前页目标值。
+    // IC-070 G78ï¼è¿æ¸¡æé´æè¾¹å±ä¸ç§çå±ä½¿ç¨åä¸ç»åè§å³é®å¸§ï¼éå¸§ä¹å·® â¤ 0.5ptï¼
+    // è¿æ¸¡æ¶å£åä¸¤å±åæ æ®çå¨ç»ï¼æè¾¹å±åå¾ä¸çº¿å®½åå°å½åé¡µç®æ å¼ã
     func testIC070G78FitBorderCornerRadiusTracksPhotoThroughTransition() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -5644,7 +5707,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertGreaterThan(photoRadii.count, 2)
         XCTAssertEqual(photoRadii.count, borderRadii.count)
         for (index, pair) in zip(photoRadii, borderRadii).enumerated() {
-            XCTAssertEqual(pair.0, pair.1, accuracy: 0.5, "关键帧=\(index)")
+            XCTAssertEqual(pair.0, pair.1, accuracy: 0.5, "å³é®å¸§=\(index)")
         }
 
         var presentationPairs = 0
@@ -5758,7 +5821,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             XCTAssertLessThan(
                 first,
                 photoGray - 3,
-                "阶段=\(phase)，角=\(name)：首个非背景像素不是描边",
+                "é¶æ®µ=\(phase)ï¼è§=\(name)ï¼é¦ä¸ªéèæ¯åç´ ä¸æ¯æè¾¹",
                 file: file,
                 line: line
             )
@@ -5785,7 +5848,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             edgeWidth,
             1,
             accuracy: 0.34,
-            "阶段=\(phase)：直边描边宽度",
+            "é¶æ®µ=\(phase)ï¼ç´è¾¹æè¾¹å®½åº¦",
             file: file,
             line: line
         )
@@ -5794,15 +5857,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 width,
                 edgeWidth,
                 accuracy: 0.5,
-                "阶段=\(phase)，角序号=\(index)：圆角与直边宽度差",
+                "é¶æ®µ=\(phase)ï¼è§åºå·=\(index)ï¼åè§ä¸ç´è¾¹å®½åº¦å·®",
                 file: file,
                 line: line
             )
         }
     }
 
-    // IC-075 G108（夹具驱动）：横栏待删标记随 D 显隐，尺寸读自 bottomStripMarkSize，
-    // 静止态与滑动态一致。
+    // IC-075 G108ï¼å¤¹å·é©±å¨ï¼ï¼æ¨ªæ å¾å æ è®°é D æ¾éï¼å°ºå¯¸è¯»èª bottomStripMarkSizeï¼
+    // éæ­¢æä¸æ»å¨æä¸è´ã
     func testIC075G108BottomStripMarkFollowsPendingSetAndMarkSize() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         XCTAssertEqual(configuration.bottomStripMarkSize, 14)
@@ -5844,8 +5907,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(dragging, idle)
     }
 
-    // IC-075 G107（夹具驱动）：主图标记只在 V=显示 ∧ c∈D 渲染；脉冲只在 V=显示时
-    // 消费 alreadyMarked 触发一次；V=隐藏时通知照常消费、不脉冲。
+    // IC-075 G107ï¼å¤¹å·é©±å¨ï¼ï¼ä¸»å¾æ è®°åªå¨ V=æ¾ç¤º â§ câD æ¸²æï¼èå²åªå¨ V=æ¾ç¤ºæ¶
+    // æ¶è´¹ alreadyMarked è§¦åä¸æ¬¡ï¼V=éèæ¶éç¥ç§å¸¸æ¶è´¹ãä¸èå²ã
     func testIC075G107PrimaryMarkVisibilityMatrixAndPulseConsumption() {
         XCTAssertTrue(S2PrimaryMarkPresenter.showsMark(
             interfaceVisibility: .visible,
@@ -5890,8 +5953,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(presenter.pulseCount, 1)
     }
 
-    // IC-075 G107 / 闸门 A（夹具驱动，真机未覆盖）：宿主 S2View 下，标记显示与脉冲
-    // 期间照片几何写入为 0；已标记再上滑后通知被消费且脉冲 +1；隐藏态不脉冲。
+    // IC-075 G107 / é¸é¨ Aï¼å¤¹å·é©±å¨ï¼çæºæªè¦çï¼ï¼å®¿ä¸» S2View ä¸ï¼æ è®°æ¾ç¤ºä¸èå²
+    // æé´ç§çå ä½åå¥ä¸º 0ï¼å·²æ è®°åä¸æ»åéç¥è¢«æ¶è´¹ä¸èå² +1ï¼éèæä¸èå²ã
     func testIC075G107HostedPrimaryMarkPulsesWithoutPhotoGeometryWrites() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(
@@ -5947,7 +6010,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(presenter.pulseCount, 1)
     }
 
-    // IC-068 G50：相同或回退的时钟读数仍被归一为严格递增的统一事件流。
+    // IC-068 G50ï¼ç¸åæåéçæ¶éè¯»æ°ä»è¢«å½ä¸ä¸ºä¸¥æ ¼éå¢çç»ä¸äºä»¶æµã
     func testIC068G50UnifiedClockRecordsAreStrictlyOrdered() {
         var readings: [CFTimeInterval] = [
             800,
@@ -5979,11 +6042,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             pair.0.timestamp < pair.1.timestamp
         })
         XCTAssertTrue(diagnostics.reportText.contains(
-            "顺序=全部记录按同一单调时钟严格递增"
+            "é¡ºåº=å¨é¨è®°å½æåä¸åè°æ¶éä¸¥æ ¼éå¢"
         ))
     }
 
-    // IC-069 G53：主线程停摆超过动画时长时，渲染层仍到达终态。
+    // IC-069 G53ï¼ä¸»çº¿ç¨åæè¶è¿å¨ç»æ¶é¿æ¶ï¼æ¸²æå±ä»å°è¾¾ç»æã
     func testIC069G53PresentationLayerFinishesWhileMainThreadIsBlocked() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -6032,7 +6095,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         page.finishActivePresentationTransition()
     }
 
-    // IC-069 R1b：显隐切换不重建缩略条，因而不重复进入图片请求路径。
+    // IC-069 R1bï¼æ¾éåæ¢ä¸éå»ºç¼©ç¥æ¡ï¼å èä¸éå¤è¿å¥å¾çè¯·æ±è·¯å¾ã
     func testIC069R1bPresentationToggleKeepsThumbnailViewsAlive() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -6070,7 +6133,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(thumbnailAppearCount, initialAppearCount)
     }
 
-    // IC-069 G54/G55：双向均以源态 frame 为基准，首末帧严格命中两端。
+    // IC-069 G54/G55ï¼åååä»¥æºæ frame ä¸ºåºåï¼é¦æ«å¸§ä¸¥æ ¼å½ä¸­ä¸¤ç«¯ã
     func testIC069G54AndG55BothDirectionsUseSourceGeometryBaseline() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
@@ -6135,7 +6198,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.fittedSize, visibleSize)
     }
 
-    // IC-069 G56：已解析资产使用真实适配尺寸，未知资产不写猜测几何。
+    // IC-069 G56ï¼å·²è§£æèµäº§ä½¿ç¨çå®ééå°ºå¯¸ï¼æªç¥èµäº§ä¸åçæµå ä½ã
     func testIC069G56PinchTakeoverRequiresResolvedAssetGeometry() {
         let resolvedScrollView = S2NativeZoomScrollView(
             frame: CGRect(origin: .zero, size: physicalSize)
@@ -6194,7 +6257,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
     }
 
-    // IC-069 G57：无输入的一秒布局窗口内不重复写照片几何。
+    // IC-069 G57ï¼æ è¾å¥çä¸ç§å¸å±çªå£åä¸éå¤åç§çå ä½ã
     func testIC069G57StableLayoutWritesNoPhotoGeometryForOneSecond() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -6218,7 +6281,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
     }
 
-    // IC-069 G58：几何写入与内外层布局事件均可定位到页面和资产。
+    // IC-069 G58ï¼å ä½åå¥ä¸åå¤å±å¸å±äºä»¶åå¯å®ä½å°é¡µé¢åèµäº§ã
     func testIC069G58GeometryDiagnosticsIdentifyPageAndAsset() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -6242,13 +6305,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         diagnostics.stop()
 
         let requiredNames = Set([
-            "照片几何写入",
+            "ç§çå ä½åå¥",
             "layoutSubviews",
             "viewDidLayoutSubviews"
         ])
         let validContexts = Set(
             machine.orderedAssetIDs.enumerated().map {
-                "pageIndex=\($0.offset)；" +
+                "pageIndex=\($0.offset)ï¼" +
                     "assetLocalIdentifier=\($0.element)"
             }
         )
@@ -6261,7 +6324,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             recordedNames.insert(name)
             XCTAssertTrue(
                 validContexts.contains { details.contains($0) },
-                "诊断事件缺少匹配的页面与资产标识：\(details)"
+                "è¯æ­äºä»¶ç¼ºå°å¹éçé¡µé¢ä¸èµäº§æ è¯ï¼\(details)"
             )
         }
         XCTAssertEqual(recordedNames, requiredNames)
@@ -6576,7 +6639,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         return (frame, image)
     }
 
-    /// 扫描读数：首个非背景样本灰度，以及照片区域之前的描边覆盖量（样本数）。
+    /// æ«æè¯»æ°ï¼é¦ä¸ªéèæ¯æ ·æ¬ç°åº¦ï¼ä»¥åç§çåºåä¹åçæè¾¹è¦çéï¼æ ·æ¬æ°ï¼ã
     private func borderScanReading(
         grays: [Int],
         photoGray: Int
@@ -6644,7 +6707,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     private func pixelGray(image: UIImage, point: CGPoint) -> Int {
         guard let source = image.cgImage else {
-            XCTFail("截图缺少像素数据")
+            XCTFail("æªå¾ç¼ºå°åç´ æ°æ®")
             return -1
         }
         let x = min(
@@ -6661,7 +6724,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             width: 1,
             height: 1
         )) else {
-            XCTFail("无法裁取描边像素")
+            XCTFail("æ æ³è£åæè¾¹åç´ ")
             return -1
         }
         var pixel = [UInt8](repeating: 0, count: 4)
@@ -6685,7 +6748,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             return true
         }
         guard didDraw else {
-            XCTFail("无法创建像素取样上下文")
+            XCTFail("æ æ³åå»ºåç´ åæ ·ä¸ä¸æ")
             return -1
         }
         return (Int(pixel[0]) + Int(pixel[1]) + Int(pixel[2])) / 3
@@ -6798,7 +6861,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 sessionID: "session-054",
                 rangeDisplayInformation: S2RangeDisplayInformation(
                     rangeID: "range-054",
-                    displayName: "测试范围",
+                    displayName: "æµè¯èå´",
                     totalAssetCount: orderedAssetIDs.count
                 ),
                 orderedAssetIDs: orderedAssetIDs,
@@ -6965,8 +7028,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         line: UInt = #line
     ) -> T {
         guard let value else {
-            XCTFail("预期值不应为空", file: file, line: line)
-            fatalError("测试无法继续")
+            XCTFail("é¢æå¼ä¸åºä¸ºç©º", file: file, line: line)
+            fatalError("æµè¯æ æ³ç»§ç»­")
         }
         return value
     }
