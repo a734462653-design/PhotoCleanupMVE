@@ -605,7 +605,7 @@ final class S2StateMachineTests: XCTestCase {
     // IC-078 G134：双击目标、原生视口回报与捏合上限按当前资产钳制；翻页后上限随新资产重算；
     // 未登记几何的资产取 floor；applyCalibration 改变 ceiling 后按新值钳制。
     func testIC078G134PinchMaxScaleClampsPerAssetAndRecomputesAfterPaging() {
-        let machine = makeMachine(state: .visibleOneX, currentAssetID: "asset-1")
+        let machine = makeMachine(state: .visibleOneXIdle, currentAssetID: "asset-1")
         let large = 8_000 / CGFloat(1_206)
         machine.updateAssetZoomGeometry(
             S2AssetZoomGeometry(
