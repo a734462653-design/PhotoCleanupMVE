@@ -630,25 +630,25 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertNil(machine.assetZoomGeometry(for: "asset-3"))
 
         // 双击目标按 asset-1 钳制。
-        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 12))
         XCTAssertEqual(machine.scale, large, accuracy: 0.01)
-        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 12))
         XCTAssertEqual(machine.scale, 1)
 
         // 翻页到 asset-2：上限重算为 4。
         XCTAssertTrue(machine.handleNativePageChange(to: 1))
         XCTAssertEqual(machine.currentAssetID, "asset-2")
         XCTAssertEqual(machine.scale, 1)
-        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 12))
         XCTAssertEqual(machine.scale, 4)
-        machine.reportNativeViewport(scale: 9, viewportOffset: .zero)
+        machine.reportNativeViewport(scale: 12, viewportOffset: .zero)
         XCTAssertEqual(machine.scale, 4)
-        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 12))
         XCTAssertEqual(machine.scale, 1)
 
         // 翻回 asset-1：视口回报与捏合按 asset-1 钳制。
         XCTAssertTrue(machine.handleNativePageChange(to: 0))
-        machine.reportNativeViewport(scale: 9, viewportOffset: .zero)
+        machine.reportNativeViewport(scale: 12, viewportOffset: .zero)
         XCTAssertEqual(machine.scale, large, accuracy: 0.01)
         machine.reportNativeViewport(scale: 1, viewportOffset: .zero)
         XCTAssertTrue(machine.beginPinch())
