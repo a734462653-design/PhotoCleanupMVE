@@ -837,28 +837,6 @@
         }
       }
     },
-    "s2.calibration.option.fit_scope.all_photos" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "对全部照片生效"
-          }
-        }
-      }
-    },
-    "s2.calibration.option.fit_scope.screen_aspect" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "仅对屏幕比例照片生效"
-          }
-        }
-      }
-    },
     "s2.calibration.option.preview.display" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1174,6 +1152,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开实时读数"
+          }
+        }
+      }
+    },
+    "s2.calibration.spec.decided" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已定案"
+          }
+        }
+      }
+    },
+    "s2.calibration.spec.placeholder" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登记占位"
           }
         }
       }

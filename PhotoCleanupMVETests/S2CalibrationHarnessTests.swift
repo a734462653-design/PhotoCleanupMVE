@@ -327,7 +327,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             $0.zoomSnapBackThreshold = 1.25
             $0.fitInsetRatio = 0.075
             $0.fitCornerRadius = 36
-            $0.fitInsetScope = .allPhotos
             $0.pageSpacing = 28
             $0.hapticOnPhotoSwitch = false
             $0.scaleChangeRequestPolicy = .pinchEnded
@@ -471,7 +470,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             accuracy: 0.000_001
         )
 
-        inset.fitInsetScope = .allPhotos
         let globalScreenshot = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
@@ -605,24 +603,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             edgePagingTriggerVelocity: 300,
             verticalSwipeDistance: 40,
             verticalSwipeVelocity: 100,
-            verticalSwipeMaximumDurationMilliseconds: 0,
-            horizontalSwipeDistance: 40,
-            horizontalSwipeVelocity: 100,
-            horizontalSwipeMaximumDurationMilliseconds: 0,
-            pinchMinimumScaleDelta: 0.01,
-            pinchMinimumVelocityPerSecond: 0,
-            pinchMaximumDurationMilliseconds: 0,
-            mainDragMinimumDistance: 8,
-            mainDragMinimumVelocity: 0,
-            mainDragMaximumDurationMilliseconds: 0,
-            singleTapMaximumMovement: 12,
-            singleTapMaximumDurationMilliseconds: 280,
             doubleTapDecisionWindowMilliseconds: 200,
             singleTapTouchCount: 1,
             doubleTapTouchCount: 1,
             singleDragTouchCount: 1,
             pinchTouchCount: 2,
-            gestureExclusivityPolicy: .pinchBeforeSingleDrag,
             scaleChangeRequestPolicy: .pinchEnded,
             degradedPreviewPolicy: .finalImageOnly,
             animationsEnabled: true,
@@ -634,8 +619,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             fitBorderWidth: 1,
             fitBorderDarkAlpha: 0.09,
             fitBorderLightAlpha: 0.055,
-            fitInsetScope: .screenAspectOnly,
-            screenshotImmersiveOnHide: true,
             pageSpacing: 20,
             hapticOnPhotoSwitch: true,
             bottomStripCurrentItemSize: 72,
@@ -658,7 +641,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             actual.exportText().contains(
-                "taskID=IC-20260817-064-s2-presentation-toggle-animation"
+                "taskID=IC-20260821-074-parameter-layer-v15-alignment"
             )
         )
         XCTAssertTrue(
@@ -680,7 +663,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(actual.exportText().contains("fitBorderWidth=1.000000"))
         XCTAssertTrue(actual.exportText().contains("fitBorderDarkAlpha=0.090000"))
         XCTAssertTrue(actual.exportText().contains("fitBorderLightAlpha=0.055000"))
-        XCTAssertTrue(actual.exportText().contains("screenshotImmersiveOnHide=true"))
         XCTAssertTrue(actual.exportText().contains("pageSpacing=20.000000"))
         XCTAssertTrue(actual.exportText().contains("hapticOnPhotoSwitch=true"))
         XCTAssertFalse(
@@ -710,26 +692,88 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let connections = S2CalibrationConfiguration.parameterConnections
         let connectionNames = connections.map(\.name)
         let statuses = Dictionary(uniqueKeysWithValues: connections.map {
-            ($0.name, $0.status)
+            ($0.name, $0.wiringStatus)
         })
 
         XCTAssertEqual(Set(connectionNames), Set(parameterNames))
         XCTAssertEqual(connectionNames.count, parameterNames.count)
         XCTAssertEqual(Set(connectionNames).count, connectionNames.count)
         XCTAssertEqual(
-            statuses["singleTapMaximumMovement"],
+            statuses["doubleTapDecisionWindowMilliseconds"],
             .unwired
         )
-        XCTAssertEqual(
-            statuses["gestureExclusivityPolicy"],
-            .unwired
-        )
-        XCTAssertEqual(statuses["fitInsetScope"], .unwired)
+        XCTAssertEqual(statuses["bottomStripEdgeFadeWidth"], .unwired)
         XCTAssertEqual(
             statuses["presentationToggleDamping"],
             .effective
         )
         XCTAssertEqual(statuses["pinchMaxScale"], .effective)
+        XCTAssertEqual(statuses["edgePagingTriggerDistance"], .effective)
+    }
+
+    // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion=2 与 v15 规格基线。
+    func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
+        let fieldNames = Mirror(
+            reflecting: S2CalibrationConfiguration.factoryPlaceholder
+        ).children.compactMap(\.label)
+        XCTAssertEqual(fieldNames.count, 33)
+
+        let lines = S2CalibrationConfiguration.factoryPlaceholder
+            .exportText()
+            .split(separator: "\n")
+            .map(String.init)
+        XCTAssertEqual(lines.count, 33 + 4)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 2)
+        XCTAssertTrue(lines.contains("schemaVersion=2"))
+        XCTAssertTrue(lines.contains(
+            "taskID=IC-20260821-074-parameter-layer-v15-alignment"
+        ))
+        XCTAssertTrue(lines.contains("specBaseline=SPEC-S2-20260821_v15"))
+        XCTAssertTrue(lines.contains { $0.hasPrefix("valueStatus=") })
+        let exportedNames = Set(lines.map {
+            String($0.split(separator: "=", maxSplits: 1)[0])
+        })
+        for name in fieldNames {
+            XCTAssertTrue(exportedNames.contains(name), name)
+        }
+        // 导出行 = 4 个头部键 + 33 个字段，没有任何废止参数残留。
+        XCTAssertEqual(exportedNames.count, fieldNames.count + 4)
+    }
+
+    // IC-074 G97：登记表 33 条、双状态；decided 集合恰为 v15 第十一节第 1、2 部分已存在的 16 项。
+    func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
+        let connections = S2CalibrationConfiguration.parameterConnections
+        XCTAssertEqual(connections.count, 33)
+        XCTAssertEqual(Set(connections.map(\.name)).count, 33)
+
+        let decided = Set(connections
+            .filter { $0.specStatus == .decided }
+            .map(\.name))
+        let placeholder = Set(connections
+            .filter { $0.specStatus == .placeholder }
+            .map(\.name))
+        XCTAssertEqual(decided, [
+            "zoomSnapBackThreshold", "minDoubleTapScale",
+            "presentationToggleDuration", "presentationToggleDamping",
+            "fitInsetRatio", "fitCornerRadius", "fitBorderWidth",
+            "fitBorderDarkAlpha", "fitBorderLightAlpha",
+            "verticalSwipeDistance", "verticalSwipeVelocity",
+            "pageSpacing", "hapticOnPhotoSwitch",
+            "doubleTapDecisionWindowMilliseconds",
+            "edgePagingTriggerDistance", "edgePagingTriggerVelocity"
+        ])
+        XCTAssertEqual(decided.count, 16)
+        XCTAssertEqual(placeholder.count, 17)
+        XCTAssertTrue(decided.isDisjoint(with: placeholder))
+        XCTAssertTrue(placeholder.contains("pinchMaxScale"))
+        XCTAssertEqual(
+            S2CalibrationConfiguration.factoryPlaceholder.pinchMaxScale,
+            4
+        )
+        for connection in connections {
+            XCTAssertFalse(connection.specStatus.title.isEmpty)
+            XCTAssertFalse(connection.wiringStatus.title.isEmpty)
+        }
     }
 
     // P1 替代断言：Nx 平移由原生滚动容器接管并产生非零 contentOffset。
@@ -888,7 +932,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
     func testD1ScreenshotAspectFitShrinksToSeventyPercentViewport() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitInsetRatio = 0.30
-        configuration.fitInsetScope = .screenAspectOnly
         let value = metrics(configuration: configuration)
 
         XCTAssertEqual(
@@ -896,11 +939,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             min(value.viewportSize.width, value.viewportSize.height) * 0.70,
             accuracy: 1
         )
-        XCTAssertTrue(S2ViewportLayout.insetApplies(
-            assetAspectRatio: 1 / screenAspectRatio,
-            viewportAspectRatio: screenAspectRatio,
-            scope: .screenAspectOnly
-        ))
         let oppositeOrientation = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
@@ -933,7 +971,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
     func testD3AllPhotosScopeLeavesNonScreenshotUnchanged() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitInsetRatio = 0.30
-        configuration.fitInsetScope = .allPhotos
         let value = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
@@ -979,7 +1016,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let assetAspectRatio: CGFloat = 0.75
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.fitInsetRatio = 0.30
-        configuration.fitInsetScope = .screenAspectOnly
         let value = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
@@ -2452,32 +2488,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             visible.doubleTapTargetScale,
             accuracy: 0.000_001
         )
-    }
-
-    // S5 改写：旧沉浸开关不再接线，截图隐藏态始终等比适配全视口。
-    func testS5DisabledScreenshotImmersiveDoesNotChangeHiddenGeometry() {
-        let enabled = metrics(visibility: .hidden)
-        var disabledConfiguration = S2CalibrationConfiguration
-            .factoryPlaceholder
-        disabledConfiguration.screenshotImmersiveOnHide = false
-        let disabled = metrics(
-            visibility: .hidden,
-            configuration: disabledConfiguration
-        )
-
-        XCTAssertEqual(disabled.oneXDisplaySize, enabled.oneXDisplaySize)
-        XCTAssertEqual(disabled.oneXDisplaySize, disabled.aspectFitSize)
-        XCTAssertEqual(disabled.oneXCornerRadius, 0, accuracy: 0.000_001)
-    }
-
-    // S6：截图沉浸开关出厂值为开启并进入参数导出。
-    func testS6ScreenshotImmersiveFactoryDefaultIsTrue() {
-        let configuration = S2CalibrationConfiguration.factoryPlaceholder
-
-        XCTAssertTrue(configuration.screenshotImmersiveOnHide)
-        XCTAssertTrue(configuration.exportText().contains(
-            "screenshotImmersiveOnHide=true"
-        ))
     }
 
     // X1：缩放变换的实际锚点固定在物理视口中心。

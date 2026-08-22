@@ -2638,9 +2638,9 @@ final class S2NativePagerViewController: UIViewController,
             peakVelocity: peakVelocity,
             duration: duration
         ))
-        // IC-074：原 pinchMinimumVelocityPerSecond / pinchMaximumDurationMilliseconds
-        // 过滤已随参数废止删除；出厂值均为 0（语义为无限制），过滤恒通过，
-        // 因此这里恒以 accepted=true 交给状态机，行为不变。
+        // IC-074：原捏合结束的最小速度／最长时长过滤已随参数废止删除；
+        // 两者出厂值均为 0（语义为无限制），过滤恒通过，因此这里恒以
+        // accepted=true 交给状态机，行为不变。
         guard let targetScale = machine.finishNativePinch(
             scale: scale,
             viewportOffset: page.zoomScrollView.reportedViewportOffset(),

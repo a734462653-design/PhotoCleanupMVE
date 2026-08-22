@@ -738,21 +738,6 @@ struct S2View: View {
                     step: 0.005
                 )
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
-                Picker(
-                    "fitInsetScope",
-                    selection: calibrationBinding(\.fitInsetScope)
-                ) {
-                    ForEach(S2FitInsetScope.allCases, id: \.self) {
-                        Text(fitInsetScopeTitle($0)).tag($0)
-                    }
-                }
-                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
-                Toggle(
-                    isOn: calibrationBinding(\.screenshotImmersiveOnHide)
-                ) {
-                    Text(verbatim: "screenshotImmersiveOnHide")
-                }
-                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
                 Toggle(
                     isOn: calibrationBinding(\.hapticOnPhotoSwitch)
                 ) {
@@ -766,7 +751,8 @@ struct S2View: View {
                     HStack {
                         Text(verbatim: parameter.name)
                         Spacer()
-                        Text(parameter.status.title)
+                        Text(parameter.specStatus.title)
+                        Text(parameter.wiringStatus.title)
                     }
                     .font(.caption)
                 }
@@ -998,15 +984,6 @@ struct S2View: View {
             return L10n.text("s2.calibration.option.preview.display")
         case .finalImageOnly:
             return L10n.text("s2.calibration.option.preview.final_only")
-        }
-    }
-
-    private func fitInsetScopeTitle(_ scope: S2FitInsetScope) -> String {
-        switch scope {
-        case .screenAspectOnly:
-            return L10n.text("s2.calibration.option.fit_scope.screen_aspect")
-        case .allPhotos:
-            return L10n.text("s2.calibration.option.fit_scope.all_photos")
         }
     }
 

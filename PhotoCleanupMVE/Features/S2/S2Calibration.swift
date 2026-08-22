@@ -3,14 +3,20 @@ import CoreGraphics
 import Foundation
 import Security
 
-enum S2FitInsetScope: String, CaseIterable, Codable, Equatable {
-    case screenAspectOnly
-    case allPhotos
-}
+/// IC-074：规格状态。`decided` 为 SPEC-S2 v15 第十一节第 1、2 部分承认的定案参数；
+/// `placeholder` 为登记占位，非定案，其去留由后续任务卡按 v15 对应条款处理。
+enum S2CalibrationParameterSpecStatus: Equatable {
+    case decided
+    case placeholder
 
-enum S2GestureExclusivityPolicy: String, CaseIterable, Codable, Equatable {
-    case pinchBeforeSingleDrag
-    case singleDragBeforePinch
+    var title: String {
+        switch self {
+        case .decided:
+            return L10n.text("s2.calibration.spec.decided")
+        case .placeholder:
+            return L10n.text("s2.calibration.spec.placeholder")
+        }
+    }
 }
 
 enum S2CalibrationParameterConnectionStatus: Equatable {
@@ -29,13 +35,14 @@ enum S2CalibrationParameterConnectionStatus: Equatable {
 
 struct S2CalibrationParameterConnection: Identifiable, Equatable {
     let name: String
-    let status: S2CalibrationParameterConnectionStatus
+    let specStatus: S2CalibrationParameterSpecStatus
+    let wiringStatus: S2CalibrationParameterConnectionStatus
 
     var id: String { name }
 }
 
 struct S2CalibrationConfiguration: Codable, Equatable {
-    static let schemaVersion = 1
+    static let schemaVersion = 2
 
     var pinchMaxScale: Double
     var zoomSnapBackThreshold: Double
@@ -45,24 +52,11 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var edgePagingTriggerVelocity: Double
     var verticalSwipeDistance: Double
     var verticalSwipeVelocity: Double
-    var verticalSwipeMaximumDurationMilliseconds: Double
-    var horizontalSwipeDistance: Double
-    var horizontalSwipeVelocity: Double
-    var horizontalSwipeMaximumDurationMilliseconds: Double
-    var pinchMinimumScaleDelta: Double
-    var pinchMinimumVelocityPerSecond: Double
-    var pinchMaximumDurationMilliseconds: Double
-    var mainDragMinimumDistance: Double
-    var mainDragMinimumVelocity: Double
-    var mainDragMaximumDurationMilliseconds: Double
-    var singleTapMaximumMovement: Double
-    var singleTapMaximumDurationMilliseconds: Double
     var doubleTapDecisionWindowMilliseconds: Double
     var singleTapTouchCount: Int
     var doubleTapTouchCount: Int
     var singleDragTouchCount: Int
     var pinchTouchCount: Int
-    var gestureExclusivityPolicy: S2GestureExclusivityPolicy
     var scaleChangeRequestPolicy: S2ScaleChangeImageRequestPolicy
     var degradedPreviewPolicy: S2DegradedPreviewPolicy
     var animationsEnabled: Bool
@@ -74,8 +68,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var fitBorderWidth: Double
     var fitBorderDarkAlpha: Double
     var fitBorderLightAlpha: Double
-    var fitInsetScope: S2FitInsetScope
-    var screenshotImmersiveOnHide: Bool
     var pageSpacing: Double
     var hapticOnPhotoSwitch: Bool
     var bottomStripCurrentItemSize: Double
@@ -96,24 +88,11 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         edgePagingTriggerVelocity: 300,
         verticalSwipeDistance: 40,
         verticalSwipeVelocity: 100,
-        verticalSwipeMaximumDurationMilliseconds: 0,
-        horizontalSwipeDistance: 40,
-        horizontalSwipeVelocity: 100,
-        horizontalSwipeMaximumDurationMilliseconds: 0,
-        pinchMinimumScaleDelta: 0.01,
-        pinchMinimumVelocityPerSecond: 0,
-        pinchMaximumDurationMilliseconds: 0,
-        mainDragMinimumDistance: 8,
-        mainDragMinimumVelocity: 0,
-        mainDragMaximumDurationMilliseconds: 0,
-        singleTapMaximumMovement: 12,
-        singleTapMaximumDurationMilliseconds: 280,
         doubleTapDecisionWindowMilliseconds: 200,
         singleTapTouchCount: 1,
         doubleTapTouchCount: 1,
         singleDragTouchCount: 1,
         pinchTouchCount: 2,
-        gestureExclusivityPolicy: .pinchBeforeSingleDrag,
         scaleChangeRequestPolicy: .pinchEnded,
         degradedPreviewPolicy: .finalImageOnly,
         animationsEnabled: true,
@@ -125,8 +104,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         fitBorderWidth: 1,
         fitBorderDarkAlpha: 0.09,
         fitBorderLightAlpha: 0.055,
-        fitInsetScope: .screenAspectOnly,
-        screenshotImmersiveOnHide: true,
         pageSpacing: 20,
         hapticOnPhotoSwitch: true,
         bottomStripCurrentItemSize: 72,
@@ -169,14 +146,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
 
     var isValid: Bool {
         resolvedParameters != nil &&
-            verticalSwipeMaximumDurationMilliseconds >= 0 &&
-            horizontalSwipeMaximumDurationMilliseconds >= 0 &&
-            pinchMinimumVelocityPerSecond >= 0 &&
-            pinchMaximumDurationMilliseconds >= 0 &&
-            mainDragMinimumVelocity >= 0 &&
-            mainDragMaximumDurationMilliseconds >= 0 &&
-            singleTapMaximumMovement >= 0 &&
-            singleTapMaximumDurationMilliseconds >= 0 &&
             doubleTapDecisionWindowMilliseconds >= 0 &&
             singleTapTouchCount > 0 &&
             doubleTapTouchCount > 0 &&
@@ -197,8 +166,9 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     func exportText() -> String {
         let values: [(String, String)] = [
             ("schemaVersion", String(Self.schemaVersion)),
-            ("taskID", "IC-20260817-064-s2-presentation-toggle-animation"),
+            ("taskID", "IC-20260821-074-parameter-layer-v15-alignment"),
             ("valueStatus", L10n.text("s2.calibration.value_status")),
+            ("specBaseline", "SPEC-S2-20260821_v15"),
             ("pinchMaxScale", formatted(pinchMaxScale)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
             ("minDoubleTapScale", formatted(minDoubleTapScale)),
@@ -207,24 +177,11 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("edgePagingTriggerVelocity", formatted(edgePagingTriggerVelocity)),
             ("verticalSwipeDistance", formatted(verticalSwipeDistance)),
             ("verticalSwipeVelocity", formatted(verticalSwipeVelocity)),
-            ("verticalSwipeMaximumDurationMilliseconds", formatted(verticalSwipeMaximumDurationMilliseconds)),
-            ("horizontalSwipeDistance", formatted(horizontalSwipeDistance)),
-            ("horizontalSwipeVelocity", formatted(horizontalSwipeVelocity)),
-            ("horizontalSwipeMaximumDurationMilliseconds", formatted(horizontalSwipeMaximumDurationMilliseconds)),
-            ("pinchMinimumScaleDelta", formatted(pinchMinimumScaleDelta)),
-            ("pinchMinimumVelocityPerSecond", formatted(pinchMinimumVelocityPerSecond)),
-            ("pinchMaximumDurationMilliseconds", formatted(pinchMaximumDurationMilliseconds)),
-            ("mainDragMinimumDistance", formatted(mainDragMinimumDistance)),
-            ("mainDragMinimumVelocity", formatted(mainDragMinimumVelocity)),
-            ("mainDragMaximumDurationMilliseconds", formatted(mainDragMaximumDurationMilliseconds)),
-            ("singleTapMaximumMovement", formatted(singleTapMaximumMovement)),
-            ("singleTapMaximumDurationMilliseconds", formatted(singleTapMaximumDurationMilliseconds)),
             ("doubleTapDecisionWindowMilliseconds", formatted(doubleTapDecisionWindowMilliseconds)),
             ("singleTapTouchCount", String(singleTapTouchCount)),
             ("doubleTapTouchCount", String(doubleTapTouchCount)),
             ("singleDragTouchCount", String(singleDragTouchCount)),
             ("pinchTouchCount", String(pinchTouchCount)),
-            ("gestureExclusivityPolicy", gestureExclusivityPolicy.rawValue),
             ("scaleChangeRequestPolicy", scaleChangeRequestPolicy.rawValue),
             ("degradedPreviewPolicy", degradedPreviewPolicy.rawValue),
             ("animationsEnabled", String(animationsEnabled)),
@@ -236,8 +193,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("fitBorderWidth", formatted(fitBorderWidth)),
             ("fitBorderDarkAlpha", formatted(fitBorderDarkAlpha)),
             ("fitBorderLightAlpha", formatted(fitBorderLightAlpha)),
-            ("fitInsetScope", fitInsetScope.rawValue),
-            ("screenshotImmersiveOnHide", String(screenshotImmersiveOnHide)),
             ("pageSpacing", formatted(pageSpacing)),
             ("hapticOnPhotoSwitch", String(hapticOnPhotoSwitch)),
             ("bottomStripCurrentItemSize", formatted(bottomStripCurrentItemSize)),
@@ -261,76 +216,42 @@ struct S2CalibrationConfiguration: Codable, Equatable {
 }
 
 extension S2CalibrationConfiguration {
+    /// IC-074 登记表：规格状态（decided / placeholder）× 接线状态（effective / unwired）。
+    /// 本表只登记，不为占位参数补接生产逻辑。
     static let parameterConnections: [S2CalibrationParameterConnection] = [
-        .init(name: "pinchMaxScale", status: .effective),
-        .init(name: "zoomSnapBackThreshold", status: .effective),
-        .init(name: "minDoubleTapScale", status: .effective),
-        .init(name: "doubleTapAnchorStrategy", status: .effective),
-        .init(name: "edgePagingTriggerDistance", status: .effective),
-        .init(name: "edgePagingTriggerVelocity", status: .effective),
-        .init(name: "verticalSwipeDistance", status: .effective),
-        .init(name: "verticalSwipeVelocity", status: .effective),
-        .init(
-            name: "verticalSwipeMaximumDurationMilliseconds",
-            status: .unwired
-        ),
-        .init(name: "horizontalSwipeDistance", status: .unwired),
-        .init(name: "horizontalSwipeVelocity", status: .unwired),
-        .init(
-            name: "horizontalSwipeMaximumDurationMilliseconds",
-            status: .unwired
-        ),
-        .init(name: "pinchMinimumScaleDelta", status: .unwired),
-        .init(name: "pinchMinimumVelocityPerSecond", status: .effective),
-        .init(
-            name: "pinchMaximumDurationMilliseconds",
-            status: .effective
-        ),
-        .init(name: "mainDragMinimumDistance", status: .unwired),
-        .init(name: "mainDragMinimumVelocity", status: .unwired),
-        .init(
-            name: "mainDragMaximumDurationMilliseconds",
-            status: .unwired
-        ),
-        .init(name: "singleTapMaximumMovement", status: .unwired),
-        .init(
-            name: "singleTapMaximumDurationMilliseconds",
-            status: .unwired
-        ),
-        .init(
-            name: "doubleTapDecisionWindowMilliseconds",
-            status: .unwired
-        ),
-        .init(name: "singleTapTouchCount", status: .effective),
-        .init(name: "doubleTapTouchCount", status: .effective),
-        .init(name: "singleDragTouchCount", status: .effective),
-        .init(name: "pinchTouchCount", status: .effective),
-        .init(name: "gestureExclusivityPolicy", status: .unwired),
-        .init(name: "scaleChangeRequestPolicy", status: .effective),
-        .init(name: "degradedPreviewPolicy", status: .effective),
-        .init(name: "animationsEnabled", status: .effective),
-        .init(name: "animationDurationMilliseconds", status: .effective),
-        .init(name: "presentationToggleDuration", status: .effective),
-        .init(name: "presentationToggleDamping", status: .effective),
-        .init(name: "fitInsetRatio", status: .effective),
-        .init(name: "fitCornerRadius", status: .effective),
-        .init(name: "fitBorderWidth", status: .effective),
-        .init(name: "fitBorderDarkAlpha", status: .effective),
-        .init(name: "fitBorderLightAlpha", status: .effective),
-        .init(name: "fitInsetScope", status: .unwired),
-        .init(name: "screenshotImmersiveOnHide", status: .unwired),
-        .init(name: "pageSpacing", status: .effective),
-        .init(name: "hapticOnPhotoSwitch", status: .effective),
-        .init(name: "bottomStripCurrentItemSize", status: .effective),
-        .init(name: "bottomStripNeighborItemWidth", status: .effective),
-        .init(name: "bottomStripNeighborItemHeight", status: .effective),
-        .init(name: "bottomStripItemSpacing", status: .effective),
-        .init(name: "bottomStripEdgeFadeWidth", status: .unwired),
-        .init(
-            name: "bottomStripDragMinimumDistance",
-            status: .effective
-        ),
-        .init(name: "bottomStripSwitchDistance", status: .effective)
+        .init(name: "pinchMaxScale", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "zoomSnapBackThreshold", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "minDoubleTapScale", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "doubleTapAnchorStrategy", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "edgePagingTriggerDistance", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "edgePagingTriggerVelocity", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "verticalSwipeDistance", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "verticalSwipeVelocity", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "doubleTapDecisionWindowMilliseconds", specStatus: .decided, wiringStatus: .unwired),
+        .init(name: "singleTapTouchCount", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "doubleTapTouchCount", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "singleDragTouchCount", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "pinchTouchCount", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "scaleChangeRequestPolicy", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "degradedPreviewPolicy", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "animationsEnabled", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "animationDurationMilliseconds", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "presentationToggleDuration", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "presentationToggleDamping", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "fitInsetRatio", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "fitCornerRadius", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "fitBorderWidth", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "fitBorderDarkAlpha", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "fitBorderLightAlpha", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "pageSpacing", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "hapticOnPhotoSwitch", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripCurrentItemSize", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "bottomStripNeighborItemWidth", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "bottomStripNeighborItemHeight", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "bottomStripItemSpacing", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "bottomStripEdgeFadeWidth", specStatus: .placeholder, wiringStatus: .unwired),
+        .init(name: "bottomStripDragMinimumDistance", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "bottomStripSwitchDistance", specStatus: .placeholder, wiringStatus: .effective)
     ]
 }
 
@@ -344,24 +265,11 @@ extension S2CalibrationConfiguration {
         case edgePagingTriggerVelocity
         case verticalSwipeDistance
         case verticalSwipeVelocity
-        case verticalSwipeMaximumDurationMilliseconds
-        case horizontalSwipeDistance
-        case horizontalSwipeVelocity
-        case horizontalSwipeMaximumDurationMilliseconds
-        case pinchMinimumScaleDelta
-        case pinchMinimumVelocityPerSecond
-        case pinchMaximumDurationMilliseconds
-        case mainDragMinimumDistance
-        case mainDragMinimumVelocity
-        case mainDragMaximumDurationMilliseconds
-        case singleTapMaximumMovement
-        case singleTapMaximumDurationMilliseconds
         case doubleTapDecisionWindowMilliseconds
         case singleTapTouchCount
         case doubleTapTouchCount
         case singleDragTouchCount
         case pinchTouchCount
-        case gestureExclusivityPolicy
         case scaleChangeRequestPolicy
         case degradedPreviewPolicy
         case animationsEnabled
@@ -373,8 +281,6 @@ extension S2CalibrationConfiguration {
         case fitBorderWidth
         case fitBorderDarkAlpha
         case fitBorderLightAlpha
-        case fitInsetScope
-        case screenshotImmersiveOnHide
         case pageSpacing
         case hapticOnPhotoSwitch
         case bottomStripCurrentItemSize
@@ -398,24 +304,11 @@ extension S2CalibrationConfiguration {
             edgePagingTriggerVelocity: try values.decode(Double.self, forKey: .edgePagingTriggerVelocity),
             verticalSwipeDistance: try values.decode(Double.self, forKey: .verticalSwipeDistance),
             verticalSwipeVelocity: try values.decode(Double.self, forKey: .verticalSwipeVelocity),
-            verticalSwipeMaximumDurationMilliseconds: try values.decode(Double.self, forKey: .verticalSwipeMaximumDurationMilliseconds),
-            horizontalSwipeDistance: try values.decode(Double.self, forKey: .horizontalSwipeDistance),
-            horizontalSwipeVelocity: try values.decode(Double.self, forKey: .horizontalSwipeVelocity),
-            horizontalSwipeMaximumDurationMilliseconds: try values.decode(Double.self, forKey: .horizontalSwipeMaximumDurationMilliseconds),
-            pinchMinimumScaleDelta: try values.decode(Double.self, forKey: .pinchMinimumScaleDelta),
-            pinchMinimumVelocityPerSecond: try values.decode(Double.self, forKey: .pinchMinimumVelocityPerSecond),
-            pinchMaximumDurationMilliseconds: try values.decode(Double.self, forKey: .pinchMaximumDurationMilliseconds),
-            mainDragMinimumDistance: try values.decode(Double.self, forKey: .mainDragMinimumDistance),
-            mainDragMinimumVelocity: try values.decode(Double.self, forKey: .mainDragMinimumVelocity),
-            mainDragMaximumDurationMilliseconds: try values.decode(Double.self, forKey: .mainDragMaximumDurationMilliseconds),
-            singleTapMaximumMovement: try values.decode(Double.self, forKey: .singleTapMaximumMovement),
-            singleTapMaximumDurationMilliseconds: try values.decode(Double.self, forKey: .singleTapMaximumDurationMilliseconds),
             doubleTapDecisionWindowMilliseconds: try values.decode(Double.self, forKey: .doubleTapDecisionWindowMilliseconds),
             singleTapTouchCount: try values.decode(Int.self, forKey: .singleTapTouchCount),
             doubleTapTouchCount: try values.decode(Int.self, forKey: .doubleTapTouchCount),
             singleDragTouchCount: try values.decode(Int.self, forKey: .singleDragTouchCount),
             pinchTouchCount: try values.decode(Int.self, forKey: .pinchTouchCount),
-            gestureExclusivityPolicy: try values.decode(S2GestureExclusivityPolicy.self, forKey: .gestureExclusivityPolicy),
             scaleChangeRequestPolicy: try values.decode(S2ScaleChangeImageRequestPolicy.self, forKey: .scaleChangeRequestPolicy),
             degradedPreviewPolicy: try values.decode(S2DegradedPreviewPolicy.self, forKey: .degradedPreviewPolicy),
             animationsEnabled: try values.decode(Bool.self, forKey: .animationsEnabled),
@@ -427,8 +320,6 @@ extension S2CalibrationConfiguration {
             fitBorderWidth: try values.decodeIfPresent(Double.self, forKey: .fitBorderWidth) ?? 1,
             fitBorderDarkAlpha: try values.decodeIfPresent(Double.self, forKey: .fitBorderDarkAlpha) ?? 0.09,
             fitBorderLightAlpha: try values.decodeIfPresent(Double.self, forKey: .fitBorderLightAlpha) ?? 0.055,
-            fitInsetScope: try values.decode(S2FitInsetScope.self, forKey: .fitInsetScope),
-            screenshotImmersiveOnHide: try values.decodeIfPresent(Bool.self, forKey: .screenshotImmersiveOnHide) ?? true,
             pageSpacing: try values.decodeIfPresent(Double.self, forKey: .pageSpacing) ?? 20,
             hapticOnPhotoSwitch: try values.decodeIfPresent(Bool.self, forKey: .hapticOnPhotoSwitch) ?? true,
             bottomStripCurrentItemSize: try values.decode(Double.self, forKey: .bottomStripCurrentItemSize),
@@ -451,24 +342,11 @@ extension S2CalibrationConfiguration {
         try values.encode(edgePagingTriggerVelocity, forKey: .edgePagingTriggerVelocity)
         try values.encode(verticalSwipeDistance, forKey: .verticalSwipeDistance)
         try values.encode(verticalSwipeVelocity, forKey: .verticalSwipeVelocity)
-        try values.encode(verticalSwipeMaximumDurationMilliseconds, forKey: .verticalSwipeMaximumDurationMilliseconds)
-        try values.encode(horizontalSwipeDistance, forKey: .horizontalSwipeDistance)
-        try values.encode(horizontalSwipeVelocity, forKey: .horizontalSwipeVelocity)
-        try values.encode(horizontalSwipeMaximumDurationMilliseconds, forKey: .horizontalSwipeMaximumDurationMilliseconds)
-        try values.encode(pinchMinimumScaleDelta, forKey: .pinchMinimumScaleDelta)
-        try values.encode(pinchMinimumVelocityPerSecond, forKey: .pinchMinimumVelocityPerSecond)
-        try values.encode(pinchMaximumDurationMilliseconds, forKey: .pinchMaximumDurationMilliseconds)
-        try values.encode(mainDragMinimumDistance, forKey: .mainDragMinimumDistance)
-        try values.encode(mainDragMinimumVelocity, forKey: .mainDragMinimumVelocity)
-        try values.encode(mainDragMaximumDurationMilliseconds, forKey: .mainDragMaximumDurationMilliseconds)
-        try values.encode(singleTapMaximumMovement, forKey: .singleTapMaximumMovement)
-        try values.encode(singleTapMaximumDurationMilliseconds, forKey: .singleTapMaximumDurationMilliseconds)
         try values.encode(doubleTapDecisionWindowMilliseconds, forKey: .doubleTapDecisionWindowMilliseconds)
         try values.encode(singleTapTouchCount, forKey: .singleTapTouchCount)
         try values.encode(doubleTapTouchCount, forKey: .doubleTapTouchCount)
         try values.encode(singleDragTouchCount, forKey: .singleDragTouchCount)
         try values.encode(pinchTouchCount, forKey: .pinchTouchCount)
-        try values.encode(gestureExclusivityPolicy, forKey: .gestureExclusivityPolicy)
         try values.encode(scaleChangeRequestPolicy, forKey: .scaleChangeRequestPolicy)
         try values.encode(degradedPreviewPolicy, forKey: .degradedPreviewPolicy)
         try values.encode(animationsEnabled, forKey: .animationsEnabled)
@@ -480,8 +358,6 @@ extension S2CalibrationConfiguration {
         try values.encode(fitBorderWidth, forKey: .fitBorderWidth)
         try values.encode(fitBorderDarkAlpha, forKey: .fitBorderDarkAlpha)
         try values.encode(fitBorderLightAlpha, forKey: .fitBorderLightAlpha)
-        try values.encode(fitInsetScope, forKey: .fitInsetScope)
-        try values.encode(screenshotImmersiveOnHide, forKey: .screenshotImmersiveOnHide)
         try values.encode(pageSpacing, forKey: .pageSpacing)
         try values.encode(hapticOnPhotoSwitch, forKey: .hapticOnPhotoSwitch)
         try values.encode(bottomStripCurrentItemSize, forKey: .bottomStripCurrentItemSize)
@@ -1008,21 +884,6 @@ enum S2ViewportLayout {
         )
     }
 
-    static func insetApplies(
-        assetAspectRatio: CGFloat,
-        viewportAspectRatio: CGFloat,
-        scope: S2FitInsetScope
-    ) -> Bool {
-        switch scope {
-        case .allPhotos:
-            return true
-        case .screenAspectOnly:
-            return S2Geometry.isScreenAspectMatch(
-                assetAspectRatio: assetAspectRatio,
-                viewportAspectRatio: viewportAspectRatio
-            )
-        }
-    }
 }
 
 enum S2AssetAspectCategory: String, CaseIterable, Codable, Equatable {
