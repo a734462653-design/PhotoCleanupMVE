@@ -92,6 +92,25 @@ struct S2ConfirmationEntryPresentation: Equatable {
     }
 }
 
+/// IC-075（v15 第六节第 1 部分）：横栏待删标记由横栏视图自身叠加在缩略图右上角
+/// 内侧，不依赖内容闭包，因此生产与夹具路径同时生效；静止态与滑动态相同。
+struct S2BottomStripMarkPresentation: Equatable {
+    static let symbolName = "trash.circle.fill"
+
+    let isShown: Bool
+    let size: CGFloat
+
+    static func make(
+        isMarked: Bool,
+        markSize: CGFloat
+    ) -> S2BottomStripMarkPresentation {
+        S2BottomStripMarkPresentation(
+            isShown: isMarked,
+            size: max(0, markSize)
+        )
+    }
+}
+
 struct S2AlbumPickerActions {
     let select: (S2AlbumReference) -> Void
     let reportFailure: () -> Void
@@ -348,6 +367,9 @@ struct S2View: View {
                 S2BottomStripView(
                     machine: machine,
                     metrics: machine.parameters.bottomStripMetrics,
+                    markSize: CGFloat(
+                        calibration.configuration.bottomStripMarkSize
+                    ),
                     itemContent: stripItemContent,
                     onPhotoSwitch: {
                         photoSwitchHapticFeedback.notify(
@@ -1270,11 +1292,31 @@ struct S2BottomStripView: View {
     @ObservedObject var machine: S2StateMachine
 
     let metrics: S2BottomStripMetrics
+    let markSize: CGFloat
     let itemContent: S2View.StripItemContent
     let onPhotoSwitch: () -> Void
 
     @State private var residualTranslation: CGFloat = 0
     @State private var previousTranslation: CGFloat?
+
+    func markPresentation(for assetID: String) -> S2BottomStripMarkPresentation {
+        S2BottomStripMarkPresentation.make(
+            isMarked: machine.pendingDeletionAssetIDs.contains(assetID),
+            markSize: markSize
+        )
+    }
+
+    @ViewBuilder
+    private func stripMark(for assetID: String) -> some View {
+        let mark = markPresentation(for: assetID)
+        if mark.isShown {
+            Image(systemName: S2BottomStripMarkPresentation.symbolName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: mark.size, height: mark.size)
+                .accessibilityHidden(true)
+        }
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -1297,6 +1339,9 @@ struct S2BottomStripView: View {
                         width: itemWidth(at: index),
                         height: itemHeight(at: index)
                     )
+                    .overlay(alignment: .topTrailing) {
+                        stripMark(for: assetID)
+                    }
                     .position(
                         x: geometry.size.width / 2 +
                             positionOffset(for: index) +

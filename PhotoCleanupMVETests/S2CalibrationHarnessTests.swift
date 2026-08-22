@@ -673,7 +673,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             bottomStripItemSpacing: 8,
             bottomStripEdgeFadeWidth: 24,
             bottomStripDragMinimumDistance: 4,
-            bottomStripSwitchDistance: 44
+            bottomStripSwitchDistance: 44,
+            bottomStripMarkSize: 14
         )
         let actual = S2CalibrationConfiguration.factoryPlaceholder
 
@@ -762,13 +763,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
         ).children.compactMap(\.label)
-        XCTAssertEqual(fieldNames.count, 33)
+        XCTAssertEqual(fieldNames.count, 34)
 
         let lines = S2CalibrationConfiguration.factoryPlaceholder
             .exportText()
             .split(separator: "\n")
             .map(String.init)
-        XCTAssertEqual(lines.count, 33 + 4)
+        XCTAssertEqual(lines.count, 34 + 4)
         XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 2)
         XCTAssertTrue(lines.contains("schemaVersion=2"))
         XCTAssertTrue(lines.contains(
@@ -789,8 +790,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-074 G97：登记表 33 条、双状态；decided 集合恰为 v15 第十一节第 1、2 部分已存在的 16 项。
     func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
         let connections = S2CalibrationConfiguration.parameterConnections
-        XCTAssertEqual(connections.count, 33)
-        XCTAssertEqual(Set(connections.map(\.name)).count, 33)
+        XCTAssertEqual(connections.count, 34)
+        XCTAssertEqual(Set(connections.map(\.name)).count, 34)
 
         let decided = Set(connections
             .filter { $0.specStatus == .decided }
@@ -806,9 +807,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
             "verticalSwipeDistance", "verticalSwipeVelocity",
             "pageSpacing", "hapticOnPhotoSwitch",
             "doubleTapDecisionWindowMilliseconds",
-            "edgePagingTriggerDistance", "edgePagingTriggerVelocity"
+            "edgePagingTriggerDistance", "edgePagingTriggerVelocity",
+            "bottomStripMarkSize"
         ])
-        XCTAssertEqual(decided.count, 16)
+        XCTAssertEqual(decided.count, 17)
         XCTAssertEqual(placeholder.count, 17)
         XCTAssertTrue(decided.isDisjoint(with: placeholder))
         XCTAssertTrue(placeholder.contains("pinchMaxScale"))
@@ -4973,6 +4975,49 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 line: line
             )
         }
+    }
+
+    // IC-075 G108（夹具驱动）：横栏待删标记随 D 显隐，尺寸读自 bottomStripMarkSize，
+    // 静止态与滑动态一致。
+    func testIC075G108BottomStripMarkFollowsPendingSetAndMarkSize() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        XCTAssertEqual(configuration.bottomStripMarkSize, 14)
+        XCTAssertEqual(S2BottomStripMarkPresentation.symbolName, "trash.circle.fill")
+
+        let markSize = CGFloat(configuration.bottomStripMarkSize)
+        let marked = S2BottomStripMarkPresentation.make(
+            isMarked: true,
+            markSize: markSize
+        )
+        XCTAssertTrue(marked.isShown)
+        XCTAssertEqual(marked.size, 14)
+        let unmarked = S2BottomStripMarkPresentation.make(
+            isMarked: false,
+            markSize: markSize
+        )
+        XCTAssertFalse(unmarked.isShown)
+
+        let machine = makeMachine(
+            configuration: configuration,
+            pendingDeletionAssetIDs: ["asset-2"]
+        )
+        let strip = S2BottomStripView(
+            machine: machine,
+            metrics: tryUnwrap(configuration.resolvedParameters).bottomStripMetrics,
+            markSize: markSize,
+            itemContent: { _ in AnyView(Color.clear) },
+            onPhotoSwitch: {}
+        )
+        let idle = machine.orderedAssetIDs.map { strip.markPresentation(for: $0) }
+        XCTAssertEqual(idle.map(\.isShown), [false, true, false])
+        XCTAssertTrue(idle.allSatisfy { $0.size == 14 })
+
+        XCTAssertTrue(machine.beginBottomStripDrag())
+        XCTAssertEqual(machine.bottomStripState, .dragging)
+        let dragging = machine.orderedAssetIDs.map {
+            strip.markPresentation(for: $0)
+        }
+        XCTAssertEqual(dragging, idle)
     }
 
     // IC-068 G50：相同或回退的时钟读数仍被归一为严格递增的统一事件流。
