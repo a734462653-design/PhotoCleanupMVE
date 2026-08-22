@@ -602,6 +602,71 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertEqual(machine.interfaceVisibility, .hidden)
     }
 
+    // IC-078 G134：双击目标、原生视口回报与捏合上限按当前资产钳制；翻页后上限随新资产重算；
+    // 未登记几何的资产取 floor；applyCalibration 改变 ceiling 后按新值钳制。
+    func testIC078G134PinchMaxScaleClampsPerAssetAndRecomputesAfterPaging() {
+        let machine = makeMachine(state: .visibleOneX, currentAssetID: "asset-1")
+        let large = 8_000 / CGFloat(1_206)
+        machine.updateAssetZoomGeometry(
+            S2AssetZoomGeometry(
+                assetPixelSize: CGSize(width: 8_000, height: 6_000),
+                fitSize: CGSize(width: 402, height: 301.5),
+                displayScale: 3
+            ),
+            for: "asset-1"
+        )
+        machine.updateAssetZoomGeometry(
+            S2AssetZoomGeometry(
+                assetPixelSize: CGSize(width: 1_206, height: 2_622),
+                fitSize: CGSize(width: 402, height: 874),
+                displayScale: 3
+            ),
+            for: "asset-2"
+        )
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-1"), large, accuracy: 0.01)
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-2"), 4)
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-3"), 4)
+        XCTAssertNil(machine.assetZoomGeometry(for: "asset-3"))
+
+        // 双击目标按 asset-1 钳制。
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        XCTAssertEqual(machine.scale, large, accuracy: 0.01)
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        XCTAssertEqual(machine.scale, 1)
+
+        // 翻页到 asset-2：上限重算为 4。
+        XCTAssertTrue(machine.handleNativePageChange(to: 1))
+        XCTAssertEqual(machine.currentAssetID, "asset-2")
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        XCTAssertEqual(machine.scale, 4)
+        machine.reportNativeViewport(scale: 9, viewportOffset: .zero)
+        XCTAssertEqual(machine.scale, 4)
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        XCTAssertEqual(machine.scale, 1)
+
+        // 翻回 asset-1：视口回报与捏合按 asset-1 钳制。
+        XCTAssertTrue(machine.handleNativePageChange(to: 0))
+        machine.reportNativeViewport(scale: 9, viewportOffset: .zero)
+        XCTAssertEqual(machine.scale, large, accuracy: 0.01)
+        machine.reportNativeViewport(scale: 1, viewportOffset: .zero)
+        XCTAssertTrue(machine.beginPinch())
+        XCTAssertTrue(machine.updatePinch(
+            magnification: 100,
+            viewportSize: viewportSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(machine.scale, large, accuracy: 0.01)
+
+        // ceiling 降到 5：当前资产上限 5，超出的 s 被钳回。
+        var lowered = S2CalibrationConfiguration.factoryPlaceholder
+        lowered.pinchMaxScaleCeiling = 5
+        XCTAssertTrue(machine.applyCalibration(lowered))
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-1"), 5)
+        XCTAssertEqual(machine.scale, 5)
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-2"), 4)
+    }
+
     // IC047-037：双击从 1x 进入并从 Nx 退出时恢复进入前的显示或隐藏状态。
     func testIC047_037DoubleTapEnterAndExitRestoresVisibility() {
         let visible = makeMachine(state: .visibleOneXIdle)

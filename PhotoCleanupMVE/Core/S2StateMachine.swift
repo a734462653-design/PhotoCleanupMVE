@@ -135,6 +135,14 @@ struct S2BottomStripMetrics: Equatable {
     }
 }
 
+/// IC-078：求 `pinchMaxScale` 所需的资产缩放几何——像素尺寸、`s > 1` 几何基准
+/// （全视口 aspectFit）下的显示尺寸与屏幕倍率。
+struct S2AssetZoomGeometry: Equatable {
+    let assetPixelSize: CGSize
+    let fitSize: CGSize
+    let displayScale: CGFloat
+}
+
 // 此类型只承接未来决议的显式注入；本卡不提供任何默认实例。
 struct S2ResolvedParameters: Equatable {
     let pinchMaxScaleFloor: CGFloat
@@ -564,6 +572,8 @@ enum S2Geometry {
 final class S2StateMachine: ObservableObject {
     let entry: S2EntryContext
     @Published private(set) var parameters: S2ResolvedParameters
+    /// IC-078：按资产登记的缩放几何；非发布属性，登记不触发视图刷新。
+    private var assetZoomGeometries: [String: S2AssetZoomGeometry] = [:]
     @Published private(set) var imageRequestStrategy: S2ImageRequestStrategy?
 
     @Published private(set) var interfaceVisibility: S2InterfaceVisibility
@@ -1683,9 +1693,33 @@ final class S2StateMachine: ObservableObject {
     }
 
     @discardableResult
-    /// IC-078：按资产求当前最大倍率。尚未登记资产缩放几何时取 `pinchMaxScaleFloor`。
+    /// IC-078：按资产求当前最大倍率（v15 第十一节第 1 部分）。
+    /// 尚未登记资产缩放几何（像素尺寸未解析）时取 `pinchMaxScaleFloor`。
     func pinchMaxScale(for assetID: String) -> CGFloat {
-        parameters.pinchMaxScaleFloor
+        guard let geometry = assetZoomGeometries[assetID] else {
+            return parameters.pinchMaxScaleFloor
+        }
+        return parameters.pinchMaxScale(
+            assetPixelSize: geometry.assetPixelSize,
+            fitSize: geometry.fitSize,
+            displayScale: geometry.displayScale
+        )
+    }
+
+    func assetZoomGeometry(for assetID: String) -> S2AssetZoomGeometry? {
+        assetZoomGeometries[assetID]
+    }
+
+    /// 视图层在页面绑定资产或像素尺寸解析后登记；不触发任何状态发布，
+    /// 也不改写当前 `s`（静止态零写入），上限只在下一次钳制时生效。
+    func updateAssetZoomGeometry(
+        _ geometry: S2AssetZoomGeometry,
+        for assetID: String
+    ) {
+        guard assetZoomGeometries[assetID] != geometry else {
+            return
+        }
+        assetZoomGeometries[assetID] = geometry
     }
 
     func applyCalibration(
