@@ -983,13 +983,24 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(strategy.requestCount(for: "asset-4"), 1, "翻页后新页请求一次")
         XCTAssertEqual(strategy.requestCount(for: "asset-3"), 1, "成为当前页不重复请求")
         XCTAssertEqual(strategy.requestCount - beforePaging, 1, "翻页只新增一次请求")
+        // IC-079 起分页控制器保留 currentIndex ± 2 内的页：asset-1 在翻到索引 2 时仍保留，
+        // 再翻一页到索引 3 才离开窗口；离开窗口的页旧请求被取消的语义不变。
+        XCTAssertFalse(
+            strategy.cancelledIDs.contains(firstPageRequestID ?? PHInvalidImageRequestID),
+            "仍在保留半径内的页不取消"
+        )
+        XCTAssertTrue(machine.handleNativePageChange(to: 3))
+        applyWindowedPages()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(strategy.requestCount(for: "asset-5"), 1, "再翻页后新页请求一次")
+        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 1, "成为当前页不重复请求")
         XCTAssertTrue(
             strategy.cancelledIDs.contains(firstPageRequestID ?? PHInvalidImageRequestID),
             "离开窗口的页应取消旧请求"
         )
 
         // 视口尺寸变化：当前页请求一次。
-        let beforeResize = strategy.requestCount(for: "asset-3")
+        let beforeResize = strategy.requestCount(for: "asset-4")
         applyWindowedPages(
             viewportSize: CGSize(
                 width: physicalSize.width,
@@ -998,7 +1009,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
         XCTAssertEqual(
-            strategy.requestCount(for: "asset-3") - beforeResize,
+            strategy.requestCount(for: "asset-4") - beforeResize,
             1,
             "视口尺寸变化请求一次"
         )
