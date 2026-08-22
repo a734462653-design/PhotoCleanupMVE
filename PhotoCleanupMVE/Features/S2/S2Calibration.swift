@@ -51,7 +51,8 @@ enum S2PinchMaxScaleRule {
         fitSize: CGSize,
         displayScale: CGFloat,
         floor: CGFloat,
-        ceiling: CGFloat
+        ceiling: CGFloat,
+        multiplier: CGFloat
     ) -> CGFloat {
         let floorValue = max(1, floor)
         let ceilingValue = max(floorValue, ceiling)
@@ -59,10 +60,12 @@ enum S2PinchMaxScaleRule {
               assetPixelSize.height > 0,
               fitSize.width > 0,
               fitSize.height > 0,
-              displayScale > 0 else {
+              displayScale > 0,
+              multiplier > 0 else {
             return floorValue
         }
-        let oneToOne = assetPixelSize.width / (fitSize.width * displayScale)
+        // IC-081（Decision_log 第 123 条）：1:1 像素倍率乘以标定乘数后再钳制。
+        let oneToOne = multiplier * assetPixelSize.width / (fitSize.width * displayScale)
         guard oneToOne.isFinite else {
             return floorValue
         }
@@ -103,7 +106,8 @@ extension S2ResolvedParameters {
             fitSize: fitSize,
             displayScale: displayScale,
             floor: pinchMaxScaleFloor,
-            ceiling: pinchMaxScaleCeiling
+            ceiling: pinchMaxScaleCeiling,
+            multiplier: pinchMaxScaleOneToOneMultiplier
         )
     }
 }
@@ -113,6 +117,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
 
     var pinchMaxScaleFloor: Double
     var pinchMaxScaleCeiling: Double
+    var pinchMaxScaleOneToOneMultiplier: Double
     var zoomSnapBackThreshold: Double
     var minDoubleTapScale: Double
     var doubleTapAnchorStrategy: S2DoubleTapAnchorStrategy
@@ -153,6 +158,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScaleFloor: 4,
         pinchMaxScaleCeiling: 10,
+        pinchMaxScaleOneToOneMultiplier: 2,
         zoomSnapBackThreshold: 1.1,
         minDoubleTapScale: 2,
         doubleTapAnchorStrategy: .touchPoint,
@@ -194,6 +200,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         S2ResolvedParameters(
             pinchMaxScaleFloor: CGFloat(pinchMaxScaleFloor),
             pinchMaxScaleCeiling: CGFloat(pinchMaxScaleCeiling),
+            pinchMaxScaleOneToOneMultiplier: CGFloat(pinchMaxScaleOneToOneMultiplier),
             zoomSnapBackThreshold: CGFloat(zoomSnapBackThreshold),
             minDoubleTapScale: CGFloat(minDoubleTapScale),
             doubleTapAnchorStrategy: doubleTapAnchorStrategy,
@@ -250,6 +257,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("specBaseline", "SPEC-S2-20260821_v15"),
             ("pinchMaxScaleFloor", formatted(pinchMaxScaleFloor)),
             ("pinchMaxScaleCeiling", formatted(pinchMaxScaleCeiling)),
+            ("pinchMaxScaleOneToOneMultiplier", formatted(pinchMaxScaleOneToOneMultiplier)),
             ("zoomSnapBackThreshold", formatted(zoomSnapBackThreshold)),
             ("minDoubleTapScale", formatted(minDoubleTapScale)),
             ("doubleTapAnchorStrategy", doubleTapAnchorStrategy.rawValue),
@@ -304,6 +312,7 @@ extension S2CalibrationConfiguration {
     static let parameterConnections: [S2CalibrationParameterConnection] = [
         .init(name: "pinchMaxScaleFloor", specStatus: .decided, wiringStatus: .effective),
         .init(name: "pinchMaxScaleCeiling", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "pinchMaxScaleOneToOneMultiplier", specStatus: .placeholder, wiringStatus: .effective),
         .init(name: "zoomSnapBackThreshold", specStatus: .decided, wiringStatus: .effective),
         .init(name: "minDoubleTapScale", specStatus: .decided, wiringStatus: .effective),
         .init(name: "doubleTapAnchorStrategy", specStatus: .placeholder, wiringStatus: .effective),
@@ -346,6 +355,7 @@ extension S2CalibrationConfiguration {
     private enum CodingKeys: String, CodingKey {
         case pinchMaxScaleFloor
         case pinchMaxScaleCeiling
+        case pinchMaxScaleOneToOneMultiplier
         case zoomSnapBackThreshold
         case minDoubleTapScale
         case doubleTapAnchorStrategy
@@ -389,6 +399,7 @@ extension S2CalibrationConfiguration {
         self.init(
             pinchMaxScaleFloor: try values.decodeIfPresent(Double.self, forKey: .pinchMaxScaleFloor) ?? 4,
             pinchMaxScaleCeiling: try values.decodeIfPresent(Double.self, forKey: .pinchMaxScaleCeiling) ?? 10,
+            pinchMaxScaleOneToOneMultiplier: try values.decodeIfPresent(Double.self, forKey: .pinchMaxScaleOneToOneMultiplier) ?? 2,
             zoomSnapBackThreshold: try values.decode(Double.self, forKey: .zoomSnapBackThreshold),
             minDoubleTapScale: try values.decode(Double.self, forKey: .minDoubleTapScale),
             doubleTapAnchorStrategy: try values.decode(S2DoubleTapAnchorStrategy.self, forKey: .doubleTapAnchorStrategy),
@@ -431,6 +442,7 @@ extension S2CalibrationConfiguration {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(pinchMaxScaleFloor, forKey: .pinchMaxScaleFloor)
         try values.encode(pinchMaxScaleCeiling, forKey: .pinchMaxScaleCeiling)
+        try values.encode(pinchMaxScaleOneToOneMultiplier, forKey: .pinchMaxScaleOneToOneMultiplier)
         try values.encode(zoomSnapBackThreshold, forKey: .zoomSnapBackThreshold)
         try values.encode(minDoubleTapScale, forKey: .minDoubleTapScale)
         try values.encode(doubleTapAnchorStrategy, forKey: .doubleTapAnchorStrategy)

@@ -606,7 +606,8 @@ final class S2StateMachineTests: XCTestCase {
     // 未登记几何的资产取 floor；applyCalibration 改变 ceiling 后按新值钳制。
     func testIC078G134PinchMaxScaleClampsPerAssetAndRecomputesAfterPaging() {
         let machine = makeMachine(state: .visibleOneXIdle, currentAssetID: "asset-1")
-        let large = 8_000 / CGFloat(1_206)
+        // IC-081：乘数 2.0 下 8000 宽 → 2 × 8000/1206 ≈ 13.27，被 ceiling 钳到 10。
+        let large: CGFloat = 10
         machine.updateAssetZoomGeometry(
             S2AssetZoomGeometry(
                 assetPixelSize: CGSize(width: 8_000, height: 6_000),
@@ -665,6 +666,13 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertEqual(machine.pinchMaxScale(for: "asset-1"), 5)
         XCTAssertEqual(machine.scale, 5)
         XCTAssertEqual(machine.pinchMaxScale(for: "asset-2"), 4)
+
+        // IC-081：乘数改为 1 即 IC-078 的 1:1 取值（8000/1206 ≈ 6.63）。
+        var unit = S2CalibrationConfiguration.factoryPlaceholder
+        unit.pinchMaxScaleOneToOneMultiplier = 1
+        XCTAssertTrue(machine.applyCalibration(unit))
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-1"), 8_000 / 1_206, accuracy: 0.01)
+        XCTAssertEqual(machine.scale, 5)
     }
 
     // IC047-037：双击从 1x 进入并从 Nx 退出时恢复进入前的显示或隐藏状态。
@@ -1180,6 +1188,7 @@ final class S2StateMachineTests: XCTestCase {
         S2ResolvedParameters(
             pinchMaxScaleFloor: 4,
             pinchMaxScaleCeiling: 10,
+            pinchMaxScaleOneToOneMultiplier: 2,
             zoomSnapBackThreshold: 1.2,
             minDoubleTapScale: 2.5,
             doubleTapAnchorStrategy: .touchPoint,
