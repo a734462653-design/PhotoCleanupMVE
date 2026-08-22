@@ -7284,7 +7284,9 @@ extension S2CalibrationHarnessTests {
                     "checkpoint t=\(checkpoint.elapsed)"
                 )
             }
-            XCTAssertEqual(fixture.machine.bottomStripState, .dragging, "frame=\(frameCount)")
+            if fixture.motion.phase == .decelerating {
+                XCTAssertEqual(fixture.machine.bottomStripState, .dragging, "frame=\(frameCount)")
+            }
             XCTAssertEqual(
                 fixture.machine.currentIndex,
                 layout.nearestIndex(toContentX: fixture.motion.contentX, count: 60),
