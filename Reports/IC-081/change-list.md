@@ -1,6 +1,6 @@
 # IC-081 变更清单
 
-分支 `feature/ic-081-pinch-max-multiplier`，自 `main` = `origin/main` = `072d82cce9d1d0f0b3187b0439d87ee29db80b13`（IC-080 合并后）切出。最终被测提交见自验报告。
+分支 `feature/ic-081-pinch-max-multiplier`，自 `main` = `origin/main` = `072d82cce9d1d0f0b3187b0439d87ee29db80b13`（IC-080 合并后）切出。最终被测提交 `d71e0381a24fbebe926379ae965e1283f6d09a53`（CI #134，456 项 0 失败）。
 
 ## 提交
 
@@ -9,6 +9,7 @@
 | `e03dbbf` | R1 | `S2Calibration.swift`、`Core/S2StateMachine.swift`、`S2CalibrationHarnessTests.swift`、`S2ImageLoadingStateTests.swift`、`S2StateMachineTests.swift` | `S2PinchMaxScaleRule.pinchMaxScale(…, multiplier:)`：`min(ceiling, max(floor, multiplier × s_1to1))`，乘数 ≤ 0 取 floor；新参数 `pinchMaxScaleOneToOneMultiplier`（出厂 2.0、placeholder/effective、解码缺省 2）；`S2ResolvedParameters` 增字段并校验 `> 0`；G132 断言表按乘数 2.0 重算；字段 38 / 导出 42 / 登记表 38（decided 23、placeholder 15）计数适配；G134、G135 期望值适配；G149 测试（随 R1 提交入库，见自验报告） |
 | `8672dbf` | R2 | `S2View.swift` | 标定面板 `pinchMaxScaleOneToOneMultiplier` 滑杆（`1…4`、步进 `0.1`），置于 `minDoubleTapScale` 之后；即时生效走既有链路 `calibrationBinding → S2CalibrationModel.update → machine.applyCalibration → pager.apply → update(maximumZoomScale: machine.pinchMaxScale(for:))`，产品侧无新几何写入 |
 | `cacc1b6` | R2 编译修正 | `S2CalibrationHarnessTests.swift` | G149 照片 frame 改读 `zoomScrollView.presentationContentView?.frame`（`hostingController` 为 private，CI #132 编译失败） |
+| `d71e038` | R1 测试适配 | `S2StateMachineTests.swift` | G134 双击目标与视口回报倍率 9 → 12，使其高于乘数 2.0 下 asset-1 的上限 10（CI #133 两条断言失败） |
 
 ## 产品行为变化
 
