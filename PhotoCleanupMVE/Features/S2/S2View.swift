@@ -152,9 +152,9 @@ final class S2PrimaryMarkPresenter: ObservableObject {
     }
 }
 
+/// IC-076：sheet 内容只发起"选中"与"取消"；写入与结果由协调器经状态机三段流程处理。
 struct S2AlbumPickerActions {
     let select: (S2AlbumReference) -> Void
-    let reportFailure: () -> Void
     let cancel: () -> Void
 }
 
@@ -179,6 +179,10 @@ struct S2View: View {
     private let onConfirmation: (S2ExitPayload) -> Void
     private let onFavoriteRequest: (S2AssetActionRequest) -> Void
     private let onRecentAlbumRequest: (S2AlbumActionRequest) -> Void
+    private let onAlbumPickerSelection: (
+        S2AlbumPickerRequest,
+        S2AlbumReference
+    ) -> Void
     private let photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback
 
     @State private var calibrationOverlayState =
@@ -204,6 +208,10 @@ struct S2View: View {
         onConfirmation: @escaping (S2ExitPayload) -> Void = { _ in },
         onFavoriteRequest: @escaping (S2AssetActionRequest) -> Void = { _ in },
         onRecentAlbumRequest: @escaping (S2AlbumActionRequest) -> Void = { _ in },
+        onAlbumPickerSelection: @escaping (
+            S2AlbumPickerRequest,
+            S2AlbumReference
+        ) -> Void = { _, _ in },
         photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback = .live,
         geometryDiagnostics: S2GeometryDiagnosticsCoordinator =
             S2GeometryDiagnosticsCoordinator(),
@@ -223,6 +231,7 @@ struct S2View: View {
         self.onConfirmation = onConfirmation
         self.onFavoriteRequest = onFavoriteRequest
         self.onRecentAlbumRequest = onRecentAlbumRequest
+        self.onAlbumPickerSelection = onAlbumPickerSelection
         self.photoSwitchHapticFeedback = photoSwitchHapticFeedback
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
@@ -623,15 +632,7 @@ struct S2View: View {
                 request,
                 S2AlbumPickerActions(
                     select: { album in
-                        performCalibratedAnimation {
-                            _ = machine.completeAlbumPickerSelection(
-                                request,
-                                album: album
-                            )
-                        }
-                    },
-                    reportFailure: {
-                        _ = machine.reportAlbumPickerFailure(request)
+                        onAlbumPickerSelection(request, album)
                     },
                     cancel: {
                         performCalibratedAnimation {

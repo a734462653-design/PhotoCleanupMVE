@@ -314,16 +314,18 @@ final class S2StateMachineTests: XCTestCase {
         )
         let request = tryUnwrap(machine.presentAlbumPicker())
         let album = S2AlbumReference(id: "album-2", name: "相簿二")
+        XCTAssertTrue(machine.beginAlbumPickerSelection(request, album: album))
         XCTAssertTrue(machine.completeAlbumPickerSelection(
             request,
-            album: album
+            album: album,
+            outcome: .success(alreadyContained: false)
         ))
         XCTAssertEqual(machine.recentAlbum, album)
         XCTAssertFalse(machine.pendingDeletionAssetIDs.contains("asset-2"))
         XCTAssertEqual(machine.sheetState, .closed)
     }
 
-    // IC047-018：迁移表的 sheet 失败事件不改 H、D 或基础状态，并标记未定项 11。
+    // IC047-018：迁移表的 sheet 失败事件不改 H、D 或基础状态；IC-076 起改为发一次反馈事件。
     func testIC047_018TransitionRowAlbumSheetFailure() {
         assertTransitionRow(
             .selectAlbumAndWriteFails,
@@ -336,13 +338,21 @@ final class S2StateMachineTests: XCTestCase {
             pendingDeletionAssetIDs: ["asset-2"]
         )
         let request = tryUnwrap(machine.presentAlbumPicker())
+        let album = S2AlbumReference(id: "album-2", name: "相簿二")
         let originalPending = machine.pendingDeletionAssetIDs
-        XCTAssertTrue(machine.reportAlbumPickerFailure(request))
+        XCTAssertTrue(machine.beginAlbumPickerSelection(request, album: album))
+        XCTAssertFalse(machine.completeAlbumPickerSelection(
+            request,
+            album: album,
+            outcome: .failure
+        ))
         XCTAssertEqual(machine.pendingDeletionAssetIDs, originalPending)
         XCTAssertNil(machine.recentAlbum)
         XCTAssertEqual(machine.state, .visibleNxIdle)
         XCTAssertEqual(machine.sheetState, .presented)
-        XCTAssertEqual(machine.pendingUndecidedItem, .item11)
+        XCTAssertNil(machine.pendingUndecidedItem)
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+        XCTAssertEqual(machine.feedbackEvent?.kind, .albumAdditionFailed)
     }
 
     // IC047-019：迁移表的取消 sheet 事件只关闭 P，基础状态、视口和数据不变。
@@ -756,6 +766,234 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertEqual(success.recentAlbum, album)
     }
 
+    // IC-076 G116 正反：收藏进行中时自身不可再请求；其余两个按钮可请求、
+    // makeExitPayload 可用、主图手势可用；结果返回后标志清除。
+    func testIC076G116FavoriteInFlightDisablesOnlyItself() {
+        let album = S2AlbumReference(id: "album-1", name: "相簿一")
+        let machine = makeMachine(state: .visibleOneXIdle, recentAlbum: album)
+        let request = tryUnwrap(machine.makeFavoriteToggleRequest())
+        XCTAssertTrue(machine.beginFavoriteToggle(request))
+        XCTAssertTrue(machine.isActionInFlight(.favorite))
+        XCTAssertEqual(machine.inFlightActions, [.favorite])
+
+        XCTAssertNil(machine.makeFavoriteToggleRequest())
+        XCTAssertFalse(machine.beginFavoriteToggle(request))
+        XCTAssertNotNil(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertNotNil(machine.makeExitPayload())
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertTrue(machine.beginBottomStripDrag())
+        XCTAssertTrue(machine.endBottomStripDrag())
+        XCTAssertNotNil(machine.presentAlbumPicker())
+        XCTAssertTrue(machine.cancelAlbumPicker())
+
+        XCTAssertTrue(machine.completeFavoriteToggle(request, succeeded: true))
+        XCTAssertFalse(machine.isActionInFlight(.favorite))
+        XCTAssertTrue(machine.inFlightActions.isEmpty)
+        XCTAssertNotNil(machine.makeFavoriteToggleRequest())
+        XCTAssertEqual(machine.feedbackEventCount, 0)
+        XCTAssertNil(machine.feedbackEvent)
+    }
+
+    // IC-076 G116 正反：历史相册进行中时自身不可再请求，其余照常；失败只发一次反馈事件。
+    func testIC076G116RecentAlbumInFlightDisablesOnlyItself() {
+        let album = S2AlbumReference(id: "album-1", name: "相簿一")
+        let machine = makeMachine(
+            state: .visibleNxIdle,
+            pendingDeletionAssetIDs: ["asset-2"],
+            recentAlbum: album
+        )
+        let request = tryUnwrap(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertTrue(machine.beginRecentAlbumAddition(request))
+        XCTAssertEqual(machine.inFlightActions, [.recentAlbum])
+
+        XCTAssertNil(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertFalse(machine.beginRecentAlbumAddition(request))
+        XCTAssertNotNil(machine.makeFavoriteToggleRequest())
+        XCTAssertNotNil(machine.makeExitPayload())
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertTrue(doubleTap(machine))
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertNotNil(machine.presentAlbumPicker())
+        XCTAssertTrue(machine.cancelAlbumPicker())
+
+        XCTAssertFalse(machine.completeRecentAlbumAddition(
+            request,
+            outcome: .failure
+        ))
+        XCTAssertTrue(machine.inFlightActions.isEmpty)
+        XCTAssertNotNil(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertEqual(machine.recentAlbum, album)
+        XCTAssertTrue(machine.pendingDeletionAssetIDs.contains("asset-2"))
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+        XCTAssertEqual(machine.feedbackEvent?.kind, .albumAdditionFailed)
+        XCTAssertEqual(machine.consumeFeedbackEvent()?.kind, .albumAdditionFailed)
+        XCTAssertNil(machine.feedbackEvent)
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+    }
+
+    // IC-076 G116 正反：相簿选择进行中时自身不可再选、不可重复呈现；`P=呈现` 期间底层
+    // 输入规则不变（仍被 sheet 阻断）；结果返回后标志清除、sheet 关闭、底层恢复。
+    func testIC076G116AlbumPickerInFlightDisablesOnlyItself() {
+        let machine = makeMachine(state: .visibleOneXIdle)
+        let request = tryUnwrap(machine.presentAlbumPicker())
+        let album = S2AlbumReference(id: "album-2", name: "相簿二")
+        XCTAssertTrue(machine.beginAlbumPickerSelection(request, album: album))
+        XCTAssertEqual(machine.inFlightActions, [.albumPicker])
+        XCTAssertEqual(
+            machine.albumPickerSelectionInFlight,
+            S2AlbumPickerSelection(request: request, album: album)
+        )
+
+        XCTAssertFalse(machine.beginAlbumPickerSelection(
+            request,
+            album: S2AlbumReference(id: "album-3", name: "相簿三")
+        ))
+        XCTAssertNil(machine.presentAlbumPicker())
+        XCTAssertNil(machine.makeFavoriteToggleRequest())
+        XCTAssertNil(machine.makeExitPayload())
+        XCTAssertFalse(machine.handleSingleTap())
+        XCTAssertEqual(machine.sheetState, .presented)
+
+        XCTAssertTrue(machine.completeAlbumPickerSelection(
+            request,
+            album: album,
+            outcome: .success(alreadyContained: true)
+        ))
+        XCTAssertTrue(machine.inFlightActions.isEmpty)
+        XCTAssertNil(machine.albumPickerSelectionInFlight)
+        XCTAssertEqual(machine.sheetState, .closed)
+        XCTAssertEqual(machine.recentAlbum, album)
+        XCTAssertNotNil(machine.makeFavoriteToggleRequest())
+        XCTAssertNotNil(machine.makeExitPayload())
+        XCTAssertEqual(machine.feedbackEventCount, 0)
+    }
+
+    // IC-076 G116：写入期间翻页后结果仍作用于原资产 `x`（收藏与历史相册两条路径）。
+    func testIC076G116ResultAppliesToOriginalAssetAfterPaging() {
+        let album = S2AlbumReference(id: "album-1", name: "相簿一")
+        let machine = makeMachine(
+            state: .visibleOneXIdle,
+            pendingDeletionAssetIDs: ["asset-2", "asset-3"],
+            recentAlbum: album
+        )
+        let favoriteRequest = tryUnwrap(machine.makeFavoriteToggleRequest())
+        let albumRequest = tryUnwrap(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertEqual(favoriteRequest.targetAssetID, "asset-2")
+        XCTAssertEqual(albumRequest.targetAssetID, "asset-2")
+        XCTAssertTrue(machine.beginFavoriteToggle(favoriteRequest))
+        XCTAssertTrue(machine.beginRecentAlbumAddition(albumRequest))
+
+        XCTAssertTrue(machine.handleNativePageChange(to: 2))
+        XCTAssertEqual(machine.currentAssetID, "asset-3")
+
+        XCTAssertTrue(machine.completeFavoriteToggle(
+            favoriteRequest,
+            succeeded: true
+        ))
+        XCTAssertEqual(machine.favoriteAssetIDs, ["asset-2"])
+        XCTAssertFalse(machine.currentIsFavorite)
+
+        XCTAssertTrue(machine.completeRecentAlbumAddition(
+            albumRequest,
+            outcome: .success(alreadyContained: false)
+        ))
+        XCTAssertEqual(machine.pendingDeletionAssetIDs, ["asset-3"])
+        XCTAssertTrue(machine.currentIsMarked)
+        XCTAssertTrue(machine.inFlightActions.isEmpty)
+        XCTAssertEqual(machine.feedbackEventCount, 0)
+    }
+
+    // IC-076 G117：相簿选择三种结果。success → H 更新 + x∈D 移出 + sheet 关闭 + 无反馈；
+    // failure → H、D 不变 + sheet 仍开 + 反馈 1 次；albumUnavailable → 与之相同的 H 清除。
+    func testIC076G117AlbumPickerOutcomesAndRecentAlbumCallback() {
+        var recentAlbumChanges: [S2AlbumReference?] = []
+        let machine = makeMachine(
+            state: .visibleOneXIdle,
+            pendingDeletionAssetIDs: ["asset-2"],
+            recentAlbumDidChange: { recentAlbumChanges.append($0) }
+        )
+        let album = S2AlbumReference(id: "album-2", name: "相簿二")
+
+        let failed = tryUnwrap(machine.presentAlbumPicker())
+        XCTAssertTrue(machine.beginAlbumPickerSelection(failed, album: album))
+        XCTAssertFalse(machine.completeAlbumPickerSelection(
+            failed,
+            album: album,
+            outcome: .failure
+        ))
+        XCTAssertNil(machine.recentAlbum)
+        XCTAssertEqual(machine.pendingDeletionAssetIDs, ["asset-2"])
+        XCTAssertEqual(machine.sheetState, .presented)
+        XCTAssertTrue(machine.inFlightActions.isEmpty)
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+        XCTAssertEqual(recentAlbumChanges.count, 0)
+
+        // 列表恢复可用：同一 sheet 内可重选并成功。
+        XCTAssertTrue(machine.beginAlbumPickerSelection(failed, album: album))
+        XCTAssertTrue(machine.completeAlbumPickerSelection(
+            failed,
+            album: album,
+            outcome: .success(alreadyContained: false)
+        ))
+        XCTAssertEqual(machine.recentAlbum, album)
+        XCTAssertEqual(machine.pendingDeletionAssetIDs, [])
+        XCTAssertEqual(machine.sheetState, .closed)
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+        XCTAssertEqual(recentAlbumChanges, [album])
+
+        let unavailable = tryUnwrap(machine.presentAlbumPicker())
+        XCTAssertTrue(machine.beginAlbumPickerSelection(unavailable, album: album))
+        XCTAssertFalse(machine.completeAlbumPickerSelection(
+            unavailable,
+            album: album,
+            outcome: .albumUnavailable
+        ))
+        XCTAssertNil(machine.recentAlbum)
+        XCTAssertEqual(machine.sheetState, .presented)
+        XCTAssertEqual(machine.feedbackEventCount, 2)
+        XCTAssertEqual(recentAlbumChanges, [album, nil])
+        XCTAssertTrue(machine.cancelAlbumPicker())
+    }
+
+    // IC-076 G117：历史相册路径的 albumUnavailable 清除 H 并回调持久化、不发反馈事件；
+    // 结果 request 不匹配进行中记录时标志不受影响。
+    func testIC076G117RecentAlbumUnavailableClearsRecentAlbumWithoutFeedback() {
+        var recentAlbumChanges: [S2AlbumReference?] = []
+        let album = S2AlbumReference(id: "album-1", name: "相簿一")
+        let machine = makeMachine(
+            state: .visibleOneXIdle,
+            pendingDeletionAssetIDs: ["asset-2"],
+            recentAlbum: album,
+            recentAlbumDidChange: { recentAlbumChanges.append($0) }
+        )
+        let request = tryUnwrap(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertTrue(machine.beginRecentAlbumAddition(request))
+
+        let stale = S2AlbumActionRequest(
+            targetAssetID: "asset-1",
+            album: album
+        )
+        XCTAssertFalse(machine.completeRecentAlbumAddition(
+            stale,
+            outcome: .failure
+        ))
+        XCTAssertTrue(machine.isActionInFlight(.recentAlbum))
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+
+        XCTAssertFalse(machine.completeRecentAlbumAddition(
+            request,
+            outcome: .albumUnavailable
+        ))
+        XCTAssertFalse(machine.isActionInFlight(.recentAlbum))
+        XCTAssertNil(machine.recentAlbum)
+        XCTAssertEqual(recentAlbumChanges, [nil])
+        XCTAssertEqual(machine.pendingDeletionAssetIDs, ["asset-2"])
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+        XCTAssertNil(machine.makeRecentAlbumAdditionRequest())
+    }
+
     // IC-075 G106（夹具驱动）：会话待删总数为 0 时入口禁用、徽标不渲染；为 1 时相反；
     // makeExitPayload 不受影响。
     func testIC075G106ConfirmationEntryFollowsSessionPendingCount() {
@@ -989,7 +1227,8 @@ final class S2StateMachineTests: XCTestCase {
         state: S2State,
         pendingDeletionAssetIDs: Set<String> = ["asset-1"],
         currentAssetID: String = "asset-2",
-        recentAlbum: S2AlbumReference? = nil
+        recentAlbum: S2AlbumReference? = nil,
+        recentAlbumDidChange: @escaping (S2AlbumReference?) -> Void = { _ in }
     ) -> S2StateMachine {
         let visibility: S2InterfaceVisibility
         switch state {
@@ -1029,7 +1268,8 @@ final class S2StateMachineTests: XCTestCase {
             imageRequestStrategy: nil,
             initialFavoriteAssetIDs: [],
             initialRecentAlbum: recentAlbum,
-            pendingDeletionDidChange: { countBox.value = $0.count }
+            pendingDeletionDidChange: { countBox.value = $0.count },
+            recentAlbumDidChange: recentAlbumDidChange
         )!
         if state == .visibleOneXStripDragging ||
             state == .visibleNxStripDragging {

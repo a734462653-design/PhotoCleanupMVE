@@ -58,7 +58,6 @@ enum S2UndecidedItem: String, CaseIterable, Equatable {
     case item08DegradedPreview
     case item09
     case item10
-    case item11
     case item13
     case item14
     case item15
@@ -85,7 +84,6 @@ enum S2UndecidedItems {
     static let item08DegradedPreviewPolicy = S2UndecidedPlaceholder.unresolved
     static let item09EmptyPendingPresentation = S2UndecidedPlaceholder.unresolved
     static let item10SnapshotPersistence = S2UndecidedPlaceholder.unresolved
-    static let item11WriteFailureFeedback = S2UndecidedPlaceholder.unresolved
     static let item13AlbumHistoryDepth = S2UndecidedPlaceholder.unresolved
     static let item14AlbumHistoryPersistence = S2UndecidedPlaceholder.unresolved
     static let item15InFlightControls = S2UndecidedPlaceholder.unresolved
@@ -278,6 +276,13 @@ struct S2AlbumPickerRequest: Equatable {
     let targetAssetID: String
 }
 
+/// IC-076：相簿选择 sheet 中"选中 → 写入中 → 结果"三段的中间记录；
+/// 结果必须作用于 `request.targetAssetID`（`x`）与选中时的相册。
+struct S2AlbumPickerSelection: Equatable {
+    let request: S2AlbumPickerRequest
+    let album: S2AlbumReference
+}
+
 enum S2AlbumAdditionOutcome: Equatable {
     case success(alreadyContained: Bool)
     case failure
@@ -286,6 +291,25 @@ enum S2AlbumAdditionOutcome: Equatable {
 
 enum S2SemanticNotice: Equatable {
     case alreadyMarked(assetID: String)
+}
+
+/// IC-076（v15 第二节第 4 部分）：操作条三个按钮各自维护一个进行中标志。
+enum S2ActionBarButton: CaseIterable, Equatable, Hashable {
+    case favorite
+    case recentAlbum
+    case albumPicker
+}
+
+/// IC-076（v15 回写决策 29）：写入失败的一次性反馈事件，由视图层以底部短 toast 呈现。
+/// 只有两种失败；成功不发事件。同一时刻只保留最新一条，新事件替换旧事件。
+enum S2FeedbackEventKind: Equatable {
+    case favoriteWriteFailed
+    case albumAdditionFailed
+}
+
+struct S2FeedbackEvent: Equatable, Identifiable {
+    let id: Int
+    let kind: S2FeedbackEventKind
 }
 
 enum S2PageDirection: Equatable {
@@ -551,6 +575,11 @@ final class S2StateMachine: ObservableObject {
     @Published private(set) var recentAlbum: S2AlbumReference?
     @Published private(set) var semanticNotice: S2SemanticNotice?
     @Published private(set) var pendingUndecidedItem: S2UndecidedItem?
+    /// IC-076：进行中的操作条写入。某按钮进行中时只禁用该按钮，其余照常。
+    @Published private(set) var inFlightActions: Set<S2ActionBarButton> = []
+    /// IC-076：最新一条写入失败反馈事件；新事件替换旧事件，成功不发事件。
+    @Published private(set) var feedbackEvent: S2FeedbackEvent?
+    private(set) var feedbackEventCount = 0
     @Published private(set) var imageRequestRevision = 0
     @Published private(set) var imageRequestAssetID: String?
     @Published private(set) var lastGestureReading: S2GestureReading?
@@ -560,8 +589,12 @@ final class S2StateMachine: ObservableObject {
     private(set) var imageRequestScale: CGFloat
 
     private let pendingDeletionDidChange: (Set<String>) -> Void
+    private let recentAlbumDidChange: (S2AlbumReference?) -> Void
     private var pinchStartScale: CGFloat?
     private var albumPickerTargetAssetID: String?
+    private var inFlightFavoriteRequest: S2AssetActionRequest?
+    private var inFlightRecentAlbumRequest: S2AlbumActionRequest?
+    private var inFlightAlbumPickerSelection: S2AlbumPickerSelection?
 
     init?(
         entry: S2EntryContext,
@@ -570,7 +603,8 @@ final class S2StateMachine: ObservableObject {
         imageRequestStrategy: S2ImageRequestStrategy?,
         initialFavoriteAssetIDs: Set<String>,
         initialRecentAlbum: S2AlbumReference?,
-        pendingDeletionDidChange: @escaping (Set<String>) -> Void
+        pendingDeletionDidChange: @escaping (Set<String>) -> Void,
+        recentAlbumDidChange: @escaping (S2AlbumReference?) -> Void = { _ in }
     ) {
         let assetIDSet = Set(entry.orderedAssetIDs)
         guard !entry.sessionID.isEmpty,
@@ -608,6 +642,7 @@ final class S2StateMachine: ObservableObject {
         favoriteAssetIDs = initialFavoriteAssetIDs
         recentAlbum = initialRecentAlbum
         self.pendingDeletionDidChange = pendingDeletionDidChange
+        self.recentAlbumDidChange = recentAlbumDidChange
     }
 
     var orderedAssetIDs: [String] {
@@ -1394,11 +1429,35 @@ final class S2StateMachine: ObservableObject {
         return true
     }
 
+    // MARK: - 操作条（IC-076）
+
+    func isActionInFlight(_ button: S2ActionBarButton) -> Bool {
+        inFlightActions.contains(button)
+    }
+
+    /// 相簿选择 sheet 当前进行中的选择；sheet 关闭或无写入时为 nil。
+    var albumPickerSelectionInFlight: S2AlbumPickerSelection? {
+        inFlightAlbumPickerSelection
+    }
+
     func makeFavoriteToggleRequest() -> S2AssetActionRequest? {
-        guard controlsCanReceiveInput else {
+        guard controlsCanReceiveInput,
+              !isActionInFlight(.favorite) else {
             return nil
         }
         return S2AssetActionRequest(targetAssetID: currentAssetID)
+    }
+
+    /// 点击时把请求登记为进行中：`x` 已在 `request` 中绑定，此后翻页不改变目标。
+    @discardableResult
+    func beginFavoriteToggle(_ request: S2AssetActionRequest) -> Bool {
+        guard !isActionInFlight(.favorite),
+              orderedAssetIDs.contains(request.targetAssetID) else {
+            return false
+        }
+        inFlightFavoriteRequest = request
+        inFlightActions.insert(.favorite)
+        return true
     }
 
     @discardableResult
@@ -1406,7 +1465,15 @@ final class S2StateMachine: ObservableObject {
         _ request: S2AssetActionRequest,
         succeeded: Bool
     ) -> Bool {
-        guard succeeded, orderedAssetIDs.contains(request.targetAssetID) else {
+        if inFlightFavoriteRequest == request {
+            inFlightFavoriteRequest = nil
+            inFlightActions.remove(.favorite)
+        }
+        guard orderedAssetIDs.contains(request.targetAssetID) else {
+            return false
+        }
+        guard succeeded else {
+            publishFeedback(.favoriteWriteFailed)
             return false
         }
         if favoriteAssetIDs.contains(request.targetAssetID) {
@@ -1418,7 +1485,9 @@ final class S2StateMachine: ObservableObject {
     }
 
     func makeRecentAlbumAdditionRequest() -> S2AlbumActionRequest? {
-        guard controlsCanReceiveInput, let recentAlbum else {
+        guard controlsCanReceiveInput,
+              !isActionInFlight(.recentAlbum),
+              let recentAlbum else {
             return nil
         }
         return S2AlbumActionRequest(
@@ -1428,22 +1497,39 @@ final class S2StateMachine: ObservableObject {
     }
 
     @discardableResult
+    func beginRecentAlbumAddition(_ request: S2AlbumActionRequest) -> Bool {
+        guard !isActionInFlight(.recentAlbum),
+              orderedAssetIDs.contains(request.targetAssetID) else {
+            return false
+        }
+        inFlightRecentAlbumRequest = request
+        inFlightActions.insert(.recentAlbum)
+        return true
+    }
+
+    @discardableResult
     func completeRecentAlbumAddition(
         _ request: S2AlbumActionRequest,
         outcome: S2AlbumAdditionOutcome
     ) -> Bool {
+        if inFlightRecentAlbumRequest == request {
+            inFlightRecentAlbumRequest = nil
+            inFlightActions.remove(.recentAlbum)
+        }
         guard orderedAssetIDs.contains(request.targetAssetID) else {
             return false
         }
         switch outcome {
-        case .success(_):
-            recentAlbum = request.album
+        case .success:
+            // v15 未定项 16 定案：已包含与首次加入不区分，均走完整成功路径。
+            setRecentAlbum(request.album)
             removeFromPendingAfterAlbumAddition(request.targetAssetID)
             return true
         case .failure:
-            pendingUndecidedItem = .item11
+            publishFeedback(.albumAdditionFailed)
             return false
         case .albumUnavailable:
+            // v15 第二节第 4 部分：历史相册已不存在时清除 `H`、不弹错误提示。
             invalidateAlbum(request.album)
             return false
         }
@@ -1458,32 +1544,61 @@ final class S2StateMachine: ObservableObject {
         return albumPickerRequest
     }
 
+    /// 三段之一：选中 → 写入中。sheet 保持呈现，列表由视图按进行中标志禁用。
     @discardableResult
-    func completeAlbumPickerSelection(
+    func beginAlbumPickerSelection(
         _ request: S2AlbumPickerRequest,
         album: S2AlbumReference
     ) -> Bool {
         guard sheetState == .presented,
               albumPickerTargetAssetID == request.targetAssetID,
-              orderedAssetIDs.contains(request.targetAssetID) else {
+              orderedAssetIDs.contains(request.targetAssetID),
+              !isActionInFlight(.albumPicker) else {
             return false
         }
-
-        recentAlbum = album
-        removeFromPendingAfterAlbumAddition(request.targetAssetID)
-        sheetState = .closed
-        albumPickerTargetAssetID = nil
+        inFlightAlbumPickerSelection = S2AlbumPickerSelection(
+            request: request,
+            album: album
+        )
+        inFlightActions.insert(.albumPicker)
         return true
     }
 
+    /// 三段之三：结果。成功 → 更新 `H`、`x ∈ D` 时静默移出、关闭 sheet；
+    /// 失败 → sheet 保持打开、列表恢复、发反馈事件；目标相册已不存在 →
+    /// 与该相册相同的 `H` 失效，并按失败处理（sheet 保持打开、发反馈事件）。
     @discardableResult
-    func reportAlbumPickerFailure(_ request: S2AlbumPickerRequest) -> Bool {
-        guard sheetState == .presented,
-              albumPickerTargetAssetID == request.targetAssetID else {
+    func completeAlbumPickerSelection(
+        _ request: S2AlbumPickerRequest,
+        album: S2AlbumReference,
+        outcome: S2AlbumAdditionOutcome
+    ) -> Bool {
+        let selection = S2AlbumPickerSelection(request: request, album: album)
+        if inFlightAlbumPickerSelection == selection {
+            inFlightAlbumPickerSelection = nil
+            inFlightActions.remove(.albumPicker)
+        }
+        guard orderedAssetIDs.contains(request.targetAssetID) else {
             return false
         }
-        pendingUndecidedItem = .item11
-        return true
+        switch outcome {
+        case .success:
+            setRecentAlbum(album)
+            removeFromPendingAfterAlbumAddition(request.targetAssetID)
+            if sheetState == .presented,
+               albumPickerTargetAssetID == request.targetAssetID {
+                sheetState = .closed
+                albumPickerTargetAssetID = nil
+            }
+            return true
+        case .failure:
+            publishFeedback(.albumAdditionFailed)
+            return false
+        case .albumUnavailable:
+            invalidateAlbum(album)
+            publishFeedback(.albumAdditionFailed)
+            return false
+        }
     }
 
     @discardableResult
@@ -1494,6 +1609,13 @@ final class S2StateMachine: ObservableObject {
         sheetState = .closed
         albumPickerTargetAssetID = nil
         return true
+    }
+
+    /// 视图消费一次性反馈事件后调用；不影响计数。
+    func consumeFeedbackEvent() -> S2FeedbackEvent? {
+        let event = feedbackEvent
+        feedbackEvent = nil
+        return event
     }
 
     func makeExitPayload() -> S2ExitPayload? {
@@ -1634,9 +1756,23 @@ final class S2StateMachine: ObservableObject {
     }
 
     /// 决策 16：历史相册失效只作用于 `H`；`G(a)` 已随 v15 移除。
+    /// `H` 的每次变化都经由 `recentAlbumDidChange` 交给协调器持久化。
     private func invalidateAlbum(_ album: S2AlbumReference) {
         if recentAlbum?.id == album.id {
-            recentAlbum = nil
+            setRecentAlbum(nil)
         }
+    }
+
+    private func setRecentAlbum(_ album: S2AlbumReference?) {
+        guard recentAlbum != album else {
+            return
+        }
+        recentAlbum = album
+        recentAlbumDidChange(album)
+    }
+
+    private func publishFeedback(_ kind: S2FeedbackEventKind) {
+        feedbackEventCount += 1
+        feedbackEvent = S2FeedbackEvent(id: feedbackEventCount, kind: kind)
     }
 }
