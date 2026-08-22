@@ -1238,7 +1238,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 "transform,zoomScale,contentOffset,contentSize," +
                 "contentInset,adjustedContentInset,V,s," +
                 "pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating," +
-                "currentIndex,settledIndex,pageIndicesPresent,pageLoadStates"
+                "currentIndex,settledIndex,pageIndicesPresent,pageLoadStates," +
+                "nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance"
         ))
         let expectedOffsetX = controller.pagingScrollView.contentOffsetForPage(at: 1).x
         XCTAssertTrue(text.contains(
@@ -2874,6 +2875,131 @@ final class S2CalibrationHarnessTests: XCTestCase {
             inset.aspectFillMultiplier,
             accuracy: 0.000_001
         )
+    }
+
+    // IC-082 G152：场景 E `nxEdgePaging` 逐帧追加三个字段、三类事件逐条存在；关闭录制零副作用。
+    func testIC082G152NxEdgePagingScenarioExportsFieldsAndEvents() {
+        XCTAssertEqual(S2OnDeviceTransitionScenario.nxEdgePaging.exportTitle, "E Nx 贴边翻页")
+        XCTAssertTrue(S2OnDeviceTransitionScenario.allCases.contains(.nxEdgePaging))
+
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .nxEdgePaging
+        diagnostics.start()
+        diagnostics.captureFrame()
+        let interaction = S2NxEdgePagingInteraction(
+            restingPagingOffsetX: 320,
+            pageStride: 320,
+            translationOriginX: 0,
+            distanceToPreviousBoundary: 20,
+            distanceToNextBoundary: 0
+        )
+        diagnostics.recordNXEdgePagingBegin(interaction)
+        diagnostics.recordHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: true,
+            distance: 60,
+            velocity: 300,
+            accepted: true
+        )
+        diagnostics.recordSynchronizeNativeState(
+            animatedPaging: true,
+            currentIndex: 2,
+            scale: 1
+        )
+        diagnostics.stop()
+        diagnostics.export()
+
+        let text = diagnostics.reportText
+        XCTAssertTrue(text.contains("场景=E Nx 贴边翻页"))
+        XCTAssertTrue(text.contains(
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame," +
+                "transform,zoomScale,contentOffset,contentSize," +
+                "contentInset,adjustedContentInset,V,s," +
+                "pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating," +
+                "currentIndex,settledIndex,pageIndicesPresent,pageLoadStates," +
+                "nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance"
+        ))
+        // 非贴边拖动期间三个字段为 nil；内层 contentOffset / contentSize / zoomScale 与外层偏移既有字段同在。
+        XCTAssertTrue(text.contains("\tnxDistanceToPreviousBoundary=nil\tnxDistanceToNextBoundary=nil\tnxOverflowDistance=nil"))
+        XCTAssertTrue(text.contains("\tzoomScale=1.000000\tcontentOffset="))
+        XCTAssertTrue(text.contains("\tcontentSize="))
+        XCTAssertTrue(text.contains("\tpagingContentOffsetX="))
+        XCTAssertTrue(text.contains("\tpagingIsDragging=false\tpagingIsDecelerating=false"))
+        XCTAssertTrue(text.contains("\tcurrentIndex=1"))
+        XCTAssertTrue(text.contains(
+            "event=beginNXEdgePaging\tsource=S2NativePagerViewController.beginNXEdgePaging" +
+                "\tdetails=restingPagingOffsetX=320.000000；distanceToPreviousBoundary=20.000000；distanceToNextBoundary=0.000000"
+        ))
+        XCTAssertTrue(text.contains(
+            "event=handleHorizontalSwipe\tsource=S2NativePagerViewController.finishNXEdgePaging" +
+                "\tdetails=direction=next；startedAtPagingEdge=true；distance=60.000000；velocity=300.000000；accepted=true"
+        ))
+        XCTAssertTrue(text.contains(
+            "event=synchronizeNativeStateToMachine\tsource=S2NativePagerViewController.synchronizeNativeStateToMachine" +
+                "\tdetails=animatedPaging=true；currentIndex=2；s=1.000000"
+        ))
+
+        let countAfterStop = diagnostics.recordedEntries.count
+        diagnostics.recordNXEdgePagingBegin(interaction)
+        diagnostics.recordHorizontalSwipe(direction: .next, startedAtPagingEdge: false, distance: 0, velocity: 0, accepted: false)
+        diagnostics.recordSynchronizeNativeState(animatedPaging: false, currentIndex: 1, scale: 1)
+        diagnostics.captureFrame()
+        XCTAssertEqual(diagnostics.recordedEntries.count, countAfterStop)
+    }
+
+    // IC-082 R1 夹具探针（仅打印，不做断言）：两条序列下旧判定（溢出 > 0）与新判定（起始距离 ≤ 0.5）
+    // 各自给出的 startedAtPagingEdge 与翻页结果。
+    func testIC082R1NxEdgePagingStartConditionProbe() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let velocity = CGFloat(configuration.edgePagingTriggerVelocity)
+        let sequences: [(String, CGFloat)] = [
+            ("起始距边界 20pt、拖动溢出 60pt 松手", 20),
+            ("起始贴边、溢出 60pt 松手", 0)
+        ]
+        for (title, distanceToNext) in sequences {
+            let interaction = S2NxEdgePagingInteraction(
+                restingPagingOffsetX: 320,
+                pageStride: 320,
+                translationOriginX: 0,
+                distanceToPreviousBoundary: 0,
+                distanceToNextBoundary: distanceToNext
+            )
+            let projection = interaction.projection(translationX: -(60 + distanceToNext))
+            let legacyStarted = projection.overflowDistance > 0
+            let started = distanceToNext <= 0.5
+            let legacyMachine = makeMachine(scale: 2, configuration: configuration)
+            let legacyResult = legacyMachine.handleHorizontalSwipe(
+                direction: .next,
+                startedAtPagingEdge: legacyStarted,
+                distance: projection.overflowDistance,
+                velocity: velocity
+            )
+            let machine = makeMachine(scale: 2, configuration: configuration)
+            let result = machine.handleHorizontalSwipe(
+                direction: .next,
+                startedAtPagingEdge: started,
+                distance: projection.overflowDistance,
+                velocity: velocity
+            )
+            print(
+                "[IC-082 探针] \(title)：overflow=\(projection.overflowDistance) " +
+                    "旧判定 startedAtPagingEdge=\(legacyStarted) 翻页=\(legacyResult) currentIndex=\(legacyMachine.currentIndex)；" +
+                    "新判定 startedAtPagingEdge=\(started) 翻页=\(result) currentIndex=\(machine.currentIndex)"
+            )
+        }
     }
 
     // B1：Nx 内容到边界后，继续拖动的溢出量等量带动外层分页。

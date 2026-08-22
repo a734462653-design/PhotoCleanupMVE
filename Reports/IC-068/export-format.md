@@ -56,3 +56,18 @@
   - `event=外层setContentOffset`，来源为写入点（`S2NativePagerViewController.apply` / `synchronizeNativeStateToMachine` / `updateNXEdgePaging` / `layoutNativePages`，最后一处为 `contentOffset` 直接赋值），`details=x=…；animated=true|false`。
   - `event=handleNativePageChange`，来源 `S2NativePagerViewController.finishNativePaging`，`details=from=…；to=…；accepted=true|false`。
 - 关闭录制时以上埋点零副作用（仅在 `isRecording` 为真时追加记录）。头部「格式版本=1」未递增。
+
+### 自 IC-082 起的字段追加（格式版本仍为 1）
+
+- 新增场景 **E Nx 贴边翻页**（`nxEdgePaging`）：起始 `s > 1`，开始录制 → （一次）先把画面平移到贴边再向同方向快滑切页；（另一次）不贴边直接快滑 → 停止录制 → 导出文本。既有四个场景不变。
+- 逐帧记录在 `pageLoadStates` 之后追加三个字段，头部字段声明行同步为
+  `…,pageIndicesPresent,pageLoadStates,nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance`：
+  - `nxDistanceToPreviousBoundary` / `nxDistanceToNextBoundary`：本次贴边翻页拖动**开始时**缩放后内容到视口左 / 右边界的距离（pt），来自 `beginNXEdgePaging` 建立的交互记录；非贴边拖动期间输出 `nil`。
+  - `nxOverflowDistance`：当前投影的溢出量（pt，`updateNXEdgePaging` 最近一次计算）；无投影时 `nil`。
+  - 内层 `contentOffset` / `contentSize` / `zoomScale`、外层 `pagingContentOffsetX`、`pagingIsDragging` / `pagingIsDecelerating`、`currentIndex` 复用既有字段。
+- 离散事件新增三类：
+  - `event=beginNXEdgePaging`，来源 `S2NativePagerViewController.beginNXEdgePaging`，`details=restingPagingOffsetX=…；distanceToPreviousBoundary=…；distanceToNextBoundary=…`。
+  - `event=handleHorizontalSwipe`，来源 `S2NativePagerViewController.finishNXEdgePaging`，`details=direction=next|previous；startedAtPagingEdge=true|false；distance=…；velocity=…；accepted=true|false`。
+  - `event=synchronizeNativeStateToMachine`，来源同名，`details=animatedPaging=true|false；currentIndex=…；s=…`。
+  - 每次 `writePagingContentOffset` 仍以既有 `event=外层setContentOffset`（含来源与 `animated`）记录。
+- 关闭录制时以上埋点零副作用。头部「格式版本=1」未递增。

@@ -1461,6 +1461,10 @@ struct S2View: View {
             return L10n.text(
                 "s2.calibration.transition_diagnostics.scenario_d"
             )
+        case .nxEdgePaging:
+            return L10n.text(
+                "s2.calibration.transition_diagnostics.scenario_e"
+            )
         }
     }
 }
