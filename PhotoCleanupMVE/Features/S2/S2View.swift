@@ -1720,7 +1720,7 @@ struct S2BottomStripView: View {
     }
 
     private var stripGesture: some Gesture {
-        DragGesture(minimumDistance: metrics.dragMinimumDistance)
+        DragGesture()
             .onChanged { value in
                 if previousTranslation == nil {
                     guard machine.beginBottomStripDrag() else {

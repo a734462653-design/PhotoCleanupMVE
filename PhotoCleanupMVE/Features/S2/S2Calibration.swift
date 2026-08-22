@@ -142,9 +142,13 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripNeighborItemWidth: Double
     var bottomStripNeighborItemHeight: Double
     var bottomStripItemSpacing: Double
+    var bottomStripCurrentItemGap: Double
     var bottomStripEdgeFadeWidth: Double
-    var bottomStripDragMinimumDistance: Double
+    var bottomStripLeadingInset: Double
     var bottomStripSwitchDistance: Double
+    var bottomStripDecelerationRate: Double
+    var bottomStripExpandDurationMilliseconds: Double
+    var bottomStripCollapseDurationMilliseconds: Double
     var bottomStripMarkSize: Double
     var markPulseDurationMilliseconds: Double
     var feedbackToastDurationMilliseconds: Double
@@ -178,13 +182,18 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         fitBorderLightAlpha: 0.055,
         pageSpacing: 20,
         hapticOnPhotoSwitch: true,
-        bottomStripCurrentItemSize: 72,
-        bottomStripNeighborItemWidth: 52,
-        bottomStripNeighborItemHeight: 44,
-        bottomStripItemSpacing: 8,
-        bottomStripEdgeFadeWidth: 24,
-        bottomStripDragMinimumDistance: 4,
-        bottomStripSwitchDistance: 44,
+        // IC-085：横栏出厂值 = 系统 Photos 录屏静止段与减速段测量值（decided）。
+        bottomStripCurrentItemSize: 30,
+        bottomStripNeighborItemWidth: 20,
+        bottomStripNeighborItemHeight: 30,
+        bottomStripItemSpacing: 3,
+        bottomStripCurrentItemGap: 13,
+        bottomStripEdgeFadeWidth: 18.7,
+        bottomStripLeadingInset: 20.3,
+        bottomStripSwitchDistance: 23,
+        bottomStripDecelerationRate: 0.998,
+        bottomStripExpandDurationMilliseconds: 600,
+        bottomStripCollapseDurationMilliseconds: 100,
         bottomStripMarkSize: 14,
         markPulseDurationMilliseconds: 150,
         feedbackToastDurationMilliseconds: 2000
@@ -206,9 +215,17 @@ struct S2CalibrationConfiguration: Codable, Equatable {
                 neighborItemWidth: CGFloat(bottomStripNeighborItemWidth),
                 neighborItemHeight: CGFloat(bottomStripNeighborItemHeight),
                 itemSpacing: CGFloat(bottomStripItemSpacing),
+                currentItemGap: CGFloat(bottomStripCurrentItemGap),
                 edgeFadeWidth: CGFloat(bottomStripEdgeFadeWidth),
-                dragMinimumDistance: CGFloat(bottomStripDragMinimumDistance),
-                switchDistance: CGFloat(bottomStripSwitchDistance)
+                leadingInset: CGFloat(bottomStripLeadingInset),
+                switchDistance: CGFloat(bottomStripSwitchDistance),
+                decelerationRate: CGFloat(bottomStripDecelerationRate),
+                expandDurationMilliseconds: CGFloat(
+                    bottomStripExpandDurationMilliseconds
+                ),
+                collapseDurationMilliseconds: CGFloat(
+                    bottomStripCollapseDurationMilliseconds
+                )
             )
         )
     }
@@ -279,9 +296,13 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("bottomStripNeighborItemWidth", formatted(bottomStripNeighborItemWidth)),
             ("bottomStripNeighborItemHeight", formatted(bottomStripNeighborItemHeight)),
             ("bottomStripItemSpacing", formatted(bottomStripItemSpacing)),
+            ("bottomStripCurrentItemGap", formatted(bottomStripCurrentItemGap)),
             ("bottomStripEdgeFadeWidth", formatted(bottomStripEdgeFadeWidth)),
-            ("bottomStripDragMinimumDistance", formatted(bottomStripDragMinimumDistance)),
+            ("bottomStripLeadingInset", formatted(bottomStripLeadingInset)),
             ("bottomStripSwitchDistance", formatted(bottomStripSwitchDistance)),
+            ("bottomStripDecelerationRate", formatted(bottomStripDecelerationRate)),
+            ("bottomStripExpandDurationMilliseconds", formatted(bottomStripExpandDurationMilliseconds)),
+            ("bottomStripCollapseDurationMilliseconds", formatted(bottomStripCollapseDurationMilliseconds)),
             ("bottomStripMarkSize", formatted(bottomStripMarkSize)),
             ("markPulseDurationMilliseconds", formatted(markPulseDurationMilliseconds)),
             ("feedbackToastDurationMilliseconds", formatted(feedbackToastDurationMilliseconds))
@@ -329,13 +350,19 @@ extension S2CalibrationConfiguration {
         .init(name: "fitBorderLightAlpha", specStatus: .decided, wiringStatus: .effective),
         .init(name: "pageSpacing", specStatus: .decided, wiringStatus: .effective),
         .init(name: "hapticOnPhotoSwitch", specStatus: .decided, wiringStatus: .effective),
-        .init(name: "bottomStripCurrentItemSize", specStatus: .placeholder, wiringStatus: .effective),
-        .init(name: "bottomStripNeighborItemWidth", specStatus: .placeholder, wiringStatus: .effective),
-        .init(name: "bottomStripNeighborItemHeight", specStatus: .placeholder, wiringStatus: .effective),
-        .init(name: "bottomStripItemSpacing", specStatus: .placeholder, wiringStatus: .effective),
-        .init(name: "bottomStripEdgeFadeWidth", specStatus: .placeholder, wiringStatus: .unwired),
-        .init(name: "bottomStripDragMinimumDistance", specStatus: .placeholder, wiringStatus: .effective),
-        .init(name: "bottomStripSwitchDistance", specStatus: .placeholder, wiringStatus: .effective),
+        // IC-085：横栏参数全部 decided（系统录屏测量）且 effective；
+        // bottomStripDragMinimumDistance 已废止。
+        .init(name: "bottomStripCurrentItemSize", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripNeighborItemWidth", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripNeighborItemHeight", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripItemSpacing", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripCurrentItemGap", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripEdgeFadeWidth", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripLeadingInset", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripSwitchDistance", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripDecelerationRate", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripExpandDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripCollapseDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
         .init(name: "bottomStripMarkSize", specStatus: .decided, wiringStatus: .effective),
         .init(name: "markPulseDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
         .init(name: "feedbackToastDurationMilliseconds", specStatus: .decided, wiringStatus: .effective)
@@ -375,9 +402,13 @@ extension S2CalibrationConfiguration {
         case bottomStripNeighborItemWidth
         case bottomStripNeighborItemHeight
         case bottomStripItemSpacing
+        case bottomStripCurrentItemGap
         case bottomStripEdgeFadeWidth
-        case bottomStripDragMinimumDistance
+        case bottomStripLeadingInset
         case bottomStripSwitchDistance
+        case bottomStripDecelerationRate
+        case bottomStripExpandDurationMilliseconds
+        case bottomStripCollapseDurationMilliseconds
         case bottomStripMarkSize
         case markPulseDurationMilliseconds
         case feedbackToastDurationMilliseconds
@@ -418,9 +449,13 @@ extension S2CalibrationConfiguration {
             bottomStripNeighborItemWidth: try values.decode(Double.self, forKey: .bottomStripNeighborItemWidth),
             bottomStripNeighborItemHeight: try values.decode(Double.self, forKey: .bottomStripNeighborItemHeight),
             bottomStripItemSpacing: try values.decode(Double.self, forKey: .bottomStripItemSpacing),
+            bottomStripCurrentItemGap: try values.decodeIfPresent(Double.self, forKey: .bottomStripCurrentItemGap) ?? 13,
             bottomStripEdgeFadeWidth: try values.decode(Double.self, forKey: .bottomStripEdgeFadeWidth),
-            bottomStripDragMinimumDistance: try values.decode(Double.self, forKey: .bottomStripDragMinimumDistance),
+            bottomStripLeadingInset: try values.decodeIfPresent(Double.self, forKey: .bottomStripLeadingInset) ?? 20.3,
             bottomStripSwitchDistance: try values.decode(Double.self, forKey: .bottomStripSwitchDistance),
+            bottomStripDecelerationRate: try values.decodeIfPresent(Double.self, forKey: .bottomStripDecelerationRate) ?? 0.998,
+            bottomStripExpandDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .bottomStripExpandDurationMilliseconds) ?? 600,
+            bottomStripCollapseDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .bottomStripCollapseDurationMilliseconds) ?? 100,
             bottomStripMarkSize: try values.decodeIfPresent(Double.self, forKey: .bottomStripMarkSize) ?? 14,
             markPulseDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .markPulseDurationMilliseconds) ?? 150,
             feedbackToastDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .feedbackToastDurationMilliseconds) ?? 2000
@@ -460,9 +495,13 @@ extension S2CalibrationConfiguration {
         try values.encode(bottomStripNeighborItemWidth, forKey: .bottomStripNeighborItemWidth)
         try values.encode(bottomStripNeighborItemHeight, forKey: .bottomStripNeighborItemHeight)
         try values.encode(bottomStripItemSpacing, forKey: .bottomStripItemSpacing)
+        try values.encode(bottomStripCurrentItemGap, forKey: .bottomStripCurrentItemGap)
         try values.encode(bottomStripEdgeFadeWidth, forKey: .bottomStripEdgeFadeWidth)
-        try values.encode(bottomStripDragMinimumDistance, forKey: .bottomStripDragMinimumDistance)
+        try values.encode(bottomStripLeadingInset, forKey: .bottomStripLeadingInset)
         try values.encode(bottomStripSwitchDistance, forKey: .bottomStripSwitchDistance)
+        try values.encode(bottomStripDecelerationRate, forKey: .bottomStripDecelerationRate)
+        try values.encode(bottomStripExpandDurationMilliseconds, forKey: .bottomStripExpandDurationMilliseconds)
+        try values.encode(bottomStripCollapseDurationMilliseconds, forKey: .bottomStripCollapseDurationMilliseconds)
         try values.encode(bottomStripMarkSize, forKey: .bottomStripMarkSize)
         try values.encode(markPulseDurationMilliseconds, forKey: .markPulseDurationMilliseconds)
         try values.encode(feedbackToastDurationMilliseconds, forKey: .feedbackToastDurationMilliseconds)

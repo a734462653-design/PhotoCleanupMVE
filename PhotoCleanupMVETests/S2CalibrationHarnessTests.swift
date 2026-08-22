@@ -669,13 +669,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
             fitBorderLightAlpha: 0.055,
             pageSpacing: 20,
             hapticOnPhotoSwitch: true,
-            bottomStripCurrentItemSize: 72,
-            bottomStripNeighborItemWidth: 52,
-            bottomStripNeighborItemHeight: 44,
-            bottomStripItemSpacing: 8,
-            bottomStripEdgeFadeWidth: 24,
-            bottomStripDragMinimumDistance: 4,
-            bottomStripSwitchDistance: 44,
+            bottomStripCurrentItemSize: 30,
+            bottomStripNeighborItemWidth: 20,
+            bottomStripNeighborItemHeight: 30,
+            bottomStripItemSpacing: 3,
+            bottomStripCurrentItemGap: 13,
+            bottomStripEdgeFadeWidth: 18.7,
+            bottomStripLeadingInset: 20.3,
+            bottomStripSwitchDistance: 23,
+            bottomStripDecelerationRate: 0.998,
+            bottomStripExpandDurationMilliseconds: 600,
+            bottomStripCollapseDurationMilliseconds: 100,
             bottomStripMarkSize: 14,
             markPulseDurationMilliseconds: 150,
             feedbackToastDurationMilliseconds: 2000
@@ -753,7 +757,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             statuses["doubleTapDecisionWindowMilliseconds"],
             .unwired
         )
-        XCTAssertEqual(statuses["bottomStripEdgeFadeWidth"], .unwired)
+        // IC-085：横栏渐隐接线为 effective；废止参数不再登记。
+        XCTAssertEqual(statuses["bottomStripEdgeFadeWidth"], .effective)
+        XCTAssertEqual(statuses["bottomStripLeadingInset"], .effective)
+        XCTAssertEqual(statuses["bottomStripDecelerationRate"], .effective)
+        XCTAssertNil(statuses["bottomStripDragMinimumDistance"])
         XCTAssertEqual(
             statuses["presentationToggleDamping"],
             .effective
@@ -764,17 +772,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion=2 与 v15 规格基线。
+    // IC-085：废止 1 项、新增 5 项横栏参数，字段 37 → 41，导出 41 + 4 行。
     func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
         ).children.compactMap(\.label)
-        XCTAssertEqual(fieldNames.count, 37)
+        XCTAssertEqual(fieldNames.count, 41)
 
         let lines = S2CalibrationConfiguration.factoryPlaceholder
             .exportText()
             .split(separator: "\n")
             .map(String.init)
-        XCTAssertEqual(lines.count, 37 + 4)
+        XCTAssertEqual(lines.count, 41 + 4)
         XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 2)
         XCTAssertTrue(lines.contains("schemaVersion=2"))
         XCTAssertTrue(lines.contains(
@@ -793,10 +802,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // IC-074 G97：登记表 33 条、双状态；decided 集合恰为 v15 第十一节第 1、2 部分已存在的 16 项。
+    // IC-085：登记表 41 条；横栏 11 项（6 项既有 + 5 项新增）全部 decided。
     func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
         let connections = S2CalibrationConfiguration.parameterConnections
-        XCTAssertEqual(connections.count, 37)
-        XCTAssertEqual(Set(connections.map(\.name)).count, 37)
+        XCTAssertEqual(connections.count, 41)
+        XCTAssertEqual(Set(connections.map(\.name)).count, 41)
 
         let decided = Set(connections
             .filter { $0.specStatus == .decided }
@@ -816,10 +826,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
             "bottomStripMarkSize", "markPulseDurationMilliseconds",
             "feedbackToastDurationMilliseconds",
             "scaleChangeRequestPolicy", "degradedPreviewPolicy",
-            "pinchMaxScaleFloor", "pinchMaxScaleCeiling"
+            "pinchMaxScaleFloor", "pinchMaxScaleCeiling",
+            "bottomStripCurrentItemSize", "bottomStripNeighborItemWidth",
+            "bottomStripNeighborItemHeight", "bottomStripItemSpacing",
+            "bottomStripCurrentItemGap", "bottomStripEdgeFadeWidth",
+            "bottomStripLeadingInset", "bottomStripSwitchDistance",
+            "bottomStripDecelerationRate",
+            "bottomStripExpandDurationMilliseconds",
+            "bottomStripCollapseDurationMilliseconds"
         ])
-        XCTAssertEqual(decided.count, 23)
-        XCTAssertEqual(placeholder.count, 14)
+        XCTAssertEqual(decided.count, 34)
+        XCTAssertEqual(placeholder.count, 7)
         XCTAssertTrue(decided.isDisjoint(with: placeholder))
         XCTAssertFalse(placeholder.contains("pinchMaxScale"))
         XCTAssertEqual(

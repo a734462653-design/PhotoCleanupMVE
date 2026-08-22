@@ -111,14 +111,21 @@ enum S2DoubleTapAnchorStrategy: String, CaseIterable, Codable, Equatable {
     case touchPoint
 }
 
+/// IC-085：横栏几何与运动参数（来源：系统 Photos 录屏逐帧测量，见 Reports/IC-085）。
+/// `switchDistance` 是相邻项目中心的节距（= 邻居宽 + 间距）；`currentItemGap` 是静止态
+/// 当前张与两侧邻居的间隙；`leadingInset` 与 `edgeFadeWidth` 描述两侧可见区起点与线性渐隐。
 struct S2BottomStripMetrics: Equatable {
     let currentItemSize: CGFloat
     let neighborItemWidth: CGFloat
     let neighborItemHeight: CGFloat
     let itemSpacing: CGFloat
+    let currentItemGap: CGFloat
     let edgeFadeWidth: CGFloat
-    let dragMinimumDistance: CGFloat
+    let leadingInset: CGFloat
     let switchDistance: CGFloat
+    let decelerationRate: CGFloat
+    let expandDurationMilliseconds: CGFloat
+    let collapseDurationMilliseconds: CGFloat
 
     var height: CGFloat {
         max(currentItemSize, neighborItemHeight)
@@ -129,9 +136,14 @@ struct S2BottomStripMetrics: Equatable {
             neighborItemWidth > 0 &&
             neighborItemHeight > 0 &&
             itemSpacing >= 0 &&
+            currentItemGap >= 0 &&
             edgeFadeWidth >= 0 &&
-            dragMinimumDistance >= 0 &&
-            switchDistance > 0
+            leadingInset >= 0 &&
+            switchDistance > 0 &&
+            decelerationRate > 0 &&
+            decelerationRate < 1 &&
+            expandDurationMilliseconds >= 0 &&
+            collapseDurationMilliseconds >= 0
     }
 }
 
