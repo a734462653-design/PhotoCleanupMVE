@@ -1628,7 +1628,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 contentOffset: page.zoomScrollView.contentOffset,
                 contentSize: page.zoomScrollView.contentSize,
                 contentInset: page.zoomScrollView.contentInset,
-                photoFrame: page.hostingController.view.frame
+                photoFrame: page.zoomScrollView.presentationContentView?.frame ?? .null
             )
         }
         let currentBefore = snapshot(current)
