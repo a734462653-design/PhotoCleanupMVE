@@ -29,10 +29,10 @@ private final class S2ImageRequestCounter: S2PhotoImageRequesting {
         assetID: String,
         targetSize: CGSize,
         requestStrategy: S2ImageRequestStrategy,
-        resultHandler: @escaping (UIImage?, Bool) -> Void
+        resultHandler: @escaping (S2ImageRequestResult) -> Void
     ) -> PHImageRequestID {
         requestCount += 1
-        resultHandler(UIImage(), false)
+        resultHandler(.finalImage(UIImage()))
         return PHInvalidImageRequestID
     }
 
@@ -655,7 +655,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             singleDragTouchCount: 1,
             pinchTouchCount: 2,
             scaleChangeRequestPolicy: .pinchEnded,
-            degradedPreviewPolicy: .finalImageOnly,
+            degradedPreviewPolicy: .display,
             animationsEnabled: true,
             animationDurationMilliseconds: 180,
             presentationToggleDuration: 220,
@@ -685,7 +685,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             actual.imageRequestStrategy,
             S2ImageRequestStrategy(
                 scaleChangePolicy: .pinchEnded,
-                degradedPreviewPolicy: .finalImageOnly
+                degradedPreviewPolicy: .display
             )
         )
         XCTAssertTrue(
@@ -811,10 +811,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             "doubleTapDecisionWindowMilliseconds",
             "edgePagingTriggerDistance", "edgePagingTriggerVelocity",
             "bottomStripMarkSize", "markPulseDurationMilliseconds",
-            "feedbackToastDurationMilliseconds"
+            "feedbackToastDurationMilliseconds",
+            "scaleChangeRequestPolicy", "degradedPreviewPolicy"
         ])
-        XCTAssertEqual(decided.count, 19)
-        XCTAssertEqual(placeholder.count, 17)
+        XCTAssertEqual(decided.count, 21)
+        XCTAssertEqual(placeholder.count, 15)
         XCTAssertTrue(decided.isDisjoint(with: placeholder))
         XCTAssertTrue(placeholder.contains("pinchMaxScale"))
         XCTAssertEqual(
@@ -904,7 +905,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.imageRequestAssetID, machine.currentAssetID)
     }
 
-    // R2：降质回调不进入显示序列，只允许最终图一次性替换。
+    // R2（IC-077 改写）：出厂 degradedPreviewPolicy=.display，降质预览进入显示序列并由最终图原位替换。
     func testR2PinchDoesNotReplaceWithDegradedPreview() {
         let strategy = S2CalibrationConfiguration.factoryPlaceholder
             .imageRequestStrategy
@@ -919,7 +920,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             )
         }.map { $0.0 }
 
-        XCTAssertEqual(displayed, [.finalImage])
+        XCTAssertEqual(displayed, [.degradedPreview, .finalImage])
     }
 
     // T1 替代断言：原生 contentOffset 令当前页与相邻页等量、同向、单调跟手。

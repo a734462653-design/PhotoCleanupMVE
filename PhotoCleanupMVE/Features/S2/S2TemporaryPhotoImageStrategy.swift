@@ -2,19 +2,47 @@ import Photos
 import SwiftUI
 import UIKit
 
+/// IC-077（v15 回写决策 28）：一次图片请求的可区分结果。`cancelled` 由翻页取消产生，
+/// 不算失败；`assetUnavailable` 为资产失效（`fetchAssets` 为空），与失败同态呈现。
+enum S2ImageRequestResult: Equatable {
+    case degradedPreview(UIImage)
+    case finalImage(UIImage)
+    case failure
+    case cancelled
+    case assetUnavailable
+
+    var image: UIImage? {
+        switch self {
+        case let .degradedPreview(image), let .finalImage(image):
+            return image
+        case .failure, .cancelled, .assetUnavailable:
+            return nil
+        }
+    }
+
+    var isDegraded: Bool {
+        if case .degradedPreview = self {
+            return true
+        }
+        return false
+    }
+}
+
 protocol S2PhotoImageRequesting: AnyObject {
     @discardableResult
     func requestImage(
         assetID: String,
         targetSize: CGSize,
         requestStrategy: S2ImageRequestStrategy,
-        resultHandler: @escaping (UIImage?, Bool) -> Void
+        resultHandler: @escaping (S2ImageRequestResult) -> Void
     ) -> PHImageRequestID
 
     func cancelImageRequest(_ requestID: PHImageRequestID)
 }
 
-// SPEC-S2 v13 未定项 8 的临时占位实现，仅用于 IC-048 真机接线，不是定案。
+// 类型名与文件名沿用 IC-048 临时接线时的命名（改名留给后续清理卡）；
+// 行为自 IC-077 起按 SPEC-S2 v15 回写决策 28 实装：允许网络访问（iCloud 按需下载）、
+// 降质预览先显示、最终图原位替换、失败与资产失效可区分。
 final class S2TemporaryPhotoKitImageStrategy: S2PhotoImageRequesting {
     private let manager: PHImageManager
 
@@ -27,23 +55,23 @@ final class S2TemporaryPhotoKitImageStrategy: S2PhotoImageRequesting {
         assetID: String,
         targetSize: CGSize,
         requestStrategy: S2ImageRequestStrategy,
-        resultHandler: @escaping (UIImage?, Bool) -> Void
+        resultHandler: @escaping (S2ImageRequestResult) -> Void
     ) -> PHImageRequestID {
         let result = PHAsset.fetchAssets(
             withLocalIdentifiers: [assetID],
             options: nil
         )
         guard let asset = result.firstObject else {
-            resultHandler(nil, false)
+            resultHandler(.assetUnavailable)
             return PHInvalidImageRequestID
         }
 
         let options = PHImageRequestOptions()
         options.isSynchronous = false
-        options.isNetworkAccessAllowed = false
-        options.deliveryMode = requestStrategy.degradedPreviewPolicy == .display
-            ? .opportunistic
-            : .highQualityFormat
+        // ④ Lynn 2026-08-22：允许从 iCloud 按需下载；下载期间按加载中处理。
+        options.isNetworkAccessAllowed = true
+        // v15 决策 28：降质预览先显示，最终图到达后原位替换。
+        options.deliveryMode = .opportunistic
         options.resizeMode = .fast
         options.version = .current
 
@@ -53,9 +81,9 @@ final class S2TemporaryPhotoKitImageStrategy: S2PhotoImageRequesting {
             contentMode: .aspectFit,
             options: options
         ) { image, information in
-            let isDegraded = information?[PHImageResultIsDegradedKey]
-                as? Bool ?? false
-            resultHandler(image, isDegraded)
+            resultHandler(
+                Self.result(image: image, information: information)
+            )
         }
     }
 
@@ -64,6 +92,22 @@ final class S2TemporaryPhotoKitImageStrategy: S2PhotoImageRequesting {
             return
         }
         manager.cancelImageRequest(requestID)
+    }
+
+    /// PhotoKit 回调到可区分结果的映射：取消 → `cancelled`；无图像（含错误）→ `failure`；
+    /// 降质标记 → `degradedPreview`；其余 → `finalImage`。
+    static func result(
+        image: UIImage?,
+        information: [AnyHashable: Any]?
+    ) -> S2ImageRequestResult {
+        if information?[PHImageCancelledKey] as? Bool == true {
+            return .cancelled
+        }
+        guard let image else {
+            return .failure
+        }
+        let isDegraded = information?[PHImageResultIsDegradedKey] as? Bool ?? false
+        return isDegraded ? .degradedPreview(image) : .finalImage(image)
     }
 }
 
@@ -173,11 +217,14 @@ struct S2TemporaryPhotoImageView: View {
                 height: CGFloat(key.height)
             ),
             requestStrategy: activeStrategy
-        ) { nextImage, isDegraded in
+        ) { result in
             DispatchQueue.main.async {
-                guard requestGeneration == generation else {
+                guard requestGeneration == generation,
+                      result != .cancelled else {
                     return
                 }
+                let nextImage = result.image
+                let isDegraded = result.isDegraded
                 let returnType: S2ImageReturnType
                 if nextImage == nil {
                     returnType = .failure
