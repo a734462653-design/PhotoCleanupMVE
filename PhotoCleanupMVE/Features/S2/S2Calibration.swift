@@ -666,7 +666,6 @@ enum S2OverlayLayout {
     static let horizontalPadding: CGFloat = 8
     static let topBarHeight: CGFloat = 48
     static let topLeadingControlWidth: CGFloat = 88
-    static let topTextLineHeight: CGFloat = 22
     static let calibrationTopClearance: CGFloat = 108
 
     static func snapshot(
@@ -729,7 +728,7 @@ enum S2OverlayLayout {
         }
         let bottomFrames = actionFrames + [stripFrame]
 
-        var clickableFrames = [topFrames[0], topFrames[3]] +
+        var clickableFrames = [topFrames[0], topFrames[2]] +
             actionFrames + [stripFrame]
         if calibrationState.controlsVisible {
             let secondX = safeFrame.maxX - horizontalPadding -
@@ -761,39 +760,34 @@ enum S2OverlayLayout {
         )
     }
 
+    /// IC-075（v15 回写决策 30）：顶部信息区只有三件——返回、序号、确认页入口。
+    /// 返回占左侧 `topLeadingControlWidth`，确认页入口占右侧同宽，序号居中占剩余
+    /// 宽度；三者高度均为 `topBarHeight`。返回值顺序：[返回, 序号, 确认页入口]。
     static func topElementFrames(in bounds: CGRect) -> [CGRect] {
-        let controlY = bounds.minY +
-            (topBarHeight - minimumTouchTarget) / 2
         let leadingFrame = CGRect(
             x: bounds.minX + horizontalPadding,
-            y: controlY,
+            y: bounds.minY,
             width: topLeadingControlWidth,
-            height: minimumTouchTarget
+            height: topBarHeight
         )
         let trailingFrame = CGRect(
-            x: bounds.maxX - horizontalPadding - minimumTouchTarget,
-            y: controlY,
-            width: minimumTouchTarget,
-            height: minimumTouchTarget
-        )
-        let textX = leadingFrame.maxX + minimumSpacing
-        let textWidth = max(
-            0,
-            trailingFrame.minX - minimumSpacing - textX
-        )
-        let rangeFrame = CGRect(
-            x: textX,
+            x: bounds.maxX - horizontalPadding - topLeadingControlWidth,
             y: bounds.minY,
-            width: textWidth,
-            height: topTextLineHeight
+            width: topLeadingControlWidth,
+            height: topBarHeight
         )
-        let statusFrame = CGRect(
-            x: textX,
-            y: rangeFrame.maxY + 4,
-            width: textWidth,
-            height: topTextLineHeight
+        let positionX = leadingFrame.maxX + minimumSpacing
+        let positionWidth = max(
+            0,
+            trailingFrame.minX - minimumSpacing - positionX
         )
-        return [leadingFrame, rangeFrame, statusFrame, trailingFrame]
+        let positionFrame = CGRect(
+            x: positionX,
+            y: bounds.minY,
+            width: positionWidth,
+            height: topBarHeight
+        )
+        return [leadingFrame, positionFrame, trailingFrame]
     }
 }
 

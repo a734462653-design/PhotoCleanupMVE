@@ -485,39 +485,6 @@
         }
       }
     },
-    "s2.range.summary" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 7 占位】{range} · {current}/{total}"
-          }
-        }
-      }
-    },
-    "s2.status.marked" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 7 占位】当前照片：待删"
-          }
-        }
-      }
-    },
-    "s2.status.unmarked" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 7 占位】当前照片：未标记"
-          }
-        }
-      }
-    },
     "s2.strip.item.accessibility" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1196,6 +1163,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "④项目判断默认值，可修订"
+          }
+        }
+      }
+    },
+    "s2.top.position" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{current}/{total}"
           }
         }
       }

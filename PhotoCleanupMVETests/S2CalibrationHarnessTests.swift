@@ -495,11 +495,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(ordinaryPhoto.isFramedPhoto)
     }
 
-    // L1：顶部四个元素全部从系统顶部安全区下沿开始布局。
+    // L1：顶部三个元素全部从系统顶部安全区下沿开始布局（IC-075 起为三件）。
     func testL1TopOverlayFramesRespectSafeAreaTop() {
         let snapshot = overlaySnapshot()
 
-        XCTAssertEqual(snapshot.topElementFrames.count, 4)
+        XCTAssertEqual(snapshot.topElementFrames.count, 3)
         for frame in snapshot.topElementFrames {
             XCTAssertGreaterThanOrEqual(frame.minY, overlaySafeAreaInsets.top)
         }
@@ -517,7 +517,53 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
-    // L3：返回、范围、状态与确认四个顶部元素之间均保留间距。
+    // IC-075 G104：顶部三帧互不重叠、均在顶部区域内；返回与确认页入口 ≥ 44pt；
+    // 可点击帧含帧 0 与帧 2、不含序号帧 1。
+    func testIC075G104TopBarHasThreeElementsWithClickableEnds() {
+        let snapshot = overlaySnapshot()
+        let frames = snapshot.topElementFrames
+        XCTAssertEqual(frames.count, 3)
+
+        let topBounds = CGRect(
+            x: overlaySafeAreaInsets.leading,
+            y: overlaySafeAreaInsets.top,
+            width: overlayPhysicalSize.width - overlaySafeAreaInsets.leading -
+                overlaySafeAreaInsets.trailing,
+            height: S2OverlayLayout.topBarHeight
+        )
+        for (index, frame) in frames.enumerated() {
+            XCTAssertTrue(
+                topBounds.insetBy(dx: -0.001, dy: -0.001).contains(frame),
+                "顶部元素 \(index) 应落在顶部区域内：\(frame)"
+            )
+        }
+        for first in frames.indices {
+            for second in frames.indices where second > first {
+                XCTAssertFalse(frames[first].intersects(frames[second]))
+            }
+        }
+        for index in [0, 2] {
+            XCTAssertGreaterThanOrEqual(
+                frames[index].width,
+                S2OverlayLayout.minimumTouchTarget
+            )
+            XCTAssertGreaterThanOrEqual(
+                frames[index].height,
+                S2OverlayLayout.minimumTouchTarget
+            )
+        }
+        XCTAssertEqual(frames[0].width, S2OverlayLayout.topLeadingControlWidth)
+        XCTAssertEqual(frames[2].width, S2OverlayLayout.topLeadingControlWidth)
+        XCTAssertLessThan(frames[0].maxX, frames[1].minX)
+        XCTAssertLessThan(frames[1].maxX, frames[2].minX)
+
+        let clickable = snapshot.clickableControlFrames
+        XCTAssertTrue(clickable.contains(frames[0]))
+        XCTAssertTrue(clickable.contains(frames[2]))
+        XCTAssertFalse(clickable.contains(frames[1]))
+    }
+
+    // L3：返回、序号与确认页入口三个顶部元素之间均保留间距。
     func testL3TopOverlayFramesDoNotIntersect() {
         let frames = overlaySnapshot().topElementFrames
 

@@ -358,17 +358,14 @@ struct S2View: View {
             .contentShape(Rectangle())
 
             Text(L10n.text(
-                "s2.range.summary",
+                "s2.top.position",
                 replacing: [
-                    "range": machine.entry.rangeDisplayInformation.displayName,
                     "current": String(machine.currentIndex + 1),
                     "total": String(machine.orderedAssetIDs.count)
                 ]
             ))
             .lineLimit(1)
-
-            Text(currentStatusText)
-                .lineLimit(1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Button {
                 guard let payload = machine.makeExitPayload() else {
@@ -465,12 +462,6 @@ struct S2View: View {
                 "count": String(albums.count - 1)
             ]
         )
-    }
-
-    private var currentStatusText: String {
-        machine.currentIsMarked
-            ? L10n.text("s2.status.marked")
-            : L10n.text("s2.status.unmarked")
     }
 
     private var favoriteActionTitle: String {
