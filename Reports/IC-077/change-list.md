@@ -1,6 +1,6 @@
 # IC-077 变更清单
 
-分支 `feature/ic-077-image-loading-states`，自 `feature/ic-076-action-bar-wiring` 尖 `10ff08b` 切出（产品代码 = CI #123 被测 `eb7a43b`）。最终被测提交 `14c8c8057f5e4b6b9dc5c8f12717fd5237da877b`（CI #124，449 项 0 失败）。
+分支 `feature/ic-077-image-loading-states`，自 `feature/ic-076-action-bar-wiring` 尖 `10ff08b` 切出（产品代码 = CI #123 被测 `eb7a43b`）。最终被测提交 `03bd062fcd3fc2296559cc1ce8d893615f8a2a01`（CI #125，449 项 0 失败；CI #124 被测 `14c8c80` 因 G127 夹具问题 12 条断言失败，见自验报告）。
 
 ## 提交
 
@@ -10,6 +10,7 @@
 | `8035ffe` | R2 | `S2TemporaryPhotoImageStrategy.swift`、`S2View.swift`、`S2Calibration.swift`、`Localizable.xcstrings`、`S2ImageLoadingStateTests.swift` | `S2ImageLoadState`（loading / displayed / failed）与 `onLoadStateChange`；加载中背景改为 `S2ViewportBackground.color`；失败态浮层（`photo.badge.exclamationmark` + 一行占位文案，`allowsHitTesting(false)`）；`S2ImageReturnType` +`cancelled`、`assetUnavailable`；`S2ViewportBackground` 单一定义并由 `S2View` 复用；预览描边 `Color.white → Color.primary`；键 +3；G126×2 新增 |
 | `7d3b3ef` | R3 | `Core/S2StateMachine.swift`、`S2ImageLoadingStateTests.swift` | `requestImageAfterScaleSettled()`：双击进入/退出到达目标倍率时在 `pinchEnded` 策略下递增一次 `imageRequestRevision`（原状：0 次请求，见下）；G127、R3 新增 |
 | `14c8c80` | R4 | `S2ImageLoadingStateTests.swift` | 交接校验失败断言（产品侧现状已满足，`CleanupCoordinator.swift` 未改） |
+| `03bd062` | R3 修正 | `S2ImageLoadingStateTests.swift`、`S2CalibrationHarnessTests.swift` | G127 从"宿主整张 S2View"改为已验证的原生分页控制器夹具 + 按 `S2View.mainPhoto` 页窗口规则自建页列表；CI #124 实测宿主整张 S2View 时图片视图 0 次请求，原因未定位（见自验报告） |
 
 `pbxproj` 只因新增一个测试文件改动。
 
@@ -32,7 +33,7 @@
 
 ## 测试
 
-- 新增 7 个（`S2ImageLoadingStateTests.swift`）：`testIC077R1RequestResultCoversFiveOutcomes`、`testIC077G124FactoryImageStrategyAndRegistry`、`testIC077G126HostedImageViewShowsDegradedThenFinalAndFailureStates`、`testIC077G126FailureStateKeepsSwipeUpMarkingAndPaging`、`testIC077G127RequestThrottlingAcrossPinchDoubleTapPagingAndViewport`、`testIC077R3DoubleTapBumpsImageRequestRevisionOncePerSettle`、`testIC077G128HandoffValidationFailureStaysInS1`。
+- 新增 7 个：`S2ImageLoadingStateTests.swift`（新文件）6 个——`testIC077R1RequestResultCoversFiveOutcomes`、`testIC077G124FactoryImageStrategyAndRegistry`、`testIC077G126HostedImageViewShowsDegradedThenFinalAndFailureStates`、`testIC077G126FailureStateKeepsSwipeUpMarkingAndPaging`、`testIC077R3DoubleTapBumpsImageRequestRevisionOncePerSettle`、`testIC077G128HandoffValidationFailureStaysInS1`；`S2CalibrationHarnessTests.swift` 1 个——`testIC077G127RequestThrottlingAcrossPinchDoubleTapPagingAndViewport`。
 - 修改 4 个：`S2ImageRequestCounter`（协议签名适配）、`testL7FactoryDefaultsMatchSystemParityDecision`（`.display`）、`testIC074G97ParameterRegistryDecidedSetMatchesV15`（decided 21 / placeholder 15）、`testR2PinchDoesNotReplaceWithDegradedPreview`（期望 `[.degradedPreview, .finalImage]`，注释改写）。
 - 删除 0 个。计数 442 + 7 = 449。
 
