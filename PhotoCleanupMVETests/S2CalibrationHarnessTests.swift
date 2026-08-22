@@ -6875,3 +6875,575 @@ private struct UserDefaultsCalibrationPersistence: S2CalibrationPersisting {
         defaults.set(data, forKey: key)
     }
 }
+
+// MARK: - IC-085 横栏系统对齐
+
+/// IC-085 R1：系统 Photos 录屏 IMG_6743.MP4（1206×2622，59.99 fps）逐帧测量参考表。
+/// 像素→pt 按 3.0 换算。几何帧号为 30 fps 抽帧序号，减速段为 60 fps 抽帧序号。
+/// 完整测量表见 Reports/IC-085/self-check.md。
+enum S2BottomStripSystemReference {
+    /// 60 px；30 fps 帧 218–236（极差 59–61）、325–341（59–60）。
+    static let neighborItemWidth: CGFloat = 20
+    /// 90 px；帧 218–236、325–341。
+    static let neighborItemHeight: CGFloat = 30
+    /// 90×90 px 方形；帧 218–236、325–341 极差 0，帧 97–136 由间隙反推同形。
+    static let currentItemSize: CGFloat = 30
+    /// 9 px；帧 218–236（8–9）、325–341（9–11）。
+    static let itemSpacing: CGFloat = 3
+    /// 39 px；帧 218–236、325–341 极差 0。
+    static let currentItemGap: CGFloat = 13
+    /// 61 px；帧 76 左缘、帧 166 右缘亮度剖面。
+    static let leadingInset: CGFloat = 20.3
+    /// 56 px 线性斜坡；同上两帧。
+    static let edgeFadeWidth: CGFloat = 18.7
+    /// 60 fps 帧 53–159、291–397、503–609 三段拟合 k = 0.99796～0.99805。
+    static let decelerationRate: CGFloat = 0.998
+    /// 30 fps 帧 199–217、305–323：18 帧 = 600 ms。
+    static let expandDurationMilliseconds: CGFloat = 600
+    /// 60 fps 帧 27–32：约 6 帧 = 100 ms。
+    static let collapseDurationMilliseconds: CGFloat = 100
+
+    /// run1（60 fps 帧 53–159）初速 42.3 px/帧 = 845.3 pt/s。
+    static let decelerationInitialVelocity: CGFloat = 845.3
+    /// run1 松手后累计位移（pt）检查点，5 帧中值滤波后求和。
+    static let decelerationDisplacementCheckpoints: [(elapsed: TimeInterval, displacement: CGFloat)] = [
+        (elapsed: 0.25, displacement: 162.0),
+        (elapsed: 0.50, displacement: 274.3),
+        (elapsed: 0.75, displacement: 340.7),
+        (elapsed: 1.00, displacement: 379.3),
+        (elapsed: 1.25, displacement: 402.3),
+        (elapsed: 1.50, displacement: 415.0),
+        (elapsed: 1.75, displacement: 421.3)
+    ]
+    /// 吸附 + 展开进度（30 fps 帧 199–217 左邻总位移 73 px 的累计占比）。
+    static let settleProgressSamples: [(elapsed: TimeInterval, progress: CGFloat)] = [
+        (elapsed: 0.1, progress: 0.55),
+        (elapsed: 0.2, progress: 0.78),
+        (elapsed: 0.3, progress: 0.86)
+    ]
+}
+
+/// 夹具帧驱动：不自行触发，测试按注入时钟显式调用 `tick()`。
+final class S2BottomStripManualFrameDriver: S2BottomStripFrameDriving {
+    private(set) var isRunning = false
+    private(set) var startCount = 0
+
+    func start(_ onFrame: @escaping () -> Void) {
+        isRunning = true
+        startCount += 1
+    }
+
+    func stop() {
+        isRunning = false
+    }
+}
+
+extension S2CalibrationHarnessTests {
+    private static let referenceMetrics = S2BottomStripMetrics(
+        currentItemSize: S2BottomStripSystemReference.currentItemSize,
+        neighborItemWidth: S2BottomStripSystemReference.neighborItemWidth,
+        neighborItemHeight: S2BottomStripSystemReference.neighborItemHeight,
+        itemSpacing: S2BottomStripSystemReference.itemSpacing,
+        currentItemGap: S2BottomStripSystemReference.currentItemGap,
+        edgeFadeWidth: S2BottomStripSystemReference.edgeFadeWidth,
+        leadingInset: S2BottomStripSystemReference.leadingInset,
+        switchDistance: S2BottomStripSystemReference.neighborItemWidth +
+            S2BottomStripSystemReference.itemSpacing,
+        decelerationRate: S2BottomStripSystemReference.decelerationRate,
+        expandDurationMilliseconds: S2BottomStripSystemReference.expandDurationMilliseconds,
+        collapseDurationMilliseconds: S2BottomStripSystemReference.collapseDurationMilliseconds
+    )
+
+    private static let stripViewportSize = CGSize(width: 402, height: 30)
+
+    private func makeStripMotion(
+        assetCount: Int = 5,
+        currentIndex: Int = 2,
+        onPhotoSwitch: @escaping () -> Void = {}
+    ) -> (
+        machine: S2StateMachine,
+        motion: S2BottomStripMotionController,
+        driver: S2BottomStripManualFrameDriver,
+        clock: S2StripTestClock
+    ) {
+        let machine = makeMachine(
+            orderedAssetIDs: (1...assetCount).map { "asset-\($0)" },
+            currentIndex: currentIndex
+        )
+        let driver = S2BottomStripManualFrameDriver()
+        let clock = S2StripTestClock()
+        let motion = S2BottomStripMotionController(
+            layout: S2BottomStripLayout(
+                metrics: tryUnwrap(
+                    S2CalibrationConfiguration.factoryPlaceholder.resolvedParameters
+                ).bottomStripMetrics
+            ),
+            hooks: S2BottomStripMotionController.hooks(
+                machine: machine,
+                onPhotoSwitch: onPhotoSwitch
+            ),
+            clock: { clock.now },
+            frameDriver: driver
+        )
+        motion.synchronize(count: assetCount, currentIndex: currentIndex)
+        return (machine, motion, driver, clock)
+    }
+
+    // IC-085 G161/G162：出厂值逐项等于系统录屏参考表（几何容差 0.5 pt，k 容差 0.0005）；
+    // 节距 = 邻居宽 + 间距；废止参数在字段、导出、登记表中均为 0；新参数集全部导出。
+    func testIC085G162FactoryBottomStripValuesMatchSystemReference() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        XCTAssertEqual(configuration.bottomStripNeighborItemWidth, Double(S2BottomStripSystemReference.neighborItemWidth), accuracy: 0.5)
+        XCTAssertEqual(configuration.bottomStripNeighborItemHeight, Double(S2BottomStripSystemReference.neighborItemHeight), accuracy: 0.5)
+        XCTAssertEqual(configuration.bottomStripCurrentItemSize, Double(S2BottomStripSystemReference.currentItemSize), accuracy: 0.5)
+        XCTAssertEqual(configuration.bottomStripItemSpacing, Double(S2BottomStripSystemReference.itemSpacing), accuracy: 0.5)
+        XCTAssertEqual(configuration.bottomStripCurrentItemGap, Double(S2BottomStripSystemReference.currentItemGap), accuracy: 0.5)
+        XCTAssertEqual(configuration.bottomStripLeadingInset, Double(S2BottomStripSystemReference.leadingInset), accuracy: 0.5)
+        XCTAssertEqual(configuration.bottomStripEdgeFadeWidth, Double(S2BottomStripSystemReference.edgeFadeWidth), accuracy: 0.5)
+        XCTAssertEqual(configuration.bottomStripDecelerationRate, Double(S2BottomStripSystemReference.decelerationRate), accuracy: 0.0005)
+        XCTAssertEqual(configuration.bottomStripExpandDurationMilliseconds, Double(S2BottomStripSystemReference.expandDurationMilliseconds), accuracy: 0.5)
+        XCTAssertEqual(configuration.bottomStripCollapseDurationMilliseconds, Double(S2BottomStripSystemReference.collapseDurationMilliseconds), accuracy: 0.5)
+        XCTAssertEqual(
+            configuration.bottomStripSwitchDistance,
+            configuration.bottomStripNeighborItemWidth + configuration.bottomStripItemSpacing,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            tryUnwrap(configuration.resolvedParameters).bottomStripMetrics,
+            Self.referenceMetrics
+        )
+
+        let fieldNames = Set(Mirror(reflecting: configuration).children.compactMap(\.label))
+        let exported = configuration.exportText()
+        let registry = Set(S2CalibrationConfiguration.parameterConnections.map(\.name))
+        XCTAssertFalse(fieldNames.contains("bottomStripDragMinimumDistance"))
+        XCTAssertFalse(exported.contains("bottomStripDragMinimumDistance"))
+        XCTAssertFalse(registry.contains("bottomStripDragMinimumDistance"))
+        for name in [
+            "bottomStripCurrentItemSize", "bottomStripNeighborItemWidth",
+            "bottomStripNeighborItemHeight", "bottomStripItemSpacing",
+            "bottomStripCurrentItemGap", "bottomStripEdgeFadeWidth",
+            "bottomStripLeadingInset", "bottomStripSwitchDistance",
+            "bottomStripDecelerationRate",
+            "bottomStripExpandDurationMilliseconds",
+            "bottomStripCollapseDurationMilliseconds"
+        ] {
+            XCTAssertTrue(fieldNames.contains(name), name)
+            XCTAssertTrue(exported.contains("\(name)="), name)
+            XCTAssertTrue(registry.contains(name), name)
+        }
+        XCTAssertTrue(exported.contains("bottomStripDecelerationRate=0.998000"))
+        XCTAssertTrue(exported.contains("bottomStripLeadingInset=20.300000"))
+        XCTAssertTrue(exported.contains("bottomStripEdgeFadeWidth=18.700000"))
+        XCTAssertEqual(
+            S2CalibrationConfiguration.parameterConnections
+                .filter { $0.name.hasPrefix("bottomStrip") }
+                .filter { $0.specStatus == .decided && $0.wiringStatus == .effective }
+                .count,
+            12
+        )
+    }
+
+    // IC-085 G162：旧版持久化数据缺新键时按出厂值补齐；含新键时往返一致。
+    func testIC085G162PersistedConfigurationRoundTripsNewStripKeys() throws {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let encoded = try JSONEncoder().encode(configuration)
+        let decoded = try JSONDecoder().decode(S2CalibrationConfiguration.self, from: encoded)
+        XCTAssertEqual(decoded, configuration)
+
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        for key in [
+            "bottomStripCurrentItemGap", "bottomStripLeadingInset",
+            "bottomStripDecelerationRate",
+            "bottomStripExpandDurationMilliseconds",
+            "bottomStripCollapseDurationMilliseconds"
+        ] {
+            json.removeValue(forKey: key)
+        }
+        json["bottomStripDragMinimumDistance"] = 4
+        let legacy = try JSONSerialization.data(withJSONObject: json)
+        let migrated = try JSONDecoder().decode(S2CalibrationConfiguration.self, from: legacy)
+        XCTAssertEqual(migrated, configuration)
+    }
+
+    // IC-085 G163：静止态当前张 30×30、两侧间隙 13；邻居 20×30、间距 3；当前张居中。
+    func testIC085G163IdleLayoutCurrentItemSquareWithGaps() {
+        let layout = S2BottomStripLayout(metrics: Self.referenceMetrics)
+        let viewport = Self.stripViewportSize
+        let current = 2
+        let contentX = layout.contentCenterX(of: current)
+        let frames = (0..<5).map { index in
+            layout.frame(
+                at: index,
+                currentIndex: current,
+                expansion: 1,
+                contentX: contentX,
+                viewportSize: viewport
+            )
+        }
+
+        XCTAssertEqual(frames[2].size, CGSize(width: 30, height: 30))
+        XCTAssertEqual(frames[2].midX, viewport.width / 2, accuracy: 0.001)
+        XCTAssertEqual(frames[2].midY, viewport.height / 2, accuracy: 0.001)
+        for index in [0, 1, 3, 4] {
+            XCTAssertEqual(frames[index].size, CGSize(width: 20, height: 30), "index=\(index)")
+            XCTAssertEqual(frames[index].midY, viewport.height / 2, accuracy: 0.001)
+        }
+        XCTAssertEqual(frames[2].minX - frames[1].maxX, 13, accuracy: 0.001)
+        XCTAssertEqual(frames[3].minX - frames[2].maxX, 13, accuracy: 0.001)
+        XCTAssertEqual(frames[1].minX - frames[0].maxX, 3, accuracy: 0.001)
+        XCTAssertEqual(frames[4].minX - frames[3].maxX, 3, accuracy: 0.001)
+        XCTAssertEqual(
+            viewport.width / 2 - frames[1].maxX,
+            frames[3].minX - viewport.width / 2,
+            accuracy: 0.001
+        )
+    }
+
+    // IC-085 G163：滑动态全部 20×30、等距 3，当前张不放大；两态内容带高度相同。
+    func testIC085G163DraggingLayoutEquallySpacedAndHeightUnchanged() {
+        let layout = S2BottomStripLayout(metrics: Self.referenceMetrics)
+        let viewport = Self.stripViewportSize
+        let contentX = layout.contentCenterX(of: 2) + 7
+        let frames = (0..<5).map { index in
+            layout.frame(
+                at: index,
+                currentIndex: 2,
+                expansion: 0,
+                contentX: contentX,
+                viewportSize: viewport
+            )
+        }
+        for index in 0..<5 {
+            XCTAssertEqual(frames[index].size, CGSize(width: 20, height: 30), "index=\(index)")
+        }
+        for index in 1..<5 {
+            XCTAssertEqual(frames[index].minX - frames[index - 1].maxX, 3, accuracy: 0.001)
+            XCTAssertEqual(frames[index].midX - frames[index - 1].midX, 23, accuracy: 0.001)
+        }
+        XCTAssertEqual(frames[2].midX, viewport.width / 2 - 7, accuracy: 0.001)
+
+        XCTAssertEqual(Self.referenceMetrics.height, 30)
+        XCTAssertEqual(
+            layout.itemSize(at: 2, currentIndex: 2, expansion: 1).height,
+            layout.itemSize(at: 2, currentIndex: 2, expansion: 0).height
+        )
+        let idle = metrics(visibility: .visible, strip: .idle, sheet: .closed)
+        let dragging = metrics(visibility: .visible, strip: .dragging, sheet: .closed)
+        XCTAssertEqual(idle.bottomStripHeight, 30)
+        XCTAssertEqual(idle.bottomStripHeight, dragging.bottomStripHeight)
+    }
+
+    // IC-085 G163：两侧渐隐遮罩——内边距内不可见，随后 edgeFadeWidth 内线性升到 1，右侧对称；
+    // 可见索引区间只覆盖视口附近。
+    func testIC085G163EdgeFadeStopsAndVisibleRange() {
+        let layout = S2BottomStripLayout(metrics: Self.referenceMetrics)
+        let width = Self.stripViewportSize.width
+        let stops = layout.fadeStops(viewportWidth: width)
+        XCTAssertEqual(stops.count, 6)
+        XCTAssertEqual(stops[0].location, 0)
+        XCTAssertEqual(stops[0].opacity, 0)
+        XCTAssertEqual(stops[1].location * width, 20.3, accuracy: 0.001)
+        XCTAssertEqual(stops[1].opacity, 0)
+        XCTAssertEqual(stops[2].location * width, 39, accuracy: 0.001)
+        XCTAssertEqual(stops[2].opacity, 1)
+        XCTAssertEqual((1 - stops[3].location) * width, 39, accuracy: 0.001)
+        XCTAssertEqual(stops[3].opacity, 1)
+        XCTAssertEqual((1 - stops[4].location) * width, 20.3, accuracy: 0.001)
+        XCTAssertEqual(stops[4].opacity, 0)
+        XCTAssertEqual(stops[5].location, 1)
+        XCTAssertEqual(stops[5].opacity, 0)
+        for index in 1..<stops.count {
+            XCTAssertGreaterThanOrEqual(stops[index].location, stops[index - 1].location)
+        }
+
+        let visible = layout.visibleIndices(
+            contentX: layout.contentCenterX(of: 100),
+            viewportWidth: width,
+            count: 1000
+        )
+        XCTAssertTrue(visible.contains(100))
+        XCTAssertTrue(visible.contains(100 - 9))
+        XCTAssertTrue(visible.contains(100 + 9))
+        XCTAssertLessThan(visible.count, 30)
+        XCTAssertEqual(
+            layout.visibleIndices(contentX: 0, viewportWidth: width, count: 3),
+            0..<3
+        )
+    }
+
+    // IC-085 G164：拖动开始 → 状态机进入 dragging、当前张在 100 ms 内收缩为矩形（展开度 0）。
+    func testIC085G164DragStartCollapsesWithinHundredMilliseconds() {
+        let fixture = makeStripMotion()
+        XCTAssertEqual(fixture.motion.expansion, 1)
+        XCTAssertEqual(fixture.motion.phase, .idle)
+
+        XCTAssertTrue(fixture.motion.beginDrag())
+        XCTAssertEqual(fixture.machine.bottomStripState, .dragging)
+        XCTAssertEqual(fixture.motion.phase, .dragging)
+        XCTAssertTrue(fixture.driver.isRunning)
+
+        fixture.clock.advance(by: 0.05)
+        fixture.motion.tick()
+        XCTAssertGreaterThan(fixture.motion.expansion, 0)
+        XCTAssertLessThan(fixture.motion.expansion, 1)
+
+        fixture.clock.advance(by: 0.05)
+        fixture.motion.tick()
+        XCTAssertEqual(fixture.motion.expansion, 0, accuracy: 0.000_001)
+        fixture.motion.tick()
+        XCTAssertFalse(fixture.driver.isRunning)
+        XCTAssertEqual(fixture.motion.phase, .dragging)
+        XCTAssertEqual(fixture.machine.bottomStripState, .dragging)
+    }
+
+    // IC-085 G164 / 既有语义：拖动中定位项每跨过一个节距即切主图一次，触感回调次数相等；
+    // 越过末张时停在末张。
+    func testIC085MainImageFollowsStripDuringDrag() {
+        var switches = 0
+        let fixture = makeStripMotion(assetCount: 5, currentIndex: 1) {
+            switches += 1
+        }
+        let pitch = fixture.motion.layout.pitch
+        XCTAssertTrue(fixture.motion.beginDrag())
+        fixture.motion.updateDrag(translation: 0)
+        fixture.motion.updateDrag(translation: -pitch * 0.4)
+        XCTAssertEqual(fixture.machine.currentIndex, 1)
+        fixture.motion.updateDrag(translation: -pitch * 0.6)
+        XCTAssertEqual(fixture.machine.currentIndex, 2)
+        XCTAssertEqual(switches, 1)
+        fixture.motion.updateDrag(translation: -pitch * 2.6)
+        XCTAssertEqual(fixture.machine.currentIndex, 4)
+        XCTAssertEqual(switches, 3)
+        fixture.motion.updateDrag(translation: -pitch * 9)
+        XCTAssertEqual(fixture.machine.currentIndex, 4)
+        XCTAssertEqual(
+            fixture.motion.contentX,
+            fixture.motion.layout.contentCenterX(of: 4),
+            accuracy: 0.001
+        )
+        fixture.motion.updateDrag(translation: pitch * 0.6)
+        XCTAssertEqual(fixture.machine.currentIndex, 0)
+        XCTAssertEqual(switches, 7)
+        XCTAssertEqual(fixture.machine.bottomStripState, .dragging)
+    }
+
+    // IC-085 G164：松手后逐帧位移与 k = 0.998 曲线误差 ≤ 10%，累计位移与录屏 run1 检查点误差 ≤ 10%；
+    // 减速期间定位项变化照常切主图，状态机保持 dragging 直到减速结束。
+    func testIC085G164DecelerationMatchesReferenceCurve() {
+        var switches = 0
+        let fixture = makeStripMotion(assetCount: 60, currentIndex: 0) {
+            switches += 1
+        }
+        let layout = fixture.motion.layout
+        let k = S2BottomStripSystemReference.decelerationRate
+        let v0 = S2BottomStripSystemReference.decelerationInitialVelocity
+        XCTAssertTrue(fixture.motion.beginDrag())
+        fixture.motion.updateDrag(translation: 0)
+        fixture.motion.updateDrag(translation: -1)
+        fixture.clock.advance(by: 0.1)
+        fixture.motion.tick()
+        let startX = fixture.motion.contentX
+        fixture.motion.endDrag(velocity: -v0)
+        XCTAssertEqual(fixture.motion.phase, .decelerating)
+        XCTAssertEqual(fixture.machine.bottomStripState, .dragging)
+
+        let frame: TimeInterval = 1 / 60
+        let duration = S2BottomStripInertia.duration(initial: v0, rate: k)
+        XCTAssertGreaterThan(duration, 1.5)
+        XCTAssertLessThan(duration, 2.0)
+        var previousX = startX
+        var elapsed: TimeInterval = 0
+        var checkpoints = S2BottomStripSystemReference.decelerationDisplacementCheckpoints[...]
+        var frameCount = 0
+        while fixture.motion.phase == .decelerating {
+            fixture.clock.advance(by: frame)
+            elapsed += frame
+            fixture.motion.tick()
+            frameCount += 1
+            let measured = fixture.motion.contentX - previousX
+            previousX = fixture.motion.contentX
+            if elapsed < duration - frame {
+                let expected = S2BottomStripInertia.displacement(initial: v0, rate: k, elapsed: elapsed) -
+                    S2BottomStripInertia.displacement(initial: v0, rate: k, elapsed: elapsed - frame)
+                XCTAssertEqual(
+                    measured,
+                    expected,
+                    accuracy: max(0.01, abs(expected) * 0.1),
+                    "frame=\(frameCount) elapsed=\(elapsed)"
+                )
+            }
+            if let checkpoint = checkpoints.first, elapsed >= checkpoint.elapsed - frame / 2 {
+                checkpoints = checkpoints.dropFirst()
+                XCTAssertEqual(
+                    fixture.motion.contentX - startX,
+                    checkpoint.displacement,
+                    accuracy: checkpoint.displacement * 0.1,
+                    "checkpoint t=\(checkpoint.elapsed)"
+                )
+            }
+            XCTAssertEqual(fixture.machine.bottomStripState, .dragging, "frame=\(frameCount)")
+            XCTAssertEqual(
+                fixture.machine.currentIndex,
+                layout.nearestIndex(toContentX: fixture.motion.contentX, count: 60),
+                "frame=\(frameCount)"
+            )
+            XCTAssertLessThan(frameCount, 600)
+        }
+        XCTAssertTrue(checkpoints.isEmpty, "未到达的检查点：\(checkpoints.count)")
+        XCTAssertEqual(fixture.motion.phase, .settling)
+        XCTAssertEqual(fixture.machine.bottomStripState, .idle)
+        let expectedIndex = layout.nearestIndex(toContentX: fixture.motion.contentX, count: 60)
+        XCTAssertEqual(fixture.machine.currentIndex, expectedIndex)
+        XCTAssertEqual(switches, expectedIndex)
+        XCTAssertGreaterThanOrEqual(expectedIndex, 17)
+        XCTAssertLessThanOrEqual(expectedIndex, 19)
+    }
+
+    // IC-085 G164：减速停止后 600 ms 内完成吸附到最近项与当前张展开，曲线与录屏采样相符；
+    // 终态后再无几何变化、帧驱动停止。
+    func testIC085G164SettleSnapsToNearestItemAndExpandsWithinSixHundredMilliseconds() {
+        let fixture = makeStripMotion(assetCount: 9, currentIndex: 4)
+        let layout = fixture.motion.layout
+        XCTAssertTrue(fixture.motion.beginDrag())
+        fixture.motion.updateDrag(translation: 0)
+        // 停在第 4 张与第 5 张中心之间、偏向第 5 张（13 pt > 节距一半 11.5）。
+        fixture.motion.updateDrag(translation: -13)
+        XCTAssertEqual(fixture.machine.currentIndex, 5)
+        fixture.clock.advance(by: 0.2)
+        fixture.motion.tick()
+        XCTAssertEqual(fixture.motion.expansion, 0, accuracy: 0.000_001)
+        let fromX = fixture.motion.contentX
+        let targetX = layout.contentCenterX(of: 5)
+        XCTAssertEqual(targetX - fromX, 10, accuracy: 0.001)
+
+        fixture.motion.endDrag(velocity: 0)
+        XCTAssertEqual(fixture.motion.phase, .settling)
+        XCTAssertEqual(fixture.machine.bottomStripState, .idle)
+        XCTAssertTrue(fixture.driver.isRunning)
+
+        for sample in S2BottomStripSystemReference.settleProgressSamples {
+            let fresh = makeStripMotion(assetCount: 9, currentIndex: 4)
+            XCTAssertTrue(fresh.motion.beginDrag())
+            fresh.motion.updateDrag(translation: 0)
+            fresh.motion.updateDrag(translation: -13)
+            fresh.clock.advance(by: 0.2)
+            fresh.motion.tick()
+            fresh.motion.endDrag(velocity: 0)
+            fresh.clock.advance(by: sample.elapsed)
+            fresh.motion.tick()
+            let progress = (fresh.motion.contentX - fromX) / (targetX - fromX)
+            XCTAssertEqual(progress, sample.progress, accuracy: 0.1, "t=\(sample.elapsed)")
+            XCTAssertEqual(fresh.motion.expansion, progress, accuracy: 0.000_001)
+            XCTAssertLessThan(fresh.motion.expansion, 1)
+            XCTAssertEqual(fresh.motion.phase, .settling)
+        }
+
+        fixture.clock.advance(by: 0.6)
+        fixture.motion.tick()
+        XCTAssertEqual(fixture.motion.phase, .idle)
+        XCTAssertEqual(fixture.motion.contentX, targetX, accuracy: 0.000_001)
+        XCTAssertEqual(fixture.motion.expansion, 1, accuracy: 0.000_001)
+        XCTAssertFalse(fixture.driver.isRunning)
+        XCTAssertEqual(fixture.machine.currentIndex, 5)
+
+        fixture.clock.advance(by: 1)
+        fixture.motion.tick()
+        XCTAssertEqual(fixture.motion.contentX, targetX, accuracy: 0.000_001)
+        XCTAssertEqual(fixture.motion.expansion, 1, accuracy: 0.000_001)
+        XCTAssertEqual(fixture.motion.phase, .idle)
+        XCTAssertFalse(fixture.driver.isRunning)
+    }
+
+    // IC-085 G164：松手偏向原张（8 pt < 11.5）时吸附回原张，不切图；低于终止速度的松手不进入减速。
+    func testIC085G164ReleaseBelowHalfPitchSnapsBackWithoutSwitching() {
+        var switches = 0
+        let fixture = makeStripMotion(assetCount: 9, currentIndex: 4) {
+            switches += 1
+        }
+        let layout = fixture.motion.layout
+        XCTAssertTrue(fixture.motion.beginDrag())
+        fixture.motion.updateDrag(translation: 0)
+        fixture.motion.updateDrag(translation: -8)
+        XCTAssertEqual(fixture.machine.currentIndex, 4)
+        fixture.motion.endDrag(velocity: -S2BottomStripInertia.stopSpeed / 2)
+        XCTAssertEqual(fixture.motion.phase, .settling)
+        XCTAssertEqual(fixture.machine.bottomStripState, .idle)
+        fixture.clock.advance(by: 0.6)
+        fixture.motion.tick()
+        XCTAssertEqual(fixture.motion.phase, .idle)
+        XCTAssertEqual(fixture.motion.contentX, layout.contentCenterX(of: 4), accuracy: 0.000_001)
+        XCTAssertEqual(fixture.machine.currentIndex, 4)
+        XCTAssertEqual(switches, 0)
+    }
+
+    // IC-085：减速中再次触下接管（序列不重新开始）；静止态外部定位项变化直接居中。
+    func testIC085G164TouchDuringDecelerationTakesOverAndExternalIndexRecenters() {
+        let fixture = makeStripMotion(assetCount: 60, currentIndex: 0)
+        let layout = fixture.motion.layout
+        XCTAssertTrue(fixture.motion.beginDrag())
+        fixture.motion.updateDrag(translation: 0)
+        fixture.motion.updateDrag(translation: -1)
+        fixture.motion.endDrag(velocity: -600)
+        XCTAssertEqual(fixture.motion.phase, .decelerating)
+        fixture.clock.advance(by: 0.3)
+        fixture.motion.tick()
+        let xDuringDeceleration = fixture.motion.contentX
+        XCTAssertGreaterThan(xDuringDeceleration, 100)
+
+        XCTAssertTrue(fixture.motion.beginDrag())
+        XCTAssertEqual(fixture.motion.phase, .dragging)
+        XCTAssertEqual(fixture.machine.bottomStripState, .dragging)
+        fixture.clock.advance(by: 0.3)
+        fixture.motion.tick()
+        XCTAssertEqual(fixture.motion.contentX, xDuringDeceleration, accuracy: 0.000_001)
+        fixture.motion.endDrag(velocity: 0)
+        fixture.clock.advance(by: 0.6)
+        fixture.motion.tick()
+        XCTAssertEqual(fixture.motion.phase, .idle)
+        XCTAssertEqual(fixture.machine.bottomStripState, .idle)
+
+        fixture.motion.synchronize(count: 60, currentIndex: 30)
+        XCTAssertEqual(fixture.motion.contentX, layout.contentCenterX(of: 30), accuracy: 0.000_001)
+        XCTAssertEqual(fixture.motion.expansion, 1)
+        XCTAssertEqual(fixture.motion.phase, .idle)
+    }
+
+    // IC-085：惯性模型本身——闭式位移等于速度积分，终止时间按 stopSpeed 求得。
+    func testIC085InertiaClosedFormMatchesIntegratedVelocity() {
+        let k = S2BottomStripSystemReference.decelerationRate
+        let v0: CGFloat = 845.3
+        let duration = S2BottomStripInertia.duration(initial: v0, rate: k)
+        XCTAssertEqual(
+            S2BottomStripInertia.velocity(initial: v0, rate: k, elapsed: duration),
+            S2BottomStripInertia.stopSpeed,
+            accuracy: 0.001
+        )
+        var integrated: CGFloat = 0
+        let step: TimeInterval = 0.0001
+        var t: TimeInterval = 0
+        while t < 1 {
+            integrated += S2BottomStripInertia.velocity(initial: v0, rate: k, elapsed: t + step / 2) * CGFloat(step)
+            t += step
+        }
+        XCTAssertEqual(
+            S2BottomStripInertia.displacement(initial: v0, rate: k, elapsed: 1),
+            integrated,
+            accuracy: 0.05
+        )
+        XCTAssertEqual(S2BottomStripInertia.duration(initial: 10, rate: k), 0)
+        XCTAssertEqual(S2BottomStripInertia.settleProgress(elapsed: 0.6, duration: 0.6), 1)
+        XCTAssertEqual(S2BottomStripInertia.settleProgress(elapsed: 0, duration: 0.6), 0)
+        XCTAssertEqual(S2BottomStripInertia.collapseProgress(elapsed: 0.1, duration: 0.1), 1)
+    }
+}
+
+final class S2StripTestClock {
+    private(set) var now: TimeInterval = 1_000
+
+    func advance(by interval: TimeInterval) {
+        now += interval
+    }
+}
