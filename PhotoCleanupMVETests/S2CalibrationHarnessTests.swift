@@ -5675,6 +5675,88 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
+    // IC-083 G158（夹具驱动）：横栏缩略图裁满——横图与竖图项目的可见内容帧均等于项目帧
+    // （当前项方形、邻居矩形，尺寸规则不变），裁满内容帧恰好覆盖项目帧且居中裁切；标记位置不变。
+    func testIC083G158BottomStripItemsFillAndClipToItemFrame() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let metrics = tryUnwrap(configuration.resolvedParameters).bottomStripMetrics
+        let ratios: [String: CGFloat] = [
+            "asset-1": 4_032 / 3_024,
+            "asset-2": 3_024 / 4_032,
+            "asset-3": 1
+        ]
+        let machine = makeMachine(
+            configuration: configuration,
+            pendingDeletionAssetIDs: ["asset-2"]
+        )
+        let strip = S2BottomStripView(
+            machine: machine,
+            metrics: metrics,
+            markSize: CGFloat(configuration.bottomStripMarkSize),
+            itemContent: { _ in AnyView(Color.clear) },
+            onPhotoSwitch: {},
+            assetAspectRatio: { ratios[$0] ?? 1 }
+        )
+
+        // 静止态：邻居矩形（横图 asset-1）、当前项方形（竖图 asset-2）、邻居矩形（方图 asset-3）。
+        XCTAssertEqual(
+            strip.itemFrameSize(at: 0),
+            CGSize(width: metrics.neighborItemWidth, height: metrics.neighborItemHeight)
+        )
+        XCTAssertEqual(
+            strip.itemFrameSize(at: 1),
+            CGSize(width: metrics.currentItemSize, height: metrics.currentItemSize)
+        )
+        XCTAssertEqual(
+            strip.itemFrameSize(at: 2),
+            CGSize(width: metrics.neighborItemWidth, height: metrics.neighborItemHeight)
+        )
+        for index in 0..<3 {
+            let item = strip.itemFrameSize(at: index)
+            let fill = strip.fillContentSize(at: index)
+            let ratio = ratios[machine.orderedAssetIDs[index]]!
+            XCTAssertGreaterThanOrEqual(fill.width, item.width - 0.000_001, "\(index)")
+            XCTAssertGreaterThanOrEqual(fill.height, item.height - 0.000_001, "\(index)")
+            XCTAssertTrue(
+                abs(fill.width - item.width) < 0.000_001 ||
+                    abs(fill.height - item.height) < 0.000_001,
+                "裁满内容帧在一个维度上与项目帧相等 \(index)"
+            )
+            XCTAssertEqual(fill.width / fill.height, ratio, accuracy: 0.000_001)
+        }
+        // 横图在邻居矩形（52×44）内：高度受限 → 58.67×44；竖图在方形 72×72 内：宽度受限 → 72×96。
+        XCTAssertEqual(strip.fillContentSize(at: 0).height, metrics.neighborItemHeight, accuracy: 0.000_001)
+        XCTAssertEqual(strip.fillContentSize(at: 1).width, metrics.currentItemSize, accuracy: 0.000_001)
+        XCTAssertEqual(strip.fillContentSize(at: 1).height, metrics.currentItemSize / (3_024 / 4_032), accuracy: 0.000_001)
+
+        // 纯函数边界：非法宽高比或零尺寸退回项目帧。
+        XCTAssertEqual(
+            S2BottomStripItemLayout.fillSize(itemSize: CGSize(width: 52, height: 44), aspectRatio: 0),
+            CGSize(width: 52, height: 44)
+        )
+        XCTAssertEqual(
+            S2BottomStripItemLayout.fillSize(itemSize: .zero, aspectRatio: 2),
+            .zero
+        )
+
+        // 滑动态：全部为邻居矩形，裁满规则同样成立。
+        XCTAssertTrue(machine.beginBottomStripDrag())
+        for index in 0..<3 {
+            XCTAssertEqual(
+                strip.itemFrameSize(at: index),
+                CGSize(width: metrics.neighborItemWidth, height: metrics.neighborItemHeight)
+            )
+            let fill = strip.fillContentSize(at: index)
+            XCTAssertGreaterThanOrEqual(fill.width, metrics.neighborItemWidth - 0.000_001)
+            XCTAssertGreaterThanOrEqual(fill.height, metrics.neighborItemHeight - 0.000_001)
+        }
+
+        // 标记位置规则不变：仍由项目帧右上角叠加，尺寸读自 bottomStripMarkSize。
+        let marks = machine.orderedAssetIDs.map { strip.markPresentation(for: $0) }
+        XCTAssertEqual(marks.map(\.isShown), [false, true, false])
+        XCTAssertTrue(marks.allSatisfy { $0.size == CGFloat(configuration.bottomStripMarkSize) })
+    }
+
     // IC-075 G108（夹具驱动）：横栏待删标记随 D 显隐，尺寸读自 bottomStripMarkSize，
     // 静止态与滑动态一致。
     func testIC075G108BottomStripMarkFollowsPendingSetAndMarkSize() {
