@@ -111,7 +111,20 @@ final class S2TemporaryPhotoKitImageStrategy: S2PhotoImageRequesting {
     }
 }
 
+/// IC-077（v15 回写决策 28）：单张照片内容的加载态。
+/// - `loading`：无可用图像，显示视口背景，不显示进度指示；
+/// - `displayed`：已有图像（降质或最终），最终图到达时原位替换；
+/// - `failed`：请求以失败或资产失效结束且没有可显示的图像——视口中心显示
+///   `photo.badge.exclamationmark` 与一行文案，不提供重试；取消不进入此态。
+enum S2ImageLoadState: Equatable {
+    case loading
+    case displayed
+    case failed
+}
+
 struct S2TemporaryPhotoImageView: View {
+    static let failureSymbolName = "photo.badge.exclamationmark"
+
     let strategy: any S2PhotoImageRequesting
     let assetID: String
     var requestBaseSize: CGSize? = nil
@@ -119,12 +132,15 @@ struct S2TemporaryPhotoImageView: View {
     let requestStrategy: S2ImageRequestStrategy?
     let requestRevision: Int
     var contentMode: ContentMode = .fit
+    /// 主图路径为 true：加载中显示视口背景、失败时显示失败态浮层；横栏缩略图为 false。
     let showsOpaqueLoadingBackground: Bool
     let onReading: (S2ImageRequestReading) -> Void
+    var onLoadStateChange: (S2ImageLoadState) -> Void = { _ in }
 
     @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
     @State private var displayedAssetID: String?
+    @State private var loadState = S2ImageLoadState.loading
     @State private var requestID = PHInvalidImageRequestID
     @State private var requestGeneration = 0
 
@@ -133,12 +149,15 @@ struct S2TemporaryPhotoImageView: View {
             let key = requestKey(for: requestBaseSize ?? geometry.size)
             ZStack {
                 if showsOpaqueLoadingBackground {
-                    Color.black
+                    S2ViewportBackground.color
                 }
                 if let image, displayedAssetID == assetID {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: contentMode)
+                }
+                if showsOpaqueLoadingBackground, loadState == .failed {
+                    failureOverlay
                 }
             }
             .onAppear {
@@ -170,6 +189,29 @@ struct S2TemporaryPhotoImageView: View {
                 requestID = PHInvalidImageRequestID
             }
         }
+    }
+
+    /// 失败态浮层：不参与照片几何、不接收点击；该照片的标记、翻页、缩放手势照常。
+    private var failureOverlay: some View {
+        VStack(spacing: S2OverlayLayout.minimumSpacing) {
+            Image(systemName: Self.failureSymbolName)
+                .font(.largeTitle)
+            Text(L10n.text("s2.image.load_failed"))
+                .font(.footnote)
+                .lineLimit(1)
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func setLoadState(_ nextState: S2ImageLoadState) {
+        guard loadState != nextState else {
+            return
+        }
+        loadState = nextState
+        onLoadStateChange(nextState)
     }
 
     private func requestKey(for size: CGSize) -> RequestKey {
@@ -209,6 +251,9 @@ struct S2TemporaryPhotoImageView: View {
         requestGeneration += 1
         let generation = requestGeneration
         let activeStrategy = effectiveStrategy
+        let requestedAssetID = assetID
+        let hasDisplayedImage = image != nil && displayedAssetID == assetID
+        setLoadState(hasDisplayedImage ? .displayed : .loading)
         onReading(S2ImageRequestReading(trigger: trigger, returnType: .pending))
         requestID = strategy.requestImage(
             assetID: assetID,
@@ -219,33 +264,43 @@ struct S2TemporaryPhotoImageView: View {
             requestStrategy: activeStrategy
         ) { result in
             DispatchQueue.main.async {
-                guard requestGeneration == generation,
-                      result != .cancelled else {
+                guard requestGeneration == generation else {
                     return
                 }
-                let nextImage = result.image
-                let isDegraded = result.isDegraded
                 let returnType: S2ImageReturnType
-                if nextImage == nil {
+                switch result {
+                case .cancelled:
+                    // 取消（翻页导致）不算失败：不记读数、不改显示。
+                    return
+                case .assetUnavailable:
+                    returnType = .assetUnavailable
+                case .failure:
                     returnType = .failure
-                } else if isDegraded {
+                case .degradedPreview:
                     returnType = .degradedPreview
-                } else {
+                case .finalImage:
                     returnType = .finalImage
                 }
                 onReading(S2ImageRequestReading(
                     trigger: trigger,
                     returnType: returnType
                 ))
-                guard let nextImage,
-                      S2ImageRequestDecision.shouldDisplay(
-                          isDegraded: isDegraded,
-                          strategy: activeStrategy
-                      ) else {
+                guard let nextImage = result.image else {
+                    // 已有可显示图像时保留它（例如更高分辨率请求失败），否则进入失败态。
+                    let stillDisplayed = image != nil &&
+                        displayedAssetID == requestedAssetID
+                    setLoadState(stillDisplayed ? .displayed : .failed)
+                    return
+                }
+                guard S2ImageRequestDecision.shouldDisplay(
+                    isDegraded: result.isDegraded,
+                    strategy: activeStrategy
+                ) else {
                     return
                 }
                 image = nextImage
-                displayedAssetID = assetID
+                displayedAssetID = requestedAssetID
+                setLoadState(.displayed)
             }
         }
     }

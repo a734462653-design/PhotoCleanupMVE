@@ -77,6 +77,144 @@ final class S2ImageLoadingStateTests: XCTestCase {
         )
     }
 
+    // IC-077 G126（宿主图片视图，夹具驱动）：pending → degraded → final 中降质图已显示；
+    // pending → failure / assetUnavailable 进入失败态；cancelled 不记读数、不进入失败态。
+    func testIC077G126HostedImageViewShowsDegradedThenFinalAndFailureStates() {
+        let degraded = run(sequence: [.degradedPreview(UIImage()), .finalImage(UIImage())])
+        XCTAssertEqual(
+            degraded.readings,
+            [.pending, .degradedPreview, .finalImage]
+        )
+        XCTAssertEqual(degraded.states, [.displayed])
+        XCTAssertEqual(degraded.statesAfterFirstDelivery, [.displayed])
+
+        let failed = run(sequence: [.failure])
+        XCTAssertEqual(failed.readings, [.pending, .failure])
+        XCTAssertEqual(failed.states, [.failed])
+
+        let unavailable = run(sequence: [.assetUnavailable])
+        XCTAssertEqual(unavailable.readings, [.pending, .assetUnavailable])
+        XCTAssertEqual(unavailable.states, [.failed])
+
+        let cancelled = run(sequence: [.cancelled])
+        XCTAssertEqual(cancelled.readings, [.pending])
+        XCTAssertEqual(cancelled.states, [])
+    }
+
+    // IC-077 G126（状态机层）：失败态读数存在时上滑标记仍生效，翻页、取消标记照常。
+    func testIC077G126FailureStateKeepsSwipeUpMarkingAndPaging() {
+        let machine = makeMachine()
+        machine.recordImageRequestReading(
+            S2ImageRequestReading(trigger: .initial, returnType: .failure)
+        )
+        XCTAssertEqual(machine.lastImageRequestReading?.returnType, .failure)
+        let target = machine.currentAssetID
+        XCTAssertTrue(machine.completeMainDrag(
+            translation: CGSize(width: 0, height: -120),
+            duration: 0.1,
+            startedOffset: .zero,
+            viewportSize: physicalSize,
+            fittedSize: physicalSize
+        ))
+        XCTAssertTrue(machine.pendingDeletionAssetIDs.contains(target))
+        XCTAssertEqual(machine.currentIndex, 2)
+
+        machine.recordImageRequestReading(
+            S2ImageRequestReading(trigger: .assetChange, returnType: .assetUnavailable)
+        )
+        XCTAssertTrue(machine.handleNativePageChange(to: 1))
+        XCTAssertTrue(machine.handleSwipeDown())
+        XCTAssertFalse(machine.pendingDeletionAssetIDs.contains(target))
+    }
+
+    private struct HostedRun {
+        let readings: [S2ImageReturnType]
+        let states: [S2ImageLoadState]
+        let statesAfterFirstDelivery: [S2ImageLoadState]
+    }
+
+    private func run(sequence: [S2ImageRequestResult]) -> HostedRun {
+        let strategy = S2ScriptedImageStrategy()
+        let recorder = HostedRecorder()
+        let view = S2TemporaryPhotoImageView(
+            strategy: strategy,
+            assetID: "asset-2",
+            requestBaseSize: physicalSize,
+            requestedScale: 1,
+            requestStrategy: S2CalibrationConfiguration.factoryPlaceholder
+                .imageRequestStrategy,
+            requestRevision: 0,
+            showsOpaqueLoadingBackground: true,
+            onReading: { recorder.readings.append($0.returnType) },
+            onLoadStateChange: { recorder.states.append($0) }
+        )
+        let controller = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(strategy.requestCount, 1)
+
+        var statesAfterFirstDelivery: [S2ImageLoadState] = []
+        for (index, result) in sequence.enumerated() {
+            if result == .cancelled {
+                strategy.cancelImageRequest(strategy.requests[0].id)
+            } else {
+                strategy.deliver(result)
+            }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+            if index == 0 {
+                statesAfterFirstDelivery = recorder.states
+            }
+        }
+        return HostedRun(
+            readings: recorder.readings,
+            states: recorder.states,
+            statesAfterFirstDelivery: statesAfterFirstDelivery
+        )
+    }
+
+    private final class HostedRecorder {
+        var readings: [S2ImageReturnType] = []
+        var states: [S2ImageLoadState] = []
+    }
+
+    private let physicalSize = CGSize(width: 390, height: 844)
+
+    private func makeMachine(
+        orderedAssetIDs: [String] = ["asset-1", "asset-2", "asset-3"],
+        currentIndex: Int = 1,
+        scale: CGFloat = 1
+    ) -> S2StateMachine {
+        S2StateMachine(
+            entry: S2EntryContext(
+                sessionID: "session-077",
+                rangeDisplayInformation: S2RangeDisplayInformation(
+                    rangeID: "range-077",
+                    displayName: "测试范围",
+                    totalAssetCount: orderedAssetIDs.count
+                ),
+                orderedAssetIDs: orderedAssetIDs,
+                currentAssetID: orderedAssetIDs[currentIndex],
+                pendingDeletionAssetIDs: [],
+                sessionMergedPendingDeletionCountProvider: { 0 }
+            ),
+            initialPresentation: S2InitialPresentation(
+                interfaceVisibility: .visible,
+                scale: scale,
+                viewportOffset: .zero
+            ),
+            parameters: S2CalibrationConfiguration.factoryPlaceholder
+                .resolvedParameters!,
+            imageRequestStrategy: S2CalibrationConfiguration.factoryPlaceholder
+                .imageRequestStrategy,
+            initialFavoriteAssetIDs: [],
+            initialRecentAlbum: nil,
+            pendingDeletionDidChange: { _ in }
+        )!
+    }
+
     // IC-077 G124：出厂 degradedPreviewPolicy=.display、scaleChangeRequestPolicy=.pinchEnded；
     // 两项规格状态 decided；登记表 36（decided 21 / placeholder 15）。
     func testIC077G124FactoryImageStrategyAndRegistry() {

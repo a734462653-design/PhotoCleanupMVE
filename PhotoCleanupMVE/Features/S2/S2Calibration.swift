@@ -986,6 +986,10 @@ enum S2ImageReturnType: String, Equatable {
     case degradedPreview
     case finalImage
     case failure
+    /// IC-077：翻页等导致的取消，不算失败，不进入失败态。
+    case cancelled
+    /// IC-077：资产失效（`fetchAssets` 为空），与失败同态呈现。
+    case assetUnavailable
 }
 
 struct S2ImageRequestReading: Equatable {

@@ -152,6 +152,17 @@ final class S2PrimaryMarkPresenter: ObservableObject {
     }
 }
 
+/// v15 回写决策 24：主图视口背景深色模式纯黑、浅色模式纯白，随 trait 实时切换。
+/// `UIColor.systemBackground` 在 iOS 上恰为这两个值；本枚举是视口背景的唯一定义处，
+/// 主图加载中的背景也复用它（IC-077）。
+enum S2ViewportBackground {
+    static let uiColor = UIColor.systemBackground
+
+    static var color: Color {
+        Color(uiColor: uiColor)
+    }
+}
+
 /// IC-076（v15 回写决策 29）：写入失败的底部短 toast。由状态机的一次性反馈事件驱动，
 /// 时长为定案参数 `feedbackToastDurationMilliseconds`；同一时刻只显示一条，新事件替换
 /// 旧事件（旧事件的到期不再清除新事件）。计时经 `scheduler` 注入，测试不依赖真实时钟。
@@ -398,7 +409,7 @@ struct S2View: View {
             )
 
             ZStack {
-                Color(uiColor: .systemBackground)
+                S2ViewportBackground.color
                     .ignoresSafeArea()
 
                 mainPhoto(
@@ -1326,6 +1337,10 @@ struct S2View: View {
             return L10n.text("s2.calibration.reading.return.final_image")
         case .failure:
             return L10n.text("s2.calibration.reading.return.failure")
+        case .cancelled:
+            return L10n.text("s2.calibration.reading.return.cancelled")
+        case .assetUnavailable:
+            return L10n.text("s2.calibration.reading.return.asset_unavailable")
         }
     }
 
@@ -1811,7 +1826,7 @@ enum S2PreviewData {
                     }
                     .overlay {
                         Rectangle()
-                            .stroke(item.isCurrent ? Color.white : Color.clear)
+                            .stroke(item.isCurrent ? Color.primary : Color.clear)
                     }
                 )
             },
