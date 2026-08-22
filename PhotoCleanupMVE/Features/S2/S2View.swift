@@ -152,10 +152,149 @@ final class S2PrimaryMarkPresenter: ObservableObject {
     }
 }
 
-/// IC-076：sheet 内容只发起"选中"与"取消"；写入与结果由协调器经状态机三段流程处理。
+/// IC-076（v15 回写决策 29）：写入失败的底部短 toast。由状态机的一次性反馈事件驱动，
+/// 时长为定案参数 `feedbackToastDurationMilliseconds`；同一时刻只显示一条，新事件替换
+/// 旧事件（旧事件的到期不再清除新事件）。计时经 `scheduler` 注入，测试不依赖真实时钟。
+final class S2FeedbackToastPresenter: ObservableObject {
+    typealias Scheduler = (TimeInterval, @escaping () -> Void) -> Void
+
+    @Published private(set) var activeEvent: S2FeedbackEvent?
+    private(set) var presentedCount = 0
+    private(set) var lastScheduledDurationSeconds: TimeInterval?
+    private var generation = 0
+    private let scheduler: Scheduler
+
+    init(
+        scheduler: @escaping Scheduler = { delay, action in
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + delay,
+                execute: action
+            )
+        }
+    ) {
+        self.scheduler = scheduler
+    }
+
+    static func text(for kind: S2FeedbackEventKind) -> String {
+        switch kind {
+        case .favoriteWriteFailed:
+            return L10n.text("s2.feedback.favorite_failed")
+        case .albumAdditionFailed:
+            return L10n.text("s2.feedback.album_addition_failed")
+        }
+    }
+
+    func present(
+        _ event: S2FeedbackEvent,
+        durationMilliseconds: Double
+    ) {
+        generation += 1
+        let currentGeneration = generation
+        presentedCount += 1
+        activeEvent = event
+        let seconds = max(0, durationMilliseconds) / 1_000
+        lastScheduledDurationSeconds = seconds
+        scheduler(seconds) { [weak self] in
+            self?.expire(generation: currentGeneration)
+        }
+    }
+
+    private func expire(generation expiredGeneration: Int) {
+        guard expiredGeneration == generation else {
+            return
+        }
+        activeEvent = nil
+    }
+}
+
+/// IC-076（v15 第二节第 4 部分）：操作条三个按钮的启用态。某按钮写入进行中时只禁用
+/// 该按钮；横栏拖动（`touchSequenceOwner != .none`）仍整体禁用操作条，与既有规则相同。
+struct S2ActionBarPresentation: Equatable {
+    let favoriteEnabled: Bool
+    let recentAlbumEnabled: Bool
+    let addAlbumEnabled: Bool
+    let showsRecentAlbum: Bool
+
+    init(machine: S2StateMachine) {
+        let barEnabled = machine.touchSequenceOwner == .none
+        favoriteEnabled = barEnabled && !machine.isActionInFlight(.favorite)
+        recentAlbumEnabled = barEnabled &&
+            !machine.isActionInFlight(.recentAlbum)
+        addAlbumEnabled = barEnabled
+        showsRecentAlbum = machine.recentAlbum != nil
+    }
+}
+
+/// IC-076：sheet 内容只发起「选中」与「取消」；写入与结果由协调器经状态机三段流程处理。
 struct S2AlbumPickerActions {
     let select: (S2AlbumReference) -> Void
     let cancel: () -> Void
+}
+
+/// IC-076：相簿选择 sheet 的呈现——用户相册列表按系统返回顺序、每项显示相册名；
+/// 列表为空时显示一行占位文案；含「取消」。
+struct S2AlbumPickerListPresentation: Equatable {
+    let albums: [S2AlbumReference]
+
+    var showsEmptyPlaceholder: Bool {
+        albums.isEmpty
+    }
+
+    var rowTitles: [String] {
+        albums.map(\.name)
+    }
+
+    var title: String {
+        L10n.text("s2.album_picker.title")
+    }
+
+    var emptyPlaceholder: String {
+        L10n.text("s2.album_picker.empty")
+    }
+}
+
+struct S2AlbumPickerListView: View {
+    let albums: [S2AlbumReference]
+    let actions: S2AlbumPickerActions
+
+    private var presentation: S2AlbumPickerListPresentation {
+        S2AlbumPickerListPresentation(albums: albums)
+    }
+
+    var body: some View {
+        VStack(spacing: S2OverlayLayout.minimumSpacing) {
+            Text(presentation.title)
+                .font(.headline)
+                .padding(.top, S2OverlayLayout.minimumSpacing)
+            if presentation.showsEmptyPlaceholder {
+                Text(presentation.emptyPlaceholder)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(albums) { album in
+                    Button {
+                        actions.select(album)
+                    } label: {
+                        Text(verbatim: album.name)
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: S2OverlayLayout.minimumTouchTarget,
+                                alignment: .leading
+                            )
+                    }
+                    .accessibilityLabel(Text(verbatim: album.name))
+                }
+                .listStyle(.plain)
+            }
+            Button(L10n.text("s2.action.cancel")) {
+                actions.cancel()
+            }
+            .frame(
+                maxWidth: .infinity,
+                minHeight: S2OverlayLayout.minimumTouchTarget
+            )
+            .padding(.bottom, S2OverlayLayout.minimumSpacing)
+        }
+    }
 }
 
 struct S2View: View {
@@ -194,6 +333,7 @@ struct S2View: View {
     @StateObject private var transitionDiagnostics:
         S2OnDeviceTransitionDiagnosticsCoordinator
     @StateObject private var primaryMark: S2PrimaryMarkPresenter
+    @StateObject private var feedbackToast: S2FeedbackToastPresenter
 
     init(
         machine: S2StateMachine,
@@ -217,7 +357,9 @@ struct S2View: View {
             S2GeometryDiagnosticsCoordinator(),
         transitionDiagnostics: S2OnDeviceTransitionDiagnosticsCoordinator =
             S2OnDeviceTransitionDiagnosticsCoordinator(),
-        primaryMarkPresenter: S2PrimaryMarkPresenter = S2PrimaryMarkPresenter()
+        primaryMarkPresenter: S2PrimaryMarkPresenter = S2PrimaryMarkPresenter(),
+        feedbackToastPresenter: S2FeedbackToastPresenter =
+            S2FeedbackToastPresenter()
     ) {
         self.machine = machine
         self.calibration = calibration
@@ -238,6 +380,7 @@ struct S2View: View {
             wrappedValue: transitionDiagnostics
         )
         _primaryMark = StateObject(wrappedValue: primaryMarkPresenter)
+        _feedbackToast = StateObject(wrappedValue: feedbackToastPresenter)
         _statusBarHidden = State(
             initialValue: machine.interfaceVisibility == .hidden
         )
@@ -277,6 +420,8 @@ struct S2View: View {
                     safeAreaInsets: safeAreaInsets
                 )
 
+                feedbackToastOverlay(safeAreaInsets: safeAreaInsets)
+
                 S2SafeAreaInsetsReader(insets: $safeAreaInsets)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
@@ -303,6 +448,17 @@ struct S2View: View {
                 interfaceVisibility: machine.interfaceVisibility
             )
         }
+        .onChange(of: machine.feedbackEvent) { _, event in
+            guard event != nil,
+                  let consumed = machine.consumeFeedbackEvent() else {
+                return
+            }
+            feedbackToast.present(
+                consumed,
+                durationMilliseconds:
+                    calibration.configuration.feedbackToastDurationMilliseconds
+            )
+        }
         .transaction { transaction in
             if !calibration.configuration.animationsEnabled {
                 transaction.animation = nil
@@ -313,9 +469,40 @@ struct S2View: View {
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: albumSheetBinding) {
             albumSheet
+                .disabled(machine.isActionInFlight(.albumPicker))
+                .overlay(alignment: .bottom) {
+                    feedbackToastOverlay(safeAreaInsets: .zero)
+                }
                 .interactiveDismissDisabled(
-                    !calibration.configuration.animationsEnabled
+                    !calibration.configuration.animationsEnabled ||
+                        machine.isActionInFlight(.albumPicker)
                 )
+        }
+    }
+
+    /// 底部短 toast：不接收点击、不遮挡手势；`P=呈现` 时同一呈现器也叠加在 sheet 底部，
+    /// 使 sheet 内的写入失败反馈可见。
+    @ViewBuilder
+    private func feedbackToastOverlay(
+        safeAreaInsets: S2OverlaySafeAreaInsets
+    ) -> some View {
+        if let event = feedbackToast.activeEvent {
+            Text(S2FeedbackToastPresenter.text(for: event.kind))
+                .font(.subheadline)
+                .padding(.horizontal, S2OverlayLayout.minimumSpacing * 2)
+                .padding(.vertical, S2OverlayLayout.minimumSpacing)
+                .background(.regularMaterial, in: Capsule())
+                .padding(
+                    .bottom,
+                    safeAreaInsets.bottom + S2OverlayLayout.minimumSpacing
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .bottom
+                )
+                .allowsHitTesting(false)
+                .accessibilityAddTraits(.isStaticText)
         }
     }
 
@@ -556,7 +743,8 @@ struct S2View: View {
     }
 
     private var actionBar: some View {
-        HStack {
+        let presentation = S2ActionBarPresentation(machine: machine)
+        return HStack {
             Button {
                 guard let request = machine.makeFavoriteToggleRequest() else {
                     return
@@ -570,6 +758,7 @@ struct S2View: View {
                         : "heart"
                 )
             }
+            .disabled(!presentation.favoriteEnabled)
             .s2MinimumTouchTarget(expandsHorizontally: true)
 
             if let album = machine.recentAlbum {
@@ -587,6 +776,7 @@ struct S2View: View {
                         systemImage: "clock"
                     )
                 }
+                .disabled(!presentation.recentAlbumEnabled)
                 .s2MinimumTouchTarget(expandsHorizontally: true)
             }
 
@@ -600,10 +790,10 @@ struct S2View: View {
                     systemImage: "rectangle.stack.badge.plus"
                 )
             }
+            .disabled(!presentation.addAlbumEnabled)
             .s2MinimumTouchTarget(expandsHorizontally: true)
         }
         .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
-        .disabled(machine.touchSequenceOwner != .none)
     }
 
     private var favoriteActionTitle: String {

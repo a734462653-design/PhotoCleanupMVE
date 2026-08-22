@@ -675,7 +675,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             bottomStripDragMinimumDistance: 4,
             bottomStripSwitchDistance: 44,
             bottomStripMarkSize: 14,
-            markPulseDurationMilliseconds: 150
+            markPulseDurationMilliseconds: 150,
+            feedbackToastDurationMilliseconds: 2000
         )
         let actual = S2CalibrationConfiguration.factoryPlaceholder
 
@@ -764,13 +765,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
         ).children.compactMap(\.label)
-        XCTAssertEqual(fieldNames.count, 35)
+        XCTAssertEqual(fieldNames.count, 36)
 
         let lines = S2CalibrationConfiguration.factoryPlaceholder
             .exportText()
             .split(separator: "\n")
             .map(String.init)
-        XCTAssertEqual(lines.count, 35 + 4)
+        XCTAssertEqual(lines.count, 36 + 4)
         XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 2)
         XCTAssertTrue(lines.contains("schemaVersion=2"))
         XCTAssertTrue(lines.contains(
@@ -791,8 +792,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-074 G97：登记表 33 条、双状态；decided 集合恰为 v15 第十一节第 1、2 部分已存在的 16 项。
     func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
         let connections = S2CalibrationConfiguration.parameterConnections
-        XCTAssertEqual(connections.count, 35)
-        XCTAssertEqual(Set(connections.map(\.name)).count, 35)
+        XCTAssertEqual(connections.count, 36)
+        XCTAssertEqual(Set(connections.map(\.name)).count, 36)
 
         let decided = Set(connections
             .filter { $0.specStatus == .decided }
@@ -809,9 +810,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
             "pageSpacing", "hapticOnPhotoSwitch",
             "doubleTapDecisionWindowMilliseconds",
             "edgePagingTriggerDistance", "edgePagingTriggerVelocity",
-            "bottomStripMarkSize", "markPulseDurationMilliseconds"
+            "bottomStripMarkSize", "markPulseDurationMilliseconds",
+            "feedbackToastDurationMilliseconds"
         ])
-        XCTAssertEqual(decided.count, 18)
+        XCTAssertEqual(decided.count, 19)
         XCTAssertEqual(placeholder.count, 17)
         XCTAssertTrue(decided.isDisjoint(with: placeholder))
         XCTAssertTrue(placeholder.contains("pinchMaxScale"))
