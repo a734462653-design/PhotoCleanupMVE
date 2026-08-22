@@ -1252,6 +1252,157 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(diagnostics.recordedEntries.count, countAfterStop)
     }
 
+    // IC-079 G141（夹具驱动，真机未覆盖）：生产页窗口 + 页内容提供者。连续两次滚动到 i+2：
+    // 经过 i+1 与到达 i+2 时页控制器均已存在；滚动期间外层 setContentOffset(animated:false) 写入 0 次；
+    // 结算后 currentIndex == i+2、各页 scale == 1、V 不变；最后一页再滑无越界页创建。
+    func testIC079G141FastPagingKeepsPagesPresentWithoutOffsetWrites() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let assetIDs = (1...6).map { "asset-\($0)" }
+        let machine = makeMachine(
+            configuration: configuration,
+            orderedAssetIDs: assetIDs,
+            currentIndex: 1
+        )
+        let controller = S2NativePagerViewController()
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(origin: .zero, size: physicalSize)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .fastPaging
+        diagnostics.start()
+        defer { diagnostics.stop() }
+
+        func page(at index: Int) -> S2NativePageContent? {
+            guard assetIDs.indices.contains(index) else {
+                return nil
+            }
+            let state = S2ViewportPresentationState(
+                interfaceVisibility: machine.interfaceVisibility,
+                bottomStripState: machine.bottomStripState,
+                sheetState: machine.sheetState
+            )
+            let value = S2ViewportLayout.metrics(
+                physicalSize: physicalSize,
+                presentationState: state,
+                assetAspectRatio: screenAspectRatio,
+                isScreenshot: true,
+                configuration: configuration
+            )
+            return S2NativePageContent(
+                index: index,
+                assetID: assetIDs[index],
+                interfaceVisibility: machine.interfaceVisibility,
+                isFramedPhoto: value.isFramedPhoto,
+                fittedSize: value.oneXDisplaySize,
+                nativeZoomBaseSize: value.nativeZoomBaseSize,
+                cornerRadius: value.oneXCornerRadius,
+                doubleTapTargetScale: value.doubleTapTargetScale,
+                assetPixelSize: CGSize(width: screenAspectRatio * 1_000, height: 1_000),
+                contentVersion: S2NativePhotoContentVersion(
+                    requestedScale: 1,
+                    requestStrategy: configuration.imageRequestStrategy,
+                    requestRevision: 0
+                ),
+                content: AnyView(Color.clear.frame(
+                    width: value.oneXDisplaySize.width,
+                    height: value.oneXDisplaySize.height
+                ))
+            )
+        }
+        func applyProductionWindow() {
+            let firstIndex = max(0, machine.currentIndex - 1)
+            let lastIndex = min(assetIDs.count - 1, machine.currentIndex + 1)
+            controller.apply(
+                machine: machine,
+                configuration: configuration,
+                viewportSize: physicalSize,
+                pages: (firstIndex...lastIndex).compactMap(page(at:)),
+                onLongPress: {},
+                pageContentProvider: page(at:)
+            )
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+        }
+        func nonAnimatedOffsetWriteCount() -> Int {
+            diagnostics.recordedEntries.filter {
+                if case let .event(name, _, details) = $0.payload {
+                    return name == "外层setContentOffset" && details.hasSuffix("animated=false")
+                }
+                return false
+            }.count
+        }
+
+        applyProductionWindow()
+        let paging = controller.pagingScrollView
+        let visibilityBefore = machine.interfaceVisibility
+        XCTAssertEqual(controller.diagnosticPageIndicesPresent, [0, 1, 2])
+        let writesBeforeScrolling = nonAnimatedOffsetWriteCount()
+
+        // 第一次滚动到 i+1 并滚停；SwiftUI 尚未刷新时立即开始第二次滚动。
+        controller.scrollViewWillBeginDragging(paging)
+        paging.setContentOffset(
+            CGPoint(x: paging.contentOffsetForPage(at: 1).x + paging.pageStride * 0.5, y: 0),
+            animated: false
+        )
+        paging.setContentOffset(paging.contentOffsetForPage(at: 2), animated: false)
+        controller.scrollViewDidEndDecelerating(paging)
+        XCTAssertEqual(machine.currentIndex, 2)
+
+        controller.scrollViewWillBeginDragging(paging)
+        paging.setContentOffset(
+            CGPoint(x: paging.contentOffsetForPage(at: 2).x + paging.pageStride * 0.5, y: 0),
+            animated: false
+        )
+        XCTAssertNotNil(controller.pageControllers[2], "经过 i+1 时页存在")
+        XCTAssertNotNil(controller.pageControllers[3], "滚向 i+2 时目标页已存在")
+        paging.setContentOffset(paging.contentOffsetForPage(at: 3), animated: false)
+        XCTAssertNotNil(controller.pageControllers[3], "到达 i+2 时页存在")
+        XCTAssertNotNil(controller.pageControllers[4], "i+2 的下一页已预先存在")
+        controller.scrollViewDidEndDecelerating(paging)
+
+        XCTAssertEqual(
+            nonAnimatedOffsetWriteCount() - writesBeforeScrolling,
+            0,
+            "滚动期间不得有非动画偏移写入"
+        )
+        XCTAssertEqual(machine.currentIndex, 3)
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(machine.interfaceVisibility, visibilityBefore)
+        XCTAssertEqual(paging.contentOffset, paging.contentOffsetForPage(at: 3))
+        for (_, pageController) in controller.pageControllers {
+            XCTAssertEqual(pageController.zoomScrollView.zoomScale, 1, accuracy: 0.000_001)
+        }
+
+        // SwiftUI 刷新：窗口 2…4 保留，按需创建的页在保留半径内不被移除。
+        applyProductionWindow()
+        XCTAssertEqual(controller.diagnosticPageIndicesPresent, [1, 2, 3, 4, 5].filter {
+            controller.pageControllers[$0] != nil
+        })
+        XCTAssertNotNil(controller.pageControllers[2])
+        XCTAssertNotNil(controller.pageControllers[3])
+        XCTAssertNotNil(controller.pageControllers[4])
+        XCTAssertNil(controller.pageControllers[0], "超出保留半径的页被移除")
+        XCTAssertEqual(paging.contentOffset, paging.contentOffsetForPage(at: 3))
+
+        // 序列边界：最后一页再滑，无越界页创建。
+        XCTAssertTrue(machine.handleNativePageChange(to: 5))
+        applyProductionWindow()
+        controller.scrollViewWillBeginDragging(paging)
+        paging.setContentOffset(
+            CGPoint(x: paging.contentOffsetForPage(at: 5).x + 80, y: 0),
+            animated: false
+        )
+        XCTAssertNil(controller.pageControllers[6])
+        XCTAssertTrue(controller.diagnosticPageIndicesPresent.allSatisfy { $0 < assetIDs.count })
+        paging.setContentOffset(paging.contentOffsetForPage(at: 5), animated: false)
+        controller.scrollViewDidEndDecelerating(paging)
+        XCTAssertEqual(machine.currentIndex, 5)
+    }
+
     // IC-079 R1 夹具探针（仅打印，不做断言）：生产页窗口（当前页 ±1）下，第一页滚停后、
     // SwiftUI 刷新（重新 apply）前立即开始第二次滚动到 i+2，逐步打印 pageIndicesPresent 与 contentOffset。
     func testIC079R1FastPagingWindowProbe() {

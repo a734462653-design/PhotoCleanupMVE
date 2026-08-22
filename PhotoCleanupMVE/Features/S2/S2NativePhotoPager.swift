@@ -132,6 +132,8 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
     let transitionDiagnosticsCoordinator:
         S2OnDeviceTransitionDiagnosticsCoordinator
     var imageLoadStateRegistry: S2ImageLoadStateRegistry? = nil
+    /// IC-079 R2：按索引提供任意页内容，供分页控制器在滚动中按需创建页。
+    var pageContentProvider: ((Int) -> S2NativePageContent?)? = nil
 
     func makeUIViewController(context _: Context) -> S2NativePagerViewController {
         let controller = S2NativePagerViewController()
@@ -154,7 +156,8 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
             configuration: configuration,
             viewportSize: viewportSize,
             pages: pages,
-            onLongPress: onLongPress
+            onLongPress: onLongPress,
+            pageContentProvider: pageContentProvider
         )
         transitionDiagnosticsCoordinator.recordUpdateUIView(
             wrotePhotoGeometry: transitionDiagnosticsCoordinator
@@ -2326,72 +2329,37 @@ final class S2NativePagerViewController: UIViewController,
         configuration: S2CalibrationConfiguration,
         viewportSize: CGSize,
         pages: [S2NativePageContent],
-        onLongPress: @escaping () -> Void
+        onLongPress: @escaping () -> Void,
+        pageContentProvider: ((Int) -> S2NativePageContent?)? = nil
     ) {
         loadViewIfNeeded()
         self.machine = machine
         self.configuration = configuration
         self.viewportSize = viewportSize
         self.onLongPress = onLongPress
+        self.pageContentProvider = pageContentProvider
         isApplyingSnapshot = true
 
+        // IC-079 R2：SwiftUI 传入的页列表（当前页 ±1）之外，滚动中按需创建的页
+        // 只要仍在 `currentIndex ± retainedPageRadius` 内就保留，避免翻页刷新时
+        // 先移除再重建；超出保留半径的页才移除。
         let pageIndices = Set(pages.map(\.index))
+        let retainedRange = (machine.currentIndex - Self.retainedPageRadius)...
+            (machine.currentIndex + Self.retainedPageRadius)
         let removedIndices = pageControllers.keys.filter {
-            !pageIndices.contains($0)
+            !pageIndices.contains($0) && !retainedRange.contains($0)
         }
         for index in removedIndices {
-            guard let controller = pageControllers[index] else {
-                continue
-            }
-            controller.willMove(toParent: nil)
-            controller.view.removeFromSuperview()
-            controller.removeFromParent()
-            pageControllers.removeValue(forKey: index)
-            transitionDiagnostics?.recordPageLifecycle(
-                created: false,
-                pageIndex: index,
-                assetLocalIdentifier: controller.diagnosticAssetLocalIdentifier
-            )
+            removePageController(at: index)
         }
 
         for page in pages {
-            let controller: S2NativeZoomPageController
-            if let existing = pageControllers[page.index] {
-                controller = existing
-            } else {
-                controller = S2NativeZoomPageController(
-                    page: page,
-                    owner: self
-                )
-                controller.transitionDiagnostics = transitionDiagnostics
-                addChild(controller)
-                pagingScrollView.addSubview(controller.view)
-                controller.prioritizeVerticalSwipe(
-                    over: pagingScrollView.panGestureRecognizer
-                )
-                controller.didMove(toParent: self)
-                pageControllers[page.index] = controller
-                transitionDiagnostics?.recordPageLifecycle(
-                    created: true,
-                    pageIndex: page.index,
-                    assetLocalIdentifier: page.assetID
-                )
-            }
-            if let zoomGeometry = page.zoomGeometry {
-                machine.updateAssetZoomGeometry(zoomGeometry, for: page.assetID)
-            }
-            controller.update(
-                page: page,
-                configuration: configuration,
-                maximumZoomScale: machine.pinchMaxScale(for: page.assetID),
-                scale: machine.scale,
-                viewportOffset: machine.viewportOffset,
-                isCurrent: page.index == machine.currentIndex,
-                viewportSize: viewportSize
-            )
-            if pendingPresentationTapPageIndex == page.index {
-                pendingPresentationTapPageIndex = nil
-                presentationTapStartTimestamp = nil
+            applyPage(page, machine: machine)
+        }
+        // 按需创建且不在本次列表内的页，用提供者的最新内容同步一次。
+        for index in pageControllers.keys.sorted() where !pageIndices.contains(index) {
+            if let page = pageContentProvider?(index) {
+                applyPage(page, machine: machine)
             }
         }
 
@@ -2407,6 +2375,115 @@ final class S2NativePagerViewController: UIViewController,
             )
         }
         isApplyingSnapshot = false
+    }
+
+    /// IC-079 R2：页保留半径（当前页 ±2）。页窗口大小不是规格量；保留半径只决定
+    /// 翻页刷新时哪些按需创建的页不被移除。
+    static let retainedPageRadius = 2
+    private var pageContentProvider: ((Int) -> S2NativePageContent?)?
+
+    private func applyPage(_ page: S2NativePageContent, machine: S2StateMachine) {
+        let controller = pageControllers[page.index] ?? makePageController(for: page)
+        if let zoomGeometry = page.zoomGeometry {
+            machine.updateAssetZoomGeometry(zoomGeometry, for: page.assetID)
+        }
+        controller.update(
+            page: page,
+            configuration: configuration,
+            maximumZoomScale: machine.pinchMaxScale(for: page.assetID),
+            scale: machine.scale,
+            viewportOffset: machine.viewportOffset,
+            isCurrent: page.index == machine.currentIndex,
+            viewportSize: viewportSize
+        )
+        if pendingPresentationTapPageIndex == page.index {
+            pendingPresentationTapPageIndex = nil
+            presentationTapStartTimestamp = nil
+        }
+    }
+
+    private func makePageController(
+        for page: S2NativePageContent
+    ) -> S2NativeZoomPageController {
+        let controller = S2NativeZoomPageController(
+            page: page,
+            owner: self
+        )
+        controller.transitionDiagnostics = transitionDiagnostics
+        addChild(controller)
+        pagingScrollView.addSubview(controller.view)
+        controller.prioritizeVerticalSwipe(
+            over: pagingScrollView.panGestureRecognizer
+        )
+        controller.didMove(toParent: self)
+        pageControllers[page.index] = controller
+        transitionDiagnostics?.recordPageLifecycle(
+            created: true,
+            pageIndex: page.index,
+            assetLocalIdentifier: page.assetID
+        )
+        return controller
+    }
+
+    private func removePageController(at index: Int) {
+        guard let controller = pageControllers[index] else {
+            return
+        }
+        controller.willMove(toParent: nil)
+        controller.view.removeFromSuperview()
+        controller.removeFromParent()
+        pageControllers.removeValue(forKey: index)
+        transitionDiagnostics?.recordPageLifecycle(
+            created: false,
+            pageIndex: index,
+            assetLocalIdentifier: controller.diagnosticAssetLocalIdentifier
+        )
+    }
+
+    /// IC-079 R2：滚动经过的页在进入视口前必须已存在。按外层偏移求当前覆盖的
+    /// 页索引区间并向两侧各扩一页，缺失的页由提供者按最新内容创建；越界索引不创建。
+    /// 只创建与布局，不写外层偏移、不改当前页的原生状态。
+    private func ensurePagesExistAroundPagingOffset() {
+        guard let machine, let pageContentProvider,
+              pagingScrollView.pageStride > 0 else {
+            return
+        }
+        let position = pagingScrollView.contentOffset.x / pagingScrollView.pageStride
+        let lower = Int(position.rounded(.down)) - 1
+        let upper = Int(position.rounded(.up)) + 1
+        let validRange = 0..<machine.orderedAssetIDs.count
+        var created = false
+        for index in lower...upper where validRange.contains(index) {
+            guard pageControllers[index] == nil,
+                  let page = pageContentProvider(index) else {
+                continue
+            }
+            let controller = makePageController(for: page)
+            if let zoomGeometry = page.zoomGeometry {
+                machine.updateAssetZoomGeometry(zoomGeometry, for: page.assetID)
+            }
+            controller.update(
+                page: page,
+                configuration: configuration,
+                maximumZoomScale: machine.pinchMaxScale(for: page.assetID),
+                scale: 1,
+                viewportOffset: .zero,
+                isCurrent: false,
+                viewportSize: viewportSize
+            )
+            controller.view.frame = pagingScrollView.frameForPage(at: index)
+            created = true
+        }
+        if created {
+            pagingScrollView.layoutIfNeeded()
+        }
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollView === pagingScrollView, !isApplyingSnapshot else {
+            return
+        }
+        ensurePagesExistAroundPagingOffset()
     }
 
     /// IC-079 R1：外层分页偏移的唯一 `setContentOffset` 入口，带来源与 animated 标志记入诊断。
@@ -3062,11 +3139,20 @@ final class S2NativePagerViewController: UIViewController,
                     : .zero
             )
         }
-        writePagingContentOffset(
-            pagingScrollView.contentOffsetForPage(at: machine.currentIndex),
-            animated: animatedPaging,
-            source: "S2NativePagerViewController.synchronizeNativeStateToMachine"
+        // IC-079 R2：停止时偏移已是原生分页的结算位置则不再二次写入；
+        // 只有偏移确实偏离（如竖向手势接管后）才对齐。
+        let settledOffset = pagingScrollView.contentOffsetForPage(
+            at: machine.currentIndex
         )
+        if animatedPaging ||
+            abs(pagingScrollView.contentOffset.x - settledOffset.x) > 0.5 ||
+            abs(pagingScrollView.contentOffset.y - settledOffset.y) > 0.5 {
+            writePagingContentOffset(
+                settledOffset,
+                animated: animatedPaging,
+                source: "S2NativePagerViewController.synchronizeNativeStateToMachine"
+            )
+        }
         isApplyingSnapshot = false
     }
 

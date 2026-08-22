@@ -541,7 +541,38 @@ struct S2View: View {
             machine.currentIndex + 1
         )
         let pages = Array(firstIndex...lastIndex).map { index in
-            let assetID = machine.orderedAssetIDs[index]
+            pageContent(index: index, viewportSize: viewportSize)
+        }
+
+        return S2NativePhotoPager(
+            machine: machine,
+            configuration: calibration.configuration,
+            viewportSize: viewportSize,
+            pages: pages,
+            onLongPress: {
+                calibrationOverlayState.toggleAccessControls()
+            },
+            diagnosticsCoordinator: geometryDiagnostics,
+            transitionDiagnosticsCoordinator: transitionDiagnostics,
+            imageLoadStateRegistry: imageLoadStateRegistry,
+            // IC-079 R2：滚动中按需创建页时，分页控制器用同一构造取任意索引的页内容。
+            pageContentProvider: { index in
+                guard machine.orderedAssetIDs.indices.contains(index) else {
+                    return nil
+                }
+                return pageContent(index: index, viewportSize: viewportSize)
+            }
+        )
+        .frame(width: viewportSize.width, height: viewportSize.height)
+        .clipped()
+    }
+
+    private func pageContent(
+        index: Int,
+        viewportSize: CGSize
+    ) -> S2NativePageContent {
+        let assetID = machine.orderedAssetIDs[index]
+        do {
             let pageMetrics = S2ViewportLayout.metrics(
                 physicalSize: viewportSize,
                 presentationState: viewportPresentationState,
@@ -597,21 +628,6 @@ struct S2View: View {
                 )
             )
         }
-
-        return S2NativePhotoPager(
-            machine: machine,
-            configuration: calibration.configuration,
-            viewportSize: viewportSize,
-            pages: pages,
-            onLongPress: {
-                calibrationOverlayState.toggleAccessControls()
-            },
-            diagnosticsCoordinator: geometryDiagnostics,
-            transitionDiagnosticsCoordinator: transitionDiagnostics,
-            imageLoadStateRegistry: imageLoadStateRegistry
-        )
-        .frame(width: viewportSize.width, height: viewportSize.height)
-        .clipped()
     }
 
     private func interfaceOverlay(
