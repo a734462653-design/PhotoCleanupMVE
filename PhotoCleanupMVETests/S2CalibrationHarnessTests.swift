@@ -674,7 +674,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             bottomStripEdgeFadeWidth: 24,
             bottomStripDragMinimumDistance: 4,
             bottomStripSwitchDistance: 44,
-            bottomStripMarkSize: 14
+            bottomStripMarkSize: 14,
+            markPulseDurationMilliseconds: 150
         )
         let actual = S2CalibrationConfiguration.factoryPlaceholder
 
@@ -763,13 +764,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
         ).children.compactMap(\.label)
-        XCTAssertEqual(fieldNames.count, 34)
+        XCTAssertEqual(fieldNames.count, 35)
 
         let lines = S2CalibrationConfiguration.factoryPlaceholder
             .exportText()
             .split(separator: "\n")
             .map(String.init)
-        XCTAssertEqual(lines.count, 34 + 4)
+        XCTAssertEqual(lines.count, 35 + 4)
         XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 2)
         XCTAssertTrue(lines.contains("schemaVersion=2"))
         XCTAssertTrue(lines.contains(
@@ -790,8 +791,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-074 G97：登记表 33 条、双状态；decided 集合恰为 v15 第十一节第 1、2 部分已存在的 16 项。
     func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
         let connections = S2CalibrationConfiguration.parameterConnections
-        XCTAssertEqual(connections.count, 34)
-        XCTAssertEqual(Set(connections.map(\.name)).count, 34)
+        XCTAssertEqual(connections.count, 35)
+        XCTAssertEqual(Set(connections.map(\.name)).count, 35)
 
         let decided = Set(connections
             .filter { $0.specStatus == .decided }
@@ -808,9 +809,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
             "pageSpacing", "hapticOnPhotoSwitch",
             "doubleTapDecisionWindowMilliseconds",
             "edgePagingTriggerDistance", "edgePagingTriggerVelocity",
-            "bottomStripMarkSize"
+            "bottomStripMarkSize", "markPulseDurationMilliseconds"
         ])
-        XCTAssertEqual(decided.count, 17)
+        XCTAssertEqual(decided.count, 18)
         XCTAssertEqual(placeholder.count, 17)
         XCTAssertTrue(decided.isDisjoint(with: placeholder))
         XCTAssertTrue(placeholder.contains("pinchMaxScale"))
@@ -5018,6 +5019,109 @@ final class S2CalibrationHarnessTests: XCTestCase {
             strip.markPresentation(for: $0)
         }
         XCTAssertEqual(dragging, idle)
+    }
+
+    // IC-075 G107（夹具驱动）：主图标记只在 V=显示 ∧ c∈D 渲染；脉冲只在 V=显示时
+    // 消费 alreadyMarked 触发一次；V=隐藏时通知照常消费、不脉冲。
+    func testIC075G107PrimaryMarkVisibilityMatrixAndPulseConsumption() {
+        XCTAssertTrue(S2PrimaryMarkPresenter.showsMark(
+            interfaceVisibility: .visible,
+            isMarked: true
+        ))
+        XCTAssertFalse(S2PrimaryMarkPresenter.showsMark(
+            interfaceVisibility: .visible,
+            isMarked: false
+        ))
+        XCTAssertFalse(S2PrimaryMarkPresenter.showsMark(
+            interfaceVisibility: .hidden,
+            isMarked: true
+        ))
+        XCTAssertFalse(S2PrimaryMarkPresenter.showsMark(
+            interfaceVisibility: .hidden,
+            isMarked: false
+        ))
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        XCTAssertEqual(configuration.markPulseDurationMilliseconds, 150)
+        XCTAssertEqual(
+            S2PrimaryMarkPresenter.markSize(
+                bottomStripMarkSize: configuration.bottomStripMarkSize
+            ),
+            28
+        )
+        XCTAssertEqual(S2PrimaryMarkPresenter.symbolName, "trash.circle.fill")
+
+        let presenter = S2PrimaryMarkPresenter()
+        XCTAssertFalse(presenter.consume(nil, interfaceVisibility: .visible))
+        XCTAssertEqual(presenter.consumedNoticeCount, 0)
+        XCTAssertTrue(presenter.consume(
+            .alreadyMarked(assetID: "asset-2"),
+            interfaceVisibility: .visible
+        ))
+        XCTAssertEqual(presenter.pulseCount, 1)
+        XCTAssertEqual(presenter.pulseID, 1)
+        XCTAssertFalse(presenter.consume(
+            .alreadyMarked(assetID: "asset-2"),
+            interfaceVisibility: .hidden
+        ))
+        XCTAssertEqual(presenter.consumedNoticeCount, 2)
+        XCTAssertEqual(presenter.pulseCount, 1)
+    }
+
+    // IC-075 G107 / 闸门 A（夹具驱动，真机未覆盖）：宿主 S2View 下，标记显示与脉冲
+    // 期间照片几何写入为 0；已标记再上滑后通知被消费且脉冲 +1；隐藏态不脉冲。
+    func testIC075G107HostedPrimaryMarkPulsesWithoutPhotoGeometryWrites() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(
+            configuration: configuration,
+            pendingDeletionAssetIDs: ["asset-2"]
+        )
+        XCTAssertTrue(machine.currentIsMarked)
+        let calibration = S2CalibrationModel(
+            persistence: S2DiscardingCalibrationPersistence()
+        )
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        let presenter = S2PrimaryMarkPresenter()
+        let view = S2View(
+            machine: machine,
+            calibration: calibration,
+            assetAspectRatio: { _ in self.screenAspectRatio },
+            assetIsScreenshot: { _ in true },
+            photoContent: { _ in AnyView(Color.clear) },
+            stripItemContent: { _ in AnyView(Color.clear) },
+            albumPickerContent: { _, _ in AnyView(EmptyView()) },
+            transitionDiagnostics: diagnostics,
+            primaryMarkPresenter: presenter
+        )
+        let controller = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+
+        XCTAssertTrue(diagnostics.canStart)
+        diagnostics.start()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
+
+        XCTAssertFalse(machine.handleSwipeUp())
+        XCTAssertNotNil(machine.semanticNotice)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.4))
+        XCTAssertNil(machine.semanticNotice)
+        XCTAssertEqual(presenter.pulseCount, 1)
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
+        XCTAssertTrue(machine.currentIsMarked)
+        XCTAssertEqual(machine.currentAssetID, "asset-2")
+        diagnostics.stop()
+
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+        XCTAssertFalse(machine.handleSwipeUp())
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+        XCTAssertNil(machine.semanticNotice)
+        XCTAssertEqual(presenter.consumedNoticeCount, 2)
+        XCTAssertEqual(presenter.pulseCount, 1)
     }
 
     // IC-068 G50：相同或回退的时钟读数仍被归一为严格递增的统一事件流。

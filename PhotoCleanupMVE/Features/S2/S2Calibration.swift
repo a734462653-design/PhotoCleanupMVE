@@ -78,6 +78,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDragMinimumDistance: Double
     var bottomStripSwitchDistance: Double
     var bottomStripMarkSize: Double
+    var markPulseDurationMilliseconds: Double
 
     // IC-064 显隐过渡与描边项目判断默认值；既有数值延续 IC-063。
     static let factoryPlaceholder = S2CalibrationConfiguration(
@@ -114,7 +115,8 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         bottomStripEdgeFadeWidth: 24,
         bottomStripDragMinimumDistance: 4,
         bottomStripSwitchDistance: 44,
-        bottomStripMarkSize: 14
+        bottomStripMarkSize: 14,
+        markPulseDurationMilliseconds: 150
     )
 
     var resolvedParameters: S2ResolvedParameters? {
@@ -163,7 +165,8 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             fitBorderDarkAlpha >= 0 && fitBorderDarkAlpha <= 1 &&
             fitBorderLightAlpha >= 0 && fitBorderLightAlpha <= 1 &&
             pageSpacing >= 0 &&
-            bottomStripMarkSize >= 0
+            bottomStripMarkSize >= 0 &&
+            markPulseDurationMilliseconds >= 0
     }
 
     func exportText() -> String {
@@ -205,7 +208,8 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("bottomStripEdgeFadeWidth", formatted(bottomStripEdgeFadeWidth)),
             ("bottomStripDragMinimumDistance", formatted(bottomStripDragMinimumDistance)),
             ("bottomStripSwitchDistance", formatted(bottomStripSwitchDistance)),
-            ("bottomStripMarkSize", formatted(bottomStripMarkSize))
+            ("bottomStripMarkSize", formatted(bottomStripMarkSize)),
+            ("markPulseDurationMilliseconds", formatted(markPulseDurationMilliseconds))
         ]
         return values.map { "\($0.0)=\($0.1)" }.joined(separator: "\n")
     }
@@ -256,7 +260,8 @@ extension S2CalibrationConfiguration {
         .init(name: "bottomStripEdgeFadeWidth", specStatus: .placeholder, wiringStatus: .unwired),
         .init(name: "bottomStripDragMinimumDistance", specStatus: .placeholder, wiringStatus: .effective),
         .init(name: "bottomStripSwitchDistance", specStatus: .placeholder, wiringStatus: .effective),
-        .init(name: "bottomStripMarkSize", specStatus: .decided, wiringStatus: .effective)
+        .init(name: "bottomStripMarkSize", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "markPulseDurationMilliseconds", specStatus: .decided, wiringStatus: .effective)
     ]
 }
 
@@ -296,6 +301,7 @@ extension S2CalibrationConfiguration {
         case bottomStripDragMinimumDistance
         case bottomStripSwitchDistance
         case bottomStripMarkSize
+        case markPulseDurationMilliseconds
     }
 
     // 旧版持久化数据没有本卡新增字段；其余字段仍按原契约严格解码。
@@ -335,7 +341,8 @@ extension S2CalibrationConfiguration {
             bottomStripEdgeFadeWidth: try values.decode(Double.self, forKey: .bottomStripEdgeFadeWidth),
             bottomStripDragMinimumDistance: try values.decode(Double.self, forKey: .bottomStripDragMinimumDistance),
             bottomStripSwitchDistance: try values.decode(Double.self, forKey: .bottomStripSwitchDistance),
-            bottomStripMarkSize: try values.decodeIfPresent(Double.self, forKey: .bottomStripMarkSize) ?? 14
+            bottomStripMarkSize: try values.decodeIfPresent(Double.self, forKey: .bottomStripMarkSize) ?? 14,
+            markPulseDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .markPulseDurationMilliseconds) ?? 150
         )
     }
 
@@ -375,6 +382,7 @@ extension S2CalibrationConfiguration {
         try values.encode(bottomStripDragMinimumDistance, forKey: .bottomStripDragMinimumDistance)
         try values.encode(bottomStripSwitchDistance, forKey: .bottomStripSwitchDistance)
         try values.encode(bottomStripMarkSize, forKey: .bottomStripMarkSize)
+        try values.encode(markPulseDurationMilliseconds, forKey: .markPulseDurationMilliseconds)
     }
 }
 

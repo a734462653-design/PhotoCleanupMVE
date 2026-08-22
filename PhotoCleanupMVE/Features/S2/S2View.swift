@@ -111,6 +111,47 @@ struct S2BottomStripMarkPresentation: Equatable {
     }
 }
 
+/// IC-075（v15 S2-1 / S2-4）：主图待删标记是视口右上角的浮层，只在 `V=显示`
+/// 且 `c ∈ D` 时渲染；它不参与照片几何，也不触发任何几何写入。已标记照片再次
+/// 上滑时消费 `.alreadyMarked` 并做一次 scale 脉冲；`V=隐藏` 时通知照常消费、不脉冲。
+final class S2PrimaryMarkPresenter: ObservableObject {
+    static let symbolName = "trash.circle.fill"
+
+    @Published private(set) var pulseID = 0
+    private(set) var pulseCount = 0
+    private(set) var consumedNoticeCount = 0
+
+    static func showsMark(
+        interfaceVisibility: S2InterfaceVisibility,
+        isMarked: Bool
+    ) -> Bool {
+        interfaceVisibility == .visible && isMarked
+    }
+
+    /// ④ 本卡取定的占位派生值：主图标记尺寸 = `bottomStripMarkSize × 2`，不新增参数。
+    static func markSize(bottomStripMarkSize: Double) -> CGFloat {
+        CGFloat(max(0, bottomStripMarkSize)) * 2
+    }
+
+    @discardableResult
+    func consume(
+        _ notice: S2SemanticNotice?,
+        interfaceVisibility: S2InterfaceVisibility
+    ) -> Bool {
+        guard let notice else {
+            return false
+        }
+        consumedNoticeCount += 1
+        guard case .alreadyMarked = notice,
+              interfaceVisibility == .visible else {
+            return false
+        }
+        pulseCount += 1
+        pulseID += 1
+        return true
+    }
+}
+
 struct S2AlbumPickerActions {
     let select: (S2AlbumReference) -> Void
     let reportFailure: () -> Void
@@ -148,6 +189,7 @@ struct S2View: View {
         S2GeometryDiagnosticsCoordinator
     @StateObject private var transitionDiagnostics:
         S2OnDeviceTransitionDiagnosticsCoordinator
+    @StateObject private var primaryMark: S2PrimaryMarkPresenter
 
     init(
         machine: S2StateMachine,
@@ -166,7 +208,8 @@ struct S2View: View {
         geometryDiagnostics: S2GeometryDiagnosticsCoordinator =
             S2GeometryDiagnosticsCoordinator(),
         transitionDiagnostics: S2OnDeviceTransitionDiagnosticsCoordinator =
-            S2OnDeviceTransitionDiagnosticsCoordinator()
+            S2OnDeviceTransitionDiagnosticsCoordinator(),
+        primaryMarkPresenter: S2PrimaryMarkPresenter = S2PrimaryMarkPresenter()
     ) {
         self.machine = machine
         self.calibration = calibration
@@ -185,6 +228,7 @@ struct S2View: View {
         _transitionDiagnostics = StateObject(
             wrappedValue: transitionDiagnostics
         )
+        _primaryMark = StateObject(wrappedValue: primaryMarkPresenter)
         _statusBarHidden = State(
             initialValue: machine.interfaceVisibility == .hidden
         )
@@ -217,6 +261,8 @@ struct S2View: View {
                 .allowsHitTesting(machine.interfaceVisibility == .visible)
                 .accessibilityHidden(machine.interfaceVisibility != .visible)
 
+                primaryMarkOverlay(safeAreaInsets: safeAreaInsets)
+
                 calibrationOverlay(
                     metrics: viewportMetrics,
                     safeAreaInsets: safeAreaInsets
@@ -238,6 +284,15 @@ struct S2View: View {
         .statusBarHidden(statusBarHidden)
         .onChange(of: machine.interfaceVisibility) { _, visibility in
             applyStatusBarAppearance(for: visibility)
+        }
+        .onChange(of: machine.semanticNotice) { _, notice in
+            guard notice != nil else {
+                return
+            }
+            primaryMark.consume(
+                machine.consumeSemanticNotice(),
+                interfaceVisibility: machine.interfaceVisibility
+            )
         }
         .transaction { transaction in
             if !calibration.configuration.animationsEnabled {
@@ -387,6 +442,55 @@ struct S2View: View {
         .padding(.leading, safeAreaInsets.leading)
         .padding(.bottom, safeAreaInsets.bottom)
         .padding(.trailing, safeAreaInsets.trailing)
+    }
+
+    /// 主图待删标记浮层。位置固定于视口右上角（顶部信息区下方，距安全区右侧与
+    /// 顶部信息区底边各 `horizontalPadding`），`Nx` 下不随平移移动；不参与命中测试。
+    @ViewBuilder
+    private func primaryMarkOverlay(
+        safeAreaInsets: S2OverlaySafeAreaInsets
+    ) -> some View {
+        if S2PrimaryMarkPresenter.showsMark(
+            interfaceVisibility: machine.interfaceVisibility,
+            isMarked: machine.currentIsMarked
+        ) {
+            let size = S2PrimaryMarkPresenter.markSize(
+                bottomStripMarkSize: calibration.configuration.bottomStripMarkSize
+            )
+            let halfPulse = max(
+                0.000_001,
+                calibration.configuration.markPulseDurationMilliseconds / 2_000
+            )
+            Image(systemName: S2PrimaryMarkPresenter.symbolName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .keyframeAnimator(
+                    initialValue: CGFloat(1),
+                    trigger: primaryMark.pulseID
+                ) { content, scale in
+                    content.scaleEffect(scale)
+                } keyframes: { _ in
+                    CubicKeyframe(1.3, duration: halfPulse)
+                    CubicKeyframe(1.0, duration: halfPulse)
+                }
+                .accessibilityLabel(L10n.text("s2.mark.primary.accessibility"))
+                .padding(
+                    .top,
+                    safeAreaInsets.top + S2OverlayLayout.topBarHeight +
+                        S2OverlayLayout.horizontalPadding
+                )
+                .padding(
+                    .trailing,
+                    safeAreaInsets.trailing + S2OverlayLayout.horizontalPadding
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .topTrailing
+                )
+                .allowsHitTesting(false)
+        }
     }
 
     private var topBar: some View {
