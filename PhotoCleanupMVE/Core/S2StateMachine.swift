@@ -644,6 +644,12 @@ final class S2StateMachine: ObservableObject {
         entry.sessionMergedPendingDeletionCount
     }
 
+    /// IC-075（v15 回写决策 29）：会话合并待删总数为 0 时确认页入口禁用、徽标不显示。
+    /// 只读派生量，视图只读它；`makeExitPayload` 不受影响。
+    var canEnterConfirmation: Bool {
+        sessionMergedPendingDeletionCount > 0
+    }
+
     var zoomState: S2ZoomState {
         scale == 1 ? .oneX : .nX
     }

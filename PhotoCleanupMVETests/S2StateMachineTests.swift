@@ -722,6 +722,41 @@ final class S2StateMachineTests: XCTestCase {
         )
     }
 
+    // IC-075 G106（夹具驱动）：会话待删总数为 0 时入口禁用、徽标不渲染；为 1 时相反；
+    // makeExitPayload 不受影响。
+    func testIC075G106ConfirmationEntryFollowsSessionPendingCount() {
+        let empty = makeMachine(
+            state: .visibleOneXIdle,
+            pendingDeletionAssetIDs: []
+        )
+        XCTAssertEqual(empty.sessionMergedPendingDeletionCount, 0)
+        XCTAssertFalse(empty.canEnterConfirmation)
+        let emptyEntry = S2ConfirmationEntryPresentation(
+            sessionPendingCount: empty.sessionMergedPendingDeletionCount
+        )
+        XCTAssertFalse(emptyEntry.isEnabled)
+        XCTAssertFalse(emptyEntry.showsBadge)
+        XCTAssertNil(emptyEntry.badgeText)
+        XCTAssertTrue(emptyEntry.accessibilityLabel.contains("0"))
+        XCTAssertNotNil(empty.makeExitPayload())
+
+        let one = makeMachine(state: .visibleOneXIdle)
+        XCTAssertEqual(one.sessionMergedPendingDeletionCount, 1)
+        XCTAssertTrue(one.canEnterConfirmation)
+        let oneEntry = S2ConfirmationEntryPresentation(
+            sessionPendingCount: one.sessionMergedPendingDeletionCount
+        )
+        XCTAssertTrue(oneEntry.isEnabled)
+        XCTAssertTrue(oneEntry.showsBadge)
+        XCTAssertEqual(oneEntry.badgeText, "1")
+        XCTAssertTrue(oneEntry.accessibilityLabel.contains("1"))
+        XCTAssertNotEqual(
+            oneEntry.accessibilityLabel,
+            emptyEntry.accessibilityLabel
+        )
+        XCTAssertNotNil(one.makeExitPayload())
+    }
+
     // IC-074 R2 正向：1x 下以横向结束的主图拖动不再由状态机切页（本卡唯一有意的行为变化）。
     func testIC074R2OneXHorizontalDragEndDoesNotSwitchPhoto() {
         let visible = makeMachine(state: .visibleOneXIdle)

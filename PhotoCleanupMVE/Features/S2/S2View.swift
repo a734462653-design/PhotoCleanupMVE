@@ -60,6 +60,33 @@ struct S2BottomStripItemPresentation {
     let stripState: S2BottomStripState
 }
 
+/// IC-075（v15 回写决策 29）：确认页入口的呈现只由会话合并待删总数决定——
+/// 大于 0 时显示纯数字徽标并可点击；等于 0 时不渲染徽标且入口禁用。
+struct S2ConfirmationEntryPresentation: Equatable {
+    let sessionPendingCount: Int
+
+    var isEnabled: Bool {
+        sessionPendingCount > 0
+    }
+
+    var showsBadge: Bool {
+        isEnabled
+    }
+
+    var badgeText: String? {
+        showsBadge ? String(sessionPendingCount) : nil
+    }
+
+    var accessibilityLabel: String {
+        L10n.text(
+            isEnabled
+                ? "s2.confirm.accessibility"
+                : "s2.confirm.disabled.accessibility",
+            replacing: ["count": String(sessionPendingCount)]
+        )
+    }
+}
+
 struct S2AlbumPickerActions {
     let select: (S2AlbumReference) -> Void
     let reportFailure: () -> Void
@@ -377,20 +404,24 @@ struct S2View: View {
             } label: {
                 Image(systemName: "trash")
                     .overlay(alignment: .topTrailing) {
-                        Text(String(machine.sessionMergedPendingDeletionCount))
-                            .monospacedDigit()
+                        if let badgeText = confirmationEntry.badgeText {
+                            Text(badgeText)
+                                .monospacedDigit()
+                        }
                     }
             }
-            .accessibilityLabel(L10n.text(
-                "s2.confirm.accessibility",
-                replacing: [
-                    "count": String(machine.sessionMergedPendingDeletionCount)
-                ]
-            ))
+            .disabled(!machine.canEnterConfirmation)
+            .accessibilityLabel(confirmationEntry.accessibilityLabel)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
         }
         .disabled(machine.touchSequenceOwner != .none)
+    }
+
+    private var confirmationEntry: S2ConfirmationEntryPresentation {
+        S2ConfirmationEntryPresentation(
+            sessionPendingCount: machine.sessionMergedPendingDeletionCount
+        )
     }
 
     private var actionBar: some View {
