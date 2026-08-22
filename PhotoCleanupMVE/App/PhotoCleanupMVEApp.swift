@@ -73,9 +73,10 @@ struct PhotoCleanupMVEApp: App {
                             },
                             albumPickerContent: { _, actions in
                                 AnyView(
-                                    Button(L10n.text("s2.action.cancel")) {
-                                        actions.cancel()
-                                    }
+                                    S2AlbumPickerListView(
+                                        albums: coordinator.s2UserAlbums(),
+                                        actions: actions
+                                    )
                                 )
                             },
                             onBack: { payload in
@@ -84,6 +85,20 @@ struct PhotoCleanupMVEApp: App {
                             onConfirmation: { payload in
                                 _ = coordinator.enterConfirmationFromS2(
                                     with: payload
+                                )
+                            },
+                            onFavoriteRequest: { request in
+                                _ = coordinator.requestS2FavoriteToggle(request)
+                            },
+                            onRecentAlbumRequest: { request in
+                                _ = coordinator.requestS2RecentAlbumAddition(
+                                    request
+                                )
+                            },
+                            onAlbumPickerSelection: { request, album in
+                                _ = coordinator.requestS2AlbumPickerSelection(
+                                    request,
+                                    album: album
                                 )
                             }
                         )

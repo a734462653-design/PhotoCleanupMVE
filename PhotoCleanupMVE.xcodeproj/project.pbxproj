@@ -50,6 +50,7 @@
 		200000000000000000000029 /* S2CalibrationHarnessTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002C /* S2CalibrationHarnessTests.swift */; };
 		20000000000000000000002A /* S2NativePhotoPager.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002D /* S2NativePhotoPager.swift */; };
 		20000000000000000000002B /* S2RecentAlbumStore.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002E /* S2RecentAlbumStore.swift */; };
+		20000000000000000000002C /* PhotoAssetActionService.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002F /* PhotoAssetActionService.swift */; };
 		20000000000000000000002D /* S2ActionBarWiringTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000030 /* S2ActionBarWiringTests.swift */; };
 /* PBXBuildFile 区段结束 */
 
@@ -110,6 +111,7 @@
 		10000000000000000000002C /* S2CalibrationHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2CalibrationHarnessTests.swift; sourceTree = "<group>"; };
 		10000000000000000000002D /* S2NativePhotoPager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2NativePhotoPager.swift; sourceTree = "<group>"; };
 		10000000000000000000002E /* S2RecentAlbumStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2RecentAlbumStore.swift; sourceTree = "<group>"; };
+		10000000000000000000002F /* PhotoAssetActionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAssetActionService.swift; sourceTree = "<group>"; };
 		100000000000000000000030 /* S2ActionBarWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2ActionBarWiringTests.swift; sourceTree = "<group>"; };
 /* PBXFileReference 区段结束 */
 
@@ -187,6 +189,7 @@
 				10000000000000000000000A /* PhotoDeletionService.swift */,
 				10000000000000000000001B /* FreeDiskSpaceReader.swift */,
 				10000000000000000000002E /* S2RecentAlbumStore.swift */,
+				10000000000000000000002F /* PhotoAssetActionService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -405,6 +408,7 @@
 				20000000000000000000000A /* PhotoDeletionService.swift（源码） */,
 				200000000000000000000018 /* FreeDiskSpaceReader.swift（源码） */,
 				20000000000000000000002B /* S2RecentAlbumStore.swift（源码） */,
+				20000000000000000000002C /* PhotoAssetActionService.swift（源码） */,
 				200000000000000000000020 /* S1View.swift（源码） */,
 				200000000000000000000023 /* S2View.swift（源码） */,
 				200000000000000000000028 /* S2Calibration.swift（源码） */,

@@ -49,6 +49,8 @@ final class CleanupCoordinator: ObservableObject {
     private let photoLibrary: PhotoLibraryService
     private let sizeScanner: AssetSizeScanner
     private let deletionService: any PhotoDeletionServicing
+    private let assetActionService: any PhotoAssetActionServicing
+    private let recentAlbumStore: any S2RecentAlbumStoring
     private let freeDiskSpaceReader: FreeDiskSpaceReader
     private let persistence: SessionPersistence
     private let routeConfiguration: CleanupRouteConfiguration
@@ -65,6 +67,10 @@ final class CleanupCoordinator: ObservableObject {
         photoLibrary: PhotoLibraryService? = nil,
         sizeScanner: AssetSizeScanner = AssetSizeScanner(),
         deletionService: any PhotoDeletionServicing = DeletionServiceDependency.production(),
+        assetActionService: any PhotoAssetActionServicing =
+            PhotoKitAssetActionService(),
+        recentAlbumStore: any S2RecentAlbumStoring =
+            S2UserDefaultsRecentAlbumStore(),
         freeDiskSpaceReader: FreeDiskSpaceReader = FreeDiskSpaceReader(),
         persistence: SessionPersistence = SessionPersistence(),
         routeConfiguration: CleanupRouteConfiguration =
@@ -75,6 +81,8 @@ final class CleanupCoordinator: ObservableObject {
         self.photoLibrary = photoLibrary ?? PhotoLibraryService()
         self.sizeScanner = sizeScanner
         self.deletionService = deletionService
+        self.assetActionService = assetActionService
+        self.recentAlbumStore = recentAlbumStore
         self.freeDiskSpaceReader = freeDiskSpaceReader
         self.persistence = persistence
         self.routeConfiguration = routeConfiguration
@@ -146,9 +154,12 @@ final class CleanupCoordinator: ObservableObject {
             imageRequestStrategy:
                 s2Calibration.configuration.imageRequestStrategy,
             initialFavoriteAssetIDs: favoriteAssetIDs,
-            initialRecentAlbum: nil,
+            initialRecentAlbum: validatedRecentAlbum(),
             pendingDeletionDidChange: { [weak self] pendingAssetIDs in
                 self?.receiveS2PendingDeletionChange(pendingAssetIDs)
+            },
+            recentAlbumDidChange: { [weak self] album in
+                self?.recentAlbumStore.save(album)
             }
         )
         guard let machine else {
@@ -229,6 +240,118 @@ final class CleanupCoordinator: ObservableObject {
 
     func s2AssetIsScreenshot(for assetID: String) -> Bool {
         loadedAssets[assetID]?.mediaSubtypes.contains(.photoScreenshot) == true
+    }
+
+    // MARK: - S2 操作条写入（IC-076）
+
+    /// 相簿选择 sheet 的内容：用户相册（`.album` / `.albumRegular`），按系统返回顺序。
+    func s2UserAlbums() -> [S2AlbumReference] {
+        assetActionService.userAlbums()
+    }
+
+    /// 收藏：点击时由状态机登记进行中（`x` 已绑定在 `request` 中），结果回主线程后
+    /// 作用于同一台状态机与同一 `request`；S2 已离开则丢弃结果。
+    @discardableResult
+    func requestS2FavoriteToggle(_ request: S2AssetActionRequest) -> Bool {
+        guard route == .s2,
+              let machine = s2Machine,
+              machine.beginFavoriteToggle(request) else {
+            return false
+        }
+        assetActionService.toggleFavorite(
+            assetID: request.targetAssetID
+        ) { [weak self] succeeded in
+            Self.deliverOnMain {
+                guard let self, self.s2Machine === machine else {
+                    return
+                }
+                _ = machine.completeFavoriteToggle(
+                    request,
+                    succeeded: succeeded
+                )
+            }
+        }
+        return true
+    }
+
+    @discardableResult
+    func requestS2RecentAlbumAddition(_ request: S2AlbumActionRequest) -> Bool {
+        guard route == .s2,
+              let machine = s2Machine,
+              machine.beginRecentAlbumAddition(request) else {
+            return false
+        }
+        assetActionService.addAsset(
+            assetID: request.targetAssetID,
+            toAlbumWithID: request.album.id
+        ) { [weak self] outcome in
+            Self.deliverOnMain {
+                guard let self, self.s2Machine === machine else {
+                    return
+                }
+                _ = machine.completeRecentAlbumAddition(
+                    request,
+                    outcome: outcome
+                )
+            }
+        }
+        return true
+    }
+
+    @discardableResult
+    func requestS2AlbumPickerSelection(
+        _ request: S2AlbumPickerRequest,
+        album: S2AlbumReference
+    ) -> Bool {
+        guard route == .s2,
+              let machine = s2Machine,
+              machine.beginAlbumPickerSelection(request, album: album) else {
+            return false
+        }
+        assetActionService.addAsset(
+            assetID: request.targetAssetID,
+            toAlbumWithID: album.id
+        ) { [weak self] outcome in
+            Self.deliverOnMain {
+                guard let self, self.s2Machine === machine else {
+                    return
+                }
+                _ = machine.completeAlbumPickerSelection(
+                    request,
+                    album: album,
+                    outcome: outcome
+                )
+            }
+        }
+        return true
+    }
+
+    /// 进入 S2 时读取持久化的 `H` 并用服务校验相册仍存在；不存在则清除持久化值。
+    /// 校验是本地元数据查询，在 `enterS2` 内同步完成。
+    private func validatedRecentAlbum() -> S2AlbumReference? {
+        guard let stored = recentAlbumStore.load() else {
+            return nil
+        }
+        guard assetActionService.albumExists(id: stored.id) else {
+            recentAlbumStore.save(nil)
+            return nil
+        }
+        return stored
+    }
+
+    /// 服务回调可能来自任意线程：已在主线程则同步交付，否则切回主线程。
+    nonisolated private static func deliverOnMain(
+        _ body: @escaping @MainActor () -> Void
+    ) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                body()
+            }
+        } else {
+            Task { @MainActor in
+                body()
+            }
+        }
     }
 
     func removeAsset(_ identifier: String) {

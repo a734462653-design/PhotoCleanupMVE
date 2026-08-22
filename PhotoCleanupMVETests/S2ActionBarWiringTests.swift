@@ -173,6 +173,216 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertEqual(cancelled, 1)
     }
 
+    // IC-076 G115：加入相册前的同步判定只有一处定义；已包含时不写入（假服务写入计数 0）、
+    // 结果为 success(alreadyContained: true)；相册不存在 → albumUnavailable；资产不存在 → failure。
+    func testIC076G115AdditionPlanSkipsWriteWhenAlreadyContained() {
+        XCTAssertEqual(
+            PhotoAlbumAdditionPlan.make(
+                albumExists: false, assetExists: true, alreadyContained: true
+            ),
+            .albumUnavailable
+        )
+        XCTAssertEqual(
+            PhotoAlbumAdditionPlan.make(
+                albumExists: true, assetExists: false, alreadyContained: false
+            ),
+            .assetUnavailable
+        )
+        XCTAssertEqual(
+            PhotoAlbumAdditionPlan.make(
+                albumExists: true, assetExists: true, alreadyContained: true
+            ),
+            .alreadyContained
+        )
+        XCTAssertEqual(
+            PhotoAlbumAdditionPlan.make(
+                albumExists: true, assetExists: true, alreadyContained: false
+            ),
+            .write
+        )
+
+        let service = FakeAssetActionService(
+            albums: [S2AlbumReference(id: "album-1", name: "相簿一")],
+            containedPairs: [FakeAssetActionService.pair("album-1", "asset-2")]
+        )
+        var outcomes: [S2AlbumAdditionOutcome] = []
+        service.addAsset(assetID: "asset-2", toAlbumWithID: "album-1") {
+            outcomes.append($0)
+        }
+        XCTAssertEqual(outcomes, [.success(alreadyContained: true)])
+        XCTAssertEqual(service.writeCount, 0)
+
+        service.addAsset(assetID: "asset-2", toAlbumWithID: "album-missing") {
+            outcomes.append($0)
+        }
+        XCTAssertEqual(outcomes.last, .albumUnavailable)
+        XCTAssertEqual(service.writeCount, 0)
+
+        service.addAsset(assetID: "", toAlbumWithID: "album-1") {
+            outcomes.append($0)
+        }
+        XCTAssertEqual(outcomes.last, .failure)
+        XCTAssertEqual(service.writeCount, 0)
+
+        service.addAsset(assetID: "asset-1", toAlbumWithID: "album-1") {
+            outcomes.append($0)
+        }
+        XCTAssertEqual(service.writeCount, 1)
+        XCTAssertEqual(service.pendingAdditions.count, 1)
+        service.completePendingAddition(with: .success(alreadyContained: false))
+        XCTAssertEqual(outcomes.last, .success(alreadyContained: false))
+    }
+
+    // IC-076 G118（协调器）：enterS2 读取持久化 H 并校验存在性——不存在则清除持久化值且
+    // 状态机无 H；存在则照常注入。
+    @MainActor
+    func testIC076G118EnterS2ClearsPersistedRecentAlbumWhenAlbumMissing() throws {
+        let missing = S2AlbumReference(id: "album-missing", name: "已删除")
+        let missingStore = S2InMemoryRecentAlbumStore(initial: missing)
+        let missingService = FakeAssetActionService(albums: [])
+        let missingCoordinator = try makeCoordinatorInS2(
+            service: missingService,
+            store: missingStore
+        )
+        XCTAssertEqual(missingCoordinator.route, .s2)
+        XCTAssertNil(missingCoordinator.s2Machine?.recentAlbum)
+        XCTAssertNil(missingStore.load())
+        XCTAssertEqual(missingStore.saveCount, 1)
+        XCTAssertEqual(missingService.albumExistsQueries, ["album-missing"])
+
+        let existing = S2AlbumReference(id: "album-1", name: "相簿一")
+        let existingStore = S2InMemoryRecentAlbumStore(initial: existing)
+        let existingService = FakeAssetActionService(albums: [existing])
+        let existingCoordinator = try makeCoordinatorInS2(
+            service: existingService,
+            store: existingStore
+        )
+        XCTAssertEqual(existingCoordinator.s2Machine?.recentAlbum, existing)
+        XCTAssertEqual(existingStore.load(), existing)
+        XCTAssertEqual(existingStore.saveCount, 0)
+        XCTAssertEqual(
+            existingCoordinator.s2UserAlbums(),
+            [existing]
+        )
+
+        let emptyStore = S2InMemoryRecentAlbumStore()
+        let emptyService = FakeAssetActionService(albums: [existing])
+        let emptyCoordinator = try makeCoordinatorInS2(
+            service: emptyService,
+            store: emptyStore
+        )
+        XCTAssertNil(emptyCoordinator.s2Machine?.recentAlbum)
+        XCTAssertTrue(emptyService.albumExistsQueries.isEmpty)
+    }
+
+    // IC-076 R1（协调器接线）：三条请求路径——点击时登记进行中、服务结果回到同一台状态机
+    // 与同一 request；成功的相簿加入经 H 回调持久化；历史相册不存在时清除持久化值。
+    @MainActor
+    func testIC076R1CoordinatorWiresThreeActionsThroughServiceAndStore() throws {
+        let album = S2AlbumReference(id: "album-1", name: "相簿一")
+        let other = S2AlbumReference(id: "album-2", name: "相簿二")
+        let store = S2InMemoryRecentAlbumStore(initial: album)
+        let service = FakeAssetActionService(albums: [album, other])
+        let coordinator = try makeCoordinatorInS2(service: service, store: store)
+        let machine = try XCTUnwrap(coordinator.s2Machine)
+        let targetAssetID = machine.currentAssetID
+
+        // 收藏：失败 → 反馈事件 1 次、标志清除、favorite(x) 不变。
+        let favoriteRequest = try XCTUnwrap(machine.makeFavoriteToggleRequest())
+        XCTAssertTrue(coordinator.requestS2FavoriteToggle(favoriteRequest))
+        XCTAssertTrue(machine.isActionInFlight(.favorite))
+        XCTAssertFalse(coordinator.requestS2FavoriteToggle(favoriteRequest))
+        XCTAssertEqual(service.favoriteRequests, [targetAssetID])
+        service.completePendingFavorite(succeeded: false)
+        XCTAssertFalse(machine.isActionInFlight(.favorite))
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+        XCTAssertFalse(machine.favoriteAssetIDs.contains(targetAssetID))
+
+        // 收藏：成功 → favorite(x) 切换、无新反馈。
+        let secondFavorite = try XCTUnwrap(machine.makeFavoriteToggleRequest())
+        XCTAssertTrue(coordinator.requestS2FavoriteToggle(secondFavorite))
+        service.completePendingFavorite(succeeded: true)
+        XCTAssertTrue(machine.favoriteAssetIDs.contains(targetAssetID))
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+
+        // 相簿选择：成功 → H 更新并持久化、sheet 关闭。
+        let pickerRequest = try XCTUnwrap(machine.presentAlbumPicker())
+        XCTAssertTrue(coordinator.requestS2AlbumPickerSelection(
+            pickerRequest,
+            album: other
+        ))
+        XCTAssertTrue(machine.isActionInFlight(.albumPicker))
+        XCTAssertEqual(
+            service.additionRequests.last.map { [$0.assetID, $0.albumID] },
+            [targetAssetID, "album-2"]
+        )
+        service.completePendingAddition(with: .success(alreadyContained: false))
+        XCTAssertEqual(machine.recentAlbum, other)
+        XCTAssertEqual(store.load(), other)
+        XCTAssertEqual(machine.sheetState, .closed)
+        XCTAssertFalse(machine.isActionInFlight(.albumPicker))
+
+        // 历史相册：目标相册已不存在 → H 清除并清除持久化值、无反馈事件。
+        let recentRequest = try XCTUnwrap(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertEqual(recentRequest.album, other)
+        XCTAssertTrue(coordinator.requestS2RecentAlbumAddition(recentRequest))
+        XCTAssertTrue(machine.isActionInFlight(.recentAlbum))
+        service.completePendingAddition(with: .albumUnavailable)
+        XCTAssertNil(machine.recentAlbum)
+        XCTAssertNil(store.load())
+        XCTAssertFalse(machine.isActionInFlight(.recentAlbum))
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+        XCTAssertNil(machine.makeRecentAlbumAdditionRequest())
+
+        // 离开 S2 后到达的结果被丢弃，不作用于新状态机。
+        let lateFavorite = try XCTUnwrap(machine.makeFavoriteToggleRequest())
+        XCTAssertTrue(coordinator.requestS2FavoriteToggle(lateFavorite))
+        let payload = try XCTUnwrap(machine.makeExitPayload())
+        XCTAssertTrue(coordinator.leaveS2(with: payload))
+        XCTAssertEqual(coordinator.route, .s1)
+        service.completePendingFavorite(succeeded: false)
+        XCTAssertEqual(machine.feedbackEventCount, 1)
+        XCTAssertTrue(machine.isActionInFlight(.favorite))
+    }
+
+    @MainActor
+    private func makeCoordinatorInS2(
+        service: FakeAssetActionService,
+        store: S2InMemoryRecentAlbumStore
+    ) throws -> CleanupCoordinator {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let assets = (1...3).map { day in
+            S1PhotoAssetSnapshot(
+                identifier: "资产-\(day)",
+                creationDate: calendar.date(
+                    from: DateComponents(year: 2026, month: 8, day: day, hour: 12)
+                )
+            )
+        }
+        let photoLibrary = PhotoLibraryService(
+            s1Source: S1PhotoLibrarySource(
+                authorizationStatus: { .authorized },
+                fetchAssets: { assets },
+                fetchAssetCollections: { _, _ in [] }
+            )
+        )
+        let coordinator = CleanupCoordinator(
+            photoLibrary: photoLibrary,
+            assetActionService: service,
+            recentAlbumStore: store
+        )
+        XCTAssertTrue(coordinator.enterS1(sessionID: "会话-076"))
+        let s1Machine = try XCTUnwrap(coordinator.s1Machine)
+        let request = try XCTUnwrap(s1Machine.currentReadRequest)
+        let ranges = try coordinator.readS1Ranges(groupedBy: .month).get()
+        XCTAssertTrue(s1Machine.completeRangeRead(.success(ranges), for: request))
+        let range = try XCTUnwrap(ranges.first)
+        let handoff = try XCTUnwrap(s1Machine.makeS2Handoff(for: range.id))
+        XCTAssertTrue(coordinator.enterS2(from: handoff))
+        return coordinator
+    }
+
     private func makeMachine(
         recentAlbum: S2AlbumReference? = nil,
         pendingDeletionAssetIDs: Set<String> = []
@@ -254,6 +464,95 @@ final class S2ActionBarWiringTests: XCTestCase {
             fatalError("测试无法继续")
         }
         return value
+    }
+}
+
+/// 测试用假写入服务：记录请求、延迟完成；加入相册沿用生产的 `PhotoAlbumAdditionPlan`，
+/// 已包含时不计写入。完成回调在调用方线程（主线程）同步触发。
+final class FakeAssetActionService: PhotoAssetActionServicing {
+    struct AdditionRequest: Equatable {
+        let assetID: String
+        let albumID: String
+    }
+
+    private let albums: [S2AlbumReference]
+    private let containedPairs: Set<String>
+    private(set) var favoriteRequests: [String] = []
+    private(set) var additionRequests: [AdditionRequest] = []
+    private(set) var albumExistsQueries: [String] = []
+    private(set) var writeCount = 0
+    private var pendingFavorites: [(Bool) -> Void] = []
+    private(set) var pendingAdditions: [(S2AlbumAdditionOutcome) -> Void] = []
+
+    init(
+        albums: [S2AlbumReference],
+        containedPairs: Set<String> = []
+    ) {
+        self.albums = albums
+        self.containedPairs = containedPairs
+    }
+
+    static func pair(_ albumID: String, _ assetID: String) -> String {
+        "\(albumID)|\(assetID)"
+    }
+
+    func toggleFavorite(
+        assetID: String,
+        completion: @escaping (Bool) -> Void
+    ) {
+        favoriteRequests.append(assetID)
+        pendingFavorites.append(completion)
+    }
+
+    func addAsset(
+        assetID: String,
+        toAlbumWithID albumID: String,
+        completion: @escaping (S2AlbumAdditionOutcome) -> Void
+    ) {
+        additionRequests.append(
+            AdditionRequest(assetID: assetID, albumID: albumID)
+        )
+        let plan = PhotoAlbumAdditionPlan.make(
+            albumExists: albums.contains { $0.id == albumID },
+            assetExists: !assetID.isEmpty,
+            alreadyContained: containedPairs.contains(
+                Self.pair(albumID, assetID)
+            )
+        )
+        switch plan {
+        case .albumUnavailable:
+            completion(.albumUnavailable)
+        case .assetUnavailable:
+            completion(.failure)
+        case .alreadyContained:
+            completion(.success(alreadyContained: true))
+        case .write:
+            writeCount += 1
+            pendingAdditions.append(completion)
+        }
+    }
+
+    func userAlbums() -> [S2AlbumReference] {
+        albums
+    }
+
+    func albumExists(id: String) -> Bool {
+        albumExistsQueries.append(id)
+        return albums.contains { $0.id == id }
+    }
+
+    func completePendingFavorite(succeeded: Bool) {
+        guard !pendingFavorites.isEmpty else {
+            return XCTFail("没有进行中的收藏写入")
+        }
+        pendingFavorites.removeFirst()(succeeded)
+    }
+
+    func completePendingAddition(with outcome: S2AlbumAdditionOutcome) {
+        guard !pendingAdditions.isEmpty else {
+            return XCTFail("没有进行中的相册写入")
+        }
+        pendingAdditions.removeFirst()(outcome)
     }
 }
 
