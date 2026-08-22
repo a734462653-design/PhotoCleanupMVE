@@ -828,6 +828,174 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
+    // IC-077 G127（原生分页控制器夹具 + 脚本化假策略计数；页窗口按 S2View.mainPhoto 规则为当前页 ±1）：
+    // 捏合中连续 10 次 s 变化 0 次请求；捏合结束 1 次；双击到达目标倍率 1 次（退出与进入各 1）；
+    // 翻页后新进窗口的一页 1 次、离开窗口的一页旧请求被取消、成为当前页的一页不重复请求；
+    // 视口尺寸变化当前页 1 次。
+    func testIC077G127RequestThrottlingAcrossPinchDoubleTapPagingAndViewport() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let assetIDs = ["asset-1", "asset-2", "asset-3", "asset-4", "asset-5"]
+        let machine = makeMachine(
+            configuration: configuration,
+            orderedAssetIDs: assetIDs,
+            currentIndex: 1
+        )
+        let strategy = S2ScriptedImageStrategy()
+        let controller = S2NativePagerViewController()
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(origin: .zero, size: physicalSize)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+
+        func applyWindowedPages(viewportSize: CGSize = physicalSize) {
+            let firstIndex = max(0, machine.currentIndex - 1)
+            let lastIndex = min(
+                machine.orderedAssetIDs.count - 1,
+                machine.currentIndex + 1
+            )
+            let state = S2ViewportPresentationState(
+                interfaceVisibility: machine.interfaceVisibility,
+                bottomStripState: machine.bottomStripState,
+                sheetState: machine.sheetState
+            )
+            let pages = (firstIndex...lastIndex).map { index -> S2NativePageContent in
+                let assetID = machine.orderedAssetIDs[index]
+                let value = S2ViewportLayout.metrics(
+                    physicalSize: viewportSize,
+                    presentationState: state,
+                    assetAspectRatio: screenAspectRatio,
+                    isScreenshot: false,
+                    configuration: configuration
+                )
+                let requestedScale = index == machine.currentIndex
+                    ? machine.imageRequestScale
+                    : 1
+                let requestRevision = machine.imageRequestAssetID == assetID
+                    ? machine.imageRequestRevision
+                    : 0
+                return S2NativePageContent(
+                    index: index,
+                    assetID: assetID,
+                    interfaceVisibility: machine.interfaceVisibility,
+                    isFramedPhoto: value.isFramedPhoto,
+                    fittedSize: value.oneXDisplaySize,
+                    nativeZoomBaseSize: value.nativeZoomBaseSize,
+                    cornerRadius: value.oneXCornerRadius,
+                    doubleTapTargetScale: value.doubleTapTargetScale,
+                    assetPixelSize: CGSize(
+                        width: screenAspectRatio * 1_000,
+                        height: 1_000
+                    ),
+                    contentVersion: S2NativePhotoContentVersion(
+                        requestedScale: requestedScale,
+                        requestStrategy: configuration.imageRequestStrategy,
+                        requestRevision: requestRevision
+                    ),
+                    content: AnyView(
+                        S2TemporaryPhotoImageView(
+                            strategy: strategy,
+                            assetID: assetID,
+                            requestBaseSize: value.nativeZoomBaseSize,
+                            requestedScale: requestedScale,
+                            requestStrategy: configuration.imageRequestStrategy,
+                            requestRevision: requestRevision,
+                            showsOpaqueLoadingBackground: true,
+                            onReading: { _ in }
+                        )
+                        .frame(
+                            width: value.oneXDisplaySize.width,
+                            height: value.oneXDisplaySize.height
+                        )
+                    )
+                )
+            }
+            controller.view.frame = CGRect(origin: .zero, size: viewportSize)
+            controller.apply(
+                machine: machine,
+                configuration: configuration,
+                viewportSize: viewportSize,
+                pages: pages,
+                onLongPress: {}
+            )
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        }
+
+        applyWindowedPages()
+        let current = "asset-2"
+        XCTAssertEqual(strategy.requestCount(for: current), 1, "初始请求一次")
+        XCTAssertEqual(strategy.requestCount(for: "asset-1"), 1)
+        XCTAssertEqual(strategy.requestCount(for: "asset-3"), 1)
+        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 0, "窗口外不请求")
+        let firstPageRequestID = strategy.requests.first { $0.assetID == "asset-1" }?.id
+        XCTAssertNotNil(firstPageRequestID)
+
+        // 捏合：连续 s 变化 0 次请求。
+        XCTAssertTrue(machine.beginPinch())
+        for step in 1...10 {
+            machine.reportNativeViewport(
+                scale: 1 + CGFloat(step) * 0.1,
+                viewportOffset: .zero
+            )
+            applyWindowedPages()
+        }
+        XCTAssertEqual(strategy.requestCount(for: current), 1, "捏合中不得请求")
+
+        // 捏合结束 1 次。
+        XCTAssertNotNil(machine.finishNativePinch(
+            scale: 2,
+            viewportOffset: .zero,
+            accepted: true
+        ))
+        applyWindowedPages()
+        XCTAssertEqual(strategy.requestCount(for: current), 2, "捏合结束请求一次")
+
+        // 双击退出 Nx 到达 s=1：1 次；再双击进入目标倍率：1 次。
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.zoomState, .oneX)
+        applyWindowedPages()
+        XCTAssertEqual(strategy.requestCount(for: current), 3, "双击退出请求一次")
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.zoomState, .nX)
+        applyWindowedPages()
+        XCTAssertEqual(strategy.requestCount(for: current), 4, "双击进入请求一次")
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        applyWindowedPages()
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertEqual(strategy.requestCount(for: "asset-1"), 1, "相邻页不受影响")
+
+        // 翻页：新进窗口的 asset-4 请求一次；离开窗口的 asset-1 旧请求被取消；当前页不重复请求。
+        let beforePaging = strategy.requestCount
+        XCTAssertTrue(machine.handleNativePageChange(to: 2))
+        applyWindowedPages()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 1, "翻页后新页请求一次")
+        XCTAssertEqual(strategy.requestCount(for: "asset-3"), 1, "成为当前页不重复请求")
+        XCTAssertEqual(strategy.requestCount - beforePaging, 1, "翻页只新增一次请求")
+        XCTAssertTrue(
+            strategy.cancelledIDs.contains(firstPageRequestID ?? PHInvalidImageRequestID),
+            "离开窗口的页应取消旧请求"
+        )
+
+        // 视口尺寸变化：当前页请求一次。
+        let beforeResize = strategy.requestCount(for: "asset-3")
+        applyWindowedPages(
+            viewportSize: CGSize(
+                width: physicalSize.width,
+                height: physicalSize.height - 120
+            )
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(
+            strategy.requestCount(for: "asset-3") - beforeResize,
+            1,
+            "视口尺寸变化请求一次"
+        )
+    }
+
     // P1 替代断言：Nx 平移由原生滚动容器接管并产生非零 contentOffset。
     func testP1NxSingleFingerDragProducesNonzeroPan() {
         let scrollView = makeNativeZoomScrollView()
