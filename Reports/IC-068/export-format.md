@@ -71,3 +71,11 @@
   - `event=synchronizeNativeStateToMachine`，来源同名，`details=animatedPaging=true|false；currentIndex=…；s=…`。
   - 每次 `writePagingContentOffset` 仍以既有 `event=外层setContentOffset`（含来源与 `animated`）记录。
 - 关闭录制时以上埋点零副作用。头部「格式版本=1」未递增。
+
+### 自 IC-082 R3 起的说明（格式版本仍为 1）
+
+- Nx 贴边翻页的自定义投影路径（`beginNXEdgePaging` / `updateNXEdgePaging` / `finishNXEdgePaging`）已删除，左右拖动由 UIKit 嵌套滚动在内层到边界后交接给外层分页容器。因此：
+  - 逐帧字段 `nxDistanceToPreviousBoundary` / `nxDistanceToNextBoundary` / `nxOverflowDistance` **保留列位、恒为 `nil`**（不递增格式版本、不改列数）。
+  - 事件 `beginNXEdgePaging` 不再产生；`外层setContentOffset` 不再出现来源 `updateNXEdgePaging`。
+  - 事件 `handleHorizontalSwipe` 仅由序列边界尝试路径产生，来源为 `S2NativePagerViewController.reportSequenceBoundaryAttemptIfNeeded`，`details` 格式不变（`startedAtPagingEdge` 恒为 `true`）。
+  - 贴边切页的过程在既有字段中体现：外层 `pagingIsDragging=true` 期间 `pagingContentOffsetX` 连续变化，结算为 `handleNativePageChange`（来源 `finishNativePaging`）与 `synchronizeNativeStateToMachine(animatedPaging=false)`。
