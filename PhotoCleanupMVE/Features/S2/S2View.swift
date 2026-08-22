@@ -322,6 +322,8 @@ struct S2View: View {
     private let assetAspectRatio: (String) -> CGFloat
     private let assetIsScreenshot: (String) -> Bool
     private let assetPixelSize: (String) -> CGSize
+    /// IC-078：`pinchMaxScale` 的 1:1 像素倍率按屏幕倍率换算。
+    @Environment(\.displayScale) private var displayScale
     private let photoContent: PhotoContent
     private let stripItemContent: StripItemContent
     private let albumPickerContent: AlbumPickerContent
@@ -546,6 +548,7 @@ struct S2View: View {
             let requestRevision = machine.imageRequestAssetID == assetID
                 ? machine.imageRequestRevision
                 : 0
+            let pixelSize = assetPixelSize(assetID)
             let content = photoContent(S2ImageContentContext(
                 assetID: assetID,
                 fittedSize: pageMetrics.oneXDisplaySize,
@@ -571,7 +574,7 @@ struct S2View: View {
                 nativeZoomBaseSize: pageMetrics.nativeZoomBaseSize,
                 cornerRadius: pageMetrics.oneXCornerRadius,
                 doubleTapTargetScale: pageMetrics.doubleTapTargetScale,
-                assetPixelSize: assetPixelSize(assetID),
+                assetPixelSize: pixelSize,
                 contentVersion: S2NativePhotoContentVersion(
                     requestedScale: index == machine.currentIndex
                         ? machine.imageRequestScale
@@ -579,7 +582,12 @@ struct S2View: View {
                     requestStrategy: machine.imageRequestStrategy,
                     requestRevision: requestRevision
                 ),
-                content: AnyView(content)
+                content: AnyView(content),
+                zoomGeometry: S2AssetZoomGeometry(
+                    assetPixelSize: pixelSize,
+                    fitSize: pageMetrics.nativeZoomBaseSize,
+                    displayScale: displayScale
+                )
             )
         }
 

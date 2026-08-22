@@ -19,6 +19,8 @@ struct S2NativePageContent {
     let assetPixelSize: CGSize
     let contentVersion: S2NativePhotoContentVersion
     let content: AnyView
+    /// IC-078：求该页 `pinchMaxScale` 的资产缩放几何；为 nil 或像素尺寸未解析时取 floor。
+    var zoomGeometry: S2AssetZoomGeometry? = nil
 }
 
 struct S2ImmersiveTransitionFrame: Equatable {
@@ -971,6 +973,8 @@ final class S2NativeZoomPageController: UIViewController,
     private(set) var cornerRadius: CGFloat
     private(set) var doubleTapTargetScale: CGFloat
     private(set) var assetPixelSize: CGSize
+    /// IC-078：本页按资产求得的 `pinchMaxScale`；像素尺寸未解析时为 floor，解析后由 `update` 更新。
+    private(set) var latestMaximumZoomScale: CGFloat = 1
     private(set) var lastPresentationTransitionDuration: TimeInterval = 0
     private(set) var lastPresentationTransition: S2ImmersiveTransition?
     private(set) var lastPresentationScaleKeyframes: [CGFloat] = []
@@ -1165,6 +1169,7 @@ final class S2NativeZoomPageController: UIViewController,
     func update(
         page: S2NativePageContent,
         configuration: S2CalibrationConfiguration,
+        maximumZoomScale: CGFloat,
         scale: CGFloat,
         viewportOffset: CGSize,
         isCurrent: Bool,
@@ -1173,6 +1178,7 @@ final class S2NativeZoomPageController: UIViewController,
         loadViewIfNeeded()
         latestConfiguration = configuration
         latestViewportSize = viewportSize
+        latestMaximumZoomScale = max(1, maximumZoomScale)
         doubleTapTargetScale = page.doubleTapTargetScale
         tapDecisionPolicy = S2TapDecisionDiagnosticPolicy(
             configuration: configuration
@@ -1231,7 +1237,7 @@ final class S2NativeZoomPageController: UIViewController,
                     fittedSize: fittedSize,
                     nativeZoomBaseSize: nativeZoomBaseSize,
                     viewportSize: viewportSize,
-                    maximumZoomScale: CGFloat(configuration.pinchMaxScaleFloor),
+                    maximumZoomScale: latestMaximumZoomScale,
                     assetPixelSize: assetPixelSize
                 )
                 zoomScrollView.applyNativeState(
@@ -1863,7 +1869,7 @@ final class S2NativeZoomPageController: UIViewController,
             fittedSize: fittedSize,
             nativeZoomBaseSize: nativeZoomBaseSize,
             viewportSize: latestViewportSize,
-            maximumZoomScale: CGFloat(configuration.pinchMaxScaleFloor),
+            maximumZoomScale: latestMaximumZoomScale,
             assetPixelSize: assetPixelSize
         )
         applyCornerMask()
@@ -2357,9 +2363,13 @@ final class S2NativePagerViewController: UIViewController,
                 controller.didMove(toParent: self)
                 pageControllers[page.index] = controller
             }
+            if let zoomGeometry = page.zoomGeometry {
+                machine.updateAssetZoomGeometry(zoomGeometry, for: page.assetID)
+            }
             controller.update(
                 page: page,
                 configuration: configuration,
+                maximumZoomScale: machine.pinchMaxScale(for: page.assetID),
                 scale: machine.scale,
                 viewportOffset: machine.viewportOffset,
                 isCurrent: page.index == machine.currentIndex,

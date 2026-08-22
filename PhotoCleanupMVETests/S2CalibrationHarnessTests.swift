@@ -1092,6 +1092,97 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
+    // IC-078 G135（夹具驱动）：每页 maximumZoomScale 按各自资产取值；像素尺寸后到时更新一次，
+    // contentOffset / contentSize / contentInset / 照片 frame 不变，照片几何写入事件 0 条。
+    func testIC078G135PerPageMaximumZoomScaleFollowsAssetWithoutGeometryWrites() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(
+            configuration: configuration,
+            orderedAssetIDs: ["asset-1", "asset-2"],
+            currentIndex: 0
+        )
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.start()
+        defer { diagnostics.stop() }
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+
+        let first = tryUnwrap(controller.pageControllers[0])
+        let second = tryUnwrap(controller.pageControllers[1])
+        // 像素尺寸未解析（未登记几何）：两页均为 floor。
+        XCTAssertEqual(first.zoomScrollView.maximumZoomScale, 4, accuracy: 0.000_001)
+        XCTAssertEqual(second.zoomScrollView.maximumZoomScale, 4, accuracy: 0.000_001)
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-2"), 4)
+
+        struct GeometrySnapshot: Equatable {
+            let contentOffset: CGPoint
+            let contentSize: CGSize
+            let contentInset: UIEdgeInsets
+            let photoFrame: CGRect
+        }
+        func snapshot(_ page: S2NativeZoomPageController) -> GeometrySnapshot {
+            GeometrySnapshot(
+                contentOffset: page.zoomScrollView.contentOffset,
+                contentSize: page.zoomScrollView.contentSize,
+                contentInset: page.zoomScrollView.contentInset,
+                photoFrame: page.zoomScrollView.presentationContentView?.frame ?? .null
+            )
+        }
+        let firstBefore = snapshot(first)
+        let secondBefore = snapshot(second)
+        let writesBefore = diagnostics.photoGeometryWriteCount
+
+        // 像素尺寸后到：asset-1 小图 → floor；asset-2 大图 → 1:1 像素倍率。
+        let pixelSizes: [String: CGSize] = [
+            "asset-1": CGSize(width: 600, height: 1_200),
+            "asset-2": CGSize(width: 8_000, height: 6_000)
+        ]
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            zoomGeometry: { assetID, fitSize in
+                S2AssetZoomGeometry(
+                    assetPixelSize: pixelSizes[assetID] ?? .zero,
+                    fitSize: fitSize,
+                    displayScale: 3
+                )
+            }
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+
+        let expectedSecond = S2PinchMaxScaleRule.pinchMaxScale(
+            assetPixelSize: CGSize(width: 8_000, height: 6_000),
+            fitSize: second.zoomScrollView.nativeZoomBaseSize,
+            displayScale: 3,
+            floor: 4,
+            ceiling: 10
+        )
+        XCTAssertGreaterThan(expectedSecond, 4)
+        XCTAssertEqual(
+            second.zoomScrollView.maximumZoomScale,
+            expectedSecond,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(first.zoomScrollView.maximumZoomScale, 4, accuracy: 0.000_001)
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-2"), expectedSecond)
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-1"), 4)
+        XCTAssertEqual(snapshot(first), firstBefore)
+        XCTAssertEqual(snapshot(second), secondBefore)
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, writesBefore)
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
+        XCTAssertEqual(first.zoomScrollView.zoomScale, 1)
+        XCTAssertEqual(second.zoomScrollView.zoomScale, 1)
+    }
+
     // P1 替代断言：Nx 平移由原生滚动容器接管并产生非零 contentOffset。
     func testP1NxSingleFingerDragProducesNonzeroPan() {
         let scrollView = makeNativeZoomScrollView()
@@ -6292,7 +6383,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         photoContent: ((String, CGSize, CGFloat, Int) -> AnyView)? = nil,
         assetAspectRatio: CGFloat? = nil,
         isScreenshot: Bool = true,
-        viewportSize: CGSize? = nil
+        viewportSize: CGSize? = nil,
+        zoomGeometry: ((String, CGSize) -> S2AssetZoomGeometry?)? = nil
     ) -> S2NativePagerViewController {
         let resolvedViewportSize = viewportSize ?? physicalSize
         let controller = S2NativePagerViewController()
@@ -6308,7 +6400,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             photoContent: photoContent,
             assetAspectRatio: assetAspectRatio,
             isScreenshot: isScreenshot,
-            viewportSize: resolvedViewportSize
+            viewportSize: resolvedViewportSize,
+            zoomGeometry: zoomGeometry
         )
         return controller
     }
@@ -6320,7 +6413,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         photoContent: ((String, CGSize, CGFloat, Int) -> AnyView)? = nil,
         assetAspectRatio: CGFloat? = nil,
         isScreenshot: Bool = true,
-        viewportSize: CGSize? = nil
+        viewportSize: CGSize? = nil,
+        zoomGeometry: ((String, CGSize) -> S2AssetZoomGeometry?)? = nil
     ) {
         let resolvedViewportSize = viewportSize ?? physicalSize
         let state = S2ViewportPresentationState(
@@ -6372,7 +6466,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     requestStrategy: configuration.imageRequestStrategy,
                     requestRevision: requestRevision
                 ),
-                content: content
+                content: content,
+                zoomGeometry: zoomGeometry?(assetID, value.nativeZoomBaseSize)
             )
         }
         controller.apply(
