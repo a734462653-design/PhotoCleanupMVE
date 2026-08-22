@@ -256,6 +256,62 @@ final class S2ImageLoadingStateTests: XCTestCase {
         XCTAssertEqual(machine.imageRequestRevision, 3)
     }
 
+    // IC-077 G128（R4）：`D ⊄ A` 的交接 → enterS2 返回 false、route 仍为 .s1、s2Machine 为 nil、
+    // S1 状态机对象与会话存储同一；随后合法交接仍可进入 S2。
+    @MainActor
+    func testIC077G128HandoffValidationFailureStaysInS1() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let assets = (1...3).map { day in
+            S1PhotoAssetSnapshot(
+                identifier: "资产-\(day)",
+                creationDate: calendar.date(
+                    from: DateComponents(year: 2026, month: 8, day: day, hour: 12)
+                )
+            )
+        }
+        let coordinator = CleanupCoordinator(
+            photoLibrary: PhotoLibraryService(
+                s1Source: S1PhotoLibrarySource(
+                    authorizationStatus: { .authorized },
+                    fetchAssets: { assets },
+                    fetchAssetCollections: { _, _ in [] }
+                )
+            ),
+            assetActionService: FakeAssetActionService(albums: []),
+            recentAlbumStore: S2InMemoryRecentAlbumStore()
+        )
+        XCTAssertTrue(coordinator.enterS1(sessionID: "会话-077"))
+        let s1Machine = try XCTUnwrap(coordinator.s1Machine)
+        let request = try XCTUnwrap(s1Machine.currentReadRequest)
+        let ranges = try coordinator.readS1Ranges(groupedBy: .month).get()
+        XCTAssertTrue(s1Machine.completeRangeRead(.success(ranges), for: request))
+        let range = try XCTUnwrap(ranges.first)
+        let valid = try XCTUnwrap(s1Machine.makeS2Handoff(for: range.id))
+        let storeBefore = coordinator.sessionStore
+        let s1StoreBefore = s1Machine.sessionStore
+
+        let invalid = S1ToS2Handoff(
+            sessionID: valid.sessionID,
+            rangeDisplayInformation: valid.rangeDisplayInformation,
+            orderedAssetIDs: valid.orderedAssetIDs,
+            currentAssetID: valid.currentAssetID,
+            pendingDeletionAssetIDs: ["资产-不在范围内"],
+            sessionMergedPendingDeletionCountProvider: { 0 }
+        )
+        XCTAssertFalse(coordinator.enterS2(from: invalid))
+        XCTAssertEqual(coordinator.route, .s1)
+        XCTAssertNil(coordinator.s2Machine)
+        XCTAssertTrue(coordinator.s1Machine === s1Machine)
+        XCTAssertEqual(coordinator.sessionStore, storeBefore)
+        XCTAssertEqual(s1Machine.sessionStore, s1StoreBefore)
+        XCTAssertNil(coordinator.message)
+
+        XCTAssertTrue(coordinator.enterS2(from: valid))
+        XCTAssertEqual(coordinator.route, .s2)
+        XCTAssertNotNil(coordinator.s2Machine)
+    }
+
     private struct HostedRun {
         let readings: [S2ImageReturnType]
         let states: [S2ImageLoadState]
