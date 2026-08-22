@@ -396,18 +396,9 @@ struct S2View: View {
         safeAreaInsets: S2OverlaySafeAreaInsets
     ) -> some View {
         VStack(spacing: 0) {
-            VStack(spacing: S2OverlayLayout.minimumSpacing) {
-                topBar
-                    .frame(height: S2OverlayLayout.topBarHeight)
-                    .background(.regularMaterial)
-
-                if let albumBadgeText {
-                    Text(albumBadgeText)
-                        .lineLimit(1)
-                        .accessibilityLabel(albumBadgeAccessibilityLabel)
-                        .background(.regularMaterial)
-                }
-            }
+            topBar
+                .frame(height: S2OverlayLayout.topBarHeight)
+                .background(.regularMaterial)
 
             Spacer(minLength: S2OverlayLayout.minimumSpacing)
 
@@ -606,37 +597,10 @@ struct S2View: View {
         .disabled(machine.touchSequenceOwner != .none)
     }
 
-    private var albumBadgeText: String? {
-        let albums = machine.currentAddedAlbums
-        guard let latest = albums.last else {
-            return nil
-        }
-        if albums.count == 1 {
-            return L10n.text(
-                "s2.album.badge.single",
-                replacing: ["album": latest.name]
-            )
-        }
-        return L10n.text(
-            "s2.album.badge.multiple",
-            replacing: [
-                "album": latest.name,
-                "count": String(albums.count - 1)
-            ]
-        )
-    }
-
     private var favoriteActionTitle: String {
         machine.currentIsFavorite
             ? L10n.text("s2.action.unfavorite")
             : L10n.text("s2.action.favorite")
-    }
-
-    private var albumBadgeAccessibilityLabel: String {
-        L10n.text(
-            "s2.album.badge.accessibility",
-            replacing: ["value": albumBadgeText ?? String()]
-        )
     }
 
     private var albumSheetBinding: Binding<Bool> {

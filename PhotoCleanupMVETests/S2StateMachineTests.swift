@@ -261,7 +261,6 @@ final class S2StateMachineTests: XCTestCase {
             outcome: .success(alreadyContained: false)
         ))
         XCTAssertFalse(machine.pendingDeletionAssetIDs.contains("asset-2"))
-        XCTAssertEqual(machine.addedAlbumsByAssetID["asset-2"], [album])
     }
 
     // IC047-015：迁移表的加入相簿点击保留基础状态并呈现遮挡层。
@@ -320,7 +319,6 @@ final class S2StateMachineTests: XCTestCase {
             album: album
         ))
         XCTAssertEqual(machine.recentAlbum, album)
-        XCTAssertEqual(machine.currentAddedAlbums, [album])
         XCTAssertFalse(machine.pendingDeletionAssetIDs.contains("asset-2"))
         XCTAssertEqual(machine.sheetState, .closed)
     }
@@ -720,6 +718,42 @@ final class S2StateMachineTests: XCTestCase {
             ),
             CGSize(width: 150, height: -300)
         )
+    }
+
+    // IC-075 R5：历史相册失效只使 H 失效（决策 16）；加入相册后从 D 移除静默完成，
+    // 不再产生任何语义通知或未定项标记。
+    func testIC075R5AlbumUnavailableInvalidatesOnlyRecentAlbum() {
+        let album = S2AlbumReference(id: "album-1", name: "相簿一")
+        let machine = makeMachine(
+            state: .visibleOneXIdle,
+            pendingDeletionAssetIDs: ["asset-2"],
+            recentAlbum: album
+        )
+        let request = tryUnwrap(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertFalse(machine.completeRecentAlbumAddition(
+            request,
+            outcome: .albumUnavailable
+        ))
+        XCTAssertNil(machine.recentAlbum)
+        XCTAssertTrue(machine.pendingDeletionAssetIDs.contains("asset-2"))
+        XCTAssertNil(machine.semanticNotice)
+        XCTAssertNil(machine.pendingUndecidedItem)
+        XCTAssertNil(machine.makeRecentAlbumAdditionRequest())
+
+        let success = makeMachine(
+            state: .visibleOneXIdle,
+            pendingDeletionAssetIDs: ["asset-2"],
+            recentAlbum: album
+        )
+        let successRequest = tryUnwrap(success.makeRecentAlbumAdditionRequest())
+        XCTAssertTrue(success.completeRecentAlbumAddition(
+            successRequest,
+            outcome: .success(alreadyContained: false)
+        ))
+        XCTAssertFalse(success.pendingDeletionAssetIDs.contains("asset-2"))
+        XCTAssertNil(success.semanticNotice)
+        XCTAssertNil(success.pendingUndecidedItem)
+        XCTAssertEqual(success.recentAlbum, album)
     }
 
     // IC-075 G106（夹具驱动）：会话待删总数为 0 时入口禁用、徽标不渲染；为 1 时相反；

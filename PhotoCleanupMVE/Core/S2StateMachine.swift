@@ -59,14 +59,12 @@ enum S2UndecidedItem: String, CaseIterable, Equatable {
     case item09
     case item10
     case item11
-    case item12
     case item13
     case item14
     case item15
     case item16
     case item17
     case item18
-    case item19
 }
 
 // v13 第九节全部未定项只在此处声明，不提供产品默认值。
@@ -88,14 +86,12 @@ enum S2UndecidedItems {
     static let item09EmptyPendingPresentation = S2UndecidedPlaceholder.unresolved
     static let item10SnapshotPersistence = S2UndecidedPlaceholder.unresolved
     static let item11WriteFailureFeedback = S2UndecidedPlaceholder.unresolved
-    static let item12AlbumRemovalHint = S2UndecidedPlaceholder.unresolved
     static let item13AlbumHistoryDepth = S2UndecidedPlaceholder.unresolved
     static let item14AlbumHistoryPersistence = S2UndecidedPlaceholder.unresolved
     static let item15InFlightControls = S2UndecidedPlaceholder.unresolved
     static let item16AlreadyContainedCopy = S2UndecidedPlaceholder.unresolved
     static let item17AlbumBadgePresentation = S2UndecidedPlaceholder.unresolved
     static let item18BottomStripMarkPresentation = S2UndecidedPlaceholder.unresolved
-    static let item19AlreadyMarkedHint = S2UndecidedPlaceholder.unresolved
 }
 
 enum S2ScaleChangeImageRequestPolicy: String, CaseIterable, Codable, Equatable {
@@ -290,7 +286,6 @@ enum S2AlbumAdditionOutcome: Equatable {
 
 enum S2SemanticNotice: Equatable {
     case alreadyMarked(assetID: String)
-    case albumAdditionRemovedPendingDeletion(assetID: String)
 }
 
 enum S2PageDirection: Equatable {
@@ -554,7 +549,6 @@ final class S2StateMachine: ObservableObject {
     @Published private(set) var pendingDeletionAssetIDs: Set<String>
     @Published private(set) var favoriteAssetIDs: Set<String>
     @Published private(set) var recentAlbum: S2AlbumReference?
-    @Published private(set) var addedAlbumsByAssetID: [String: [S2AlbumReference]] = [:]
     @Published private(set) var semanticNotice: S2SemanticNotice?
     @Published private(set) var pendingUndecidedItem: S2UndecidedItem?
     @Published private(set) var imageRequestRevision = 0
@@ -634,10 +628,6 @@ final class S2StateMachine: ObservableObject {
 
     var currentIsFavorite: Bool {
         favoriteAssetIDs.contains(currentAssetID)
-    }
-
-    var currentAddedAlbums: [S2AlbumReference] {
-        addedAlbumsByAssetID[currentAssetID] ?? []
     }
 
     var sessionMergedPendingDeletionCount: Int {
@@ -1228,8 +1218,8 @@ final class S2StateMachine: ObservableObject {
         }
         let assetID = currentAssetID
         guard !pendingDeletionAssetIDs.contains(assetID) else {
+            // v15：已标记再上滑只触发主图标记脉冲（由视图消费），不弹文字。
             semanticNotice = .alreadyMarked(assetID: assetID)
-            pendingUndecidedItem = .item19
             return false
         }
 
@@ -1448,7 +1438,6 @@ final class S2StateMachine: ObservableObject {
         switch outcome {
         case .success(_):
             recentAlbum = request.album
-            recordAlbum(request.album, for: request.targetAssetID)
             removeFromPendingAfterAlbumAddition(request.targetAssetID)
             return true
         case .failure:
@@ -1481,7 +1470,6 @@ final class S2StateMachine: ObservableObject {
         }
 
         recentAlbum = album
-        recordAlbum(album, for: request.targetAssetID)
         removeFromPendingAfterAlbumAddition(request.targetAssetID)
         sheetState = .closed
         albumPickerTargetAssetID = nil
@@ -1635,13 +1623,7 @@ final class S2StateMachine: ObservableObject {
         pendingDeletionDidChange(nextValue)
     }
 
-    private func recordAlbum(_ album: S2AlbumReference, for assetID: String) {
-        var albums = addedAlbumsByAssetID[assetID] ?? []
-        albums.removeAll { $0.id == album.id }
-        albums.append(album)
-        addedAlbumsByAssetID[assetID] = albums
-    }
-
+    /// v15 回写决策 29：加入相册后从 `D` 移除静默完成，以待删标记的消失为唯一反馈。
     private func removeFromPendingAfterAlbumAddition(_ assetID: String) {
         guard pendingDeletionAssetIDs.contains(assetID) else {
             return
@@ -1649,16 +1631,12 @@ final class S2StateMachine: ObservableObject {
         var nextPending = pendingDeletionAssetIDs
         nextPending.remove(assetID)
         replacePendingDeletionAssetIDs(with: nextPending)
-        semanticNotice = .albumAdditionRemovedPendingDeletion(assetID: assetID)
-        pendingUndecidedItem = .item12
     }
 
+    /// 决策 16：历史相册失效只作用于 `H`；`G(a)` 已随 v15 移除。
     private func invalidateAlbum(_ album: S2AlbumReference) {
         if recentAlbum?.id == album.id {
             recentAlbum = nil
-        }
-        for assetID in Array(addedAlbumsByAssetID.keys) {
-            addedAlbumsByAssetID[assetID]?.removeAll { $0.id == album.id }
         }
     }
 }

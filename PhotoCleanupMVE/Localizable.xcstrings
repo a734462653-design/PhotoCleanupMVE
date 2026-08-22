@@ -408,39 +408,6 @@
         }
       }
     },
-    "s2.album.badge.accessibility" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "相簿记录：{value}"
-          }
-        }
-      }
-    },
-    "s2.album.badge.multiple" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "{album} +{count}"
-          }
-        }
-      }
-    },
-    "s2.album.badge.single" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "{album}"
-          }
-        }
-      }
-    },
     "s2.confirm.accessibility" : {
       "extractionState" : "manual",
       "localizations" : {
