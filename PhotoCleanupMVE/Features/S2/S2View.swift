@@ -78,11 +78,16 @@ struct S2ConfirmationEntryPresentation: Equatable {
     }
 
     var accessibilityLabel: String {
-        L10n.text(
-            isEnabled
-                ? "s2.confirm.accessibility"
-                : "s2.confirm.disabled.accessibility",
-            replacing: ["count": String(sessionPendingCount)]
+        let replacements = ["count": String(sessionPendingCount)]
+        if isEnabled {
+            return L10n.text(
+                "s2.confirm.accessibility",
+                replacing: replacements
+            )
+        }
+        return L10n.text(
+            "s2.confirm.disabled.accessibility",
+            replacing: replacements
         )
     }
 }
