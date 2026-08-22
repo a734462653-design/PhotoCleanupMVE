@@ -131,6 +131,7 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
     let diagnosticsCoordinator: S2GeometryDiagnosticsCoordinator
     let transitionDiagnosticsCoordinator:
         S2OnDeviceTransitionDiagnosticsCoordinator
+    var imageLoadStateRegistry: S2ImageLoadStateRegistry? = nil
 
     func makeUIViewController(context _: Context) -> S2NativePagerViewController {
         let controller = S2NativePagerViewController()
@@ -145,6 +146,7 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
     ) {
         diagnosticsCoordinator.attach(controller)
         transitionDiagnosticsCoordinator.attach(controller)
+        controller.imageLoadStateRegistry = imageLoadStateRegistry
         let geometryWriteCount = transitionDiagnosticsCoordinator
             .photoGeometryWriteCount
         controller.apply(
@@ -2229,7 +2231,9 @@ final class S2NativePagerViewController: UIViewController,
     private var viewportSize = CGSize.zero
     private var onLongPress: (() -> Void)?
     private var isApplyingSnapshot = false
-    private var settledIndex = 0
+    private(set) var settledIndex = 0
+    /// IC-079 R1：各资产图像加载态（只读埋点，来自 S2View 的加载态回调）。
+    weak var imageLoadStateRegistry: S2ImageLoadStateRegistry?
     private var outerDragStartDate: Date?
     private var lastOuterTranslation = CGSize.zero
     private var lastOuterVelocity: CGFloat = 0
@@ -2343,6 +2347,11 @@ final class S2NativePagerViewController: UIViewController,
             controller.view.removeFromSuperview()
             controller.removeFromParent()
             pageControllers.removeValue(forKey: index)
+            transitionDiagnostics?.recordPageLifecycle(
+                created: false,
+                pageIndex: index,
+                assetLocalIdentifier: controller.diagnosticAssetLocalIdentifier
+            )
         }
 
         for page in pages {
@@ -2362,6 +2371,11 @@ final class S2NativePagerViewController: UIViewController,
                 )
                 controller.didMove(toParent: self)
                 pageControllers[page.index] = controller
+                transitionDiagnostics?.recordPageLifecycle(
+                    created: true,
+                    pageIndex: page.index,
+                    assetLocalIdentifier: page.assetID
+                )
             }
             if let zoomGeometry = page.zoomGeometry {
                 machine.updateAssetZoomGeometry(zoomGeometry, for: page.assetID)
@@ -2386,12 +2400,27 @@ final class S2NativePagerViewController: UIViewController,
         if !pagingScrollView.isTracking &&
             !pagingScrollView.isDragging &&
             !pagingScrollView.isDecelerating {
-            pagingScrollView.setContentOffset(
+            writePagingContentOffset(
                 pagingScrollView.contentOffsetForPage(at: settledIndex),
-                animated: false
+                animated: false,
+                source: "S2NativePagerViewController.apply"
             )
         }
         isApplyingSnapshot = false
+    }
+
+    /// IC-079 R1：外层分页偏移的唯一 `setContentOffset` 入口，带来源与 animated 标志记入诊断。
+    private func writePagingContentOffset(
+        _ offset: CGPoint,
+        animated: Bool,
+        source: String
+    ) {
+        transitionDiagnostics?.recordPagingContentOffsetWrite(
+            offsetX: offset.x,
+            animated: animated,
+            source: source
+        )
+        pagingScrollView.setContentOffset(offset, animated: animated)
     }
 
     func resetInteractionState() {
@@ -2408,6 +2437,20 @@ final class S2NativePagerViewController: UIViewController,
         onLongPress = nil
         diagnosticsRun?.cancel()
         diagnosticsRun = nil
+    }
+
+    var diagnosticPageIndicesPresent: [Int] {
+        pageControllers.keys.sorted()
+    }
+
+    var diagnosticPageLoadStates: [Int: String] {
+        var states: [Int: String] = [:]
+        for (index, controller) in pageControllers {
+            states[index] = imageLoadStateRegistry?
+                .state(for: controller.diagnosticAssetLocalIdentifier)
+                .map(\.diagnosticName) ?? "unknown"
+        }
+        return states
     }
 
     var diagnosticMachine: S2StateMachine? {
@@ -2785,21 +2828,23 @@ final class S2NativePagerViewController: UIViewController,
               machine.orderedAssetIDs.indices.contains(
                 machine.currentIndex + direction.indexOffset
               ) else {
-            pagingScrollView.setContentOffset(
+            writePagingContentOffset(
                 CGPoint(
                     x: interaction.restingPagingOffsetX,
                     y: pagingScrollView.contentOffset.y
                 ),
-                animated: false
+                animated: false,
+                source: "S2NativePagerViewController.updateNXEdgePaging"
             )
             return
         }
-        pagingScrollView.setContentOffset(
+        writePagingContentOffset(
             CGPoint(
                 x: projection.pagingContentOffsetX,
                 y: pagingScrollView.contentOffset.y
             ),
-            animated: false
+            animated: false,
+            source: "S2NativePagerViewController.updateNXEdgePaging"
         )
     }
 
@@ -2925,6 +2970,11 @@ final class S2NativePagerViewController: UIViewController,
                 at: settledIndex
             )
             if pagingScrollView.contentOffset != settledOffset {
+                transitionDiagnostics?.recordPagingContentOffsetWrite(
+                    offsetX: settledOffset.x,
+                    animated: false,
+                    source: "S2NativePagerViewController.layoutNativePages"
+                )
                 pagingScrollView.contentOffset = settledOffset
             }
         }
@@ -2985,7 +3035,12 @@ final class S2NativePagerViewController: UIViewController,
         )
         let previousIndex = machine.currentIndex
         if targetIndex != previousIndex {
-            _ = machine.handleNativePageChange(to: targetIndex)
+            let accepted = machine.handleNativePageChange(to: targetIndex)
+            transitionDiagnostics?.recordNativePageChange(
+                from: previousIndex,
+                to: targetIndex,
+                accepted: accepted
+            )
         } else if targetIndex == previousIndex {
             reportSequenceBoundaryAttemptIfNeeded()
         }
@@ -3007,9 +3062,10 @@ final class S2NativePagerViewController: UIViewController,
                     : .zero
             )
         }
-        pagingScrollView.setContentOffset(
+        writePagingContentOffset(
             pagingScrollView.contentOffsetForPage(at: machine.currentIndex),
-            animated: animatedPaging
+            animated: animatedPaging,
+            source: "S2NativePagerViewController.synchronizeNativeStateToMachine"
         )
         isApplyingSnapshot = false
     }
@@ -3694,6 +3750,7 @@ enum S2OnDeviceTransitionScenario: String, CaseIterable, Identifiable {
     case tapShow
     case tapHide
     case pinchStart
+    case fastPaging
 
     var id: String { rawValue }
 
@@ -3705,6 +3762,8 @@ enum S2OnDeviceTransitionScenario: String, CaseIterable, Identifiable {
             return "B 单击隐藏（对照组）"
         case .pinchStart:
             return "C 捏合起始"
+        case .fastPaging:
+            return "D 快速连续翻页"
         }
     }
 }
@@ -3732,6 +3791,14 @@ struct S2OnDeviceTransitionFrameSample: Equatable {
     let adjustedContentInset: UIEdgeInsets?
     let visibility: S2InterfaceVisibility?
     let scale: CGFloat?
+    /// IC-079 场景 D 追加：外层分页容器与页窗口状态；默认值保证既有构造不变。
+    var pagingContentOffsetX: CGFloat? = nil
+    var pagingIsDragging: Bool? = nil
+    var pagingIsDecelerating: Bool? = nil
+    var currentIndex: Int? = nil
+    var settledIndex: Int? = nil
+    var pageIndicesPresent: [Int] = []
+    var pageLoadStates: [Int: String] = [:]
 }
 
 enum S2OnDeviceTransitionPayload: Equatable {
@@ -3888,8 +3955,52 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             contentInset: scrollView?.contentInset,
             adjustedContentInset: scrollView?.adjustedContentInset,
             visibility: machine?.interfaceVisibility,
-            scale: machine?.scale
+            scale: machine?.scale,
+            pagingContentOffsetX: controller?.pagingScrollView.contentOffset.x,
+            pagingIsDragging: controller?.pagingScrollView.isDragging,
+            pagingIsDecelerating: controller?.pagingScrollView.isDecelerating,
+            currentIndex: machine?.currentIndex,
+            settledIndex: controller?.settledIndex,
+            pageIndicesPresent: controller?.diagnosticPageIndicesPresent ?? [],
+            pageLoadStates: controller?.diagnosticPageLoadStates ?? [:]
         )))
+    }
+
+    /// IC-079 R1：页创建 / 移除、外层 `setContentOffset` 写入、`handleNativePageChange`。
+    func recordPageLifecycle(
+        created: Bool,
+        pageIndex: Int,
+        assetLocalIdentifier: String
+    ) {
+        recordEvent(
+            name: created ? "页创建" : "页移除",
+            source: "S2NativePagerViewController.apply",
+            details: "pageIndex=\(pageIndex)；asset=\(assetLocalIdentifier)"
+        )
+    }
+
+    func recordPagingContentOffsetWrite(
+        offsetX: CGFloat,
+        animated: Bool,
+        source: String
+    ) {
+        recordEvent(
+            name: "外层setContentOffset",
+            source: source,
+            details: "x=\(String(format: "%.6f", Double(offsetX)))；animated=\(animated)"
+        )
+    }
+
+    func recordNativePageChange(
+        from previousIndex: Int,
+        to targetIndex: Int,
+        accepted: Bool
+    ) {
+        recordEvent(
+            name: "handleNativePageChange",
+            source: "S2NativePagerViewController.finishNativePaging",
+            details: "from=\(previousIndex)；to=\(targetIndex)；accepted=\(accepted)"
+        )
     }
 
     func recordSwiftUIStatePublication(
@@ -4094,7 +4205,7 @@ enum S2OnDeviceTransitionText {
             "停止绝对时间=\(timestamp(stoppedAt))",
             "记录总数=\(sortedRecords.count)",
             "顺序=全部记录按同一单调时钟严格递增",
-            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,contentInset,adjustedContentInset,V,s",
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,contentInset,adjustedContentInset,V,s,pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating,currentIndex,settledIndex,pageIndicesPresent,pageLoadStates",
             "离散事件字段=time,event,source,details",
             "---"
         ]
@@ -4115,7 +4226,14 @@ enum S2OnDeviceTransitionText {
                     "\tcontentInset=\(optionalInsets(sample.contentInset))" +
                     "\tadjustedContentInset=\(optionalInsets(sample.adjustedContentInset))" +
                     "\tV=\(sample.visibility.map(visibility) ?? "nil")" +
-                    "\ts=\(optionalNumber(sample.scale))")
+                    "\ts=\(optionalNumber(sample.scale))" +
+                    "\tpagingContentOffsetX=\(optionalNumber(sample.pagingContentOffsetX))" +
+                    "\tpagingIsDragging=\(optionalBool(sample.pagingIsDragging))" +
+                    "\tpagingIsDecelerating=\(optionalBool(sample.pagingIsDecelerating))" +
+                    "\tcurrentIndex=\(optionalIndex(sample.currentIndex))" +
+                    "\tsettledIndex=\(optionalIndex(sample.settledIndex))" +
+                    "\tpageIndicesPresent=\(indexList(sample.pageIndicesPresent))" +
+                    "\tpageLoadStates=\(loadStates(sample.pageLoadStates))")
             case let .event(name, source, details):
                 lines.append(prefix +
                     "\tkind=event" +
@@ -4125,6 +4243,23 @@ enum S2OnDeviceTransitionText {
             }
         }
         return lines.joined(separator: "\n")
+    }
+
+    static func optionalBool(_ value: Bool?) -> String {
+        value.map { $0 ? "true" : "false" } ?? "nil"
+    }
+
+    static func optionalIndex(_ value: Int?) -> String {
+        value.map(String.init) ?? "nil"
+    }
+
+    static func indexList(_ values: [Int]) -> String {
+        "[" + values.sorted().map(String.init).joined(separator: ",") + "]"
+    }
+
+    static func loadStates(_ values: [Int: String]) -> String {
+        "[" + values.keys.sorted().map { "\($0)=\(values[$0] ?? "nil")" }
+            .joined(separator: ",") + "]"
     }
 
     static func visibility(_ value: S2InterfaceVisibility) -> String {
@@ -4200,5 +4335,31 @@ enum S2OnDeviceTransitionText {
         }
         return "(top=\(number(value.top)),left=\(number(value.left))," +
             "bottom=\(number(value.bottom)),right=\(number(value.right)))"
+    }
+}
+
+/// IC-079 R1：按资产记录图像加载态，仅供诊断埋点读取；不发布、不影响产品状态。
+final class S2ImageLoadStateRegistry: ObservableObject {
+    private var states: [String: S2ImageLoadState] = [:]
+
+    func update(_ state: S2ImageLoadState, for assetID: String) {
+        states[assetID] = state
+    }
+
+    func state(for assetID: String) -> S2ImageLoadState? {
+        states[assetID]
+    }
+}
+
+extension S2ImageLoadState {
+    var diagnosticName: String {
+        switch self {
+        case .loading:
+            return "loading"
+        case .displayed:
+            return "displayed"
+        case .failed:
+            return "failed"
+        }
     }
 }

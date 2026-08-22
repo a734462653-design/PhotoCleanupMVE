@@ -716,6 +716,17 @@
         }
       }
     },
+    "s2.calibration.transition_diagnostics.scenario_d" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "D 快速连续翻页"
+          }
+        }
+      }
+    },
     "s2.calibration.transition_diagnostics.scenario_c" : {
       "extractionState" : "manual",
       "localizations" : {

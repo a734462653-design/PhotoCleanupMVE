@@ -1183,6 +1183,183 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(second.zoomScrollView.zoomScale, 1)
     }
 
+    // IC-079 G139：场景 D 逐帧字段与三类新事件按 R1 清单存在（导出头部声明 + 真实采样行 + 样例事件）。
+    func testIC079G139FastPagingScenarioExportsWindowFieldsAndEvents() {
+        XCTAssertEqual(S2OnDeviceTransitionScenario.fastPaging.exportTitle, "D 快速连续翻页")
+        XCTAssertTrue(S2OnDeviceTransitionScenario.allCases.contains(.fastPaging))
+
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(
+            configuration: configuration,
+            orderedAssetIDs: ["asset-1", "asset-2", "asset-3"],
+            currentIndex: 1
+        )
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let registry = S2ImageLoadStateRegistry()
+        registry.update(.displayed, for: "asset-2")
+        registry.update(.loading, for: "asset-3")
+        controller.imageLoadStateRegistry = registry
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .fastPaging
+        diagnostics.start()
+        diagnostics.captureFrame()
+        diagnostics.recordPageLifecycle(created: true, pageIndex: 3, assetLocalIdentifier: "asset-4")
+        diagnostics.recordPageLifecycle(created: false, pageIndex: 0, assetLocalIdentifier: "asset-1")
+        diagnostics.recordPagingContentOffsetWrite(offsetX: 320, animated: false, source: "测试来源")
+        diagnostics.recordNativePageChange(from: 1, to: 2, accepted: true)
+        diagnostics.stop()
+        diagnostics.export()
+
+        let text = diagnostics.reportText
+        XCTAssertTrue(text.contains("场景=D 快速连续翻页"))
+        XCTAssertTrue(text.contains(
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame," +
+                "transform,zoomScale,contentOffset,contentSize," +
+                "contentInset,adjustedContentInset,V,s," +
+                "pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating," +
+                "currentIndex,settledIndex,pageIndicesPresent,pageLoadStates"
+        ))
+        let expectedOffsetX = controller.pagingScrollView.contentOffsetForPage(at: 1).x
+        XCTAssertTrue(text.contains(
+            "\tpagingContentOffsetX=" + String(format: "%.6f", Double(expectedOffsetX))
+        ))
+        XCTAssertTrue(text.contains("\tpagingIsDragging=false"))
+        XCTAssertTrue(text.contains("\tpagingIsDecelerating=false"))
+        XCTAssertTrue(text.contains("\tcurrentIndex=1"))
+        XCTAssertTrue(text.contains("\tsettledIndex=1"))
+        XCTAssertTrue(text.contains("\tpageIndicesPresent=[0,1,2]"))
+        XCTAssertTrue(text.contains("\tpageLoadStates=[0=unknown,1=displayed,2=loading]"))
+        XCTAssertTrue(text.contains("event=页创建\tsource=S2NativePagerViewController.apply\tdetails=pageIndex=3；asset=asset-4"))
+        XCTAssertTrue(text.contains("event=页移除\tsource=S2NativePagerViewController.apply\tdetails=pageIndex=0；asset=asset-1"))
+        XCTAssertTrue(text.contains("event=外层setContentOffset\tsource=测试来源\tdetails=x=320.000000；animated=false"))
+        XCTAssertTrue(text.contains("event=handleNativePageChange\tsource=S2NativePagerViewController.finishNativePaging\tdetails=from=1；to=2；accepted=true"))
+
+        // 关闭录制时零副作用：记录数不变。
+        let countAfterStop = diagnostics.recordedEntries.count
+        diagnostics.recordPageLifecycle(created: true, pageIndex: 9, assetLocalIdentifier: "x")
+        diagnostics.recordPagingContentOffsetWrite(offsetX: 1, animated: true, source: "x")
+        diagnostics.recordNativePageChange(from: 0, to: 1, accepted: false)
+        XCTAssertEqual(diagnostics.recordedEntries.count, countAfterStop)
+    }
+
+    // IC-079 R1 夹具探针（仅打印，不做断言）：生产页窗口（当前页 ±1）下，第一页滚停后、
+    // SwiftUI 刷新（重新 apply）前立即开始第二次滚动到 i+2，逐步打印 pageIndicesPresent 与 contentOffset。
+    func testIC079R1FastPagingWindowProbe() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let assetIDs = (1...6).map { "asset-\($0)" }
+        let machine = makeMachine(
+            configuration: configuration,
+            orderedAssetIDs: assetIDs,
+            currentIndex: 1
+        )
+        let controller = S2NativePagerViewController()
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(origin: .zero, size: physicalSize)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .fastPaging
+        diagnostics.start()
+        defer { diagnostics.stop() }
+
+        func applyProductionWindow() {
+            let firstIndex = max(0, machine.currentIndex - 1)
+            let lastIndex = min(assetIDs.count - 1, machine.currentIndex + 1)
+            let state = S2ViewportPresentationState(
+                interfaceVisibility: machine.interfaceVisibility,
+                bottomStripState: machine.bottomStripState,
+                sheetState: machine.sheetState
+            )
+            let pages = (firstIndex...lastIndex).map { index -> S2NativePageContent in
+                let value = S2ViewportLayout.metrics(
+                    physicalSize: physicalSize,
+                    presentationState: state,
+                    assetAspectRatio: screenAspectRatio,
+                    isScreenshot: true,
+                    configuration: configuration
+                )
+                return S2NativePageContent(
+                    index: index,
+                    assetID: assetIDs[index],
+                    interfaceVisibility: machine.interfaceVisibility,
+                    isFramedPhoto: value.isFramedPhoto,
+                    fittedSize: value.oneXDisplaySize,
+                    nativeZoomBaseSize: value.nativeZoomBaseSize,
+                    cornerRadius: value.oneXCornerRadius,
+                    doubleTapTargetScale: value.doubleTapTargetScale,
+                    assetPixelSize: CGSize(width: screenAspectRatio * 1_000, height: 1_000),
+                    contentVersion: S2NativePhotoContentVersion(
+                        requestedScale: 1,
+                        requestStrategy: configuration.imageRequestStrategy,
+                        requestRevision: 0
+                    ),
+                    content: AnyView(Color.clear.frame(
+                        width: value.oneXDisplaySize.width,
+                        height: value.oneXDisplaySize.height
+                    ))
+                )
+            }
+            controller.apply(
+                machine: machine,
+                configuration: configuration,
+                viewportSize: physicalSize,
+                pages: pages,
+                onLongPress: {}
+            )
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+        }
+        let paging = controller.pagingScrollView
+        func dump(_ step: String) {
+            let target = paging.pageIndex(forContentOffsetX: paging.contentOffset.x)
+            print("[IC-079 探针] \(step)：currentIndex=\(machine.currentIndex) settledIndex=\(controller.settledIndex) contentOffsetX=\(paging.contentOffset.x) 偏移所在页=\(target) pageIndicesPresent=\(controller.diagnosticPageIndicesPresent) 目标页存在=\(controller.pageControllers[target] != nil)")
+        }
+
+        applyProductionWindow()
+        dump("0 初始（窗口 i±1）")
+        // 第一次滚动：到 i+1 并滚停（原生减速结束回调）。
+        paging.setContentOffset(paging.contentOffsetForPage(at: 2), animated: false)
+        dump("1 第一次滚动到 i+1（滚停前）")
+        controller.scrollViewDidEndDecelerating(paging)
+        dump("2 第一次滚停（finishNativePaging 后，SwiftUI 尚未刷新）")
+        // 第二次滚动在 SwiftUI 刷新前立即开始：目标 i+2。
+        paging.setContentOffset(paging.contentOffsetForPage(at: 3), animated: false)
+        dump("3 第二次滚动到 i+2（刷新前）")
+        controller.scrollViewDidEndDecelerating(paging)
+        dump("4 第二次滚停（finishNativePaging 后）")
+        applyProductionWindow()
+        dump("5 SwiftUI 刷新（重新 apply 窗口）后")
+        // 边界：最后一页再滑。
+        _ = machine.handleNativePageChange(to: 5)
+        applyProductionWindow()
+        paging.setContentOffset(CGPoint(x: paging.contentOffsetForPage(at: 5).x + 80, y: 0), animated: false)
+        dump("6 最后一页再滑 80pt（越界）")
+        controller.scrollViewDidEndDecelerating(paging)
+        dump("7 越界滚停")
+
+        diagnostics.stop()
+        diagnostics.export()
+        for line in diagnostics.reportText.split(separator: "\n")
+        where line.contains("kind=event") &&
+            (line.contains("外层setContentOffset") || line.contains("页创建") ||
+                line.contains("页移除") || line.contains("handleNativePageChange")) {
+            print("[IC-079 探针事件] \(line)")
+        }
+    }
+
     // P1 替代断言：Nx 平移由原生滚动容器接管并产生非零 contentOffset。
     func testP1NxSingleFingerDragProducesNonzeroPan() {
         let scrollView = makeNativeZoomScrollView()

@@ -54,7 +54,9 @@ struct PhotoCleanupMVEApp: App {
                                         contentMode: context.contentMode,
                                         showsOpaqueLoadingBackground: true,
                                         onReading:
-                                            context.onRequestReading
+                                            context.onRequestReading,
+                                        onLoadStateChange:
+                                            context.onLoadStateChange
                                     )
                                 )
                             },

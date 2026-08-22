@@ -41,3 +41,18 @@
 ## 模拟器样例边界
 
 同目录的 `simulator-sample.txt` 是由 300×600 模拟器测试夹具值整理的格式样例，仅用于检查字段、空数组、来源和统一排序是否完整。它不是三个真机场景的实测结果，不能用于判断根因。
+
+### 自 IC-079 起的字段追加（格式版本仍为 1）
+
+- 新增场景 **D 快速连续翻页**（`fastPaging`）：起始 `V=显示`、`s=1`，开始录制 → 快速连续左右滑 5 张 → 停止录制 → 导出文本。既有三个场景不变。
+- 逐帧记录在 `s` 之后追加七个字段，头部字段声明行同步为
+  `time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,contentInset,adjustedContentInset,V,s,pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating,currentIndex,settledIndex,pageIndicesPresent,pageLoadStates`：
+  - `pagingContentOffsetX`：外层分页容器 `contentOffset.x`；`pagingIsDragging` / `pagingIsDecelerating`：外层容器拖动与减速标志（`true` / `false`，无控制器时 `nil`）。
+  - `currentIndex`：状态机当前索引；`settledIndex`：分页控制器已结算索引。
+  - `pageIndicesPresent`：已创建页控制器的索引列表，升序，形如 `[1,2,3]`；为空输出 `[]`。
+  - `pageLoadStates`：各已创建页的图像加载态，形如 `[1=displayed,2=loading,3=unknown]`；`loading` / `displayed` / `failed` 来自 `S2ImageLoadState`，`unknown` 表示该资产尚无加载态回调（横栏缩略图与非主图路径不登记）。
+- 离散事件新增三类：
+  - `event=页创建` / `event=页移除`，来源 `S2NativePagerViewController.apply`，`details=pageIndex=…；asset=…`。
+  - `event=外层setContentOffset`，来源为写入点（`S2NativePagerViewController.apply` / `synchronizeNativeStateToMachine` / `updateNXEdgePaging` / `layoutNativePages`，最后一处为 `contentOffset` 直接赋值），`details=x=…；animated=true|false`。
+  - `event=handleNativePageChange`，来源 `S2NativePagerViewController.finishNativePaging`，`details=from=…；to=…；accepted=true|false`。
+- 关闭录制时以上埋点零副作用（仅在 `isRecording` 为真时追加记录）。头部「格式版本=1」未递增。

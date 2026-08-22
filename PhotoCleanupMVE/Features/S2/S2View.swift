@@ -50,6 +50,8 @@ struct S2ImageContentContext {
     let requestStrategy: S2ImageRequestStrategy?
     let requestRevision: Int
     let onRequestReading: (S2ImageRequestReading) -> Void
+    /// IC-079 R1：图像加载态回调，仅供诊断埋点记录。
+    var onLoadStateChange: (S2ImageLoadState) -> Void = { _ in }
 }
 
 struct S2BottomStripItemPresentation {
@@ -324,6 +326,8 @@ struct S2View: View {
     private let assetPixelSize: (String) -> CGSize
     /// IC-078：`pinchMaxScale` 的 1:1 像素倍率按屏幕倍率换算。
     @Environment(\.displayScale) private var displayScale
+    /// IC-079 R1：各资产图像加载态登记，仅供诊断录制场景 D 读取。
+    @StateObject private var imageLoadStateRegistry = S2ImageLoadStateRegistry()
     private let photoContent: PhotoContent
     private let stripItemContent: StripItemContent
     private let albumPickerContent: AlbumPickerContent
@@ -563,6 +567,9 @@ struct S2View: View {
                     if index == machine.currentIndex {
                         machine.recordImageRequestReading(reading)
                     }
+                },
+                onLoadStateChange: { [imageLoadStateRegistry] state in
+                    imageLoadStateRegistry.update(state, for: assetID)
                 }
             ))
             return S2NativePageContent(
@@ -600,7 +607,8 @@ struct S2View: View {
                 calibrationOverlayState.toggleAccessControls()
             },
             diagnosticsCoordinator: geometryDiagnostics,
-            transitionDiagnosticsCoordinator: transitionDiagnostics
+            transitionDiagnosticsCoordinator: transitionDiagnostics,
+            imageLoadStateRegistry: imageLoadStateRegistry
         )
         .frame(width: viewportSize.width, height: viewportSize.height)
         .clipped()
@@ -1432,6 +1440,10 @@ struct S2View: View {
         case .pinchStart:
             return L10n.text(
                 "s2.calibration.transition_diagnostics.scenario_c"
+            )
+        case .fastPaging:
+            return L10n.text(
+                "s2.calibration.transition_diagnostics.scenario_d"
             )
         }
     }
