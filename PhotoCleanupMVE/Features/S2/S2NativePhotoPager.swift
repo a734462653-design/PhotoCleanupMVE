@@ -94,7 +94,7 @@ struct S2NxEdgePagingInteraction: Equatable {
     let distanceToPreviousBoundary: CGFloat
     let distanceToNextBoundary: CGFloat
 
-    /// IC-082 R2（v15 决策 4 原文"画面已平移贴边"）：拖动开始时，缩放后内容在拖动
+    /// IC-082 R2（v15 决策 4 原文「画面已平移贴边」）：拖动开始时，缩放后内容在拖动
     /// 方向上的边界已与视口边界重合（距离 ≤ 0.5 pt）才算贴边起始；否则本次拖动
     /// 无论溢出多少都不翻页。
     static let edgeTolerance: CGFloat = 0.5
