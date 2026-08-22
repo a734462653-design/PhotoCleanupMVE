@@ -137,7 +137,8 @@ struct S2BottomStripMetrics: Equatable {
 
 // 此类型只承接未来决议的显式注入；本卡不提供任何默认实例。
 struct S2ResolvedParameters: Equatable {
-    let pinchMaxScale: CGFloat
+    let pinchMaxScaleFloor: CGFloat
+    let pinchMaxScaleCeiling: CGFloat
     let zoomSnapBackThreshold: CGFloat
     let minDoubleTapScale: CGFloat
     let doubleTapAnchorStrategy: S2DoubleTapAnchorStrategy
@@ -148,7 +149,8 @@ struct S2ResolvedParameters: Equatable {
     let bottomStripMetrics: S2BottomStripMetrics
 
     init?(
-        pinchMaxScale: CGFloat,
+        pinchMaxScaleFloor: CGFloat,
+        pinchMaxScaleCeiling: CGFloat,
         zoomSnapBackThreshold: CGFloat,
         minDoubleTapScale: CGFloat,
         doubleTapAnchorStrategy: S2DoubleTapAnchorStrategy,
@@ -158,9 +160,10 @@ struct S2ResolvedParameters: Equatable {
         verticalSwipeVelocity: CGFloat,
         bottomStripMetrics: S2BottomStripMetrics
     ) {
-        guard pinchMaxScale > 1,
+        guard pinchMaxScaleFloor > 1,
+              pinchMaxScaleCeiling >= pinchMaxScaleFloor,
               zoomSnapBackThreshold >= 1,
-              zoomSnapBackThreshold <= pinchMaxScale,
+              zoomSnapBackThreshold <= pinchMaxScaleFloor,
               minDoubleTapScale > 1,
               edgePagingTriggerDistance >= 0,
               edgePagingTriggerVelocity >= 0,
@@ -170,7 +173,8 @@ struct S2ResolvedParameters: Equatable {
             return nil
         }
 
-        self.pinchMaxScale = pinchMaxScale
+        self.pinchMaxScaleFloor = pinchMaxScaleFloor
+        self.pinchMaxScaleCeiling = pinchMaxScaleCeiling
         self.zoomSnapBackThreshold = zoomSnapBackThreshold
         self.minDoubleTapScale = minDoubleTapScale
         self.doubleTapAnchorStrategy = doubleTapAnchorStrategy
@@ -620,7 +624,7 @@ final class S2StateMachine: ObservableObject {
               initialFavoriteAssetIDs.isSubset(of: assetIDSet),
               entry.sessionMergedPendingDeletionCount >= 0,
               initialPresentation.scale >= 1,
-              initialPresentation.scale <= parameters.pinchMaxScale else {
+              initialPresentation.scale <= parameters.pinchMaxScaleFloor else {
             return nil
         }
 
@@ -1090,7 +1094,7 @@ final class S2StateMachine: ObservableObject {
         guard targetScale.isFinite, targetScale > 1 else {
             return false
         }
-        let resolvedScale = min(parameters.pinchMaxScale, targetScale)
+        let resolvedScale = min(pinchMaxScale(for: currentAssetID), targetScale)
         guard resolvedScale > 1 else {
             return false
         }
@@ -1121,7 +1125,7 @@ final class S2StateMachine: ObservableObject {
               viewportOffset.height.isFinite else {
             return
         }
-        self.scale = min(parameters.pinchMaxScale, max(1, scale))
+        self.scale = min(pinchMaxScale(for: currentAssetID), max(1, scale))
         self.viewportOffset = self.scale == 1 ? .zero : viewportOffset
     }
 
@@ -1190,7 +1194,7 @@ final class S2StateMachine: ObservableObject {
             return false
         }
         scale = min(
-            parameters.pinchMaxScale,
+            pinchMaxScale(for: currentAssetID),
             max(1, pinchStartScale * magnification)
         )
         if scale == 1 {
@@ -1679,6 +1683,11 @@ final class S2StateMachine: ObservableObject {
     }
 
     @discardableResult
+    /// IC-078：按资产求当前最大倍率。尚未登记资产缩放几何时取 `pinchMaxScaleFloor`。
+    func pinchMaxScale(for assetID: String) -> CGFloat {
+        parameters.pinchMaxScaleFloor
+    }
+
     func applyCalibration(
         _ configuration: S2CalibrationConfiguration
     ) -> Bool {
@@ -1687,8 +1696,9 @@ final class S2StateMachine: ObservableObject {
         }
         parameters = resolvedParameters
         imageRequestStrategy = configuration.imageRequestStrategy
-        if scale > resolvedParameters.pinchMaxScale {
-            scale = resolvedParameters.pinchMaxScale
+        let currentPinchMaxScale = pinchMaxScale(for: currentAssetID)
+        if scale > currentPinchMaxScale {
+            scale = currentPinchMaxScale
             imageRequestScale = scale
         }
         return true

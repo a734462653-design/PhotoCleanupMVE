@@ -598,7 +598,7 @@ final class S2StateMachineTests: XCTestCase {
             viewportSize: viewportSize,
             fittedSize: fittedSize
         ))
-        XCTAssertEqual(machine.scale, parameters.pinchMaxScale)
+        XCTAssertEqual(machine.scale, parameters.pinchMaxScaleFloor)
         XCTAssertEqual(machine.interfaceVisibility, .hidden)
     }
 
@@ -1113,7 +1113,8 @@ final class S2StateMachineTests: XCTestCase {
 
     private var parameters: S2ResolvedParameters {
         S2ResolvedParameters(
-            pinchMaxScale: 4,
+            pinchMaxScaleFloor: 4,
+            pinchMaxScaleCeiling: 10,
             zoomSnapBackThreshold: 1.2,
             minDoubleTapScale: 2.5,
             doubleTapAnchorStrategy: .touchPoint,

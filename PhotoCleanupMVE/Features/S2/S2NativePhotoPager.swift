@@ -1231,7 +1231,7 @@ final class S2NativeZoomPageController: UIViewController,
                     fittedSize: fittedSize,
                     nativeZoomBaseSize: nativeZoomBaseSize,
                     viewportSize: viewportSize,
-                    maximumZoomScale: CGFloat(configuration.pinchMaxScale),
+                    maximumZoomScale: CGFloat(configuration.pinchMaxScaleFloor),
                     assetPixelSize: assetPixelSize
                 )
                 zoomScrollView.applyNativeState(
@@ -1863,7 +1863,7 @@ final class S2NativeZoomPageController: UIViewController,
             fittedSize: fittedSize,
             nativeZoomBaseSize: nativeZoomBaseSize,
             viewportSize: latestViewportSize,
-            maximumZoomScale: CGFloat(configuration.pinchMaxScale),
+            maximumZoomScale: CGFloat(configuration.pinchMaxScaleFloor),
             assetPixelSize: assetPixelSize
         )
         applyCornerMask()

@@ -310,14 +310,14 @@ final class S2ImageLoadingStateTests: XCTestCase {
         XCTAssertTrue(factory.exportText().contains("degradedPreviewPolicy=display"))
 
         let connections = S2CalibrationConfiguration.parameterConnections
-        XCTAssertEqual(connections.count, 36)
+        XCTAssertEqual(connections.count, 37)
         let statuses = Dictionary(uniqueKeysWithValues: connections.map {
             ($0.name, $0.specStatus)
         })
         XCTAssertEqual(statuses["degradedPreviewPolicy"], .decided)
         XCTAssertEqual(statuses["scaleChangeRequestPolicy"], .decided)
-        XCTAssertEqual(connections.filter { $0.specStatus == .decided }.count, 21)
-        XCTAssertEqual(connections.filter { $0.specStatus == .placeholder }.count, 15)
+        XCTAssertEqual(connections.filter { $0.specStatus == .decided }.count, 23)
+        XCTAssertEqual(connections.filter { $0.specStatus == .placeholder }.count, 14)
     }
 }
 
