@@ -276,7 +276,7 @@ struct S2AlbumPickerRequest: Equatable {
     let targetAssetID: String
 }
 
-/// IC-076：相簿选择 sheet 中"选中 → 写入中 → 结果"三段的中间记录；
+/// IC-076：相簿选择 sheet 中「选中 → 写入中 → 结果」三段的中间记录；
 /// 结果必须作用于 `request.targetAssetID`（`x`）与选中时的相册。
 struct S2AlbumPickerSelection: Equatable {
     let request: S2AlbumPickerRequest
