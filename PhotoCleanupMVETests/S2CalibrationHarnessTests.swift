@@ -3000,7 +3000,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // IC-082 G154（R3，夹具驱动，真机未覆盖）：Nx 下内层未贴边时外层偏移不变；内层贴边后外层随原生
     // 拖动变化并经 finishNativePaging 结算：currentIndex+1、新页与旧页 scale 均为 1、V 不变；
-    // 全程外层偏移写入只来自原生结算路径（无 updateNXEdgePaging 来源）。
+    // 全程外层偏移写入只来自原生路径（apply / layoutNativePages / synchronizeNativeStateToMachine），无自定义投影来源。
     func testIC082G154NxPagingHandsOffToOuterNativeScrollWithoutCustomWrites() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(scale: 2, configuration: configuration)
@@ -3075,7 +3075,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
             }
             return nil
         }
-        XCTAssertFalse(sources.contains { $0.contains("updateNXEdgePaging") })
+        let nativeSources: Set<String> = [
+            "S2NativePagerViewController.apply",
+            "S2NativePagerViewController.layoutNativePages",
+            "S2NativePagerViewController.synchronizeNativeStateToMachine"
+        ]
+        XCTAssertTrue(
+            sources.allSatisfy { nativeSources.contains($0) },
+            "外层偏移写入来源只能是原生路径：\(sources)"
+        )
         XCTAssertFalse(diagnostics.recordedEntries.contains { entry in
             if case let .event(name, _, _) = entry.payload {
                 return name == "beginNXEdgePaging"
