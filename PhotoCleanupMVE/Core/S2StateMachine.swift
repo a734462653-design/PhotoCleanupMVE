@@ -1028,6 +1028,7 @@ final class S2StateMachine: ObservableObject {
             scale = 1
             imageRequestScale = 1
             viewportOffset = .zero
+            requestImageAfterScaleSettled()
             return true
         }
 
@@ -1065,6 +1066,7 @@ final class S2StateMachine: ObservableObject {
             fittedSize: fittedSize,
             zoomScale: scale
         )
+        requestImageAfterScaleSettled()
         return true
     }
 
@@ -1081,6 +1083,7 @@ final class S2StateMachine: ObservableObject {
             scale = 1
             imageRequestScale = 1
             viewportOffset = .zero
+            requestImageAfterScaleSettled()
             return true
         }
 
@@ -1094,7 +1097,19 @@ final class S2StateMachine: ObservableObject {
         scale = resolvedScale
         imageRequestScale = resolvedScale
         viewportOffset = .zero
+        requestImageAfterScaleSettled()
         return true
+    }
+
+    /// IC-077（v15 回写决策 28）：双击到达目标倍率（进入或退出 Nx）时请求一次。
+    /// 与捏合结束共用同一信号（`imageRequestRevision`），视图层按 `pinchEnded` 触发器处理；
+    /// `everyScaleChange` 策略下由倍率变化本身触发请求，此处不再重复递增。
+    private func requestImageAfterScaleSettled() {
+        guard imageRequestStrategy?.scaleChangePolicy == .pinchEnded else {
+            return
+        }
+        imageRequestAssetID = currentAssetID
+        imageRequestRevision += 1
     }
 
     func reportNativeViewport(

@@ -127,6 +127,135 @@ final class S2ImageLoadingStateTests: XCTestCase {
         XCTAssertFalse(machine.pendingDeletionAssetIDs.contains(target))
     }
 
+    // IC-077 G127（宿主 S2View，生产窗口化分页路径，假策略计数）：
+    // 捏合中连续 10 次 s 变化 0 次请求；捏合结束 1 次；双击到达目标倍率 1 次（退出与进入各 1）；
+    // 翻页新进窗口的一页 1 次且离开窗口的一页旧请求被取消；视口尺寸变化当前页 1 次。
+    func testIC077G127RequestThrottlingAcrossPinchDoubleTapPagingAndViewport() {
+        let assetIDs = ["asset-1", "asset-2", "asset-3", "asset-4", "asset-5"]
+        let machine = makeMachine(orderedAssetIDs: assetIDs, currentIndex: 1)
+        let strategy = S2ScriptedImageStrategy()
+        let calibration = S2CalibrationModel(
+            persistence: S2DiscardingCalibrationPersistence()
+        )
+        let view = S2View(
+            machine: machine,
+            calibration: calibration,
+            assetAspectRatio: { _ in 1 },
+            photoContent: { context in
+                AnyView(
+                    S2TemporaryPhotoImageView(
+                        strategy: strategy,
+                        assetID: context.assetID,
+                        requestBaseSize: context.requestBaseSize,
+                        requestedScale: context.scale,
+                        requestStrategy: context.requestStrategy,
+                        requestRevision: context.requestRevision,
+                        showsOpaqueLoadingBackground: true,
+                        onReading: context.onRequestReading
+                    )
+                )
+            },
+            stripItemContent: { _ in AnyView(Color.clear) },
+            albumPickerContent: { _, _ in AnyView(EmptyView()) }
+        )
+        let controller = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+
+        let current = "asset-2"
+        XCTAssertEqual(strategy.requestCount(for: current), 1, "初始请求一次")
+        XCTAssertEqual(strategy.requestCount(for: "asset-1"), 1)
+        XCTAssertEqual(strategy.requestCount(for: "asset-3"), 1)
+        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 0, "窗口外不请求")
+        let firstPageRequestID = strategy.requests.first { $0.assetID == "asset-1" }?.id
+
+        // 捏合：连续 s 变化 0 次请求。
+        XCTAssertTrue(machine.beginPinch())
+        for step in 1...10 {
+            machine.reportNativeViewport(
+                scale: 1 + CGFloat(step) * 0.1,
+                viewportOffset: .zero
+            )
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+        XCTAssertEqual(strategy.requestCount(for: current), 1, "捏合中不得请求")
+
+        // 捏合结束 1 次。
+        XCTAssertNotNil(machine.finishNativePinch(
+            scale: 2,
+            viewportOffset: .zero,
+            accepted: true
+        ))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        XCTAssertEqual(strategy.requestCount(for: current), 2, "捏合结束请求一次")
+
+        // 双击退出 Nx 到达 s=1：1 次；再双击进入目标倍率：1 次。
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.zoomState, .oneX)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        XCTAssertEqual(strategy.requestCount(for: current), 3, "双击退出请求一次")
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.zoomState, .nX)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        XCTAssertEqual(strategy.requestCount(for: current), 4, "双击进入请求一次")
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        XCTAssertEqual(machine.zoomState, .oneX)
+
+        // 翻页：新进窗口的 asset-4 请求一次；离开窗口的 asset-1 旧请求被取消；当前页不重复请求。
+        let beforePaging = strategy.requestCount
+        XCTAssertTrue(machine.handleNativePageChange(to: 2))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+        XCTAssertEqual(strategy.requestCount(for: "asset-4"), 1, "翻页后新页请求一次")
+        XCTAssertEqual(strategy.requestCount(for: "asset-3"), 1, "成为当前页不重复请求")
+        XCTAssertEqual(strategy.requestCount - beforePaging, 1, "翻页只新增一次请求")
+        XCTAssertNotNil(firstPageRequestID)
+        XCTAssertTrue(
+            strategy.cancelledIDs.contains(firstPageRequestID ?? PHInvalidImageRequestID),
+            "离开窗口的页应取消旧请求"
+        )
+
+        // 视口尺寸变化：当前页请求一次。
+        let beforeResize = strategy.requestCount(for: "asset-3")
+        window.frame = CGRect(
+            origin: .zero,
+            size: CGSize(width: physicalSize.width, height: physicalSize.height - 120)
+        )
+        window.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+        XCTAssertEqual(
+            strategy.requestCount(for: "asset-3") - beforeResize,
+            1,
+            "视口尺寸变化请求一次"
+        )
+    }
+
+    // IC-077 R3（状态机层）：双击进入与退出各递增一次请求信号；everyScaleChange 策略下不递增。
+    func testIC077R3DoubleTapBumpsImageRequestRevisionOncePerSettle() {
+        let machine = makeMachine()
+        XCTAssertEqual(machine.imageRequestRevision, 0)
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.imageRequestRevision, 1)
+        XCTAssertEqual(machine.imageRequestAssetID, machine.currentAssetID)
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.imageRequestRevision, 2)
+        XCTAssertTrue(machine.handleDoubleTap(
+            at: CGPoint(x: 100, y: 200),
+            viewportSize: physicalSize,
+            assetAspectRatio: 0.5
+        ))
+        XCTAssertEqual(machine.imageRequestRevision, 3)
+
+        var everyChange = S2CalibrationConfiguration.factoryPlaceholder
+        everyChange.scaleChangeRequestPolicy = .everyScaleChange
+        XCTAssertTrue(machine.applyCalibration(everyChange))
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.imageRequestRevision, 3)
+    }
+
     private struct HostedRun {
         let readings: [S2ImageReturnType]
         let states: [S2ImageLoadState]
