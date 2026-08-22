@@ -33,8 +33,6 @@ struct CleanupRouteConfiguration {
 
 @MainActor
 final class CleanupCoordinator: ObservableObject {
-    static let debugAssetLimit = 300
-
     @Published private(set) var route: CleanupRoute = .loading
     @Published private(set) var s1Machine: S1StateMachine?
     @Published private(set) var s2Machine: S2StateMachine?
