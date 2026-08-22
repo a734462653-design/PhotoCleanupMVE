@@ -722,6 +722,85 @@ final class S2StateMachineTests: XCTestCase {
         )
     }
 
+    // IC-074 R2 正向：1x 下以横向结束的主图拖动不再由状态机切页（本卡唯一有意的行为变化）。
+    func testIC074R2OneXHorizontalDragEndDoesNotSwitchPhoto() {
+        let visible = makeMachine(state: .visibleOneXIdle)
+        let visibleIndex = visible.currentIndex
+        XCTAssertFalse(visible.completeMainDrag(
+            translation: CGSize(width: -120, height: 5),
+            duration: 0.1,
+            startedOffset: .zero,
+            viewportSize: viewportSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(visible.currentIndex, visibleIndex)
+        XCTAssertEqual(visible.currentAssetID, "asset-2")
+        XCTAssertEqual(visible.state, .visibleOneXIdle)
+
+        let hidden = makeMachine(state: .hiddenOneX)
+        let hiddenIndex = hidden.currentIndex
+        XCTAssertFalse(hidden.completeMainDrag(
+            translation: CGSize(width: 200, height: 0),
+            duration: 0.05,
+            startedOffset: .zero,
+            viewportSize: viewportSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(hidden.currentIndex, hiddenIndex)
+        XCTAssertEqual(hidden.state, .hiddenOneX)
+
+        // 竖向分支不受影响：1x 上滑仍标记待删。
+        let vertical = makeMachine(state: .visibleOneXIdle)
+        XCTAssertTrue(vertical.completeMainDrag(
+            translation: CGSize(width: 5, height: -120),
+            duration: 0.1,
+            startedOffset: .zero,
+            viewportSize: viewportSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertTrue(vertical.pendingDeletionAssetIDs.contains("asset-2"))
+    }
+
+    // IC-074 R2 反向：nX 贴边翻页的 edgePaging* 阈值判定不受影响。
+    func testIC074R2NxEdgePagingThresholdsUnchanged() {
+        let belowDistance = makeMachine(state: .visibleNxIdle)
+        XCTAssertFalse(belowDistance.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: true,
+            distance: parameters.edgePagingTriggerDistance - 1,
+            velocity: parameters.edgePagingTriggerVelocity
+        ))
+        XCTAssertEqual(belowDistance.currentAssetID, "asset-2")
+
+        let belowVelocity = makeMachine(state: .visibleNxIdle)
+        XCTAssertFalse(belowVelocity.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: true,
+            distance: parameters.edgePagingTriggerDistance,
+            velocity: parameters.edgePagingTriggerVelocity - 1
+        ))
+        XCTAssertEqual(belowVelocity.currentAssetID, "asset-2")
+
+        let notAtEdge = makeMachine(state: .visibleNxIdle)
+        XCTAssertFalse(notAtEdge.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: false,
+            distance: parameters.edgePagingTriggerDistance * 10,
+            velocity: parameters.edgePagingTriggerVelocity * 10
+        ))
+        XCTAssertEqual(notAtEdge.currentAssetID, "asset-2")
+
+        let atThreshold = makeMachine(state: .visibleNxIdle)
+        XCTAssertTrue(atThreshold.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: true,
+            distance: parameters.edgePagingTriggerDistance,
+            velocity: parameters.edgePagingTriggerVelocity
+        ))
+        XCTAssertEqual(atThreshold.currentAssetID, "asset-3")
+        XCTAssertEqual(atThreshold.scale, 1)
+    }
+
     private let viewportSize = CGSize(width: 300, height: 600)
     private let fittedSize = CGSize(width: 300, height: 600)
 
@@ -735,10 +814,6 @@ final class S2StateMachineTests: XCTestCase {
             edgePagingTriggerVelocity: 300,
             verticalSwipeDistance: 40,
             verticalSwipeVelocity: 100,
-            horizontalSwipeDistance: 40,
-            horizontalSwipeVelocity: 100,
-            pinchMinimumScaleDelta: 0.01,
-            mainDragMinimumDistance: 8,
             bottomStripMetrics: S2BottomStripMetrics(
                 currentItemSize: 72,
                 neighborItemWidth: 52,

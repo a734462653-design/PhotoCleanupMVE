@@ -148,10 +148,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             edgePagingTriggerVelocity: CGFloat(edgePagingTriggerVelocity),
             verticalSwipeDistance: CGFloat(verticalSwipeDistance),
             verticalSwipeVelocity: CGFloat(verticalSwipeVelocity),
-            horizontalSwipeDistance: CGFloat(horizontalSwipeDistance),
-            horizontalSwipeVelocity: CGFloat(horizontalSwipeVelocity),
-            pinchMinimumScaleDelta: CGFloat(pinchMinimumScaleDelta),
-            mainDragMinimumDistance: CGFloat(mainDragMinimumDistance),
             bottomStripMetrics: S2BottomStripMetrics(
                 currentItemSize: CGFloat(bottomStripCurrentItemSize),
                 neighborItemWidth: CGFloat(bottomStripNeighborItemWidth),

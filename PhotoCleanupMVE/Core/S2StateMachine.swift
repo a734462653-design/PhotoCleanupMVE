@@ -151,10 +151,6 @@ struct S2ResolvedParameters: Equatable {
     let edgePagingTriggerVelocity: CGFloat
     let verticalSwipeDistance: CGFloat
     let verticalSwipeVelocity: CGFloat
-    let horizontalSwipeDistance: CGFloat
-    let horizontalSwipeVelocity: CGFloat
-    let pinchMinimumScaleDelta: CGFloat
-    let mainDragMinimumDistance: CGFloat
     let bottomStripMetrics: S2BottomStripMetrics
 
     init?(
@@ -166,10 +162,6 @@ struct S2ResolvedParameters: Equatable {
         edgePagingTriggerVelocity: CGFloat,
         verticalSwipeDistance: CGFloat,
         verticalSwipeVelocity: CGFloat,
-        horizontalSwipeDistance: CGFloat,
-        horizontalSwipeVelocity: CGFloat,
-        pinchMinimumScaleDelta: CGFloat,
-        mainDragMinimumDistance: CGFloat,
         bottomStripMetrics: S2BottomStripMetrics
     ) {
         guard pinchMaxScale > 1,
@@ -180,10 +172,6 @@ struct S2ResolvedParameters: Equatable {
               edgePagingTriggerVelocity >= 0,
               verticalSwipeDistance >= 0,
               verticalSwipeVelocity >= 0,
-              horizontalSwipeDistance >= 0,
-              horizontalSwipeVelocity >= 0,
-              pinchMinimumScaleDelta >= 0,
-              mainDragMinimumDistance >= 0,
               bottomStripMetrics.isValid else {
             return nil
         }
@@ -196,10 +184,6 @@ struct S2ResolvedParameters: Equatable {
         self.edgePagingTriggerVelocity = edgePagingTriggerVelocity
         self.verticalSwipeDistance = verticalSwipeDistance
         self.verticalSwipeVelocity = verticalSwipeVelocity
-        self.horizontalSwipeDistance = horizontalSwipeDistance
-        self.horizontalSwipeVelocity = horizontalSwipeVelocity
-        self.pinchMinimumScaleDelta = pinchMinimumScaleDelta
-        self.mainDragMinimumDistance = mainDragMinimumDistance
         self.bottomStripMetrics = bottomStripMetrics
     }
 }
@@ -1367,16 +1351,9 @@ final class S2StateMachine: ObservableObject {
             )
         }
 
-        if direction == .horizontal,
-           horizontalDistance >= parameters.horizontalSwipeDistance,
-           horizontalVelocity >= parameters.horizontalSwipeVelocity {
-            return handleHorizontalSwipe(
-                direction: translation.width < 0 ? .next : .previous,
-                startedAtPagingEdge: true,
-                distance: horizontalDistance,
-                velocity: horizontalVelocity
-            )
-        }
+        // IC-074：1x 下以横向结束的主图拖动不再由状态机切页。
+        // v15 规定 1x 左右滑只由外层原生分页承担；此处返回 false 是本卡
+        // 唯一有意的行为变化（Decision_log 第 122 条）。
         return false
     }
 

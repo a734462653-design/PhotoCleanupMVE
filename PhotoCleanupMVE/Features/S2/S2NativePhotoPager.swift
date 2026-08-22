@@ -2638,17 +2638,13 @@ final class S2NativePagerViewController: UIViewController,
             peakVelocity: peakVelocity,
             duration: duration
         ))
-        let accepted = peakVelocity >=
-            CGFloat(configuration.pinchMinimumVelocityPerSecond) &&
-            durationIsAllowed(
-                duration,
-                maximumMilliseconds:
-                    configuration.pinchMaximumDurationMilliseconds
-            )
+        // IC-074：原 pinchMinimumVelocityPerSecond / pinchMaximumDurationMilliseconds
+        // 过滤已随参数废止删除；出厂值均为 0（语义为无限制），过滤恒通过，
+        // 因此这里恒以 accepted=true 交给状态机，行为不变。
         guard let targetScale = machine.finishNativePinch(
             scale: scale,
             viewportOffset: page.zoomScrollView.reportedViewportOffset(),
-            accepted: accepted
+            accepted: true
         ) else {
             return
         }
@@ -3034,13 +3030,6 @@ final class S2NativePagerViewController: UIViewController,
         )
     }
 
-    private func durationIsAllowed(
-        _ duration: TimeInterval,
-        maximumMilliseconds: Double
-    ) -> Bool {
-        maximumMilliseconds == 0 ||
-            duration * 1_000 <= maximumMilliseconds
-    }
 }
 
 final class S2GeometryDiagnosticsCoordinator: ObservableObject {
