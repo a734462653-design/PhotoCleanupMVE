@@ -7991,12 +7991,13 @@ extension S2CalibrationHarnessTests {
         XCTAssertTrue(exported.contains("bottomStripDecelerationRate=0.998000"))
         XCTAssertTrue(exported.contains("bottomStripLeadingInset=20.300000"))
         XCTAssertTrue(exported.contains("bottomStripEdgeFadeWidth=18.700000"))
+        // IC-090 R1：横栏 decided + effective 由 12 增至 13（新增 bottomStripCornerRadius）。
         XCTAssertEqual(
             S2CalibrationConfiguration.parameterConnections
                 .filter { $0.name.hasPrefix("bottomStrip") }
                 .filter { $0.specStatus == .decided && $0.wiringStatus == .effective }
                 .count,
-            12
+            13
         )
     }
 
@@ -8350,7 +8351,10 @@ extension S2CalibrationHarnessTests {
     @MainActor
     private func renderStrip(
         markedAssetIDs: Set<String>,
-        markSize: CGFloat
+        markSize: CGFloat,
+        // 标记以系统前景色（浅色环境下接近纯黑）渲染，故要观察标记就不能用纯黑内容；
+        // 圆角几何门禁仍用纯黑（0 / 1 覆盖的像素不受内容明度影响）。
+        contentWhite: Double = 0
     ) throws -> StripRender {
         let assetIDs = Self.stripAssetIDs
         let machine = makeMachine(
@@ -8366,7 +8370,7 @@ extension S2CalibrationHarnessTests {
             machine: machine,
             metrics: metrics,
             markSize: markSize,
-            itemContent: { _ in AnyView(Color.black) },
+            itemContent: { _ in AnyView(Color(white: contentWhite)) },
             assetAspectRatio: { _ in 1 },
             onPhotoSwitch: {}
         )
@@ -8541,52 +8545,81 @@ extension S2CalibrationHarnessTests {
     func testIC090G181StripMarkOverlayIsClippedByTheSameCornerRadius() throws {
         let assetIDs = Self.stripAssetIDs
         let scale = Self.stripRenderScale
+        let contentWhite = 0.1
+        // 只标记当前张（索引 1）：其余项目保持未标记，作为内容明度参照。
         let oversized = try renderStrip(
-            markedAssetIDs: Set(assetIDs),
-            markSize: 40
+            markedAssetIDs: [assetIDs[1]],
+            markSize: 40,
+            contentWhite: contentWhite
         )
-        for (index, frame) in oversized.frames.enumerated() {
-            let minX = Int(frame.minX) * scale
-            let maxX = Int(frame.maxX) * scale - 1
-            let minY = Int(frame.minY) * scale
-            let maxY = Int(frame.maxY) * scale - 1
-            // `.overlay(alignment: .topTrailing)` 下超大标记向左、向下溢出，
-            // 故验帧左沿之外一列：无圆角裁切时这里会被标记填上。
-            // （帧上沿即视口上沿、帧下沿即视口下沿，越界不可验。）
-            for y in minY...maxY {
-                XCTAssertTrue(
-                    oversized.bitmap.isBackground(x: minX - 1, y: y),
-                    "index=\(index) 标记越出帧左沿 y=\(y)"
-                )
+        let reference = oversized.frames[3]
+        let contentLuminance = oversized.bitmap.luminance(
+            x: Int(reference.midX) * scale,
+            y: Int(reference.midY) * scale
+        )
+        XCTAssertFalse(
+            oversized.bitmap.isBackground(
+                x: Int(reference.midX) * scale,
+                y: Int(reference.midY) * scale
+            ),
+            "内容参照点应为内容像素"
+        )
+
+        let marked = oversized.frames[1]
+        let minX = Int(marked.minX) * scale
+        let maxX = Int(marked.maxX) * scale - 1
+        let minY = Int(marked.minY) * scale
+        let maxY = Int(marked.maxY) * scale - 1
+        // 正对照：超大标记确实渲染了——帧内部（避开圆角影响的边缘 9 px）
+        // 至少有一个像素与纯色内容明度不同。
+        var markPixelCount = 0
+        for y in (minY + 9)...(maxY - 9) {
+            for x in (minX + 9)...(maxX - 9)
+            where oversized.bitmap.luminance(x: x, y: y) != contentLuminance {
+                markPixelCount += 1
             }
-            // 四角仍被圆角切掉。
-            for (cx, cy) in [
-                (minX, minY), (maxX, minY), (minX, maxY), (maxX, maxY)
-            ] {
-                XCTAssertTrue(
-                    oversized.bitmap.isBackground(x: cx, y: cy),
-                    "index=\(index) 角点 (\(cx),\(cy)) 应仍为背景"
-                )
-            }
+        }
+        XCTAssertGreaterThan(markPixelCount, 0, "超大标记未渲染，溢出断言将失效")
+        // `.overlay(alignment: .topTrailing)` 下 40 pt 标记向左溢出到 13 pt 间隙里；
+        // 无圆角裁切时帧左沿之外一列会被标记填上。判据取「像素仍是纯白背景」，
+        // 与标记本身用什么前景色无关。
+        // （帧上沿即视口上沿、帧下沿即视口下沿，越界不可验。）
+        for y in minY...maxY {
+            XCTAssertEqual(
+                oversized.bitmap.luminance(x: minX - 1, y: y),
+                255,
+                "标记越出帧左沿 y=\(y)"
+            )
+        }
+        // 四角仍被圆角切掉。
+        for (cx, cy) in [
+            (minX, minY), (maxX, minY), (minX, maxY), (maxX, maxY)
+        ] {
+            XCTAssertEqual(
+                oversized.bitmap.luminance(x: cx, y: cy),
+                255,
+                "角点 (\(cx),\(cy)) 应仍为纯白背景"
+            )
         }
 
         // 出厂标记尺寸：已标记项目与未标记项目在同一相对位置的像素不同，
         // 即标记确实渲染出来了，且没有被圆角整体裁掉。
-        let marked = try renderStrip(
+        let marked14 = try renderStrip(
             markedAssetIDs: [assetIDs[0]],
-            markSize: 14
+            markSize: 14,
+            contentWhite: contentWhite
         )
-        let markedFrame = marked.frames[0]
-        let plainFrame = marked.frames[2]
+        let markedFrame = marked14.frames[0]
+        let plainFrame = marked14.frames[2]
         XCTAssertEqual(markedFrame.size, plainFrame.size)
         var differingPixels: [(x: Int, y: Int)] = []
         for dy in 0..<(Int(markedFrame.height) * scale) {
             for dx in 0..<(Int(markedFrame.width) * scale) {
-                let markedLuminance = marked.bitmap.luminance(
+                let markedLuminance = marked14.bitmap.luminance(
                     x: Int(markedFrame.minX) * scale + dx,
                     y: Int(markedFrame.minY) * scale + dy
                 )
-                let plainLuminance = marked.bitmap.luminance(
+                let plainLuminance = marked14.bitmap.luminance(
                     x: Int(plainFrame.minX) * scale + dx,
                     y: Int(plainFrame.minY) * scale + dy
                 )
@@ -8595,17 +8628,19 @@ extension S2CalibrationHarnessTests {
                 }
             }
         }
-        // 两个项目除标记外逐像素相同（同尺寸、同纯色内容、同圆角），
-        // 因此差异像素即标记像素：必须存在，且全部落在项目帧右上区域之内。
+        // 两个项目除标记外逐像素相同（同尺寸、同纯色内容、同圆角、同整点位置），
+        // 因此差异像素即标记像素：必须存在，且全部落在右上 14 pt 标记框内
+        // （抗锯齿留 1 px 余量）。
         XCTAssertFalse(differingPixels.isEmpty, "出厂尺寸下标记未渲染")
-        let markBoxSide = Int(14) * scale
+        let markBoxSide = 14 * scale
+        let leftBound = Int(markedFrame.width) * scale - markBoxSide - 1
         for pixel in differingPixels {
             XCTAssertGreaterThanOrEqual(
                 pixel.x,
-                Int(markedFrame.width) * scale - markBoxSide,
+                leftBound,
                 "标记像素越出右上标记框 x=\(pixel.x)"
             )
-            XCTAssertLessThan(
+            XCTAssertLessThanOrEqual(
                 pixel.y,
                 markBoxSide,
                 "标记像素越出右上标记框 y=\(pixel.y)"
