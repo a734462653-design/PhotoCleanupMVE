@@ -361,6 +361,87 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
+    // IC-087 G171：持久化数据的 `schemaVersion` 与代码版本不等（或缺失）→ 整套丢弃、取出厂值并删除条目；
+    // 相等 → 按现行逐字段解码。导出文本含 schemaVersion=3。
+    func testIC087G171SchemaVersionGateDiscardsStaleStoreAndDeletesEntry() throws {
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 3)
+        XCTAssertTrue(
+            S2CalibrationConfiguration.factoryPlaceholder.exportText()
+                .contains("schemaVersion=3")
+        )
+
+        // 1) schemaVersion=2 且 ceiling=10 → 出厂 40，且存储被删除。
+        let stale = InMemoryCalibrationPersistence(
+            data: try makeStoredCalibration(schemaVersion: 2, ceiling: 10)
+        )
+        let staleModel = S2CalibrationModel(persistence: stale)
+        XCTAssertEqual(staleModel.configuration, .factoryPlaceholder)
+        XCTAssertEqual(staleModel.configuration.pinchMaxScaleCeiling, 40)
+        XCTAssertNil(stale.data)
+        XCTAssertEqual(stale.deleteCount, 1)
+        XCTAssertEqual(stale.saveCount, 0)
+        XCTAssertFalse(staleModel.persistenceFailed)
+
+        // 2) schemaVersion=3 且 ceiling=12 → 12，存储保留。
+        let current = InMemoryCalibrationPersistence(
+            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 12)
+        )
+        let currentModel = S2CalibrationModel(persistence: current)
+        XCTAssertEqual(currentModel.configuration.pinchMaxScaleCeiling, 12)
+        XCTAssertNotNil(current.data)
+        XCTAssertEqual(current.deleteCount, 0)
+
+        // 3) 无 schemaVersion 字段（视为 0）→ 出厂，且存储被删除。
+        let legacy = InMemoryCalibrationPersistence(
+            data: try makeStoredCalibration(schemaVersion: nil, ceiling: 10)
+        )
+        let legacyModel = S2CalibrationModel(persistence: legacy)
+        XCTAssertEqual(legacyModel.configuration, .factoryPlaceholder)
+        XCTAssertNil(legacy.data)
+        XCTAssertEqual(legacy.deleteCount, 1)
+
+        // 保存后的数据顶层带 schemaVersion=3，重新加载得同一配置。
+        XCTAssertTrue(currentModel.update { $0.pinchMaxScaleCeiling = 15 })
+        let saved = try XCTUnwrap(current.data)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: saved) as? [String: Any]
+        )
+        XCTAssertEqual(object["schemaVersion"] as? Int, 3)
+        XCTAssertEqual(
+            S2CalibrationModel(persistence: current).configuration,
+            currentModel.configuration
+        )
+
+        // 删除失败时 persistenceFailed 置位，配置仍为出厂。
+        let failing = InMemoryCalibrationPersistence(
+            data: try makeStoredCalibration(schemaVersion: 2, ceiling: 10)
+        )
+        failing.deleteError = S2CalibrationPersistenceError.keychain(-1)
+        let failingModel = S2CalibrationModel(persistence: failing)
+        XCTAssertEqual(failingModel.configuration, .factoryPlaceholder)
+        XCTAssertTrue(failingModel.persistenceFailed)
+    }
+
+    /// IC-087：按出厂值编码后改写顶层 `schemaVersion`（nil 表示删除该字段）与 `pinchMaxScaleCeiling`。
+    private func makeStoredCalibration(
+        schemaVersion: Int?,
+        ceiling: Double
+    ) throws -> Data {
+        let encoded = try JSONEncoder().encode(
+            S2CalibrationConfiguration.factoryPlaceholder
+        )
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        if let schemaVersion {
+            object["schemaVersion"] = schemaVersion
+        } else {
+            object.removeValue(forKey: "schemaVersion")
+        }
+        object["pinchMaxScaleCeiling"] = ceiling
+        return try JSONSerialization.data(withJSONObject: object)
+    }
+
     // V6：四种策略组合从面板配置进入状态机并驱动同一请求判定器。
     func testV6AllFourImageRequestStrategiesTakeEffectImmediately() {
         let timings = S2ScaleChangeImageRequestPolicy.allCases
@@ -766,7 +847,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(statuses["edgePagingTriggerDistance"], .effective)
     }
 
-    // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion=2 与 v15 规格基线。
+    // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion 与 v15 规格基线（IC-087：schemaVersion=3）。
     func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
@@ -778,8 +859,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             .split(separator: "\n")
             .map(String.init)
         XCTAssertEqual(lines.count, 38 + 4)
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 2)
-        XCTAssertTrue(lines.contains("schemaVersion=2"))
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 3)
+        XCTAssertTrue(lines.contains("schemaVersion=3"))
         XCTAssertTrue(lines.contains(
             "taskID=IC-20260821-074-parameter-layer-v15-alignment"
         ))
@@ -7009,5 +7090,38 @@ private struct UserDefaultsCalibrationPersistence: S2CalibrationPersisting {
 
     func save(_ data: Data) throws {
         defaults.set(data, forKey: key)
+    }
+
+    func delete() throws {
+        defaults.removeObject(forKey: key)
+    }
+}
+
+/// IC-087：可注入的假存储，记录保存 / 删除次数并可模拟删除失败。
+private final class InMemoryCalibrationPersistence: S2CalibrationPersisting {
+    var data: Data?
+    var saveCount = 0
+    var deleteCount = 0
+    var deleteError: Error?
+
+    init(data: Data?) {
+        self.data = data
+    }
+
+    func load() throws -> Data? {
+        data
+    }
+
+    func save(_ data: Data) throws {
+        saveCount += 1
+        self.data = data
+    }
+
+    func delete() throws {
+        deleteCount += 1
+        if let deleteError {
+            throw deleteError
+        }
+        data = nil
     }
 }

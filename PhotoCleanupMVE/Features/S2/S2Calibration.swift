@@ -113,7 +113,9 @@ extension S2ResolvedParameters {
 }
 
 struct S2CalibrationConfiguration: Codable, Equatable {
-    static let schemaVersion = 2
+    /// IC-087：出厂值版本。持久化数据顶层写入 `schemaVersion`；加载时与本值不等即整套丢弃并删除条目。
+    /// **纪律：任何改动 `factoryPlaceholder` 出厂值的卡必须同时递增本值。**
+    static let schemaVersion = 3
 
     var pinchMaxScaleFloor: Double
     var pinchMaxScaleCeiling: Double
@@ -353,6 +355,7 @@ extension S2CalibrationConfiguration {
 
 extension S2CalibrationConfiguration {
     private enum CodingKeys: String, CodingKey {
+        case schemaVersion
         case pinchMaxScaleFloor
         case pinchMaxScaleCeiling
         case pinchMaxScaleOneToOneMultiplier
@@ -393,9 +396,17 @@ extension S2CalibrationConfiguration {
         case feedbackToastDurationMilliseconds
     }
 
-    // 旧版持久化数据没有本卡新增字段；其余字段仍按原契约严格解码。
+    // IC-087：先做版本门控——存储的 `schemaVersion`（缺失视为 0）不等于代码版本时抛出不匹配错误，
+    // 由 `S2CalibrationModel` 整套丢弃并删除条目；相等时按现行逐字段解码（旧字段缺失回退出厂值）。
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        let storedVersion = try values.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
+        guard storedVersion == Self.schemaVersion else {
+            throw S2CalibrationPersistenceError.schemaVersionMismatch(
+                stored: storedVersion,
+                expected: Self.schemaVersion
+            )
+        }
         self.init(
             pinchMaxScaleFloor: try values.decodeIfPresent(Double.self, forKey: .pinchMaxScaleFloor) ?? 4,
             pinchMaxScaleCeiling: try values.decodeIfPresent(Double.self, forKey: .pinchMaxScaleCeiling) ?? 40,
@@ -440,6 +451,7 @@ extension S2CalibrationConfiguration {
 
     func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(Self.schemaVersion, forKey: .schemaVersion)
         try values.encode(pinchMaxScaleFloor, forKey: .pinchMaxScaleFloor)
         try values.encode(pinchMaxScaleCeiling, forKey: .pinchMaxScaleCeiling)
         try values.encode(pinchMaxScaleOneToOneMultiplier, forKey: .pinchMaxScaleOneToOneMultiplier)
@@ -587,6 +599,8 @@ struct S2TapDecisionDiagnosticPolicy: Equatable {
 protocol S2CalibrationPersisting {
     func load() throws -> Data?
     func save(_ data: Data) throws
+    /// IC-087：删除持久化条目（不是覆盖）。条目不存在视为成功。
+    func delete() throws
 }
 
 struct S2KeychainCalibrationPersistence: S2CalibrationPersisting {
@@ -630,6 +644,13 @@ struct S2KeychainCalibrationPersistence: S2CalibrationPersisting {
         }
     }
 
+    func delete() throws {
+        let status = SecItemDelete(baseQuery as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw S2CalibrationPersistenceError.keychain(status)
+        }
+    }
+
     private var baseQuery: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
@@ -645,10 +666,13 @@ struct S2DiscardingCalibrationPersistence: S2CalibrationPersisting {
     }
 
     func save(_ data: Data) throws {}
+
+    func delete() throws {}
 }
 
-enum S2CalibrationPersistenceError: Error {
+enum S2CalibrationPersistenceError: Error, Equatable {
     case keychain(OSStatus)
+    case schemaVersionMismatch(stored: Int, expected: Int)
 }
 
 final class S2CalibrationModel: ObservableObject {
@@ -662,14 +686,26 @@ final class S2CalibrationModel: ObservableObject {
             S2KeychainCalibrationPersistence()
     ) {
         self.persistence = persistence
-        if let data = try? persistence.load(),
-           let decoded = try? JSONDecoder().decode(
-               S2CalibrationConfiguration.self,
-               from: data
-           ),
-           decoded.isValid {
-            configuration = decoded
-        } else {
+        guard let data = try? persistence.load() else {
+            configuration = .factoryPlaceholder
+            return
+        }
+        do {
+            let decoded = try JSONDecoder().decode(
+                S2CalibrationConfiguration.self,
+                from: data
+            )
+            configuration = decoded.isValid ? decoded : .factoryPlaceholder
+        } catch S2CalibrationPersistenceError.schemaVersionMismatch {
+            // IC-087：出厂值版本变化，整套丢弃并删除条目，避免旧值永久覆盖新出厂值。
+            configuration = .factoryPlaceholder
+            do {
+                try persistence.delete()
+                persistenceFailed = false
+            } catch {
+                persistenceFailed = true
+            }
+        } catch {
             configuration = .factoryPlaceholder
         }
     }
@@ -688,9 +724,15 @@ final class S2CalibrationModel: ObservableObject {
         return true
     }
 
+    /// IC-087：恢复出厂值——重置为 `factoryPlaceholder` 并删除持久化条目（不是覆盖写入）。
     func restoreFactoryPlaceholder() {
         configuration = .factoryPlaceholder
-        persist()
+        do {
+            try persistence.delete()
+            persistenceFailed = false
+        } catch {
+            persistenceFailed = true
+        }
     }
 
     func exportText() -> String {
