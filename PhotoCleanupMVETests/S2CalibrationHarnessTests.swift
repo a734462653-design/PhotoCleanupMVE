@@ -8017,17 +8017,33 @@ extension S2CalibrationHarnessTests {
         XCTAssertEqual(frames[3], CGRect(x: 252, y: 0, width: 20, height: 30))
         XCTAssertEqual(frames[4], CGRect(x: 275, y: 0, width: 20, height: 30))
 
-        // 每个项目帧内无背景像素。
+        // 每个项目帧内无背景像素——IC-090 R1 起四角按 bottomStripCornerRadius 裁圆，
+        // 因此四角各 ceil(r) × ceil(r) 的方块排除在外；圆角本身由 G181 在 scale=3
+        // 位图上按 45° 对角线与首行／末行扫描逐像素判定。
+        let cornerMargin = Int(
+            CGFloat(
+                S2CalibrationConfiguration.factoryPlaceholder
+                    .bottomStripCornerRadius
+            ).rounded(.up)
+        )
+        func isInCornerBlock(x: Int, y: Int, frame: CGRect) -> Bool {
+            let dx = min(x - Int(frame.minX), Int(frame.maxX) - 1 - x)
+            let dy = min(y - Int(frame.minY), Int(frame.maxY) - 1 - y)
+            return dx < cornerMargin && dy < cornerMargin
+        }
         for (index, frame) in frames.enumerated() {
             var background = 0
             for y in Int(frame.minY)..<Int(frame.maxY) {
-                for x in Int(frame.minX)..<Int(frame.maxX) where bitmap.isBackground(x: x, y: y) {
+                for x in Int(frame.minX)..<Int(frame.maxX)
+                where !isInCornerBlock(x: x, y: y, frame: frame) &&
+                    bitmap.isBackground(x: x, y: y) {
                     background += 1
                 }
             }
             XCTAssertEqual(background, 0, "index=\(index) frame=\(frame)")
         }
-        // 当前张四角非背景、正方形。
+        // 当前张为正方形；IC-090 R1 起四角最外一像素被圆角切掉（背景），
+        // 沿对角线内移 cornerMargin 后为内容。
         let current = frames[1]
         XCTAssertEqual(current.width, current.height)
         for (x, y) in [
@@ -8036,7 +8052,15 @@ extension S2CalibrationHarnessTests {
             (Int(current.minX), Int(current.maxY) - 1),
             (Int(current.maxX) - 1, Int(current.maxY) - 1)
         ] {
-            XCTAssertFalse(bitmap.isBackground(x: x, y: y), "corner=(\(x),\(y))")
+            XCTAssertTrue(bitmap.isBackground(x: x, y: y), "corner=(\(x),\(y))")
+        }
+        for (x, y) in [
+            (Int(current.minX) + cornerMargin, Int(current.minY) + cornerMargin),
+            (Int(current.maxX) - 1 - cornerMargin, Int(current.minY) + cornerMargin),
+            (Int(current.minX) + cornerMargin, Int(current.maxY) - 1 - cornerMargin),
+            (Int(current.maxX) - 1 - cornerMargin, Int(current.maxY) - 1 - cornerMargin)
+        ] {
+            XCTAssertFalse(bitmap.isBackground(x: x, y: y), "inset corner=(\(x),\(y))")
         }
         // 间隙像素为背景：当前张两侧各 13、邻居间 3，按中线逐像素计数。
         let row = Int(viewport.height / 2)
@@ -8059,6 +8083,285 @@ extension S2CalibrationHarnessTests {
         XCTAssertTrue(bitmap.isBackground(x: Int(frames[0].maxX), y: row))
         XCTAssertFalse(bitmap.isBackground(x: Int(frames[0].minX), y: row))
         XCTAssertFalse(bitmap.isBackground(x: Int(frames[0].maxX) - 1, y: row))
+    }
+
+
+    /// IC-090 R1 圆角像素门禁夹具：以 scale = 3 渲染横栏（1 pt = 3 px，与真机 @3x 一致），
+    /// 项目内容为纯色块，故同尺寸的两个项目除标记外逐像素相同。
+    private static let stripAssetIDs = (1...5).map { "asset-\($0)" }
+    private static let stripRenderScale = 3
+
+    private struct StripRender {
+        let bitmap: S2StripBitmap
+        let frames: [CGRect]
+    }
+
+    @MainActor
+    private func renderStrip(
+        markedAssetIDs: Set<String>,
+        markSize: CGFloat
+    ) throws -> StripRender {
+        let assetIDs = Self.stripAssetIDs
+        let machine = makeMachine(
+            orderedAssetIDs: assetIDs,
+            currentIndex: 1,
+            pendingDeletionAssetIDs: markedAssetIDs
+        )
+        let metrics = tryUnwrap(
+            S2CalibrationConfiguration.factoryPlaceholder.resolvedParameters
+        ).bottomStripMetrics
+        let viewport = Self.stripViewportSize
+        let strip = S2BottomStripView(
+            machine: machine,
+            metrics: metrics,
+            markSize: markSize,
+            itemContent: { _ in AnyView(Color.black) },
+            assetAspectRatio: { _ in 1 },
+            onPhotoSwitch: {}
+        )
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.white
+                strip
+            }
+            .frame(width: viewport.width, height: viewport.height)
+        )
+        renderer.scale = CGFloat(Self.stripRenderScale)
+        renderer.proposedSize = ProposedViewSize(viewport)
+        let cgImage = try XCTUnwrap(renderer.cgImage)
+        let layout = S2BottomStripLayout(metrics: metrics)
+        let contentX = layout.contentCenterX(of: 1)
+        let frames = assetIDs.indices.map { index in
+            layout.frame(
+                at: index,
+                currentIndex: 1,
+                expansion: 1,
+                contentX: contentX,
+                viewportSize: viewport
+            )
+        }
+        return StripRender(
+            bitmap: try S2StripBitmap(cgImage: cgImage),
+            frames: frames
+        )
+    }
+
+    // IC-090 G180：圆角半径出厂值 = 系统录屏测量值（参考表 `S2BottomStripSystemReference.cornerRadius`），
+    // 出厂值集合变更故 `schemaVersion == 4`；参数进导出文本与登记表（decided / effective）；
+    // 邻居与当前张同半径，故只有一个参数、不存在 `bottomStripCurrentCornerRadius`。
+    func testIC090G180FactoryCornerRadiusMatchesSystemReference() throws {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        XCTAssertEqual(
+            configuration.bottomStripCornerRadius,
+            Double(S2BottomStripSystemReference.cornerRadius),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 4)
+
+        let metrics = tryUnwrap(configuration.resolvedParameters).bottomStripMetrics
+        XCTAssertEqual(
+            metrics.cornerRadius,
+            S2BottomStripSystemReference.cornerRadius,
+            accuracy: 0.000_001
+        )
+
+        let lines = configuration.exportText()
+            .split(separator: "\n")
+            .map(String.init)
+        XCTAssertTrue(lines.contains("bottomStripCornerRadius=2.500000"))
+        XCTAssertFalse(
+            lines.contains { $0.hasPrefix("bottomStripCurrentCornerRadius=") }
+        )
+
+        let connections = Dictionary(
+            uniqueKeysWithValues: S2CalibrationConfiguration.parameterConnections
+                .map { ($0.name, $0) }
+        )
+        XCTAssertEqual(
+            connections["bottomStripCornerRadius"]?.specStatus,
+            .decided
+        )
+        XCTAssertEqual(
+            connections["bottomStripCornerRadius"]?.wiringStatus,
+            .effective
+        )
+        XCTAssertNil(connections["bottomStripCurrentCornerRadius"])
+
+        // 负值不合法；旧持久化缺该键按出厂值补齐，含该键时往返一致。
+        var invalid = configuration
+        invalid.bottomStripCornerRadius = -1
+        XCTAssertFalse(invalid.isValid)
+
+        let encoded = try JSONEncoder().encode(configuration)
+        XCTAssertEqual(
+            try JSONDecoder().decode(
+                S2CalibrationConfiguration.self,
+                from: encoded
+            ),
+            configuration
+        )
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        XCTAssertEqual(json["schemaVersion"] as? Int, 4)
+        json.removeValue(forKey: "bottomStripCornerRadius")
+        let migrated = try JSONDecoder().decode(
+            S2CalibrationConfiguration.self,
+            from: try JSONSerialization.data(withJSONObject: json)
+        )
+        XCTAssertEqual(migrated, configuration)
+    }
+
+    // IC-090 G181 像素门禁（scale = 3，1 pt = 3 px，出厂 2.5 pt = 7.5 px）：
+    // 每个项目帧四角沿 45° 对角线由角点向内扫描（同 IC-070 G77 方法），半径内为背景、
+    // 半径外为内容；首行／末行与首列／末列的直线扫描给出更紧的半径夹逼。
+    // 对角线偏移 1 仍为背景 ⇒ r > 6.83 px；偏移 3 已是内容 ⇒ r ≤ 10.24 px。
+    // 直线偏移 2 仍为背景 ⇒ r ≥ 7.16 px；直线偏移 8 已是内容 ⇒ r ≤ 8.00 px。
+    @MainActor
+    func testIC090G181RenderedStripCornersAreClippedByCornerRadius() throws {
+        let render = try renderStrip(markedAssetIDs: [], markSize: 0)
+        let bitmap = render.bitmap
+        let scale = Self.stripRenderScale
+        XCTAssertEqual(bitmap.width, Int(Self.stripViewportSize.width) * scale)
+        XCTAssertEqual(bitmap.height, Int(Self.stripViewportSize.height) * scale)
+
+        for (index, frame) in render.frames.enumerated() {
+            let minX = Int(frame.minX) * scale
+            let maxX = Int(frame.maxX) * scale - 1
+            let minY = Int(frame.minY) * scale
+            let maxY = Int(frame.maxY) * scale - 1
+            let corners: [(String, Int, Int, Int, Int)] = [
+                ("TL", minX, minY, 1, 1),
+                ("TR", maxX, minY, -1, 1),
+                ("BL", minX, maxY, 1, -1),
+                ("BR", maxX, maxY, -1, -1)
+            ]
+            for (name, cx, cy, sx, sy) in corners {
+                let label = "index=\(index) corner=\(name)"
+                // 半径内（对角偏移 0、1）为背景。
+                for offset in 0...1 {
+                    XCTAssertTrue(
+                        bitmap.isBackground(
+                            x: cx + sx * offset,
+                            y: cy + sy * offset
+                        ),
+                        "\(label) diag=\(offset) 应为背景"
+                    )
+                }
+                // 半径外（对角偏移 3…7）为内容。
+                for offset in 3...7 {
+                    XCTAssertFalse(
+                        bitmap.isBackground(
+                            x: cx + sx * offset,
+                            y: cy + sy * offset
+                        ),
+                        "\(label) diag=\(offset) 应为内容"
+                    )
+                }
+                // 沿该角所在的水平边扫描：偏移 0…2 背景、偏移 8 内容。
+                for offset in 0...2 {
+                    XCTAssertTrue(
+                        bitmap.isBackground(x: cx + sx * offset, y: cy),
+                        "\(label) edge=\(offset) 应为背景"
+                    )
+                }
+                XCTAssertFalse(
+                    bitmap.isBackground(x: cx + sx * 8, y: cy),
+                    "\(label) edge=8 应为内容"
+                )
+                // 沿该角所在的竖直边同样。
+                for offset in 0...2 {
+                    XCTAssertTrue(
+                        bitmap.isBackground(x: cx, y: cy + sy * offset),
+                        "\(label) vedge=\(offset) 应为背景"
+                    )
+                }
+                XCTAssertFalse(
+                    bitmap.isBackground(x: cx, y: cy + sy * 8),
+                    "\(label) vedge=8 应为内容"
+                )
+            }
+        }
+    }
+
+    // IC-090 G181：待删标记叠层与内容受同一圆角约束。
+    // 先用夹具专用的超大标记尺寸（40 pt > 项目帧）使裁切可观测：叠层若不在圆角裁切内，
+    // 标记会越出项目帧；再以出厂标记尺寸（14 pt）确认标记本身仍然渲染在圆角之内
+    // （「标记不被圆角裁掉」的最终判定是 H36，留给 Lynn 真机并排观感确认）。
+    @MainActor
+    func testIC090G181StripMarkOverlayIsClippedByTheSameCornerRadius() throws {
+        let assetIDs = Self.stripAssetIDs
+        let scale = Self.stripRenderScale
+        let oversized = try renderStrip(
+            markedAssetIDs: Set(assetIDs),
+            markSize: 40
+        )
+        for (index, frame) in oversized.frames.enumerated() {
+            let minX = Int(frame.minX) * scale
+            let maxX = Int(frame.maxX) * scale - 1
+            let minY = Int(frame.minY) * scale
+            let maxY = Int(frame.maxY) * scale - 1
+            // `.overlay(alignment: .topTrailing)` 下超大标记向左、向下溢出，
+            // 故验帧左沿之外一列：无圆角裁切时这里会被标记填上。
+            // （帧上沿即视口上沿、帧下沿即视口下沿，越界不可验。）
+            for y in minY...maxY {
+                XCTAssertTrue(
+                    oversized.bitmap.isBackground(x: minX - 1, y: y),
+                    "index=\(index) 标记越出帧左沿 y=\(y)"
+                )
+            }
+            // 四角仍被圆角切掉。
+            for (cx, cy) in [
+                (minX, minY), (maxX, minY), (minX, maxY), (maxX, maxY)
+            ] {
+                XCTAssertTrue(
+                    oversized.bitmap.isBackground(x: cx, y: cy),
+                    "index=\(index) 角点 (\(cx),\(cy)) 应仍为背景"
+                )
+            }
+        }
+
+        // 出厂标记尺寸：已标记项目与未标记项目在同一相对位置的像素不同，
+        // 即标记确实渲染出来了，且没有被圆角整体裁掉。
+        let marked = try renderStrip(
+            markedAssetIDs: [assetIDs[0]],
+            markSize: 14
+        )
+        let markedFrame = marked.frames[0]
+        let plainFrame = marked.frames[2]
+        XCTAssertEqual(markedFrame.size, plainFrame.size)
+        var differingPixels: [(x: Int, y: Int)] = []
+        for dy in 0..<(Int(markedFrame.height) * scale) {
+            for dx in 0..<(Int(markedFrame.width) * scale) {
+                let markedLuminance = marked.bitmap.luminance(
+                    x: Int(markedFrame.minX) * scale + dx,
+                    y: Int(markedFrame.minY) * scale + dy
+                )
+                let plainLuminance = marked.bitmap.luminance(
+                    x: Int(plainFrame.minX) * scale + dx,
+                    y: Int(plainFrame.minY) * scale + dy
+                )
+                if markedLuminance != plainLuminance {
+                    differingPixels.append((dx, dy))
+                }
+            }
+        }
+        // 两个项目除标记外逐像素相同（同尺寸、同纯色内容、同圆角），
+        // 因此差异像素即标记像素：必须存在，且全部落在项目帧右上区域之内。
+        XCTAssertFalse(differingPixels.isEmpty, "出厂尺寸下标记未渲染")
+        let markBoxSide = Int(14) * scale
+        for pixel in differingPixels {
+            XCTAssertGreaterThanOrEqual(
+                pixel.x,
+                Int(markedFrame.width) * scale - markBoxSide,
+                "标记像素越出右上标记框 x=\(pixel.x)"
+            )
+            XCTAssertLessThan(
+                pixel.y,
+                markBoxSide,
+                "标记像素越出右上标记框 y=\(pixel.y)"
+            )
+        }
     }
 
     // IC-085 G162：旧版持久化数据缺新键时按出厂值补齐；含新键时往返一致。
@@ -8492,11 +8795,15 @@ struct S2StripBitmap {
 
     /// `y` 自上而下（CGContext 原点在左下，读取时翻转）。
     func isBackground(x: Int, y: Int) -> Bool {
+        luminance(x: x, y: y) > 128
+    }
+
+    /// IC-090 R1：原始亮度，供标记叠层与内容的区分判定。越界返回背景亮度 255。
+    func luminance(x: Int, y: Int) -> Int {
         guard x >= 0, x < width, y >= 0, y < height else {
-            return true
+            return 255
         }
         let offset = ((height - 1 - y) * width + x) * 4
-        let luminance = (Int(pixels[offset]) + Int(pixels[offset + 1]) + Int(pixels[offset + 2])) / 3
-        return luminance > 128
+        return (Int(pixels[offset]) + Int(pixels[offset + 1]) + Int(pixels[offset + 2])) / 3
     }
 }
