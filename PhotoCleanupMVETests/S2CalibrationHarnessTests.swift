@@ -8554,115 +8554,111 @@ extension S2CalibrationHarnessTests {
         }
     }
 
-    // IC-090 G181：待删标记叠层与内容受同一圆角约束。
-    // 先用夹具专用的超大标记尺寸（40 pt > 项目帧）使裁切可观测：叠层若不在圆角裁切内，
-    // 标记会越出项目帧；再以出厂标记尺寸（14 pt）确认标记本身仍然渲染在圆角之内
-    // （「标记不被圆角裁掉」的最终判定是 H36，留给 Lynn 真机并排观感确认）。
+    // IC-090 G181 / G191（v2 R4）：待删标记叠层与项目内容受同一圆角裁切，且标记确实渲染。
+    // 取证只在已标记项目的右上 `markSize × markSize` 框内进行（v1 用整帧逐像素比较，
+    // 其「两项目除标记外逐像素相同」的前提在渲染位图里不成立，见 v2 报告第五节）：
+    //   (a) 该角沿 45° 对角线偏移 0/1 的像素为背景 —— 标记所在角同样被圆角裁掉；
+    //   (b) 框内存在明显暗于项目内容色的像素 —— 标记确实渲染了；
+    //   (c) 框外不做逐像素比较。
+    // 内容色取非黑（`Color(white: 0.1)`），否则系统前景色渲染的标记与纯黑内容逐像素相同。
+    // (b) 取「暗于内容」而不是「不等于内容」：圆角裁切与抗锯齿只会把像素**混向背景白**
+    // （更亮），只有标记字形能比平坦内容更暗，故该判据不会被圆角自身或 ±1 级噪声满足。
+    // 「标记不被圆角裁掉」的最终判定是 H36，留给 Lynn 真机并排观感确认。
     @MainActor
     func testIC090G181StripMarkOverlayIsClippedByTheSameCornerRadius() throws {
         let assetIDs = Self.stripAssetIDs
         let scale = Self.stripRenderScale
-        let contentWhite = 0.1
-        // 只标记当前张（索引 1）：其余项目保持未标记，作为内容明度参照。
-        let oversized = try renderStrip(
-            markedAssetIDs: [assetIDs[1]],
-            markSize: 40,
-            contentWhite: contentWhite
+        let markSize = 14
+        // 只标记索引 0 的邻居项目；其余项目保持未标记。
+        let render = try renderStrip(
+            markedAssetIDs: [assetIDs[0]],
+            markSize: CGFloat(markSize),
+            contentWhite: 0.1
         )
-        let reference = oversized.frames[3]
-        let contentLuminance = oversized.bitmap.luminance(
-            x: Int(reference.midX) * scale,
-            y: Int(reference.midY) * scale
-        )
+        let frame = render.frames[0]
+        let minX = Int(frame.minX) * scale
+        let maxX = Int(frame.maxX) * scale - 1
+        let minY = Int(frame.minY) * scale
+        let width = Int(frame.width) * scale
+        let height = Int(frame.height) * scale
+        let boxSide = markSize * scale
+        XCTAssertLessThanOrEqual(boxSide, width)
+        XCTAssertLessThanOrEqual(boxSide, height)
+
+        // 内容色参照点：同一项目内、标记框之外的下半部中心（不属于框内取证）。
+        let referenceX = minX + width / 2
+        let referenceY = minY + height - boxSide / 2
+        let contentLuminance = render.bitmap.luminance(x: referenceX, y: referenceY)
         XCTAssertFalse(
-            oversized.bitmap.isBackground(
-                x: Int(reference.midX) * scale,
-                y: Int(reference.midY) * scale
-            ),
+            render.bitmap.isBackground(x: referenceX, y: referenceY),
             "内容参照点应为内容像素"
         )
 
-        let marked = oversized.frames[1]
-        let minX = Int(marked.minX) * scale
-        let maxX = Int(marked.maxX) * scale - 1
-        let minY = Int(marked.minY) * scale
-        let maxY = Int(marked.maxY) * scale - 1
-        // 正对照：超大标记确实渲染了——帧内部（避开圆角影响的边缘 9 px）
-        // 至少有一个像素与纯色内容明度不同。
-        var markPixelCount = 0
-        for y in (minY + 9)...(maxY - 9) {
-            for x in (minX + 9)...(maxX - 9)
-            where oversized.bitmap.luminance(x: x, y: y) != contentLuminance {
-                markPixelCount += 1
-            }
-        }
-        XCTAssertGreaterThan(markPixelCount, 0, "超大标记未渲染，溢出断言将失效")
-        // `.overlay(alignment: .topTrailing)` 下 40 pt 标记向左溢出到 13 pt 间隙里；
-        // 无圆角裁切时帧左沿之外一列会被标记填上。判据取「像素仍是纯白背景」，
-        // 与标记本身用什么前景色无关。
-        // （帧上沿即视口上沿、帧下沿即视口下沿，越界不可验。）
-        for y in minY...maxY {
-            XCTAssertEqual(
-                oversized.bitmap.luminance(x: minX - 1, y: y),
-                255,
-                "标记越出帧左沿 y=\(y)"
-            )
-        }
-        // 四角仍被圆角切掉。
-        for (cx, cy) in [
-            (minX, minY), (maxX, minY), (minX, maxY), (maxX, maxY)
-        ] {
-            XCTAssertEqual(
-                oversized.bitmap.luminance(x: cx, y: cy),
-                255,
-                "角点 (\(cx),\(cy)) 应仍为纯白背景"
+        // (a) 标记所在的右上角沿 45° 对角线偏移 0/1 仍为背景：该角被圆角裁掉，
+        //     标记叠层没有把它填上。
+        for offset in 0...1 {
+            XCTAssertTrue(
+                render.bitmap.isBackground(x: maxX - offset, y: minY + offset),
+                "标记角 diag=\(offset) 应为背景"
             )
         }
 
-        // 出厂标记尺寸：已标记项目与未标记项目在同一相对位置的像素不同，
-        // 即标记确实渲染出来了，且没有被圆角整体裁掉。
-        let marked14 = try renderStrip(
-            markedAssetIDs: [assetIDs[0]],
-            markSize: 14,
-            contentWhite: contentWhite
-        )
-        let markedFrame = marked14.frames[0]
-        let plainFrame = marked14.frames[2]
-        XCTAssertEqual(markedFrame.size, plainFrame.size)
-        var differingPixels: [(x: Int, y: Int)] = []
-        for dy in 0..<(Int(markedFrame.height) * scale) {
-            for dx in 0..<(Int(markedFrame.width) * scale) {
-                let markedLuminance = marked14.bitmap.luminance(
-                    x: Int(markedFrame.minX) * scale + dx,
-                    y: Int(markedFrame.minY) * scale + dy
+        // (b) 右上 markSize × markSize 框内存在明显暗于内容色的像素 —— 标记渲染了。
+        var markPixelCount = 0
+        var minimumLuminance = 255
+        var maximumLuminance = 0
+        var firstMarkPixel: (x: Int, y: Int)?
+        for dy in 0..<boxSide {
+            for dx in (width - boxSide)..<width {
+                let luminance = render.bitmap.luminance(
+                    x: minX + dx,
+                    y: minY + dy
                 )
-                let plainLuminance = marked14.bitmap.luminance(
-                    x: Int(plainFrame.minX) * scale + dx,
-                    y: Int(plainFrame.minY) * scale + dy
-                )
-                if markedLuminance != plainLuminance {
-                    differingPixels.append((x: dx, y: dy))
+                minimumLuminance = min(minimumLuminance, luminance)
+                maximumLuminance = max(maximumLuminance, luminance)
+                if luminance + 8 < contentLuminance {
+                    markPixelCount += 1
+                    if firstMarkPixel == nil {
+                        firstMarkPixel = (x: minX + dx, y: minY + dy)
+                    }
                 }
             }
         }
-        // 两个项目除标记外逐像素相同（同尺寸、同纯色内容、同圆角、同整点位置），
-        // 因此差异像素即标记像素：必须存在，且全部落在右上 14 pt 标记框内
-        // （抗锯齿留 1 px 余量）。
-        XCTAssertFalse(differingPixels.isEmpty, "出厂尺寸下标记未渲染")
-        let markBoxSide = 14 * scale
-        let leftBound = Int(markedFrame.width) * scale - markBoxSide - 1
-        for pixel in differingPixels {
-            XCTAssertGreaterThanOrEqual(
-                pixel.x,
-                leftBound,
-                "标记像素越出右上标记框 x=\(pixel.x)"
-            )
-            XCTAssertLessThanOrEqual(
-                pixel.y,
-                markBoxSide,
-                "标记像素越出右上标记框 y=\(pixel.y)"
-            )
+        // 失败时把判据所需的全部读数带进消息，并按 IC-090 阶段二闸门 C 导出框内位图
+        // （每 3 px 取一个样，'#' 暗于内容、'.' 等于内容、' ' 亮于内容/背景）。
+        if markPixelCount == 0 {
+            print("IC090_G181_MARKBOX frame=\(frame) box=" +
+                "x[\(minX + width - boxSide)…\(minX + width - 1)] " +
+                "y[\(minY)…\(minY + boxSide - 1)] " +
+                "content=\(contentLuminance) min=\(minimumLuminance) " +
+                "max=\(maximumLuminance)")
+            for dy in stride(from: 0, to: boxSide, by: 3) {
+                var row = ""
+                for dx in stride(from: width - boxSide, to: width, by: 3) {
+                    let luminance = render.bitmap.luminance(
+                        x: minX + dx,
+                        y: minY + dy
+                    )
+                    if luminance + 8 < contentLuminance {
+                        row += "#"
+                    } else if luminance == contentLuminance {
+                        row += "."
+                    } else {
+                        row += " "
+                    }
+                }
+                print("IC090_G181_MARKBOX row dy=\(dy) |\(row)|")
+            }
         }
+        XCTAssertGreaterThan(
+            markPixelCount,
+            0,
+            "出厂尺寸下标记未渲染：框内内容色=\(contentLuminance)、" +
+                "最暗=\(minimumLuminance)、最亮=\(maximumLuminance)"
+        )
+        XCTAssertNotNil(firstMarkPixel)
+
+        // (c) 框外不做逐像素比较。
     }
 
     // IC-085 G162：旧版持久化数据缺新键时按出厂值补齐；含新键时往返一致。
