@@ -2306,6 +2306,15 @@ struct S2BottomStripView: View {
                     .overlay(alignment: .topTrailing) {
                         stripMark(for: assetID)
                     }
+                    // IC-090 R1：内容与待删标记叠层一并按圆角裁切。半径为常量，
+                    // 展开／收缩过程中不随项目尺寸变化（实测邻居 60 px 与当前张
+                    // 90 px 同半径）。
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: metrics.cornerRadius,
+                            style: .circular
+                        )
+                    )
                     .position(x: frame.midX, y: frame.midY)
                     .accessibilityLabel(L10n.text(
                         "s2.strip.item.accessibility",
