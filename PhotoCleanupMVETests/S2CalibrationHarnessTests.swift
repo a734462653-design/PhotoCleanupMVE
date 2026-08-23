@@ -5725,6 +5725,255 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
+
+    // IC-090 G182：场景 C 逐帧新增 presentationZoomScale / isZoomBouncing / isDecelerating /
+    // imageRequestResult / lastImageReplacement 五个字段，离散事件新增
+    // scrollViewDidEndZooming / finishNativePinch / setZoomScale / 吸附归位写入 / 图片替换 五类。
+    // 既有字段与事件一项不改；关闭录制时全部埋点零副作用。
+    // （夹具驱动：真实两指捏合无法在 XCTest 内复现，`pinchWasActive` 恒为 false；
+    //   松手抖动本身的归因留给 Lynn 的场景 C 真机录制。）
+    func testIC090G182PinchEndScenarioExportsNewFieldsAndEvents() {
+        XCTAssertEqual(S2OnDeviceTransitionScenario.pinchStart.exportTitle, "C 捏合起始")
+
+        let hosted = makeIC065HostedPage(
+            assetAspectRatio: 3.0 / 4.0,
+            isScreenshot: false
+        )
+        defer { hosted.window.isHidden = true }
+        let controller = hosted.controller
+        let registry = S2ImageLoadStateRegistry()
+        registry.update(.displayed, for: "asset-2")
+        controller.imageLoadStateRegistry = registry
+        XCTAssertEqual(hosted.machine.currentIndex, 1)
+        XCTAssertEqual(hosted.machine.orderedAssetIDs[1], "asset-2")
+
+        // 登记表在录制之外也持续登记，故录制一开始即能读到当前张已有的请求状态。
+        registry.updateRequestResult(.finalImage(UIImage()), for: "asset-2")
+        let replacement = S2ImageReplacementRecord(
+            assetID: "asset-2",
+            resultName: S2ImageRequestResult.finalImage(UIImage()).diagnosticName,
+            pixelSize: CGSize(width: 1_206, height: 2_622),
+            timestamp: 1_234.5
+        )
+        registry.recordImageReplacement(replacement)
+        XCTAssertEqual(controller.diagnosticCurrentImageRequestResult, "finalImage")
+        XCTAssertEqual(controller.diagnosticLastImageReplacement, replacement)
+
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .pinchStart
+        diagnostics.start()
+        let page = hosted.page
+        let scrollView = page.zoomScrollView
+
+        // 真实调用点：`setZoomScale(_:animated:)` 的重写与 1x 归位写入。
+        // 先 `prepareForNativeZoom()` 确保内外层视图已就绪且几何被改脏，
+        // 归位才真的有写入可记（返回 true 即两个内容视图都存在）。
+        XCTAssertTrue(scrollView.prepareForNativeZoom())
+        scrollView.setZoomScale(scrollView.minimumZoomScale, animated: false)
+        scrollView.restoreOneXGeometry()
+        // 夹具驱动：直接调用缩放结束的委托实现与捏合结算入口。
+        page.scrollViewDidEndZooming(
+            scrollView,
+            with: scrollView.zoomContentView,
+            atScale: scrollView.zoomScale
+        )
+        controller.finishNativePinch(
+            on: page,
+            scale: scrollView.zoomScale,
+            displacement: 0.5,
+            peakVelocity: 3,
+            duration: 0.2
+        )
+        diagnostics.recordImageReplacement(replacement)
+        diagnostics.captureFrame()
+        diagnostics.stop()
+        diagnostics.export()
+
+        let text = diagnostics.reportText
+        XCTAssertTrue(text.contains("场景=C 捏合起始"))
+        // 头部字段声明行：既有 22 项原序不变，五个新字段追加在末尾。
+        XCTAssertTrue(text.contains(
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame," +
+                "transform,zoomScale,contentOffset,contentSize," +
+                "contentInset,adjustedContentInset,V,s," +
+                "pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating," +
+                "currentIndex,settledIndex,pageIndicesPresent,pageLoadStates," +
+                "nxDistanceToPreviousBoundary,nxDistanceToNextBoundary," +
+                "nxOverflowDistance," +
+                "presentationZoomScale,isZoomBouncing,isDecelerating," +
+                "imageRequestResult,lastImageReplacement"
+        ))
+        XCTAssertTrue(text.contains("\tpresentationZoomScale="))
+        XCTAssertTrue(text.contains("\tisZoomBouncing=false"))
+        XCTAssertTrue(text.contains("\tisDecelerating=false"))
+        XCTAssertTrue(text.contains("\timageRequestResult=finalImage"))
+        XCTAssertTrue(text.contains(
+            "\tlastImageReplacement=(asset=asset-2,result=finalImage," +
+                "w=1206.000000,h=2622.000000,t=1234.500000)"
+        ))
+
+        // 逐帧样本取自真实滚动视图，不是常量。
+        let frames = diagnostics.recordedEntries.compactMap {
+            record -> S2OnDeviceTransitionFrameSample? in
+            if case let .frame(sample) = record.payload {
+                return sample
+            }
+            return nil
+        }
+        let last = tryUnwrap(frames.last)
+        XCTAssertEqual(last.isZoomBouncing, scrollView.isZoomBouncing)
+        XCTAssertEqual(last.isDecelerating, scrollView.isDecelerating)
+        XCTAssertEqual(last.imageRequestResult, "finalImage")
+        XCTAssertEqual(last.lastImageReplacement, replacement)
+        XCTAssertEqual(
+            last.presentationZoomScale,
+            scrollView.diagnosticPresentationZoomScale
+        )
+
+        func events(named name: String) -> [(source: String, details: String)] {
+            diagnostics.recordedEntries.compactMap { entry in
+                if case let .event(eventName, source, details) = entry.payload,
+                   eventName == name {
+                    return (source, details)
+                }
+                return nil
+            }
+        }
+        func event(named name: String) -> (source: String, details: String)? {
+            events(named: name).first
+        }
+        let endZooming = tryUnwrap(event(named: "scrollViewDidEndZooming"))
+        XCTAssertEqual(
+            endZooming.source,
+            "S2NativeZoomPageController.scrollViewDidEndZooming"
+        )
+        XCTAssertTrue(endZooming.details.contains("endedAtMinimum=true"))
+        XCTAssertTrue(endZooming.details.contains("pinchWasActive=false"))
+
+        let finishPinch = tryUnwrap(event(named: "finishNativePinch"))
+        XCTAssertEqual(
+            finishPinch.source,
+            "S2NativePagerViewController.finishNativePinch"
+        )
+        XCTAssertTrue(finishPinch.details.contains("displacement=0.500000"))
+        XCTAssertTrue(finishPinch.details.contains("peakVelocity=3.000000"))
+        XCTAssertTrue(finishPinch.details.contains("path="))
+
+        let setZoomEvents = events(named: "setZoomScale")
+        XCTAssertFalse(setZoomEvents.isEmpty)
+        for setZoom in setZoomEvents {
+            XCTAssertEqual(setZoom.source, "S2NativeZoomScrollView.setZoomScale")
+            XCTAssertTrue(setZoom.details.contains("scale="))
+            XCTAssertTrue(setZoom.details.contains("from="))
+        }
+        XCTAssertTrue(setZoomEvents.contains {
+            $0.details.contains("animated=false")
+        })
+
+        let snapBackEvents = events(named: "吸附归位写入")
+        XCTAssertFalse(snapBackEvents.isEmpty)
+        for snapBack in snapBackEvents {
+            XCTAssertTrue(
+                [
+                    "S2NativeZoomScrollView.restoreOneXGeometry",
+                    "S2NativeZoomScrollView.enforceOneXContentGeometry"
+                ].contains(snapBack.source),
+                snapBack.source
+            )
+            for key in [
+                "contentInset=", "contentSize=", "contentOffset=", "照片几何="
+            ] {
+                XCTAssertTrue(snapBack.details.contains(key), key)
+            }
+        }
+        XCTAssertTrue(snapBackEvents.contains {
+            $0.source == "S2NativeZoomScrollView.restoreOneXGeometry"
+        })
+
+        let replacementEvent = tryUnwrap(event(named: "图片替换"))
+        XCTAssertEqual(
+            replacementEvent.source,
+            "S2TemporaryPhotoImageView.requestImage"
+        )
+        XCTAssertTrue(replacementEvent.details.contains("asset=asset-2"))
+        XCTAssertTrue(replacementEvent.details.contains("result=finalImage"))
+        XCTAssertTrue(
+            replacementEvent.details.contains("pixel=(w=1206.000000,h=2622.000000)")
+        )
+
+        // 关闭录制后同样的调用零副作用：记录条数不变。
+        let recordedCount = diagnostics.recordedEntries.count
+        scrollView.setZoomScale(scrollView.minimumZoomScale, animated: false)
+        scrollView.restoreOneXGeometry()
+        page.scrollViewDidEndZooming(
+            scrollView,
+            with: scrollView.zoomContentView,
+            atScale: scrollView.zoomScale
+        )
+        controller.finishNativePinch(
+            on: page,
+            scale: scrollView.zoomScale,
+            displacement: 0.5,
+            peakVelocity: 3,
+            duration: 0.2
+        )
+        diagnostics.recordImageReplacement(replacement)
+        diagnostics.captureFrame()
+        XCTAssertEqual(diagnostics.recordedEntries.count, recordedCount)
+        diagnostics.detach(controller)
+    }
+
+    // IC-090 G182：请求结果与图片替换的登记入口——`S2ImageRequestResult` 五个分支
+    // 逐一映射为诊断名；替换记录按最近一次覆盖；未登记的资产读出 nil。
+    func testIC090G182ImageRequestResultRegistryTracksLatestResultAndReplacement() {
+        let registry = S2ImageLoadStateRegistry()
+        XCTAssertNil(registry.requestResult(for: "asset-1"))
+        XCTAssertNil(registry.lastImageReplacement)
+
+        let image = UIImage()
+        let expected: [(S2ImageRequestResult, String)] = [
+            (.degradedPreview(image), "degradedPreview"),
+            (.finalImage(image), "finalImage"),
+            (.failure, "failure"),
+            (.cancelled, "cancelled"),
+            (.assetUnavailable, "assetUnavailable")
+        ]
+        for (result, name) in expected {
+            XCTAssertEqual(result.diagnosticName, name)
+            registry.updateRequestResult(result, for: "asset-1")
+            XCTAssertEqual(registry.requestResult(for: "asset-1"), name)
+        }
+        XCTAssertNil(registry.requestResult(for: "asset-2"))
+
+        let first = S2ImageReplacementRecord(
+            assetID: "asset-1",
+            resultName: "degradedPreview",
+            pixelSize: CGSize(width: 10, height: 20),
+            timestamp: 1
+        )
+        let second = S2ImageReplacementRecord(
+            assetID: "asset-1",
+            resultName: "finalImage",
+            pixelSize: CGSize(width: 100, height: 200),
+            timestamp: 2
+        )
+        registry.recordImageReplacement(first)
+        XCTAssertEqual(registry.lastImageReplacement, first)
+        registry.recordImageReplacement(second)
+        XCTAssertEqual(registry.lastImageReplacement, second)
+
+        XCTAssertEqual(
+            S2OnDeviceTransitionText.imageReplacement(nil),
+            "nil"
+        )
+        XCTAssertEqual(
+            S2OnDeviceTransitionText.imageReplacement(second),
+            "(asset=asset-1,result=finalImage," +
+                "w=100.000000,h=200.000000,t=2.000000)"
+        )
+    }
+
     // IC-070 G79：逐帧字段含 contentInset 与 adjustedContentInset，且采自真实滚动视图。
     func testIC070G79FrameSamplesExportContentInsetFields() {
         let hosted = makeIC065HostedPage(

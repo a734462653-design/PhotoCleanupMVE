@@ -79,3 +79,23 @@
   - 事件 `beginNXEdgePaging` 不再产生；`外层setContentOffset` 不再出现来源 `updateNXEdgePaging`。
   - 事件 `handleHorizontalSwipe` 仅由序列边界尝试路径产生，来源为 `S2NativePagerViewController.reportSequenceBoundaryAttemptIfNeeded`，`details` 格式不变（`startedAtPagingEdge` 恒为 `true`）。
   - 贴边切页的过程在既有字段中体现：外层 `pagingIsDragging=true` 期间 `pagingContentOffsetX` 连续变化，结算为 `handleNativePageChange`（来源 `finishNativePaging`）与 `synchronizeNativeStateToMachine(animatedPaging=false)`。
+
+### 自 IC-090 起的字段追加（格式版本仍为 1）
+
+本节只追加，不修改上文任何既有约定。目的是给**场景 C 捏合起始**补足「捏合松手停下时抖动一下」的逐帧判据；IC-090 只加埋点，不改产品行为。
+
+- 场景 C 的真机动作在本卡改为：开始录制 →**双指放大到约 3 倍后松手 → 等 1 秒**→ 停止录制 → 导出文本。场景名与 `exportTitle` 不变（`C 捏合起始`），其余四个场景不变。
+- 逐帧记录在 `nxOverflowDistance` 之后追加五个字段，头部字段声明行同步为
+  `…,nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance,presentationZoomScale,isZoomBouncing,isDecelerating,imageRequestResult,lastImageReplacement`：
+  - `presentationZoomScale`：被缩放视图（`viewForZooming` 返回的 `zoomContentView`）图层 `presentation()` 的 `transform.a`，即**呈现层实际倍率**；无 presentation（不在动画中）时为 `nil`。与既有的模型值 `zoomScale` 对照，可区分「模型已结算、呈现层仍在动」。
+  - `isZoomBouncing` / `isDecelerating`：内层缩放滚动视图的 `UIScrollView.isZoomBouncing` 与 `isDecelerating`（`true` / `false`，无控制器时 `nil`）。注意 `isDecelerating` 是**内层**，与既有的外层 `pagingIsDecelerating` 并列而不相同。
+  - `imageRequestResult`：当前张最近一次图片请求返回的 `S2ImageRequestResult` 分支名——`degradedPreview` / `finalImage` / `failure` / `cancelled` / `assetUnavailable`；本次会话尚无返回时 `nil`。
+  - `lastImageReplacement`：全局最近一次**真正发生的图片替换**，形如 `(asset=…,result=…,w=…,h=…,t=…)`；`t` 与逐帧记录同源（`CACurrentMediaTime()` 绝对值），与头部「起始绝对时间」相减即可对齐到 `time` 相对时间轴。尚无替换时 `nil`。
+- 离散事件新增五类：
+  - `event=scrollViewDidEndZooming`，来源 `S2NativeZoomPageController.scrollViewDidEndZooming`，`details=scale=…；endedAtMinimum=…；pinchWasActive=…；` 后接既有的页索引／资产上下文。
+  - `event=finishNativePinch`，来源 `S2NativePagerViewController.finishNativePinch`，`details=scale=…；targetScale=…|nil；displacement=…；peakVelocity=…；duration=…；path=returnToMinimum|setZoomScale|noWrite|none`。`path` 是本次实际走的分支：`returnToMinimum` 走 `animateToMinimumZoomScale()`；`setZoomScale` 走 `setZoomScale(targetScale, animated:)`；`noWrite` 为目标与当前倍率一致、不写；`none` 为状态机未返回目标倍率。
+  - `event=setZoomScale`，来源 `S2NativeZoomScrollView.setZoomScale`，`details=scale=…；animated=…；from=…`。该事件由 `setZoomScale(_:animated:)` 的重写统一记录，覆盖全部调用点（含 `animateToMinimumZoomScale` 与 `applyNativeState`）；`from` 为写入前的 `zoomScale`。
+  - `event=吸附归位写入`，来源 `S2NativeZoomScrollView.restoreOneXGeometry` 或 `S2NativeZoomScrollView.enforceOneXContentGeometry`，`details=contentInset=…；contentSize=…；contentOffset=…；照片几何=…；` 后接页索引／资产上下文。四个布尔表示该次归位里各项是否真的发生了写入。照片层几何本身仍另由既有的 `event=照片几何写入`（`reason=…enforceOneXContentGeometry`）记录，两者成对出现。
+  - `event=图片替换`，来源 `S2TemporaryPhotoImageView.requestImage`，`details=asset=…；result=…；pixel=(w=…,h=…)`。只在 `shouldDisplay` 通过且确有图像、即真正把 `image` 换掉的那一刻记录；请求返回但未替换（降质被策略挡下、失败、取消）不产生该事件。
+- 关闭录制时以上埋点零副作用（仅在 `isRecording` 为真时追加记录）。逐帧字段所依赖的图片请求结果与替换记录登记在 `S2ImageLoadStateRegistry` 上，与录制开关无关，故录制开始时即可读到当前张已有的请求状态。
+- 头部「格式版本=1」未递增；递增仍留待后续任务卡。
