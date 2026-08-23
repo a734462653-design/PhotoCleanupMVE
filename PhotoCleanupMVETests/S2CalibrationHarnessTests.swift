@@ -9090,17 +9090,24 @@ struct S2StripBitmap {
         pixels = buffer
     }
 
-    /// `y` 自上而下（CGContext 原点在左下，读取时翻转）。
+    /// `y` 自上而下。
     func isBackground(x: Int, y: Int) -> Bool {
         luminance(x: x, y: y) > 128
     }
 
     /// IC-090 R1：原始亮度，供标记叠层与内容的区分判定。越界返回背景亮度 255。
+    ///
+    /// IC-090 R4（v2）修正：`CGBitmapContext` 的**内存首行即图像顶行**（用户空间 y 向上，
+    /// 但缓冲区按行自顶向下存储），故按 `y` 直接索引；此前的 `(height - 1 - y)` 反而把
+    /// `y` 变成了自下而上。该错误此前不可见：IC-085 与 IC-090 的既有断言要么取四角
+    /// （上下对称）、要么取满高循环、要么取中线，都对垂直方向不敏感。第一个把它暴露
+    /// 出来的是右上角标记断言——按旧式读法，`.topTrailing` 的标记落在读坐标的底部
+    /// （实测：读 y=69 得亮度 8 的标记像素，而读 y∈[0,41] 只有内容 25 与背景 255）。
     func luminance(x: Int, y: Int) -> Int {
         guard x >= 0, x < width, y >= 0, y < height else {
             return 255
         }
-        let offset = ((height - 1 - y) * width + x) * 4
+        let offset = (y * width + x) * 4
         return (Int(pixels[offset]) + Int(pixels[offset + 1]) + Int(pixels[offset + 2])) / 3
     }
 }
