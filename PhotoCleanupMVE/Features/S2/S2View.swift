@@ -964,6 +964,14 @@ struct S2View: View {
                     step: 0.1
                 )
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+                // IC-081：1:1 倍率乘数（placeholder，待真机标定后定案）；IC-086：出厂 6.0，范围 2…10。
+                S2CalibrationSliderRow(
+                    title: "pinchMaxScaleOneToOneMultiplier",
+                    value: calibrationBinding(\.pinchMaxScaleOneToOneMultiplier),
+                    range: 2...10,
+                    step: 0.1
+                )
+                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
                 S2CalibrationSliderRow(
                     title: "doubleTapDecisionWindowMilliseconds",
                     value: calibrationBinding(
@@ -1210,6 +1218,8 @@ struct S2View: View {
                         .font(.system(.caption2, design: .monospaced))
                         .textSelection(.enabled)
                 }
+                // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
+                // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
                     calibration.restoreFactoryPlaceholder()
                 }

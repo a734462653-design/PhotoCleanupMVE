@@ -606,7 +606,8 @@ final class S2StateMachineTests: XCTestCase {
     // 未登记几何的资产取 floor；applyCalibration 改变 ceiling 后按新值钳制。
     func testIC078G134PinchMaxScaleClampsPerAssetAndRecomputesAfterPaging() {
         let machine = makeMachine(state: .visibleOneXIdle, currentAssetID: "asset-1")
-        let large = 8_000 / CGFloat(1_206)
+        // IC-086：乘数 6.0 下 8000 宽 → 6 × 8000/1206 ≈ 39.80，低于 ceiling 40；截图 1206 宽 → 6 × 1 = 6。
+        let large: CGFloat = 6 * 8_000 / 1_206
         machine.updateAssetZoomGeometry(
             S2AssetZoomGeometry(
                 assetPixelSize: CGSize(width: 8_000, height: 6_000),
@@ -624,30 +625,30 @@ final class S2StateMachineTests: XCTestCase {
             for: "asset-2"
         )
         XCTAssertEqual(machine.pinchMaxScale(for: "asset-1"), large, accuracy: 0.01)
-        XCTAssertEqual(machine.pinchMaxScale(for: "asset-2"), 4)
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-2"), 6)
         XCTAssertEqual(machine.pinchMaxScale(for: "asset-3"), 4)
         XCTAssertNil(machine.assetZoomGeometry(for: "asset-3"))
 
-        // 双击目标按 asset-1 钳制。
-        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        // 双击目标按 asset-1 钳制（目标 50 高于任一资产上限）。
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 50))
         XCTAssertEqual(machine.scale, large, accuracy: 0.01)
-        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 50))
         XCTAssertEqual(machine.scale, 1)
 
-        // 翻页到 asset-2：上限重算为 4。
+        // 翻页到 asset-2：上限重算为 6。
         XCTAssertTrue(machine.handleNativePageChange(to: 1))
         XCTAssertEqual(machine.currentAssetID, "asset-2")
         XCTAssertEqual(machine.scale, 1)
-        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
-        XCTAssertEqual(machine.scale, 4)
-        machine.reportNativeViewport(scale: 9, viewportOffset: .zero)
-        XCTAssertEqual(machine.scale, 4)
-        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 9))
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 50))
+        XCTAssertEqual(machine.scale, 6)
+        machine.reportNativeViewport(scale: 50, viewportOffset: .zero)
+        XCTAssertEqual(machine.scale, 6)
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 50))
         XCTAssertEqual(machine.scale, 1)
 
         // 翻回 asset-1：视口回报与捏合按 asset-1 钳制。
         XCTAssertTrue(machine.handleNativePageChange(to: 0))
-        machine.reportNativeViewport(scale: 9, viewportOffset: .zero)
+        machine.reportNativeViewport(scale: 50, viewportOffset: .zero)
         XCTAssertEqual(machine.scale, large, accuracy: 0.01)
         machine.reportNativeViewport(scale: 1, viewportOffset: .zero)
         XCTAssertTrue(machine.beginPinch())
@@ -658,13 +659,20 @@ final class S2StateMachineTests: XCTestCase {
         ))
         XCTAssertEqual(machine.scale, large, accuracy: 0.01)
 
-        // ceiling 降到 5：当前资产上限 5，超出的 s 被钳回。
+        // ceiling 降到 5：当前资产上限 5，超出的 s 被钳回；asset-2（乘数后 6）同样被钳到 5。
         var lowered = S2CalibrationConfiguration.factoryPlaceholder
         lowered.pinchMaxScaleCeiling = 5
         XCTAssertTrue(machine.applyCalibration(lowered))
         XCTAssertEqual(machine.pinchMaxScale(for: "asset-1"), 5)
         XCTAssertEqual(machine.scale, 5)
-        XCTAssertEqual(machine.pinchMaxScale(for: "asset-2"), 4)
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-2"), 5)
+
+        // IC-081：乘数改为 1 即 IC-078 的 1:1 取值（8000/1206 ≈ 6.63）。
+        var unit = S2CalibrationConfiguration.factoryPlaceholder
+        unit.pinchMaxScaleOneToOneMultiplier = 1
+        XCTAssertTrue(machine.applyCalibration(unit))
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-1"), 8_000 / 1_206, accuracy: 0.01)
+        XCTAssertEqual(machine.scale, 5)
     }
 
     // IC047-037：双击从 1x 进入并从 Nx 退出时恢复进入前的显示或隐藏状态。
@@ -1179,7 +1187,8 @@ final class S2StateMachineTests: XCTestCase {
     private var parameters: S2ResolvedParameters {
         S2ResolvedParameters(
             pinchMaxScaleFloor: 4,
-            pinchMaxScaleCeiling: 10,
+            pinchMaxScaleCeiling: 40,
+            pinchMaxScaleOneToOneMultiplier: 6,
             zoomSnapBackThreshold: 1.2,
             minDoubleTapScale: 2.5,
             doubleTapAnchorStrategy: .touchPoint,

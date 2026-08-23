@@ -147,6 +147,7 @@ struct S2AssetZoomGeometry: Equatable {
 struct S2ResolvedParameters: Equatable {
     let pinchMaxScaleFloor: CGFloat
     let pinchMaxScaleCeiling: CGFloat
+    let pinchMaxScaleOneToOneMultiplier: CGFloat
     let zoomSnapBackThreshold: CGFloat
     let minDoubleTapScale: CGFloat
     let doubleTapAnchorStrategy: S2DoubleTapAnchorStrategy
@@ -159,6 +160,7 @@ struct S2ResolvedParameters: Equatable {
     init?(
         pinchMaxScaleFloor: CGFloat,
         pinchMaxScaleCeiling: CGFloat,
+        pinchMaxScaleOneToOneMultiplier: CGFloat = 2,
         zoomSnapBackThreshold: CGFloat,
         minDoubleTapScale: CGFloat,
         doubleTapAnchorStrategy: S2DoubleTapAnchorStrategy,
@@ -170,6 +172,7 @@ struct S2ResolvedParameters: Equatable {
     ) {
         guard pinchMaxScaleFloor > 1,
               pinchMaxScaleCeiling >= pinchMaxScaleFloor,
+              pinchMaxScaleOneToOneMultiplier > 0,
               zoomSnapBackThreshold >= 1,
               zoomSnapBackThreshold <= pinchMaxScaleFloor,
               minDoubleTapScale > 1,
@@ -183,6 +186,7 @@ struct S2ResolvedParameters: Equatable {
 
         self.pinchMaxScaleFloor = pinchMaxScaleFloor
         self.pinchMaxScaleCeiling = pinchMaxScaleCeiling
+        self.pinchMaxScaleOneToOneMultiplier = pinchMaxScaleOneToOneMultiplier
         self.zoomSnapBackThreshold = zoomSnapBackThreshold
         self.minDoubleTapScale = minDoubleTapScale
         self.doubleTapAnchorStrategy = doubleTapAnchorStrategy
