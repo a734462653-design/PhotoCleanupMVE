@@ -157,8 +157,8 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     // IC-064 显隐过渡与描边项目判断默认值；既有数值延续 IC-063。
     static let factoryPlaceholder = S2CalibrationConfiguration(
         pinchMaxScaleFloor: 4,
-        pinchMaxScaleCeiling: 10,
-        pinchMaxScaleOneToOneMultiplier: 2,
+        pinchMaxScaleCeiling: 40,
+        pinchMaxScaleOneToOneMultiplier: 6,
         zoomSnapBackThreshold: 1.1,
         minDoubleTapScale: 2,
         doubleTapAnchorStrategy: .touchPoint,
@@ -398,8 +398,8 @@ extension S2CalibrationConfiguration {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             pinchMaxScaleFloor: try values.decodeIfPresent(Double.self, forKey: .pinchMaxScaleFloor) ?? 4,
-            pinchMaxScaleCeiling: try values.decodeIfPresent(Double.self, forKey: .pinchMaxScaleCeiling) ?? 10,
-            pinchMaxScaleOneToOneMultiplier: try values.decodeIfPresent(Double.self, forKey: .pinchMaxScaleOneToOneMultiplier) ?? 2,
+            pinchMaxScaleCeiling: try values.decodeIfPresent(Double.self, forKey: .pinchMaxScaleCeiling) ?? 40,
+            pinchMaxScaleOneToOneMultiplier: try values.decodeIfPresent(Double.self, forKey: .pinchMaxScaleOneToOneMultiplier) ?? 6,
             zoomSnapBackThreshold: try values.decode(Double.self, forKey: .zoomSnapBackThreshold),
             minDoubleTapScale: try values.decode(Double.self, forKey: .minDoubleTapScale),
             doubleTapAnchorStrategy: try values.decode(S2DoubleTapAnchorStrategy.self, forKey: .doubleTapAnchorStrategy),

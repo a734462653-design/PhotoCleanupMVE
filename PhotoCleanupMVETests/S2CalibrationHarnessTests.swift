@@ -644,8 +644,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     func testL7FactoryDefaultsMatchSystemParityDecision() {
         let expected = S2CalibrationConfiguration(
             pinchMaxScaleFloor: 4,
-            pinchMaxScaleCeiling: 10,
-            pinchMaxScaleOneToOneMultiplier: 2,
+            pinchMaxScaleCeiling: 40,
+            pinchMaxScaleOneToOneMultiplier: 6,
             zoomSnapBackThreshold: 1.1,
             minDoubleTapScale: 2,
             doubleTapAnchorStrategy: .touchPoint,
@@ -1023,22 +1023,22 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-078 G132 / IC-081 G148：`pinchMaxScale` 取值规则断言表（视口 402×874 pt、displayScale 3、
-    // F 按全视口 aspectFit、乘数 2.0）。
+    // IC-078 G132 / IC-081 G148 / IC-086 G168：`pinchMaxScale` 取值规则断言表（视口 402×874 pt、
+    // displayScale 3、F 按全视口 aspectFit、乘数 6.0、天花板 40）。
     func testIC078G132PinchMaxScaleRuleTable() throws {
         let viewport = CGSize(width: 402, height: 874)
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let parameters = try XCTUnwrap(configuration.resolvedParameters)
         XCTAssertEqual(parameters.pinchMaxScaleFloor, 4)
-        XCTAssertEqual(parameters.pinchMaxScaleCeiling, 10)
-        XCTAssertEqual(parameters.pinchMaxScaleOneToOneMultiplier, 2)
+        XCTAssertEqual(parameters.pinchMaxScaleCeiling, 40)
+        XCTAssertEqual(parameters.pinchMaxScaleOneToOneMultiplier, 6)
         let table: [(CGSize, CGFloat)] = [
-            (CGSize(width: 1_206, height: 2_622), 4),
-            (CGSize(width: 4_032, height: 3_024), 6.69),
-            (CGSize(width: 3_024, height: 4_032), 5.01),
-            (CGSize(width: 8_000, height: 6_000), 10),
-            (CGSize(width: 12_000, height: 9_000), 10),
-            (CGSize(width: 16_000, height: 12_000), 10),
+            (CGSize(width: 1_206, height: 2_622), 6),
+            (CGSize(width: 4_032, height: 3_024), 20.06),
+            (CGSize(width: 3_024, height: 4_032), 15.04),
+            (CGSize(width: 4_672, height: 7_008), 23.24),
+            (CGSize(width: 8_000, height: 6_000), 39.80),
+            (CGSize(width: 12_000, height: 9_000), 40),
             (CGSize.zero, 4)
         ]
         for (pixelSize, expected) in table {
@@ -1109,8 +1109,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let exported = configuration.exportText()
         XCTAssertFalse(exported.contains("pinchMaxScale="))
         XCTAssertTrue(exported.contains("pinchMaxScaleFloor=4"))
-        XCTAssertTrue(exported.contains("pinchMaxScaleCeiling=10"))
-        XCTAssertTrue(exported.contains("pinchMaxScaleOneToOneMultiplier=2"))
+        XCTAssertTrue(exported.contains("pinchMaxScaleCeiling=40"))
+        XCTAssertTrue(exported.contains("pinchMaxScaleOneToOneMultiplier=6"))
         // 乘数 1 还原 IC-078 的 1:1 取值；乘数 ≤ 0 取 floor。
         XCTAssertEqual(
             S2PinchMaxScaleRule.pinchMaxScale(
@@ -1214,8 +1214,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             fitSize: second.zoomScrollView.nativeZoomBaseSize,
             displayScale: 3,
             floor: 4,
-            ceiling: 10,
-            multiplier: 2
+            ceiling: 40,
+            multiplier: 6
         )
         XCTAssertGreaterThan(expectedSecond, 4)
         XCTAssertEqual(
@@ -1606,13 +1606,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 fitSize: current.zoomScrollView.nativeZoomBaseSize,
                 displayScale: 3,
                 floor: 4,
-                ceiling: 10,
+                ceiling: 40,
                 multiplier: multiplier
             )
         }
         XCTAssertEqual(
             current.zoomScrollView.maximumZoomScale,
-            expected(multiplier: 2),
+            expected(multiplier: 6),
             accuracy: 0.000_001
         )
         XCTAssertEqual(next.zoomScrollView.maximumZoomScale, 4, accuracy: 0.000_001)
@@ -1646,12 +1646,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
         let unit = expected(multiplier: 1)
-        XCTAssertNotEqual(unit, expected(multiplier: 2))
+        XCTAssertNotEqual(unit, expected(multiplier: 6))
         XCTAssertEqual(current.zoomScrollView.maximumZoomScale, unit, accuracy: 0.000_001)
         XCTAssertEqual(machine.pinchMaxScale(for: "asset-1"), unit, accuracy: 0.000_001)
         XCTAssertEqual(next.zoomScrollView.maximumZoomScale, 4, accuracy: 0.000_001)
 
-        // 再拖到 3.0：上限按新乘数重写（被 ceiling 10 钳制）。
+        // 再拖到 3.0：上限按新乘数重写（3 × 4032/1206 ≈ 10.03，低于 ceiling 40）。
         configuration.pinchMaxScaleOneToOneMultiplier = 3
         XCTAssertTrue(machine.applyCalibration(configuration))
         applyNativePagerController(

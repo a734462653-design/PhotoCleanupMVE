@@ -964,11 +964,11 @@ struct S2View: View {
                     step: 0.1
                 )
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
-                // IC-081：1:1 倍率乘数（placeholder，待 H30 真机标定后定案）。
+                // IC-081：1:1 倍率乘数（placeholder，待真机标定后定案）；IC-086：出厂 6.0，范围 2…10。
                 S2CalibrationSliderRow(
                     title: "pinchMaxScaleOneToOneMultiplier",
                     value: calibrationBinding(\.pinchMaxScaleOneToOneMultiplier),
-                    range: 1...4,
+                    range: 2...10,
                     step: 0.1
                 )
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
