@@ -586,8 +586,28 @@ final class S2NativeZoomScrollView: UIScrollView {
         guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
             return
         }
-        enforceOneXContentGeometry()
+        enforceOneXContentGeometry(
+            diagnosticSource: "S2NativeZoomScrollView.restoreOneXGeometry"
+        )
         updatePanAvailability()
+    }
+
+    /// IC-090 R2：所有 `setZoomScale(_:animated:)` 写入的统一记录点。只记录后原样
+    /// 调用 super，不改变任何行为；关闭录制时 `recordSetZoomScale` 为零副作用。
+    override func setZoomScale(_ scale: CGFloat, animated: Bool) {
+        transitionDiagnostics?.recordSetZoomScale(
+            scale: scale,
+            animated: animated,
+            previousScale: zoomScale,
+            source: "S2NativeZoomScrollView.setZoomScale"
+        )
+        super.setZoomScale(scale, animated: animated)
+    }
+
+    /// IC-090 R2：被缩放视图图层 presentation 的 transform.a——捏合松手后的
+    /// 呈现层实际倍率。无 presentation（未在动画中）时为 nil。
+    var diagnosticPresentationZoomScale: CGFloat? {
+        zoomContentView?.layer.presentation()?.affineTransform().a
     }
 
     var oneXPresentationFrame: CGRect {
@@ -701,7 +721,9 @@ final class S2NativeZoomScrollView: UIScrollView {
         )
     }
 
-    private func enforceOneXContentGeometry() {
+    private func enforceOneXContentGeometry(
+        diagnosticSource: String = "S2NativeZoomScrollView.enforceOneXContentGeometry"
+    ) {
         guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
             return
         }
@@ -710,6 +732,11 @@ final class S2NativeZoomScrollView: UIScrollView {
             return
         }
         var geometryChanged = false
+        // IC-090 R2：仅用于事件 details，不参与任何判定。
+        var wrotePhotoGeometry = false
+        var wroteContentInset = false
+        var wroteContentSize = false
+        var wroteContentOffset = false
         let targetZoomBounds = CGRect(
             origin: .zero,
             size: nativeZoomBaseSize
@@ -744,24 +771,37 @@ final class S2NativeZoomScrollView: UIScrollView {
                 contentView.bounds = targetPhotoBounds
                 contentView.center = targetPhotoCenter
             }
+            wrotePhotoGeometry = true
             geometryChanged = true
         }
         if contentInset != .zero {
             contentInset = .zero
+            wroteContentInset = true
             geometryChanged = true
         }
         if contentSize != viewportSize {
             contentSize = viewportSize
+            wroteContentSize = true
             geometryChanged = true
         }
         if contentOffset != .zero {
             setContentOffset(.zero, animated: false)
+            wroteContentOffset = true
             geometryChanged = true
         }
         if geometryChanged {
             setNeedsLayout()
             layoutIfNeeded()
         }
+        transitionDiagnostics?.recordOneXSnapBackWrite(
+            source: diagnosticSource,
+            wroteContentInset: wroteContentInset,
+            wroteContentSize: wroteContentSize,
+            wroteContentOffset: wroteContentOffset,
+            wrotePhotoGeometry: wrotePhotoGeometry,
+            pageIndex: diagnosticPageIndex,
+            assetLocalIdentifier: diagnosticAssetLocalIdentifier
+        )
     }
 
     @discardableResult
@@ -1950,6 +1990,14 @@ final class S2NativeZoomPageController: UIViewController,
         let endedAtMinimum = abs(
             scale - zoomScrollView.minimumZoomScale
         ) <= 0.000_001
+        // IC-090 R2：只记录，不改判定。
+        transitionDiagnostics?.recordScrollViewDidEndZooming(
+            scale: scale,
+            endedAtMinimum: endedAtMinimum,
+            pinchWasActive: pinchIsActive,
+            pageIndex: index,
+            assetLocalIdentifier: diagnosticAssetLocalIdentifier
+        )
         if pinchIsActive {
             let duration = Date().timeIntervalSince(pinchStartDate ?? Date())
             let displacement = abs(
@@ -2481,6 +2529,21 @@ final class S2NativePagerViewController: UIViewController,
         machine
     }
 
+    /// IC-090 R2：当前张最近一次图片请求结果与全局最近一次图片替换。
+    var diagnosticCurrentImageRequestResult: String? {
+        guard let machine,
+              machine.orderedAssetIDs.indices.contains(machine.currentIndex) else {
+            return nil
+        }
+        return imageLoadStateRegistry?.requestResult(
+            for: machine.orderedAssetIDs[machine.currentIndex]
+        )
+    }
+
+    var diagnosticLastImageReplacement: S2ImageReplacementRecord? {
+        imageLoadStateRegistry?.lastImageReplacement
+    }
+
     var diagnosticCurrentPage: S2NativeZoomPageController? {
         guard let machine else {
             return nil
@@ -2718,11 +2781,37 @@ final class S2NativePagerViewController: UIViewController,
         // IC-074：原捏合结束的最小速度／最长时长过滤已随参数废止删除；
         // 两者出厂值均为 0（语义为无限制），过滤恒通过，因此这里恒以
         // accepted=true 交给状态机，行为不变。
-        guard let targetScale = machine.finishNativePinch(
+        let targetScale = machine.finishNativePinch(
             scale: scale,
             viewportOffset: page.zoomScrollView.reportedViewportOffset(),
             accepted: true
-        ) else {
+        )
+        // IC-090 R2：先判定走哪条分支再记录，随后按原逻辑执行；判定与执行都不变。
+        let path: String
+        if let targetScale {
+            if abs(
+                targetScale - page.zoomScrollView.minimumZoomScale
+            ) <= 0.000_001 {
+                path = "returnToMinimum"
+            } else if abs(
+                page.zoomScrollView.zoomScale - targetScale
+            ) > 0.000_001 {
+                path = "setZoomScale"
+            } else {
+                path = "noWrite"
+            }
+        } else {
+            path = "none"
+        }
+        transitionDiagnostics?.recordFinishNativePinch(
+            scale: scale,
+            targetScale: targetScale,
+            displacement: displacement,
+            peakVelocity: peakVelocity,
+            duration: duration,
+            path: path
+        )
+        guard let targetScale else {
             return
         }
         if abs(
@@ -3734,6 +3823,15 @@ struct S2OnDeviceTransitionFrameSample: Equatable {
     var nxDistanceToPreviousBoundary: CGFloat? = nil
     var nxDistanceToNextBoundary: CGFloat? = nil
     var nxOverflowDistance: CGFloat? = nil
+    /// IC-090 R2 场景 C 追加：捏合松手瞬间「模型值已结算、呈现层仍在动」的判据。
+    /// `presentationZoomScale` 取被缩放视图（`viewForZooming`）图层 presentation
+    /// 的 transform.a，与既有的模型 `zoomScale` 对照。
+    var presentationZoomScale: CGFloat? = nil
+    var isZoomBouncing: Bool? = nil
+    var isDecelerating: Bool? = nil
+    /// 当前张最近一次图片请求结果（`S2ImageRequestResult` 分支名）与最近一次图片替换。
+    var imageRequestResult: String? = nil
+    var lastImageReplacement: S2ImageReplacementRecord? = nil
 }
 
 enum S2OnDeviceTransitionPayload: Equatable {
@@ -3901,7 +3999,13 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             // IC-082 R3：自定义贴边投影已删除，三个字段保留为 nil（见 export-format.md）。
             nxDistanceToPreviousBoundary: nil,
             nxDistanceToNextBoundary: nil,
-            nxOverflowDistance: nil
+            nxOverflowDistance: nil,
+            // IC-090 R2 场景 C：呈现层倍率与两个原生标志、当前张图片请求状态。
+            presentationZoomScale: scrollView?.diagnosticPresentationZoomScale,
+            isZoomBouncing: scrollView?.isZoomBouncing,
+            isDecelerating: scrollView?.isDecelerating,
+            imageRequestResult: controller?.diagnosticCurrentImageRequestResult,
+            lastImageReplacement: controller?.diagnosticLastImageReplacement
         )))
     }
 
@@ -3972,6 +4076,100 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             name: "handleNativePageChange",
             source: "S2NativePagerViewController.finishNativePaging",
             details: "from=\(previousIndex)；to=\(targetIndex)；accepted=\(accepted)"
+        )
+    }
+
+    /// IC-090 R2 场景 C：捏合结束链路上的五类事件。全部只在录制中追加记录，
+    /// 不改变任何产品行为。
+    func recordScrollViewDidEndZooming(
+        scale: CGFloat,
+        endedAtMinimum: Bool,
+        pinchWasActive: Bool,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        recordEvent(
+            name: "scrollViewDidEndZooming",
+            source: "S2NativeZoomPageController.scrollViewDidEndZooming",
+            details: "scale=\(S2OnDeviceTransitionText.number(scale))；" +
+                "endedAtMinimum=\(endedAtMinimum)；" +
+                "pinchWasActive=\(pinchWasActive)；" +
+                diagnosticContext(
+                    pageIndex: pageIndex,
+                    assetLocalIdentifier: assetLocalIdentifier
+                )
+        )
+    }
+
+    func recordFinishNativePinch(
+        scale: CGFloat,
+        targetScale: CGFloat?,
+        displacement: CGFloat,
+        peakVelocity: CGFloat,
+        duration: TimeInterval,
+        path: String
+    ) {
+        recordEvent(
+            name: "finishNativePinch",
+            source: "S2NativePagerViewController.finishNativePinch",
+            details: "scale=\(S2OnDeviceTransitionText.number(scale))；" +
+                "targetScale=" +
+                "\(targetScale.map { S2OnDeviceTransitionText.number($0) } ?? "nil")；" +
+                "displacement=\(S2OnDeviceTransitionText.number(displacement))；" +
+                "peakVelocity=\(S2OnDeviceTransitionText.number(peakVelocity))；" +
+                "duration=\(S2OnDeviceTransitionText.number(duration))；" +
+                "path=\(path)"
+        )
+    }
+
+    func recordSetZoomScale(
+        scale: CGFloat,
+        animated: Bool,
+        previousScale: CGFloat,
+        source: String
+    ) {
+        recordEvent(
+            name: "setZoomScale",
+            source: source,
+            details: "scale=\(S2OnDeviceTransitionText.number(scale))；" +
+                "animated=\(animated)；" +
+                "from=\(S2OnDeviceTransitionText.number(previousScale))"
+        )
+    }
+
+    /// 归位到 1x 的几何写入：照片层几何本身仍由既有「照片几何写入」事件记录，
+    /// 本事件补的是同一次归位里 `contentInset` / `contentSize` / `contentOffset` 的写入。
+    func recordOneXSnapBackWrite(
+        source: String,
+        wroteContentInset: Bool,
+        wroteContentSize: Bool,
+        wroteContentOffset: Bool,
+        wrotePhotoGeometry: Bool,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        recordEvent(
+            name: "吸附归位写入",
+            source: source,
+            details: "contentInset=\(wroteContentInset)；" +
+                "contentSize=\(wroteContentSize)；" +
+                "contentOffset=\(wroteContentOffset)；" +
+                "照片几何=\(wrotePhotoGeometry)；" +
+                diagnosticContext(
+                    pageIndex: pageIndex,
+                    assetLocalIdentifier: assetLocalIdentifier
+                )
+        )
+    }
+
+    func recordImageReplacement(_ record: S2ImageReplacementRecord) {
+        recordEvent(
+            name: "图片替换",
+            source: "S2TemporaryPhotoImageView.requestImage",
+            details: "asset=\(record.assetID)；" +
+                "result=\(record.resultName)；" +
+                "pixel=(w=\(S2OnDeviceTransitionText.number(record.pixelSize.width))," +
+                "h=\(S2OnDeviceTransitionText.number(record.pixelSize.height)))"
         )
     }
 
@@ -4177,7 +4375,7 @@ enum S2OnDeviceTransitionText {
             "停止绝对时间=\(timestamp(stoppedAt))",
             "记录总数=\(sortedRecords.count)",
             "顺序=全部记录按同一单调时钟严格递增",
-            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,contentInset,adjustedContentInset,V,s,pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating,currentIndex,settledIndex,pageIndicesPresent,pageLoadStates,nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance",
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,contentInset,adjustedContentInset,V,s,pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating,currentIndex,settledIndex,pageIndicesPresent,pageLoadStates,nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance,presentationZoomScale,isZoomBouncing,isDecelerating,imageRequestResult,lastImageReplacement",
             "离散事件字段=time,event,source,details",
             "---"
         ]
@@ -4208,7 +4406,12 @@ enum S2OnDeviceTransitionText {
                     "\tpageLoadStates=\(loadStates(sample.pageLoadStates))" +
                     "\tnxDistanceToPreviousBoundary=\(optionalNumber(sample.nxDistanceToPreviousBoundary))" +
                     "\tnxDistanceToNextBoundary=\(optionalNumber(sample.nxDistanceToNextBoundary))" +
-                    "\tnxOverflowDistance=\(optionalNumber(sample.nxOverflowDistance))")
+                    "\tnxOverflowDistance=\(optionalNumber(sample.nxOverflowDistance))" +
+                    "\tpresentationZoomScale=\(optionalNumber(sample.presentationZoomScale))" +
+                    "\tisZoomBouncing=\(optionalBool(sample.isZoomBouncing))" +
+                    "\tisDecelerating=\(optionalBool(sample.isDecelerating))" +
+                    "\timageRequestResult=\(sample.imageRequestResult ?? "nil")" +
+                    "\tlastImageReplacement=\(imageReplacement(sample.lastImageReplacement))")
             case let .event(name, source, details):
                 lines.append(prefix +
                     "\tkind=event" +
@@ -4230,6 +4433,17 @@ enum S2OnDeviceTransitionText {
 
     static func indexList(_ values: [Int]) -> String {
         "[" + values.sorted().map(String.init).joined(separator: ",") + "]"
+    }
+
+    /// IC-090 R2：最近一次图片替换。`t` 与逐帧记录同源（`CACurrentMediaTime()` 绝对值），
+    /// 与头部「起始绝对时间」相减即可对齐到 `time` 相对时间轴。
+    static func imageReplacement(_ value: S2ImageReplacementRecord?) -> String {
+        guard let value else {
+            return "nil"
+        }
+        return "(asset=\(value.assetID),result=\(value.resultName)," +
+            "w=\(number(value.pixelSize.width)),h=\(number(value.pixelSize.height))," +
+            "t=\(number(value.timestamp)))"
     }
 
     static func loadStates(_ values: [Int: String]) -> String {
@@ -4260,7 +4474,8 @@ enum S2OnDeviceTransitionText {
         )
     }
 
-    private static func number<T: BinaryFloatingPoint>(_ value: T) -> String {
+    /// IC-090 R2：事件 details 复用同一数值格式，故由 private 放开为内部可见。
+    static func number<T: BinaryFloatingPoint>(_ value: T) -> String {
         String(
             format: "%.6f",
             locale: Locale(identifier: "en_US_POSIX"),
@@ -4313,9 +4528,21 @@ enum S2OnDeviceTransitionText {
     }
 }
 
+/// IC-090 R2：一次图片替换的诊断记录。`timestamp` 与逐帧记录同用
+/// `CACurrentMediaTime()`，因此可与松手后的逐帧差分对齐。
+struct S2ImageReplacementRecord: Equatable {
+    let assetID: String
+    let resultName: String
+    let pixelSize: CGSize
+    let timestamp: CFTimeInterval
+}
+
 /// IC-079 R1：按资产记录图像加载态，仅供诊断埋点读取；不发布、不影响产品状态。
+/// IC-090 R2：同时登记每个资产最近一次图片请求结果与最近一次图片替换。
 final class S2ImageLoadStateRegistry: ObservableObject {
     private var states: [String: S2ImageLoadState] = [:]
+    private var requestResults: [String: String] = [:]
+    private(set) var lastImageReplacement: S2ImageReplacementRecord?
 
     func update(_ state: S2ImageLoadState, for assetID: String) {
         states[assetID] = state
@@ -4323,6 +4550,40 @@ final class S2ImageLoadStateRegistry: ObservableObject {
 
     func state(for assetID: String) -> S2ImageLoadState? {
         states[assetID]
+    }
+
+    func updateRequestResult(
+        _ result: S2ImageRequestResult,
+        for assetID: String
+    ) {
+        requestResults[assetID] = result.diagnosticName
+    }
+
+    func requestResult(for assetID: String) -> String? {
+        requestResults[assetID]
+    }
+
+    func recordImageReplacement(_ record: S2ImageReplacementRecord) {
+        lastImageReplacement = record
+    }
+}
+
+/// IC-090 R2：一次图片请求结果的诊断名。与 `S2ImageLoadState.diagnosticName` 同处
+/// 诊断协议段落，故与它一样不进 String Catalog（不是用户可见文案）。
+extension S2ImageRequestResult {
+    var diagnosticName: String {
+        switch self {
+        case .degradedPreview:
+            return "degradedPreview"
+        case .finalImage:
+            return "finalImage"
+        case .failure:
+            return "failure"
+        case .cancelled:
+            return "cancelled"
+        case .assetUnavailable:
+            return "assetUnavailable"
+        }
     }
 }
 

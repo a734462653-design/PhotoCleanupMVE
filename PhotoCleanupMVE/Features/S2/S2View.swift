@@ -1,4 +1,5 @@
 import Foundation
+import QuartzCore
 import SwiftUI
 import UIKit
 
@@ -52,6 +53,9 @@ struct S2ImageContentContext {
     let onRequestReading: (S2ImageRequestReading) -> Void
     /// IC-079 R1：图像加载态回调，仅供诊断埋点记录。
     var onLoadStateChange: (S2ImageLoadState) -> Void = { _ in }
+    /// IC-090 R2：请求返回结果与图片替换回调，仅供诊断埋点记录。
+    var onRequestResult: (S2ImageRequestResult) -> Void = { _ in }
+    var onImageReplaced: (S2ImageRequestResult) -> Void = { _ in }
 }
 
 struct S2BottomStripItemPresentation {
@@ -601,6 +605,24 @@ struct S2View: View {
                 },
                 onLoadStateChange: { [imageLoadStateRegistry] state in
                     imageLoadStateRegistry.update(state, for: assetID)
+                },
+                // IC-090 R2 场景 C：请求结果登记为逐帧字段；图片替换同时登记与追加事件。
+                onRequestResult: { [imageLoadStateRegistry] result in
+                    imageLoadStateRegistry.updateRequestResult(
+                        result,
+                        for: assetID
+                    )
+                },
+                onImageReplaced: {
+                    [imageLoadStateRegistry, transitionDiagnostics] result in
+                    let record = S2ImageReplacementRecord(
+                        assetID: assetID,
+                        resultName: result.diagnosticName,
+                        pixelSize: result.image?.size ?? .zero,
+                        timestamp: CACurrentMediaTime()
+                    )
+                    imageLoadStateRegistry.recordImageReplacement(record)
+                    transitionDiagnostics.recordImageReplacement(record)
                 }
             ))
             return S2NativePageContent(

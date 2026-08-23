@@ -26,6 +26,7 @@ enum S2ImageRequestResult: Equatable {
         }
         return false
     }
+
 }
 
 protocol S2PhotoImageRequesting: AnyObject {
@@ -136,6 +137,10 @@ struct S2TemporaryPhotoImageView: View {
     let showsOpaqueLoadingBackground: Bool
     let onReading: (S2ImageRequestReading) -> Void
     var onLoadStateChange: (S2ImageLoadState) -> Void = { _ in }
+    /// IC-090 R2：每次请求返回的原始 `S2ImageRequestResult`（含 `cancelled`），仅供诊断埋点。
+    var onRequestResult: (S2ImageRequestResult) -> Void = { _ in }
+    /// IC-090 R2：真正发生图片替换时回调（`shouldDisplay` 通过且有图），仅供诊断埋点。
+    var onImageReplaced: (S2ImageRequestResult) -> Void = { _ in }
 
     @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
@@ -267,6 +272,7 @@ struct S2TemporaryPhotoImageView: View {
                 guard requestGeneration == generation else {
                     return
                 }
+                onRequestResult(result)
                 let returnType: S2ImageReturnType
                 switch result {
                 case .cancelled:
@@ -300,6 +306,7 @@ struct S2TemporaryPhotoImageView: View {
                 }
                 image = nextImage
                 displayedAssetID = requestedAssetID
+                onImageReplaced(result)
                 setLoadState(.displayed)
             }
         }
