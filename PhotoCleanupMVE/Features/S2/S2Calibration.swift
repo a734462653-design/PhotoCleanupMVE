@@ -149,6 +149,8 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripDecelerationRate: Double
     var bottomStripExpandDurationMilliseconds: Double
     var bottomStripCollapseDurationMilliseconds: Double
+    /// IC-085 R3：④技术负责人取定的占位值，松手速度低于此值无惯性（pt/s）。
+    var bottomStripFlickVelocityThreshold: Double
     var bottomStripMarkSize: Double
     var markPulseDurationMilliseconds: Double
     var feedbackToastDurationMilliseconds: Double
@@ -194,6 +196,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         bottomStripDecelerationRate: 0.998,
         bottomStripExpandDurationMilliseconds: 600,
         bottomStripCollapseDurationMilliseconds: 100,
+        bottomStripFlickVelocityThreshold: 300,
         bottomStripMarkSize: 14,
         markPulseDurationMilliseconds: 150,
         feedbackToastDurationMilliseconds: 2000
@@ -225,6 +228,9 @@ struct S2CalibrationConfiguration: Codable, Equatable {
                 ),
                 collapseDurationMilliseconds: CGFloat(
                     bottomStripCollapseDurationMilliseconds
+                ),
+                flickVelocityThreshold: CGFloat(
+                    bottomStripFlickVelocityThreshold
                 )
             )
         )
@@ -303,6 +309,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("bottomStripDecelerationRate", formatted(bottomStripDecelerationRate)),
             ("bottomStripExpandDurationMilliseconds", formatted(bottomStripExpandDurationMilliseconds)),
             ("bottomStripCollapseDurationMilliseconds", formatted(bottomStripCollapseDurationMilliseconds)),
+            ("bottomStripFlickVelocityThreshold", formatted(bottomStripFlickVelocityThreshold)),
             ("bottomStripMarkSize", formatted(bottomStripMarkSize)),
             ("markPulseDurationMilliseconds", formatted(markPulseDurationMilliseconds)),
             ("feedbackToastDurationMilliseconds", formatted(feedbackToastDurationMilliseconds))
@@ -363,6 +370,7 @@ extension S2CalibrationConfiguration {
         .init(name: "bottomStripDecelerationRate", specStatus: .decided, wiringStatus: .effective),
         .init(name: "bottomStripExpandDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
         .init(name: "bottomStripCollapseDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
+        .init(name: "bottomStripFlickVelocityThreshold", specStatus: .placeholder, wiringStatus: .effective),
         .init(name: "bottomStripMarkSize", specStatus: .decided, wiringStatus: .effective),
         .init(name: "markPulseDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
         .init(name: "feedbackToastDurationMilliseconds", specStatus: .decided, wiringStatus: .effective)
@@ -409,6 +417,7 @@ extension S2CalibrationConfiguration {
         case bottomStripDecelerationRate
         case bottomStripExpandDurationMilliseconds
         case bottomStripCollapseDurationMilliseconds
+        case bottomStripFlickVelocityThreshold
         case bottomStripMarkSize
         case markPulseDurationMilliseconds
         case feedbackToastDurationMilliseconds
@@ -456,6 +465,7 @@ extension S2CalibrationConfiguration {
             bottomStripDecelerationRate: try values.decodeIfPresent(Double.self, forKey: .bottomStripDecelerationRate) ?? 0.998,
             bottomStripExpandDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .bottomStripExpandDurationMilliseconds) ?? 600,
             bottomStripCollapseDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .bottomStripCollapseDurationMilliseconds) ?? 100,
+            bottomStripFlickVelocityThreshold: try values.decodeIfPresent(Double.self, forKey: .bottomStripFlickVelocityThreshold) ?? 300,
             bottomStripMarkSize: try values.decodeIfPresent(Double.self, forKey: .bottomStripMarkSize) ?? 14,
             markPulseDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .markPulseDurationMilliseconds) ?? 150,
             feedbackToastDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .feedbackToastDurationMilliseconds) ?? 2000
@@ -502,6 +512,7 @@ extension S2CalibrationConfiguration {
         try values.encode(bottomStripDecelerationRate, forKey: .bottomStripDecelerationRate)
         try values.encode(bottomStripExpandDurationMilliseconds, forKey: .bottomStripExpandDurationMilliseconds)
         try values.encode(bottomStripCollapseDurationMilliseconds, forKey: .bottomStripCollapseDurationMilliseconds)
+        try values.encode(bottomStripFlickVelocityThreshold, forKey: .bottomStripFlickVelocityThreshold)
         try values.encode(bottomStripMarkSize, forKey: .bottomStripMarkSize)
         try values.encode(markPulseDurationMilliseconds, forKey: .markPulseDurationMilliseconds)
         try values.encode(feedbackToastDurationMilliseconds, forKey: .feedbackToastDurationMilliseconds)

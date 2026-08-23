@@ -126,6 +126,8 @@ struct S2BottomStripMetrics: Equatable {
     let decelerationRate: CGFloat
     let expandDurationMilliseconds: CGFloat
     let collapseDurationMilliseconds: CGFloat
+    /// IC-085 R3：松手手指速度低于此值（pt/s）无减速段，直接吸附展开。
+    let flickVelocityThreshold: CGFloat
 
     var height: CGFloat {
         max(currentItemSize, neighborItemHeight)
@@ -143,7 +145,8 @@ struct S2BottomStripMetrics: Equatable {
             decelerationRate > 0 &&
             decelerationRate < 1 &&
             expandDurationMilliseconds >= 0 &&
-            collapseDurationMilliseconds >= 0
+            collapseDurationMilliseconds >= 0 &&
+            flickVelocityThreshold >= 0
     }
 }
 

@@ -1198,7 +1198,8 @@ final class S2StateMachineTests: XCTestCase {
                 switchDistance: 23,
                 decelerationRate: 0.998,
                 expandDurationMilliseconds: 600,
-                collapseDurationMilliseconds: 100
+                collapseDurationMilliseconds: 100,
+                flickVelocityThreshold: 300
             )
         )!
     }

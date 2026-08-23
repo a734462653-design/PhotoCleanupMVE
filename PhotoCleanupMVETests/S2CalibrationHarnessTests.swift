@@ -680,6 +680,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             bottomStripDecelerationRate: 0.998,
             bottomStripExpandDurationMilliseconds: 600,
             bottomStripCollapseDurationMilliseconds: 100,
+            bottomStripFlickVelocityThreshold: 300,
             bottomStripMarkSize: 14,
             markPulseDurationMilliseconds: 150,
             feedbackToastDurationMilliseconds: 2000
@@ -772,18 +773,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion=2 与 v15 规格基线。
-    // IC-085：废止 1 项、新增 5 项横栏参数，字段 37 → 41，导出 41 + 4 行。
+    // IC-085：废止 1 项、新增 5 项横栏参数，字段 37 → 41，导出 41 + 4 行；R3 新增 1 项：42。
     func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
         ).children.compactMap(\.label)
-        XCTAssertEqual(fieldNames.count, 41)
+        XCTAssertEqual(fieldNames.count, 42)
 
         let lines = S2CalibrationConfiguration.factoryPlaceholder
             .exportText()
             .split(separator: "\n")
             .map(String.init)
-        XCTAssertEqual(lines.count, 41 + 4)
+        XCTAssertEqual(lines.count, 42 + 4)
         XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 2)
         XCTAssertTrue(lines.contains("schemaVersion=2"))
         XCTAssertTrue(lines.contains(
@@ -802,11 +803,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // IC-074 G97：登记表 33 条、双状态；decided 集合恰为 v15 第十一节第 1、2 部分已存在的 16 项。
-    // IC-085：登记表 41 条；横栏 11 项（6 项既有 + 5 项新增）全部 decided。
+    // IC-085：登记表 41 条；横栏 11 项（6 项既有 + 5 项新增）全部 decided；R3 新增 placeholder 1 项：42 条。
     func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
         let connections = S2CalibrationConfiguration.parameterConnections
-        XCTAssertEqual(connections.count, 41)
-        XCTAssertEqual(Set(connections.map(\.name)).count, 41)
+        XCTAssertEqual(connections.count, 42)
+        XCTAssertEqual(Set(connections.map(\.name)).count, 42)
 
         let decided = Set(connections
             .filter { $0.specStatus == .decided }
@@ -836,7 +837,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             "bottomStripCollapseDurationMilliseconds"
         ])
         XCTAssertEqual(decided.count, 34)
-        XCTAssertEqual(placeholder.count, 7)
+        XCTAssertEqual(placeholder.count, 8)
+        XCTAssertTrue(placeholder.contains("bottomStripFlickVelocityThreshold"))
         XCTAssertTrue(decided.isDisjoint(with: placeholder))
         XCTAssertFalse(placeholder.contains("pinchMaxScale"))
         XCTAssertEqual(
@@ -6951,7 +6953,8 @@ extension S2CalibrationHarnessTests {
             S2BottomStripSystemReference.itemSpacing,
         decelerationRate: S2BottomStripSystemReference.decelerationRate,
         expandDurationMilliseconds: S2BottomStripSystemReference.expandDurationMilliseconds,
-        collapseDurationMilliseconds: S2BottomStripSystemReference.collapseDurationMilliseconds
+        collapseDurationMilliseconds: S2BottomStripSystemReference.collapseDurationMilliseconds,
+        flickVelocityThreshold: 300
     )
 
     private static let stripViewportSize = CGSize(width: 402, height: 30)
@@ -7449,3 +7452,4 @@ final class S2StripTestClock {
         now += interval
     }
 }
+
