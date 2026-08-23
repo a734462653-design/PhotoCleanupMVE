@@ -115,7 +115,7 @@ extension S2ResolvedParameters {
 struct S2CalibrationConfiguration: Codable, Equatable {
     /// IC-087：出厂值版本。持久化数据顶层写入 `schemaVersion`；加载时与本值不等即整套丢弃并删除条目。
     /// **纪律：任何改动 `factoryPlaceholder` 出厂值的卡必须同时递增本值。**
-    static let schemaVersion = 3
+    static let schemaVersion = 4
 
     var pinchMaxScaleFloor: Double
     var pinchMaxScaleCeiling: Double
@@ -158,6 +158,9 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripCollapseDurationMilliseconds: Double
     /// IC-085 R3：④技术负责人取定的占位值，松手速度低于此值无惯性（pt/s）。
     var bottomStripFlickVelocityThreshold: Double
+    /// IC-090 R1：横栏项目圆角半径（pt，decided）。出厂值 = 系统 Photos 录屏静止段
+    /// 四角实测半径按本卡规则四舍五入到 0.5 pt；邻居与当前张同值。
+    var bottomStripCornerRadius: Double
     var bottomStripMarkSize: Double
     var markPulseDurationMilliseconds: Double
     var feedbackToastDurationMilliseconds: Double
@@ -205,6 +208,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         bottomStripExpandDurationMilliseconds: 600,
         bottomStripCollapseDurationMilliseconds: 100,
         bottomStripFlickVelocityThreshold: 300,
+        bottomStripCornerRadius: 2.5,
         bottomStripMarkSize: 14,
         markPulseDurationMilliseconds: 150,
         feedbackToastDurationMilliseconds: 2000
@@ -240,7 +244,8 @@ struct S2CalibrationConfiguration: Codable, Equatable {
                 ),
                 flickVelocityThreshold: CGFloat(
                     bottomStripFlickVelocityThreshold
-                )
+                ),
+                cornerRadius: CGFloat(bottomStripCornerRadius)
             )
         )
     }
@@ -269,6 +274,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             fitBorderDarkAlpha >= 0 && fitBorderDarkAlpha <= 1 &&
             fitBorderLightAlpha >= 0 && fitBorderLightAlpha <= 1 &&
             pageSpacing >= 0 &&
+            bottomStripCornerRadius >= 0 &&
             bottomStripMarkSize >= 0 &&
             markPulseDurationMilliseconds >= 0 &&
             feedbackToastDurationMilliseconds >= 0
@@ -320,6 +326,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("bottomStripExpandDurationMilliseconds", formatted(bottomStripExpandDurationMilliseconds)),
             ("bottomStripCollapseDurationMilliseconds", formatted(bottomStripCollapseDurationMilliseconds)),
             ("bottomStripFlickVelocityThreshold", formatted(bottomStripFlickVelocityThreshold)),
+            ("bottomStripCornerRadius", formatted(bottomStripCornerRadius)),
             ("bottomStripMarkSize", formatted(bottomStripMarkSize)),
             ("markPulseDurationMilliseconds", formatted(markPulseDurationMilliseconds)),
             ("feedbackToastDurationMilliseconds", formatted(feedbackToastDurationMilliseconds))
@@ -383,6 +390,8 @@ extension S2CalibrationConfiguration {
         .init(name: "bottomStripExpandDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
         .init(name: "bottomStripCollapseDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
         .init(name: "bottomStripFlickVelocityThreshold", specStatus: .placeholder, wiringStatus: .effective),
+        // IC-090 R1：圆角半径同为系统录屏测量值。
+        .init(name: "bottomStripCornerRadius", specStatus: .decided, wiringStatus: .effective),
         .init(name: "bottomStripMarkSize", specStatus: .decided, wiringStatus: .effective),
         .init(name: "markPulseDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
         .init(name: "feedbackToastDurationMilliseconds", specStatus: .decided, wiringStatus: .effective)
@@ -432,6 +441,7 @@ extension S2CalibrationConfiguration {
         case bottomStripExpandDurationMilliseconds
         case bottomStripCollapseDurationMilliseconds
         case bottomStripFlickVelocityThreshold
+        case bottomStripCornerRadius
         case bottomStripMarkSize
         case markPulseDurationMilliseconds
         case feedbackToastDurationMilliseconds
@@ -489,6 +499,7 @@ extension S2CalibrationConfiguration {
             bottomStripExpandDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .bottomStripExpandDurationMilliseconds) ?? 600,
             bottomStripCollapseDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .bottomStripCollapseDurationMilliseconds) ?? 100,
             bottomStripFlickVelocityThreshold: try values.decodeIfPresent(Double.self, forKey: .bottomStripFlickVelocityThreshold) ?? 300,
+            bottomStripCornerRadius: try values.decodeIfPresent(Double.self, forKey: .bottomStripCornerRadius) ?? 2.5,
             bottomStripMarkSize: try values.decodeIfPresent(Double.self, forKey: .bottomStripMarkSize) ?? 14,
             markPulseDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .markPulseDurationMilliseconds) ?? 150,
             feedbackToastDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .feedbackToastDurationMilliseconds) ?? 2000
@@ -538,6 +549,7 @@ extension S2CalibrationConfiguration {
         try values.encode(bottomStripExpandDurationMilliseconds, forKey: .bottomStripExpandDurationMilliseconds)
         try values.encode(bottomStripCollapseDurationMilliseconds, forKey: .bottomStripCollapseDurationMilliseconds)
         try values.encode(bottomStripFlickVelocityThreshold, forKey: .bottomStripFlickVelocityThreshold)
+        try values.encode(bottomStripCornerRadius, forKey: .bottomStripCornerRadius)
         try values.encode(bottomStripMarkSize, forKey: .bottomStripMarkSize)
         try values.encode(markPulseDurationMilliseconds, forKey: .markPulseDurationMilliseconds)
         try values.encode(feedbackToastDurationMilliseconds, forKey: .feedbackToastDurationMilliseconds)

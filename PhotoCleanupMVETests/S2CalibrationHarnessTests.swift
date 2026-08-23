@@ -362,17 +362,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // IC-087 G171：持久化数据的 `schemaVersion` 与代码版本不等（或缺失）→ 整套丢弃、取出厂值并删除条目；
-    // 相等 → 按现行逐字段解码。导出文本含 schemaVersion=3。
+    // 相等 → 按现行逐字段解码。IC-090 R1：出厂值集合新增圆角半径，版本 3 → 4，导出文本含 schemaVersion=4。
     func testIC087G171SchemaVersionGateDiscardsStaleStoreAndDeletesEntry() throws {
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 3)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 4)
         XCTAssertTrue(
             S2CalibrationConfiguration.factoryPlaceholder.exportText()
-                .contains("schemaVersion=3")
+                .contains("schemaVersion=4")
         )
 
-        // 1) schemaVersion=2 且 ceiling=10 → 出厂 40，且存储被删除。
+        // 1) schemaVersion=3（IC-087 旧版）且 ceiling=10 → 出厂 40，且存储被删除。
         let stale = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 2, ceiling: 10)
+            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 10)
         )
         let staleModel = S2CalibrationModel(persistence: stale)
         XCTAssertEqual(staleModel.configuration, .factoryPlaceholder)
@@ -382,9 +382,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(stale.saveCount, 0)
         XCTAssertFalse(staleModel.persistenceFailed)
 
-        // 2) schemaVersion=3 且 ceiling=12 → 12，存储保留。
+        // 2) schemaVersion=4 且 ceiling=12 → 12，存储保留。
         let current = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 4, ceiling: 12)
         )
         let currentModel = S2CalibrationModel(persistence: current)
         XCTAssertEqual(currentModel.configuration.pinchMaxScaleCeiling, 12)
@@ -400,13 +400,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNil(legacy.data)
         XCTAssertEqual(legacy.deleteCount, 1)
 
-        // 保存后的数据顶层带 schemaVersion=3，重新加载得同一配置。
+        // 保存后的数据顶层带 schemaVersion=4，重新加载得同一配置。
         XCTAssertTrue(currentModel.update { $0.pinchMaxScaleCeiling = 15 })
         let saved = try XCTUnwrap(current.data)
         let object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: saved) as? [String: Any]
         )
-        XCTAssertEqual(object["schemaVersion"] as? Int, 3)
+        XCTAssertEqual(object["schemaVersion"] as? Int, 4)
         XCTAssertEqual(
             S2CalibrationModel(persistence: current).configuration,
             currentModel.configuration
@@ -414,7 +414,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
         // 删除失败时 persistenceFailed 置位，配置仍为出厂。
         let failing = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 2, ceiling: 10)
+            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 10)
         )
         failing.deleteError = S2CalibrationPersistenceError.keychain(-1)
         let failingModel = S2CalibrationModel(persistence: failing)
@@ -430,7 +430,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             L10n.text("s2.calibration.restore_factory").hasPrefix("【未定项 21 占位】")
         )
         let store = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 4, ceiling: 12)
         )
         let model = S2CalibrationModel(persistence: store)
         XCTAssertEqual(model.configuration.pinchMaxScaleCeiling, 12)
@@ -970,19 +970,20 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion 与 v15 规格基线。
     // IC-085：废止 1 项、新增 5 项横栏参数，字段 37 → 41，导出 41 + 4 行；R3 新增 1 项：42。
     // IC-088 合并：+ IC-081 乘数 1 项 = 43，导出 43 + 4 = 47；IC-087：schemaVersion=3。
+    // IC-090 R1：+ bottomStripCornerRadius 1 项 = 44，导出 44 + 4 = 48；出厂值集合变了，schemaVersion=4。
     func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
         ).children.compactMap(\.label)
-        XCTAssertEqual(fieldNames.count, 43)
+        XCTAssertEqual(fieldNames.count, 44)
 
         let lines = S2CalibrationConfiguration.factoryPlaceholder
             .exportText()
             .split(separator: "\n")
             .map(String.init)
-        XCTAssertEqual(lines.count, 43 + 4)
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 3)
-        XCTAssertTrue(lines.contains("schemaVersion=3"))
+        XCTAssertEqual(lines.count, 44 + 4)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 4)
+        XCTAssertTrue(lines.contains("schemaVersion=4"))
         XCTAssertTrue(lines.contains(
             "taskID=IC-20260821-074-parameter-layer-v15-alignment"
         ))
@@ -1000,10 +1001,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // IC-074 G97：登记表 33 条、双状态；decided 集合恰为 v15 第十一节第 1、2 部分已存在的 16 项。
     // IC-085：登记表 41 条；横栏 11 项（6 项既有 + 5 项新增）全部 decided；R3 新增 placeholder 1 项：42 条。
+    // IC-090 R1：+ bottomStripCornerRadius（decided / effective）：44 条，decided 35。
     func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
         let connections = S2CalibrationConfiguration.parameterConnections
-        XCTAssertEqual(connections.count, 43)
-        XCTAssertEqual(Set(connections.map(\.name)).count, 43)
+        XCTAssertEqual(connections.count, 44)
+        XCTAssertEqual(Set(connections.map(\.name)).count, 44)
 
         let decided = Set(connections
             .filter { $0.specStatus == .decided }
@@ -1030,10 +1032,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
             "bottomStripLeadingInset", "bottomStripSwitchDistance",
             "bottomStripDecelerationRate",
             "bottomStripExpandDurationMilliseconds",
-            "bottomStripCollapseDurationMilliseconds"
+            "bottomStripCollapseDurationMilliseconds",
+            "bottomStripCornerRadius"
         ])
         // IC-088 合并：decided 34（IC-085）；placeholder 8（IC-085）+ 乘数 1（IC-081）= 9。
-        XCTAssertEqual(decided.count, 34)
+        // IC-090 R1：decided 34 → 35（圆角半径），placeholder 不变。
+        XCTAssertEqual(decided.count, 35)
         XCTAssertEqual(placeholder.count, 9)
         XCTAssertTrue(placeholder.contains("bottomStripFlickVelocityThreshold"))
         XCTAssertTrue(decided.isDisjoint(with: placeholder))
@@ -7596,6 +7600,11 @@ enum S2BottomStripSystemReference {
     static let expandDurationMilliseconds: CGFloat = 600
     /// 60 fps 帧 27–32：约 6 帧 = 100 ms。
     static let collapseDurationMilliseconds: CGFloat = 100
+    /// IC-090 R1：8.08 px（≈ 2.69 pt）。30 fps 帧 97–136 / 218–236 / 325–341 静止段，
+    /// 901 个邻居项目实例 × 4 角以「多样本逐像素最大值 → alpha 图 → 缺口面积
+    /// A = r²(1 − π/4)」求得（四角 7.96～8.17 px）；当前张两个内容饱和角 8.15 / 8.24 px，
+    /// 与邻居同值。本卡规则四舍五入到 0.5 pt。
+    static let cornerRadius: CGFloat = 2.5
 
     /// run1（60 fps 帧 53–159）初速 42.3 px/帧 = 845.3 pt/s。
     static let decelerationInitialVelocity: CGFloat = 845.3
@@ -7646,7 +7655,8 @@ extension S2CalibrationHarnessTests {
         decelerationRate: S2BottomStripSystemReference.decelerationRate,
         expandDurationMilliseconds: S2BottomStripSystemReference.expandDurationMilliseconds,
         collapseDurationMilliseconds: S2BottomStripSystemReference.collapseDurationMilliseconds,
-        flickVelocityThreshold: 300
+        flickVelocityThreshold: 300,
+        cornerRadius: S2BottomStripSystemReference.cornerRadius
     )
 
     private static let stripViewportSize = CGSize(width: 402, height: 30)
@@ -7850,7 +7860,8 @@ extension S2CalibrationHarnessTests {
             decelerationRate: base.decelerationRate,
             expandDurationMilliseconds: base.expandDurationMilliseconds,
             collapseDurationMilliseconds: base.collapseDurationMilliseconds,
-            flickVelocityThreshold: 0
+            flickVelocityThreshold: 0,
+            cornerRadius: base.cornerRadius
         )
         zero.motion.layout = S2BottomStripLayout(metrics: metrics)
         XCTAssertTrue(zero.motion.beginDrag())
