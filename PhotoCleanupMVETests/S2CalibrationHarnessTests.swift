@@ -7070,8 +7070,9 @@ extension S2CalibrationHarnessTests {
         let landscapeInNeighbor = S2BottomStripLayout.fillContentSize(cellSize: neighbor, assetAspectRatio: 4.0 / 3.0)
         XCTAssertEqual(landscapeInNeighbor.width, 40, accuracy: 0.001)
         XCTAssertEqual(landscapeInNeighbor.height, 30, accuracy: 0.001)
+        // 3:4 比 20×30（2:3）略宽，按高填满后宽 22.5，左右各裁 1.25。
         let portraitInNeighbor = S2BottomStripLayout.fillContentSize(cellSize: neighbor, assetAspectRatio: 3.0 / 4.0)
-        XCTAssertEqual(portraitInNeighbor.width, 20, accuracy: 0.001)
+        XCTAssertEqual(portraitInNeighbor.width, 22.5, accuracy: 0.001)
         XCTAssertEqual(portraitInNeighbor.height, 30, accuracy: 0.001)
         let tallInNeighbor = S2BottomStripLayout.fillContentSize(cellSize: neighbor, assetAspectRatio: 9.0 / 16.0)
         XCTAssertEqual(tallInNeighbor.width, 20, accuracy: 0.001)
