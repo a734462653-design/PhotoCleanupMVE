@@ -79,3 +79,11 @@
   - 事件 `beginNXEdgePaging` 不再产生；`外层setContentOffset` 不再出现来源 `updateNXEdgePaging`。
   - 事件 `handleHorizontalSwipe` 仅由序列边界尝试路径产生，来源为 `S2NativePagerViewController.reportSequenceBoundaryAttemptIfNeeded`，`details` 格式不变（`startedAtPagingEdge` 恒为 `true`）。
   - 贴边切页的过程在既有字段中体现：外层 `pagingIsDragging=true` 期间 `pagingContentOffsetX` 连续变化，结算为 `handleNativePageChange`（来源 `finishNativePaging`）与 `synchronizeNativeStateToMachine(animatedPaging=false)`。
+
+### 自 IC-089（IC-082 v3 R4）起的事件追加（格式版本仍为 1）
+
+- 离散事件新增一类 `event=nxInnerPanDecision`，来源 `S2NativeZoomScrollView.gestureRecognizerShouldBegin`，在 Nx 下内层单指 pan 的起始判定时产生：
+  `details=innerShouldBegin=true|false；horizontalDominant=true|false；atEdgeInDragDirection=true|false；distanceToEdge=…|nil；translation=x,y；velocity=x,y；pageIndex=…；asset=…`。
+  - `innerShouldBegin=false` 表示起始贴边且水平主导，内层 pan 未开始、整个手势由外层分页容器接管（竖向分量丢弃）；`true` 表示内层照常平移（到边界后原生橡皮筋越界回弹，外层不接管）。
+  - `distanceToEdge` 为拖动方向上缩放后内容边界到视口边界的距离（pt）；1x 或非水平主导时为 `nil`。
+- 逐帧字段不变；`nxDistanceToPreviousBoundary` / `nxDistanceToNextBoundary` / `nxOverflowDistance` 仍恒为 `nil`。头部「格式版本=1」未递增。

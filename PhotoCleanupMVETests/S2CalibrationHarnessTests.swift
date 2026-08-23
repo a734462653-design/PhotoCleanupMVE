@@ -1914,8 +1914,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let frame = tryUnwrap(scrollView.visibleContentFrame())
 
         XCTAssertEqual(frame.minX, 0, accuracy: 0.000_001)
-        XCTAssertFalse(scrollView.bounces)
+        // IC-089 R4：Nx 下内层在内容大于视口的方向启用原生橡皮筋；缩放回弹仍关闭。
+        XCTAssertTrue(scrollView.bounces)
         XCTAssertFalse(scrollView.bouncesZoom)
+        XCTAssertFalse(scrollView.alwaysBounceHorizontal)
+        XCTAssertFalse(scrollView.alwaysBounceVertical)
     }
 
     // P3 替代断言：1x 时内层原生平移关闭，手势交给外层分页或竖滑语义。
@@ -3388,7 +3391,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let inner = page.zoomScrollView
         XCTAssertEqual(machine.zoomState, .nX)
         XCTAssertEqual(inner.zoomScale, 2, accuracy: 0.000_001)
-        XCTAssertFalse(inner.bounces)
+        // IC-089 R4：Nx 下内层 bounces 为 true（原 R3 断言为 false，按 v3 定案更新）。
+        XCTAssertTrue(inner.bounces)
         XCTAssertTrue(paging.isPagingEnabled)
         let restingOffset = paging.contentOffsetForPage(at: machine.currentIndex)
         XCTAssertEqual(paging.contentOffset, restingOffset)
@@ -3466,6 +3470,165 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(diagnostics.reportText.contains(
             "\tnxDistanceToPreviousBoundary=nil\tnxDistanceToNextBoundary=nil\tnxOverflowDistance=nil"
         ))
+    }
+
+    // IC-089 G156b（夹具驱动，真机未覆盖）：R4 贴边回弹与交接竖向锁。
+    // 1) 起始距边界 30 pt、水平拖动 80 pt：内层 pan 开始（判定 atEdge=false、距离 30）、bounces 为 true、
+    //    内层可越过边界（越界量 > 0）、外层偏移与 currentIndex 不变；松手回弹曲线为 UIKit 原生，真机判定。
+    // 2) 起始贴边、向量 (80, 40)：内层 pan 拒绝（水平主导且贴边）→ 外层接管；外层随 x 变化期间内层
+    //    contentOffset.y 与起始相等；松手后按原生分页结算 currentIndex+1。竖向主导 (40, 80) 时内层照常开始。
+    // 3) 内容在竖向小于视口时，竖向仍被钳到 -inset（IC-070 G75 不变）。
+    // 4) 1x：pan 禁用、bounces 为 false（既有行为不变）。
+    func testIC089G156bNxEdgeBounceAndHandoffVerticalLock() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(scale: 2, configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .nxEdgePaging
+        diagnostics.start()
+        defer { diagnostics.stop() }
+
+        let paging = controller.pagingScrollView
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let inner = page.zoomScrollView
+        XCTAssertEqual(inner.zoomScale, 2, accuracy: 0.000_001)
+        XCTAssertTrue(inner.bounces)
+        XCTAssertFalse(inner.alwaysBounceHorizontal)
+        XCTAssertFalse(inner.alwaysBounceVertical)
+        XCTAssertFalse(inner.bouncesZoom)
+        XCTAssertTrue(inner.panGestureRecognizer.isEnabled)
+        let restingOffset = paging.contentOffsetForPage(at: machine.currentIndex)
+        let startIndex = machine.currentIndex
+        let minX = -inner.contentInset.left
+        let maxX = inner.contentSize.width - inner.bounds.width + inner.contentInset.right
+        XCTAssertGreaterThan(maxX - minX, 80)
+
+        // 1) 起始距右边界 30 pt，向左拖 80 pt。
+        inner.setContentOffset(CGPoint(x: maxX - 30, y: inner.contentOffset.y), animated: false)
+        let notAtEdge = inner.innerPanDecision(translation: CGPoint(x: -80, y: 0), velocity: CGPoint(x: -400, y: 0))
+        XCTAssertTrue(notAtEdge.innerShouldBegin)
+        XCTAssertTrue(notAtEdge.horizontalDominant)
+        XCTAssertFalse(notAtEdge.atEdgeInDragDirection)
+        XCTAssertEqual(tryUnwrap(notAtEdge.distanceToEdgeInDragDirection), 30, accuracy: 0.000_001)
+        // 内层越过右边界 50 pt（bounces=true 时 UIKit 允许拖动越界；夹具以程序写入模拟越界态）：
+        // 大于视口的方向不被 bounds.didSet 钳回，外层偏移与 currentIndex 不变。
+        inner.setContentOffset(CGPoint(x: maxX + 50, y: inner.contentOffset.y), animated: false)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        XCTAssertGreaterThan(inner.contentOffset.x - maxX, 0, "越界量 > 0")
+        XCTAssertEqual(paging.contentOffset, restingOffset, "外层偏移不变")
+        XCTAssertEqual(machine.currentIndex, startIndex)
+        XCTAssertFalse(paging.isDragging)
+        // 回到边界（回弹终点）；真机上由原生回弹曲线到达。
+        inner.setContentOffset(CGPoint(x: maxX, y: inner.contentOffset.y), animated: false)
+        XCTAssertEqual(inner.contentOffset.x, maxX, accuracy: 0.000_001)
+
+        // 2) 起始贴边（右边界），向量 (−80, 40)：内层拒绝，外层接管；竖向主导 (−40, 80) 时内层照常开始。
+        let startY = inner.contentOffset.y
+        let atEdge = inner.innerPanDecision(translation: CGPoint(x: -80, y: 40), velocity: CGPoint(x: -400, y: 200))
+        XCTAssertFalse(atEdge.innerShouldBegin)
+        XCTAssertTrue(atEdge.horizontalDominant)
+        XCTAssertTrue(atEdge.atEdgeInDragDirection)
+        XCTAssertEqual(tryUnwrap(atEdge.distanceToEdgeInDragDirection), 0, accuracy: 0.000_001)
+        let verticalDominant = inner.innerPanDecision(translation: CGPoint(x: -40, y: 80), velocity: CGPoint(x: -200, y: 400))
+        XCTAssertTrue(verticalDominant.innerShouldBegin)
+        XCTAssertFalse(verticalDominant.horizontalDominant)
+        // 左边界对称：贴右边界时向右拖（露出左侧）不贴边。
+        let opposite = inner.innerPanDecision(translation: CGPoint(x: 80, y: 0), velocity: CGPoint(x: 400, y: 0))
+        XCTAssertTrue(opposite.innerShouldBegin)
+        XCTAssertEqual(tryUnwrap(opposite.distanceToEdgeInDragDirection), maxX - minX, accuracy: 0.000_001)
+        XCTAssertEqual(inner.lastInnerPanDecision, opposite)
+
+        // 外层接管（夹具以 pan 回调 + 偏移驱动），内层 y 不变，结算为翻页。
+        controller.scrollViewWillBeginDragging(paging)
+        for step in 1...4 {
+            paging.setContentOffset(
+                CGPoint(x: restingOffset.x + paging.pageStride * 0.2 * CGFloat(step), y: restingOffset.y),
+                animated: false
+            )
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.005))
+            XCTAssertEqual(inner.contentOffset.y, startY, accuracy: 0.000_001, "接管期间内层竖向不跟动 step=\(step)")
+        }
+        paging.setContentOffset(paging.contentOffsetForPage(at: startIndex + 1), animated: false)
+        controller.scrollViewDidEndDecelerating(paging)
+        XCTAssertEqual(machine.currentIndex, startIndex + 1)
+        XCTAssertEqual(machine.scale, 1)
+        XCTAssertEqual(inner.zoomScale, 1, accuracy: 0.000_001, "旧页复位")
+
+        // 4) 1x：旧页 pan 禁用、bounces 为 false。
+        XCTAssertFalse(inner.panGestureRecognizer.isEnabled)
+        XCTAssertFalse(inner.bounces)
+        let oneX = inner.innerPanDecision(translation: CGPoint(x: -80, y: 0), velocity: .zero)
+        XCTAssertTrue(oneX.innerShouldBegin)
+        XCTAssertNil(oneX.distanceToEdgeInDragDirection)
+
+        // 3) 竖向内容小于视口时，竖向仍钳到 -inset（IC-070 G75）。
+        let newPage = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let newInner = newPage.zoomScrollView
+        XCTAssertEqual(newInner.zoomScale, 1, accuracy: 0.000_001)
+        XCTAssertFalse(newInner.bounces)
+        newInner.setContentOffset(CGPoint(x: newInner.contentOffset.x, y: newInner.contentOffset.y + 40), animated: false)
+        XCTAssertEqual(newInner.contentOffset.y, -newInner.contentInset.top, accuracy: 0.000_001)
+
+        // 场景 E 事件：内层 pan 判定已记录（两类结果都出现）。
+        let decisions = diagnostics.recordedEntries.compactMap { entry -> String? in
+            if case let .event(name, source, details) = entry.payload, name == "nxInnerPanDecision" {
+                XCTAssertEqual(source, "S2NativeZoomScrollView.gestureRecognizerShouldBegin")
+                return details
+            }
+            return nil
+        }
+        XCTAssertTrue(decisions.contains { $0.hasPrefix("innerShouldBegin=false；horizontalDominant=true；atEdgeInDragDirection=true；distanceToEdge=0.000000") })
+        XCTAssertTrue(decisions.contains { $0.hasPrefix("innerShouldBegin=true；horizontalDominant=true；atEdgeInDragDirection=false；distanceToEdge=30.000000") })
+    }
+
+    // IC-089 G156b（纯函数）：判定规则的边界——容差 0.5 pt、零向量退回速度、内容窄于视口时两侧皆贴边。
+    func testIC089G156bHandoffRuleBoundaries() {
+        func decide(
+            offsetX: CGFloat,
+            contentWidth: CGFloat = 800,
+            horizontalInset: CGFloat = 0,
+            translation: CGPoint,
+            velocity: CGPoint = .zero,
+            zoomScale: CGFloat = 2
+        ) -> S2NxInnerPanDecision {
+            S2NxEdgeHandoffRule.innerPanDecision(
+                zoomScale: zoomScale,
+                minimumZoomScale: 1,
+                contentOffset: CGPoint(x: offsetX, y: 0),
+                contentSize: CGSize(width: contentWidth, height: 1_200),
+                viewportSize: CGSize(width: 300, height: 600),
+                contentInset: UIEdgeInsets(top: 0, left: horizontalInset, bottom: 0, right: horizontalInset),
+                translation: translation,
+                velocity: velocity
+            )
+        }
+        // 右边界 500：距 0.5 内视为贴边；0.6 不贴边。
+        XCTAssertFalse(decide(offsetX: 499.5, translation: CGPoint(x: -10, y: 0)).innerShouldBegin)
+        XCTAssertTrue(decide(offsetX: 499.4, translation: CGPoint(x: -10, y: 0)).innerShouldBegin)
+        // 左边界 0：向右拖。
+        XCTAssertFalse(decide(offsetX: 0.2, translation: CGPoint(x: 10, y: 0)).innerShouldBegin)
+        XCTAssertTrue(decide(offsetX: 5, translation: CGPoint(x: 10, y: 0)).innerShouldBegin)
+        // 贴右边界但向右拖（露出左侧）：不贴边，内层平移。
+        XCTAssertTrue(decide(offsetX: 500, translation: CGPoint(x: 10, y: 0)).innerShouldBegin)
+        // 水平 == 竖向：不算水平主导。
+        XCTAssertTrue(decide(offsetX: 500, translation: CGPoint(x: -10, y: 10)).innerShouldBegin)
+        // 零位移时退回速度。
+        XCTAssertFalse(decide(offsetX: 500, translation: .zero, velocity: CGPoint(x: -300, y: 0)).innerShouldBegin)
+        XCTAssertTrue(decide(offsetX: 500, translation: .zero, velocity: .zero).innerShouldBegin)
+        // 内容窄于视口（竖图放大后宽度仍不足）：两侧皆贴边，水平拖动交给外层。
+        XCTAssertFalse(decide(offsetX: -50, contentWidth: 200, horizontalInset: 50, translation: CGPoint(x: -10, y: 0)).innerShouldBegin)
+        XCTAssertFalse(decide(offsetX: -50, contentWidth: 200, horizontalInset: 50, translation: CGPoint(x: 10, y: 0)).innerShouldBegin)
+        // 1x 不介入。
+        XCTAssertTrue(decide(offsetX: 500, translation: CGPoint(x: -10, y: 0), zoomScale: 1).innerShouldBegin)
     }
 
     // B1（IC-082 R3 删除）：自定义溢出投影已移除，Nx 边界后的外层位移由 UIKit 嵌套滚动交接产生；

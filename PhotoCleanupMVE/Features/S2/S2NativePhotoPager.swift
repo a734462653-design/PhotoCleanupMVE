@@ -222,6 +222,65 @@ final class S2NativePagingScrollView: UIScrollView {
     }
 }
 
+/// IC-089 R4：Nx 下内层单指拖动的起始判定（决策 4 的「已平移贴边」条件）。
+/// 拖动开始时若水平分量占主导且缩放后内容在拖动方向上的边界已与视口边界重合（≤ `edgeTolerance`），
+/// 内层 pan **不开始**，整个手势交给外层分页容器接管——竖向分量随之丢弃；
+/// 否则内层照常平移（到边界后由原生橡皮筋越界回弹，外层不接管，不翻页）。
+struct S2NxInnerPanDecision: Equatable {
+    let innerShouldBegin: Bool
+    let horizontalDominant: Bool
+    let atEdgeInDragDirection: Bool
+    let distanceToEdgeInDragDirection: CGFloat?
+}
+
+enum S2NxEdgeHandoffRule {
+    static let edgeTolerance: CGFloat = 0.5
+
+    static func innerPanDecision(
+        zoomScale: CGFloat,
+        minimumZoomScale: CGFloat,
+        contentOffset: CGPoint,
+        contentSize: CGSize,
+        viewportSize: CGSize,
+        contentInset: UIEdgeInsets,
+        translation: CGPoint,
+        velocity: CGPoint
+    ) -> S2NxInnerPanDecision {
+        let vector = abs(translation.x) + abs(translation.y) > 0 ? translation : velocity
+        let horizontalDominant = abs(vector.x) > abs(vector.y)
+        guard zoomScale > minimumZoomScale + 0.000_001 else {
+            // 1x：内层 pan 本就禁用，判定不介入。
+            return S2NxInnerPanDecision(
+                innerShouldBegin: true,
+                horizontalDominant: horizontalDominant,
+                atEdgeInDragDirection: false,
+                distanceToEdgeInDragDirection: nil
+            )
+        }
+        guard horizontalDominant, vector.x != 0 else {
+            return S2NxInnerPanDecision(
+                innerShouldBegin: true,
+                horizontalDominant: horizontalDominant,
+                atEdgeInDragDirection: false,
+                distanceToEdgeInDragDirection: nil
+            )
+        }
+        let minimumX = -contentInset.left
+        let maximumX = max(minimumX, contentSize.width - viewportSize.width + contentInset.right)
+        // 手指向右（translation.x > 0）露出左侧内容 → 看左边界；向左 → 看右边界。
+        let distance = vector.x > 0
+            ? contentOffset.x - minimumX
+            : maximumX - contentOffset.x
+        let atEdge = distance <= edgeTolerance
+        return S2NxInnerPanDecision(
+            innerShouldBegin: !atEdge,
+            horizontalDominant: true,
+            atEdgeInDragDirection: atEdge,
+            distanceToEdgeInDragDirection: max(0, distance)
+        )
+    }
+}
+
 final class S2NativeZoomScrollView: UIScrollView {
     private(set) weak var zoomContentView: UIView?
     private(set) weak var presentationContentView: UIView?
@@ -236,6 +295,8 @@ final class S2NativeZoomScrollView: UIScrollView {
     private(set) var lastMinimumZoomScaleAnimationWasAnimated: Bool?
     private(set) var independentContentOffsetWriteCount = 0
     private(set) var isApplyingNativeState = false
+    /// IC-089 R4：最近一次内层 pan 起始判定（夹具与诊断读取）。
+    private(set) var lastInnerPanDecision: S2NxInnerPanDecision?
     private var diagnosticPageIndex: Int?
     private var diagnosticAssetLocalIdentifier: String?
     weak var transitionDiagnostics:
@@ -655,6 +716,56 @@ final class S2NativeZoomScrollView: UIScrollView {
         if panGestureRecognizer.isEnabled != shouldEnable {
             panGestureRecognizer.isEnabled = shouldEnable
         }
+        // IC-089 R4：Nx 下内层在内容大于视口的方向启用原生橡皮筋（起始不贴边的拖动到边界后越界回弹，
+        // 不交接给外层）；1x 保持 false。`alwaysBounce*` 始终为 false，内容小于视口的方向不回弹，
+        // 与 IC-070 `bounds.didSet` 的钳制轴互斥。
+        if bounces != shouldEnable {
+            bounces = shouldEnable
+        }
+    }
+
+    /// IC-089 R4：内层 pan 的起始判定走 `S2NxEdgeHandoffRule`；拒绝时外层分页容器接管整个手势。
+    override func gestureRecognizerShouldBegin(
+        _ gestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        guard super.gestureRecognizerShouldBegin(gestureRecognizer) else {
+            return false
+        }
+        guard gestureRecognizer === panGestureRecognizer else {
+            return true
+        }
+        let decision = innerPanDecision(
+            translation: panGestureRecognizer.translation(in: self),
+            velocity: panGestureRecognizer.velocity(in: self)
+        )
+        return decision.innerShouldBegin
+    }
+
+    /// IC-089 R4：按当前几何求内层 pan 起始判定并记录（夹具可直接以向量调用）。
+    @discardableResult
+    func innerPanDecision(
+        translation: CGPoint,
+        velocity: CGPoint
+    ) -> S2NxInnerPanDecision {
+        let decision = S2NxEdgeHandoffRule.innerPanDecision(
+            zoomScale: zoomScale,
+            minimumZoomScale: minimumZoomScale,
+            contentOffset: contentOffset,
+            contentSize: contentSize,
+            viewportSize: bounds.size,
+            contentInset: contentInset,
+            translation: translation,
+            velocity: velocity
+        )
+        lastInnerPanDecision = decision
+        transitionDiagnostics?.recordNxInnerPanDecision(
+            decision,
+            translation: translation,
+            velocity: velocity,
+            pageIndex: diagnosticPageIndex,
+            assetLocalIdentifier: diagnosticAssetLocalIdentifier
+        )
+        return decision
     }
 
     func writePhotoGeometry(
@@ -3922,6 +4033,28 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
                 "distance=\(String(format: "%.6f", Double(distance)))；" +
                 "velocity=\(String(format: "%.6f", Double(velocity)))；" +
                 "accepted=\(accepted)"
+        )
+    }
+
+    /// IC-089 R4：内层 pan 起始判定（场景 E）。
+    func recordNxInnerPanDecision(
+        _ decision: S2NxInnerPanDecision,
+        translation: CGPoint,
+        velocity: CGPoint,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        recordEvent(
+            name: "nxInnerPanDecision",
+            source: "S2NativeZoomScrollView.gestureRecognizerShouldBegin",
+            details: "innerShouldBegin=\(decision.innerShouldBegin)；" +
+                "horizontalDominant=\(decision.horizontalDominant)；" +
+                "atEdgeInDragDirection=\(decision.atEdgeInDragDirection)；" +
+                "distanceToEdge=\(decision.distanceToEdgeInDragDirection.map { String(format: "%.6f", Double($0)) } ?? "nil")；" +
+                "translation=\(String(format: "%.3f,%.3f", Double(translation.x), Double(translation.y)))；" +
+                "velocity=\(String(format: "%.3f,%.3f", Double(velocity.x), Double(velocity.y)))；" +
+                "pageIndex=\(pageIndex.map(String.init) ?? "nil")；" +
+                "asset=\(assetLocalIdentifier ?? "nil")"
         )
     }
 
