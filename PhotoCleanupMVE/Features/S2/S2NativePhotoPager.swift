@@ -4088,16 +4088,17 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         pageIndex: Int?,
         assetLocalIdentifier: String?
     ) {
+        let scaleText = S2OnDeviceTransitionText.number(scale)
+        let flags = "scale=\(scaleText)；" +
+            "endedAtMinimum=\(endedAtMinimum)；" +
+            "pinchWasActive=\(pinchWasActive)；"
         recordEvent(
             name: "scrollViewDidEndZooming",
             source: "S2NativeZoomPageController.scrollViewDidEndZooming",
-            details: "scale=\(S2OnDeviceTransitionText.number(scale))；" +
-                "endedAtMinimum=\(endedAtMinimum)；" +
-                "pinchWasActive=\(pinchWasActive)；" +
-                diagnosticContext(
-                    pageIndex: pageIndex,
-                    assetLocalIdentifier: assetLocalIdentifier
-                )
+            details: flags + diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
         )
     }
 
@@ -4109,16 +4110,23 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         duration: TimeInterval,
         path: String
     ) {
+        let targetText: String
+        if let targetScale {
+            targetText = S2OnDeviceTransitionText.number(targetScale)
+        } else {
+            targetText = "nil"
+        }
+        let scaleText = S2OnDeviceTransitionText.number(scale)
+        let displacementText = S2OnDeviceTransitionText.number(displacement)
+        let velocityText = S2OnDeviceTransitionText.number(peakVelocity)
+        let durationText = S2OnDeviceTransitionText.number(duration)
         recordEvent(
             name: "finishNativePinch",
             source: "S2NativePagerViewController.finishNativePinch",
-            details: "scale=\(S2OnDeviceTransitionText.number(scale))；" +
-                "targetScale=" +
-                "\(targetScale.map { S2OnDeviceTransitionText.number($0) } ?? "nil")；" +
-                "displacement=\(S2OnDeviceTransitionText.number(displacement))；" +
-                "peakVelocity=\(S2OnDeviceTransitionText.number(peakVelocity))；" +
-                "duration=\(S2OnDeviceTransitionText.number(duration))；" +
-                "path=\(path)"
+            details: "scale=\(scaleText)；targetScale=\(targetText)；" +
+                "displacement=\(displacementText)；" +
+                "peakVelocity=\(velocityText)；" +
+                "duration=\(durationText)；path=\(path)"
         )
     }
 
@@ -4128,12 +4136,12 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         previousScale: CGFloat,
         source: String
     ) {
+        let scaleText = S2OnDeviceTransitionText.number(scale)
+        let fromText = S2OnDeviceTransitionText.number(previousScale)
         recordEvent(
             name: "setZoomScale",
             source: source,
-            details: "scale=\(S2OnDeviceTransitionText.number(scale))；" +
-                "animated=\(animated)；" +
-                "from=\(S2OnDeviceTransitionText.number(previousScale))"
+            details: "scale=\(scaleText)；animated=\(animated)；from=\(fromText)"
         )
     }
 
@@ -4148,28 +4156,29 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         pageIndex: Int?,
         assetLocalIdentifier: String?
     ) {
+        let writes = "contentInset=\(wroteContentInset)；" +
+            "contentSize=\(wroteContentSize)；" +
+            "contentOffset=\(wroteContentOffset)；" +
+            "照片几何=\(wrotePhotoGeometry)；"
         recordEvent(
             name: "吸附归位写入",
             source: source,
-            details: "contentInset=\(wroteContentInset)；" +
-                "contentSize=\(wroteContentSize)；" +
-                "contentOffset=\(wroteContentOffset)；" +
-                "照片几何=\(wrotePhotoGeometry)；" +
-                diagnosticContext(
-                    pageIndex: pageIndex,
-                    assetLocalIdentifier: assetLocalIdentifier
-                )
+            details: writes + diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
         )
     }
 
     func recordImageReplacement(_ record: S2ImageReplacementRecord) {
+        let widthText = S2OnDeviceTransitionText.number(record.pixelSize.width)
+        let heightText = S2OnDeviceTransitionText.number(record.pixelSize.height)
         recordEvent(
             name: "图片替换",
             source: "S2TemporaryPhotoImageView.requestImage",
             details: "asset=\(record.assetID)；" +
                 "result=\(record.resultName)；" +
-                "pixel=(w=\(S2OnDeviceTransitionText.number(record.pixelSize.width))," +
-                "h=\(S2OnDeviceTransitionText.number(record.pixelSize.height)))"
+                "pixel=(w=\(widthText),h=\(heightText))"
         )
     }
 
@@ -4384,8 +4393,9 @@ enum S2OnDeviceTransitionText {
                 "\ttime=\(timestamp(record.timestamp - startedAt))"
             switch record.payload {
             case let .frame(sample):
-                lines.append(prefix +
-                    "\tkind=frame" +
+                // IC-090 R2：逐帧行按 IC-068 / IC-079 / IC-082 / IC-090 四段拼接，
+                // 字段顺序与头部声明行完全一致；分段只为不让单个表达式随字段数变长。
+                let base = "\tkind=frame" +
                     "\tanimationKeys=\(animationKeys(sample.animationKeys))" +
                     "\tmodelFrame=\(optionalRect(sample.modelFrame))" +
                     "\tpresentationFrame=\(optionalRect(sample.presentationFrame))" +
@@ -4396,22 +4406,23 @@ enum S2OnDeviceTransitionText {
                     "\tcontentInset=\(optionalInsets(sample.contentInset))" +
                     "\tadjustedContentInset=\(optionalInsets(sample.adjustedContentInset))" +
                     "\tV=\(sample.visibility.map(visibility) ?? "nil")" +
-                    "\ts=\(optionalNumber(sample.scale))" +
-                    "\tpagingContentOffsetX=\(optionalNumber(sample.pagingContentOffsetX))" +
+                    "\ts=\(optionalNumber(sample.scale))"
+                let paging = "\tpagingContentOffsetX=\(optionalNumber(sample.pagingContentOffsetX))" +
                     "\tpagingIsDragging=\(optionalBool(sample.pagingIsDragging))" +
                     "\tpagingIsDecelerating=\(optionalBool(sample.pagingIsDecelerating))" +
                     "\tcurrentIndex=\(optionalIndex(sample.currentIndex))" +
                     "\tsettledIndex=\(optionalIndex(sample.settledIndex))" +
                     "\tpageIndicesPresent=\(indexList(sample.pageIndicesPresent))" +
-                    "\tpageLoadStates=\(loadStates(sample.pageLoadStates))" +
-                    "\tnxDistanceToPreviousBoundary=\(optionalNumber(sample.nxDistanceToPreviousBoundary))" +
+                    "\tpageLoadStates=\(loadStates(sample.pageLoadStates))"
+                let nx = "\tnxDistanceToPreviousBoundary=\(optionalNumber(sample.nxDistanceToPreviousBoundary))" +
                     "\tnxDistanceToNextBoundary=\(optionalNumber(sample.nxDistanceToNextBoundary))" +
-                    "\tnxOverflowDistance=\(optionalNumber(sample.nxOverflowDistance))" +
-                    "\tpresentationZoomScale=\(optionalNumber(sample.presentationZoomScale))" +
+                    "\tnxOverflowDistance=\(optionalNumber(sample.nxOverflowDistance))"
+                let pinchEnd = "\tpresentationZoomScale=\(optionalNumber(sample.presentationZoomScale))" +
                     "\tisZoomBouncing=\(optionalBool(sample.isZoomBouncing))" +
                     "\tisDecelerating=\(optionalBool(sample.isDecelerating))" +
                     "\timageRequestResult=\(sample.imageRequestResult ?? "nil")" +
-                    "\tlastImageReplacement=\(imageReplacement(sample.lastImageReplacement))")
+                    "\tlastImageReplacement=\(imageReplacement(sample.lastImageReplacement))"
+                lines.append(prefix + base + paging + nx + pinchEnd)
             case let .event(name, source, details):
                 lines.append(prefix +
                     "\tkind=event" +

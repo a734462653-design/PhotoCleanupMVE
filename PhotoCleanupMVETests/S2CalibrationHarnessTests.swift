@@ -873,6 +873,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             bottomStripExpandDurationMilliseconds: 600,
             bottomStripCollapseDurationMilliseconds: 100,
             bottomStripFlickVelocityThreshold: 300,
+            bottomStripCornerRadius: 2.5,
             bottomStripMarkSize: 14,
             markPulseDurationMilliseconds: 150,
             feedbackToastDurationMilliseconds: 2000
@@ -5786,6 +5787,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
             duration: 0.2
         )
         diagnostics.recordImageReplacement(replacement)
+        // 与 captureFrame 同一 runloop 回合读取，避免呈现层随时间变化造成比较不稳。
+        let expectedPresentationZoomScale =
+            scrollView.diagnosticPresentationZoomScale
         diagnostics.captureFrame()
         diagnostics.stop()
         diagnostics.export()
@@ -5826,16 +5830,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(last.isDecelerating, scrollView.isDecelerating)
         XCTAssertEqual(last.imageRequestResult, "finalImage")
         XCTAssertEqual(last.lastImageReplacement, replacement)
-        XCTAssertEqual(
-            last.presentationZoomScale,
-            scrollView.diagnosticPresentationZoomScale
-        )
+        XCTAssertEqual(last.presentationZoomScale, expectedPresentationZoomScale)
 
         func events(named name: String) -> [(source: String, details: String)] {
-            diagnostics.recordedEntries.compactMap { entry in
+            diagnostics.recordedEntries.compactMap {
+                entry -> (source: String, details: String)? in
                 if case let .event(eventName, source, details) = entry.payload,
                    eventName == name {
-                    return (source, details)
+                    return (source: source, details: details)
                 }
                 return nil
             }
@@ -8389,10 +8391,8 @@ extension S2CalibrationHarnessTests {
                 viewportSize: viewport
             )
         }
-        return StripRender(
-            bitmap: try S2StripBitmap(cgImage: cgImage),
-            frames: frames
-        )
+        let bitmap = try S2StripBitmap(cgImage: cgImage)
+        return StripRender(bitmap: bitmap, frames: frames)
     }
 
     // IC-090 G180：圆角半径出厂值 = 系统录屏测量值（参考表 `S2BottomStripSystemReference.cornerRadius`），
@@ -8418,9 +8418,10 @@ extension S2CalibrationHarnessTests {
             .split(separator: "\n")
             .map(String.init)
         XCTAssertTrue(lines.contains("bottomStripCornerRadius=2.500000"))
-        XCTAssertFalse(
-            lines.contains { $0.hasPrefix("bottomStripCurrentCornerRadius=") }
-        )
+        let hasCurrentCornerRadius = lines.contains(where: {
+            $0.hasPrefix("bottomStripCurrentCornerRadius=")
+        })
+        XCTAssertFalse(hasCurrentCornerRadius)
 
         let connections = Dictionary(
             uniqueKeysWithValues: S2CalibrationConfiguration.parameterConnections
@@ -8442,21 +8443,20 @@ extension S2CalibrationHarnessTests {
         XCTAssertFalse(invalid.isValid)
 
         let encoded = try JSONEncoder().encode(configuration)
-        XCTAssertEqual(
-            try JSONDecoder().decode(
-                S2CalibrationConfiguration.self,
-                from: encoded
-            ),
-            configuration
+        let decoded = try JSONDecoder().decode(
+            S2CalibrationConfiguration.self,
+            from: encoded
         )
+        XCTAssertEqual(decoded, configuration)
         var json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
         XCTAssertEqual(json["schemaVersion"] as? Int, 4)
         json.removeValue(forKey: "bottomStripCornerRadius")
+        let legacy = try JSONSerialization.data(withJSONObject: json)
         let migrated = try JSONDecoder().decode(
             S2CalibrationConfiguration.self,
-            from: try JSONSerialization.data(withJSONObject: json)
+            from: legacy
         )
         XCTAssertEqual(migrated, configuration)
     }
@@ -8591,7 +8591,7 @@ extension S2CalibrationHarnessTests {
                     y: Int(plainFrame.minY) * scale + dy
                 )
                 if markedLuminance != plainLuminance {
-                    differingPixels.append((dx, dy))
+                    differingPixels.append((x: dx, y: dy))
                 }
             }
         }
