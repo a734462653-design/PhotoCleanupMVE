@@ -1209,7 +1209,7 @@ final class S2StateMachineTests: XCTestCase {
                 expandDurationMilliseconds: 600,
                 collapseDurationMilliseconds: 100,
                 flickVelocityThreshold: 300,
-                cornerRadius: 2.5
+                cornerRadius: 8.0 / 3.0
             )
         )!
     }

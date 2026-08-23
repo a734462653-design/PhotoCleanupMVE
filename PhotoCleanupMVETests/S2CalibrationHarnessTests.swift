@@ -873,7 +873,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             bottomStripExpandDurationMilliseconds: 600,
             bottomStripCollapseDurationMilliseconds: 100,
             bottomStripFlickVelocityThreshold: 300,
-            bottomStripCornerRadius: 2.5,
+            bottomStripCornerRadius: 8.0 / 3.0,
             bottomStripMarkSize: 14,
             markPulseDurationMilliseconds: 150,
             feedbackToastDurationMilliseconds: 2000
@@ -7854,8 +7854,10 @@ enum S2BottomStripSystemReference {
     /// IC-090 R1：8.08 px（≈ 2.69 pt）。30 fps 帧 97–136 / 218–236 / 325–341 静止段，
     /// 901 个邻居项目实例 × 4 角以「多样本逐像素最大值 → alpha 图 → 缺口面积
     /// A = r²(1 − π/4)」求得（四角 7.96～8.17 px）；当前张两个内容饱和角 8.15 / 8.24 px，
-    /// 与邻居同值。本卡规则四舍五入到 0.5 pt。
-    static let cornerRadius: CGFloat = 2.5
+    /// 与邻居同值。技术负责人独立复核 759 个邻居实例得四角 8.22～8.37 px。
+    /// IC-090 R3（v2，④ Lynn 2026-08-23）：两家测量均落在 8.1～8.4 px，取最接近的
+    /// @3x 整像素值 8 px = 8/3 pt（阶段一「四舍五入到 0.5 pt」的 2.5 pt = 7.5 px 系统性偏小）。
+    static let cornerRadius: CGFloat = 8.0 / 3.0
 
     /// run1（60 fps 帧 53–159）初速 42.3 px/帧 = 845.3 pt/s。
     static let decelerationInitialVelocity: CGFloat = 845.3
@@ -8399,15 +8401,22 @@ extension S2CalibrationHarnessTests {
         return StripRender(bitmap: bitmap, frames: frames)
     }
 
-    // IC-090 G180：圆角半径出厂值 = 系统录屏测量值（参考表 `S2BottomStripSystemReference.cornerRadius`），
-    // 出厂值集合变更故 `schemaVersion == 4`；参数进导出文本与登记表（decided / effective）；
+    // IC-090 G180 / G190（v2）：圆角半径出厂值 = 系统录屏测量值对齐到 @3x 像素栅格
+    // （参考表 `S2BottomStripSystemReference.cornerRadius` = 8/3 pt = 8 px），
+    // `schemaVersion == 4`（v2 保持不变，schema 4 从未随可安装包发出）；
+    // 参数进导出文本与登记表（decided / effective）；
     // 邻居与当前张同半径，故只有一个参数、不存在 `bottomStripCurrentCornerRadius`。
     func testIC090G180FactoryCornerRadiusMatchesSystemReference() throws {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         XCTAssertEqual(
             configuration.bottomStripCornerRadius,
+            8.0 / 3.0,
+            accuracy: 0.000_000_001
+        )
+        XCTAssertEqual(
+            configuration.bottomStripCornerRadius,
             Double(S2BottomStripSystemReference.cornerRadius),
-            accuracy: 0.000_001
+            accuracy: 0.000_000_001
         )
         XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 4)
 
@@ -8415,13 +8424,15 @@ extension S2CalibrationHarnessTests {
         XCTAssertEqual(
             metrics.cornerRadius,
             S2BottomStripSystemReference.cornerRadius,
-            accuracy: 0.000_001
+            accuracy: 0.000_000_001
         )
+        // @3x 下正好是 8 个设备像素。
+        XCTAssertEqual(metrics.cornerRadius * 3, 8, accuracy: 0.000_000_001)
 
         let lines = configuration.exportText()
             .split(separator: "\n")
             .map(String.init)
-        XCTAssertTrue(lines.contains("bottomStripCornerRadius=2.500000"))
+        XCTAssertTrue(lines.contains("bottomStripCornerRadius=2.666667"))
         let hasCurrentCornerRadius = lines.contains(where: {
             $0.hasPrefix("bottomStripCurrentCornerRadius=")
         })
@@ -8465,11 +8476,17 @@ extension S2CalibrationHarnessTests {
         XCTAssertEqual(migrated, configuration)
     }
 
-    // IC-090 G181 像素门禁（scale = 3，1 pt = 3 px，出厂 2.5 pt = 7.5 px）：
+    // IC-090 G181 / G191（v2）像素门禁（scale = 3，1 pt = 3 px，出厂 8/3 pt = 8 px）：
     // 每个项目帧四角沿 45° 对角线由角点向内扫描（同 IC-070 G77 方法），半径内为背景、
-    // 半径外为内容；首行／末行与首列／末列的直线扫描给出更紧的半径夹逼。
-    // 对角线偏移 1 仍为背景 ⇒ r > 6.83 px；偏移 3 已是内容 ⇒ r ≤ 10.24 px。
-    // 直线偏移 2 仍为背景 ⇒ r ≥ 7.16 px；直线偏移 8 已是内容 ⇒ r ≤ 8.00 px。
+    // 半径外为内容；首行／末行与首列／末列的直线扫描给出另一个方向的夹逼。
+    // 各阈值按 r = 8 px 逐像素覆盖率重算（圆心 (r,r)、半径 r 的解析覆盖率）：
+    //   对角偏移 0/1 覆盖率 0.000、2 为 0.760、3…7 为 1.000；
+    //   直线偏移 0…3 覆盖率 0.000、4 为 0.191、5 为 0.593、8…9 为 1.000。
+    // 故：对角偏移 0/1 断言背景（⇒ r > 6.83 px），偏移 3…7 断言内容（⇒ r ≤ 10.24 px）；
+    // 直线偏移 0…3 断言背景（⇒ r ≥ 7.83 px，较 v1 的 0…2 收紧），偏移 8 断言内容
+    // （⇒ r ≤ 8.00 px）。合计夹逼 7.83 px ≤ r ≤ 8.00 px。
+    // 注：scale = 3 的二值判据无法把 7.5 px 与 8.0 px 分开（差异全在部分覆盖像素上），
+    // 出厂值本身由 G190 以 accuracy 1e-9 钉死。
     @MainActor
     func testIC090G181RenderedStripCornersAreClippedByCornerRadius() throws {
         let render = try renderStrip(markedAssetIDs: [], markSize: 0)
@@ -8511,8 +8528,8 @@ extension S2CalibrationHarnessTests {
                         "\(label) diag=\(offset) 应为内容"
                     )
                 }
-                // 沿该角所在的水平边扫描：偏移 0…2 背景、偏移 8 内容。
-                for offset in 0...2 {
+                // 沿该角所在的水平边扫描：偏移 0…3 背景、偏移 8 内容。
+                for offset in 0...3 {
                     XCTAssertTrue(
                         bitmap.isBackground(x: cx + sx * offset, y: cy),
                         "\(label) edge=\(offset) 应为背景"
@@ -8523,7 +8540,7 @@ extension S2CalibrationHarnessTests {
                     "\(label) edge=8 应为内容"
                 )
                 // 沿该角所在的竖直边同样。
-                for offset in 0...2 {
+                for offset in 0...3 {
                     XCTAssertTrue(
                         bitmap.isBackground(x: cx, y: cy + sy * offset),
                         "\(label) vedge=\(offset) 应为背景"

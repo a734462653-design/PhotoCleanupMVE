@@ -158,8 +158,9 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripCollapseDurationMilliseconds: Double
     /// IC-085 R3：④技术负责人取定的占位值，松手速度低于此值无惯性（pt/s）。
     var bottomStripFlickVelocityThreshold: Double
-    /// IC-090 R1：横栏项目圆角半径（pt，decided）。出厂值 = 系统 Photos 录屏静止段
-    /// 四角实测半径按本卡规则四舍五入到 0.5 pt；邻居与当前张同值。
+    /// IC-090 R1 / R3（v2）：横栏项目圆角半径（pt，decided）。出厂值 = 系统 Photos 录屏
+    /// 静止段四角实测半径对齐到 @3x 像素栅格：实测 8.1～8.4 px，取整像素 8 px = 8/3 pt。
+    /// 邻居与当前张同值；与项目尺寸无关，展开／收缩全程为常量。
     var bottomStripCornerRadius: Double
     var bottomStripMarkSize: Double
     var markPulseDurationMilliseconds: Double
@@ -208,7 +209,7 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         bottomStripExpandDurationMilliseconds: 600,
         bottomStripCollapseDurationMilliseconds: 100,
         bottomStripFlickVelocityThreshold: 300,
-        bottomStripCornerRadius: 2.5,
+        bottomStripCornerRadius: 8.0 / 3.0,
         bottomStripMarkSize: 14,
         markPulseDurationMilliseconds: 150,
         feedbackToastDurationMilliseconds: 2000
@@ -499,7 +500,7 @@ extension S2CalibrationConfiguration {
             bottomStripExpandDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .bottomStripExpandDurationMilliseconds) ?? 600,
             bottomStripCollapseDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .bottomStripCollapseDurationMilliseconds) ?? 100,
             bottomStripFlickVelocityThreshold: try values.decodeIfPresent(Double.self, forKey: .bottomStripFlickVelocityThreshold) ?? 300,
-            bottomStripCornerRadius: try values.decodeIfPresent(Double.self, forKey: .bottomStripCornerRadius) ?? 2.5,
+            bottomStripCornerRadius: try values.decodeIfPresent(Double.self, forKey: .bottomStripCornerRadius) ?? 8.0 / 3.0,
             bottomStripMarkSize: try values.decodeIfPresent(Double.self, forKey: .bottomStripMarkSize) ?? 14,
             markPulseDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .markPulseDurationMilliseconds) ?? 150,
             feedbackToastDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .feedbackToastDurationMilliseconds) ?? 2000
