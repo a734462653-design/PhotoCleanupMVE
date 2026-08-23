@@ -366,10 +366,6 @@ final class S2NativeZoomScrollView: UIScrollView {
     private(set) var isApplyingNativeState = false
     /// IC-091 R2：最近一次内层 pan 起始判定。诊断留痕，不随手势清零。
     private(set) var lastInnerPanDecision: S2NxInnerPanDecision?
-    /// IC-091 R2：本次手势内是否已做过起始判定。`gestureRecognizerShouldBegin` 在真机上
-    /// 未必被调用（IC-089 两段场景 E 录制中 `nxInnerPanDecision` 一次都没出现），因此
-    /// pan 识别器的 `.began` 回调上补一次；此标志保证同一次手势只判定一次、只记一条事件。
-    private(set) var hasResolvedInnerPanDecisionForActiveGesture = false
     private var diagnosticPageIndex: Int?
     private var diagnosticAssetLocalIdentifier: String?
     weak var transitionDiagnostics:
@@ -814,8 +810,7 @@ final class S2NativeZoomScrollView: UIScrollView {
             source: "S2NativeZoomScrollView.gestureRecognizerShouldBegin"
         )
         if !decision.innerShouldBegin {
-            // 内层 pan 不开始，本次手势不会再有 `.began` / `.ended` 回调来清零，
-            // 就地清零，避免判定标志跨手势残留。
+            // 内层 pan 不开始，本次手势不会再有 `.began` / `.ended` 回调来清零，就地清零。
             clearGestureScopedInteractionState()
         }
         return decision.innerShouldBegin
@@ -854,9 +849,8 @@ final class S2NativeZoomScrollView: UIScrollView {
     }
 
     /// IC-091 R2：手势级状态清零。手势结束 / 取消、翻页结算、双击、捏合开始、复位 1x
-    /// 各调用一次；调用后内层属性与静止态逐项相等（方向锁为 false、判定标志为 false）。
+    /// 各调用一次；调用后内层属性与静止态逐项相等（方向锁为 false）。
     func clearGestureScopedInteractionState() {
-        hasResolvedInnerPanDecisionForActiveGesture = false
         setGestureDirectionalLock(false)
     }
 
@@ -864,8 +858,7 @@ final class S2NativeZoomScrollView: UIScrollView {
     private func resolveInnerPanDecision(
         source: String
     ) -> S2NxInnerPanDecision {
-        hasResolvedInnerPanDecisionForActiveGesture = true
-        return innerPanDecision(
+        innerPanDecision(
             translation: panGestureRecognizer.translation(in: self),
             velocity: panGestureRecognizer.velocity(in: self),
             source: source
@@ -888,11 +881,14 @@ final class S2NativeZoomScrollView: UIScrollView {
         }
         switch recognizer.state {
         case .began:
-            if !hasResolvedInnerPanDecisionForActiveGesture {
-                resolveInnerPanDecision(
-                    source: "S2NativeZoomScrollView.handleInnerPanStateChange"
-                )
-            }
+            // `.began` 一定会到，且此刻的位移是本次手势的权威起始向量；
+            // `gestureRecognizerShouldBegin` 在真机上未必被调用（IC-089 两段场景 E 录制中
+            // `nxInnerPanDecision` 一次都没出现），故这里无条件重算一次——既补上缺失的判定，
+            // 也保证上一次手势的方向锁不会残留到本次。两个钩子都触发时记两条事件，
+            // `source` 可直接读出真机上实际走了哪条。
+            resolveInnerPanDecision(
+                source: "S2NativeZoomScrollView.handleInnerPanStateChange"
+            )
         case .ended, .cancelled, .failed:
             clearGestureScopedInteractionState()
         default:

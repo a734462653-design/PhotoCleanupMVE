@@ -101,7 +101,7 @@
     - `innerShouldBegin=false` 表示起始贴边且水平主导，内层 pan 未开始、整个手势由外层分页容器接管（**起始贴边路径，IC-091 不改动**）；`true` 表示内层照常平移。
     - `distanceToEdge` 为拖动方向上缩放后内容边界到视口边界的距离（pt）；1x 或非水平主导时为 `nil`。
     - `engagesDirectionalLock=true` 表示本次手势启用内层方向锁（Nx、水平主导、起始不贴边）。
-    - `source` 有两种取值：`S2NativeZoomScrollView.gestureRecognizerShouldBegin` 与 `S2NativeZoomScrollView.handleInnerPanStateChange`。IC-089 的两段真机录制中该事件一次都没出现，说明前一个钩子在真机上未必被调用；因此 IC-091 在内层 pan 识别器的 `.began` 回调上补一次判定，`source` 即用于区分本次判定实际由哪个钩子发出。同一次手势最多记录一条。
+    - `source` 有两种取值：`S2NativeZoomScrollView.gestureRecognizerShouldBegin` 与 `S2NativeZoomScrollView.handleInnerPanStateChange`。IC-089 的两段真机录制中该事件一次都没出现，说明前一个钩子在真机上未必被调用；因此 IC-091 在内层 pan 识别器的 `.began` 回调上补一次判定，`source` 即用于区分本次判定实际由哪个钩子发出。`.began` 回调**无条件**重算一次（它一定会到，且此刻的位移是本次手势的权威起始向量，也保证上一次手势的方向锁不残留），因此一次手势最多两条：两条都出现说明两个钩子都被调用，只出现 `handleInnerPanStateChange` 一条即证实 `gestureRecognizerShouldBegin` 在真机上未被调用。
   - `event=nxHandoffPoint`，来源 `S2NativePagerViewController.noteInnerHandoffIfNeeded`，在**内层于拖动方向到边且仍受拖的第一帧**产生，每次手势至多一条：
     `details=direction=left|right；innerContentOffset=(x=…,y=…)；distanceToEdge=…；outerContentOffsetX=…；outerIsTracking=…；outerIsDragging=…；zoomDirectionalLock=…；pageIndex=…；assetLocalIdentifier=…`。
   - `event=nxHandoffWindow`，来源 `S2NativePagerViewController.setHandoffWindowOpen`：

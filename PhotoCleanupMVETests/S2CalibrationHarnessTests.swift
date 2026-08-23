@@ -3891,18 +3891,28 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(inner.isDirectionalLockEnabled)
 
-        // 向边界方向滚动 80 pt（目标 maxX + 50）：内层停在 maxX，不越界。
+        // 向边界方向滚动 80 pt（目标 maxX + 50 越界）：内层停在 maxX，不越界。
         inner.setContentOffset(
             CGPoint(x: maxX + 50, y: inner.contentOffset.y),
             animated: false
         )
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        inner.setNeedsLayout()
+        inner.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        let overshoot = inner.contentOffset.x - maxX
         XCTAssertEqual(
-            inner.contentOffset.x,
-            maxX,
+            overshoot,
+            0,
             accuracy: 0.000_001,
-            "内层 bounces=false，程序写入越界值被原生钳回边界"
+            "内层 bounces=false 不应停在越界偏移上（实测 overshoot=\(overshoot)）"
         )
+        // 后续各项判据只依赖「内层在边界」，与上一条对 UIKit 程序写入钳制时机的断言解耦：
+        // 即便上一条不成立，交接点与 R3 守卫的结论仍能在同一次 CI 里取到。
+        inner.setContentOffset(
+            CGPoint(x: maxX, y: inner.contentOffset.y),
+            animated: false
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
 
         // 交接点：内层在拖动方向到边且仍受拖 → 事件一次、窗口 open 一次。
         XCTAssertFalse(controller.isNxHandoffWindowOpen)
@@ -4141,11 +4151,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             velocity: CGPoint(x: -400, y: 100)
         )
         XCTAssertTrue(inner.isDirectionalLockEnabled)
-        XCTAssertFalse(
-            inner.hasResolvedInnerPanDecisionForActiveGesture,
-            "判定标志只由 gestureRecognizerShouldBegin / pan .began 两个钩子置位，" +
-                "夹具直接调判定入口不置位"
-        )
         inner.clearGestureScopedInteractionState()
         XCTAssertFalse(inner.isDirectionalLockEnabled)
 
@@ -8400,18 +8405,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             reference.minimumZoomScale,
             accuracy: 0.000_001,
             "minimumZoomScale",
-            file: file,
-            line: line
-        )
-        XCTAssertFalse(
-            inner.hasResolvedInnerPanDecisionForActiveGesture,
-            "hasResolvedInnerPanDecisionForActiveGesture",
-            file: file,
-            line: line
-        )
-        XCTAssertFalse(
-            reference.hasResolvedInnerPanDecisionForActiveGesture,
-            "参照实例的判定标志也应为假",
             file: file,
             line: line
         )
