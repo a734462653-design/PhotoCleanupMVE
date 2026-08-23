@@ -79,3 +79,36 @@
   - 事件 `beginNXEdgePaging` 不再产生；`外层setContentOffset` 不再出现来源 `updateNXEdgePaging`。
   - 事件 `handleHorizontalSwipe` 仅由序列边界尝试路径产生，来源为 `S2NativePagerViewController.reportSequenceBoundaryAttemptIfNeeded`，`details` 格式不变（`startedAtPagingEdge` 恒为 `true`）。
   - 贴边切页的过程在既有字段中体现：外层 `pagingIsDragging=true` 期间 `pagingContentOffsetX` 连续变化，结算为 `handleNativePageChange`（来源 `finishNativePaging`）与 `synchronizeNativeStateToMachine(animatedPaging=false)`。
+
+### 自 IC-091 起的字段与事件追加（格式版本仍为 1）
+
+本节只追加，不修改上文任何既有约定。目的是给**场景 E Nx 贴边翻页**补足「起始不贴边的横向拖动在同一手势内交给外层」的逐帧判据。
+
+- 场景 E 的真机动作在本卡改为三段（场景名与 `exportTitle` 不变，仍为 `E Nx 贴边翻页`；其余四个场景不变）：
+  - (a) 放大 2～3 倍，从画面中部横拖到边后**继续沿同方向拉约 1/4 屏**再松手；
+  - (b) 同上但拉过半屏或快甩；
+  - (c) 贴边起手斜滑。
+- 逐帧记录在 `nxOverflowDistance` 之后追加五个字段，头部字段声明行同步为
+  `…,nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance,pagingIsTracking,zoomIsTracking,zoomIsDragging,zoomPanState,zoomDirectionalLock`：
+  - `pagingIsTracking`：外层分页容器的 `UIScrollView.isTracking`。与既有的 `pagingIsDragging` **并列而不相同**——手指已按在外层上但外层 pan 尚未越过起始阈值时，`isTracking=true` 而 `isDragging=false`；层间交接的窗口正落在这个差里。
+  - `zoomIsTracking` / `zoomIsDragging`：**内层**缩放滚动视图的 `isTracking` / `isDragging`（既有的 `isDecelerating` 字段自 IC-090 起也指内层，本卡未引入该字段）。
+  - `zoomPanState`：内层 `panGestureRecognizer.state` 的 `rawValue`——`possible=0`、`began=1`、`changed=2`、`ended=3`、`cancelled=4`、`failed=5`。
+  - `zoomDirectionalLock`：内层 `UIScrollView.isDirectionalLockEnabled`。IC-091 采用手段 M1，只在**本次手势**内为水平主导的内层拖动置真，手势结束、翻页结算、双击、捏合开始、复位 1x 时清零；静止态恒为 `false`。
+  - 无控制器 / 无当前页时各字段输出 `nil`。
+- 离散事件新增三类，另有一类既有事件的 `details` 扩充：
+  - `event=nxInnerPanDecision`（判定规则复制自 IC-089 `7178de4`，`details` 末尾追加一项）：
+    `details=innerShouldBegin=true|false；horizontalDominant=true|false；atEdgeInDragDirection=true|false；distanceToEdge=…|nil；translation=x,y；velocity=x,y；pageIndex=…；asset=…；engagesDirectionalLock=true|false`。
+    - `innerShouldBegin=false` 表示起始贴边且水平主导，内层 pan 未开始、整个手势由外层分页容器接管（**起始贴边路径，IC-091 不改动**）；`true` 表示内层照常平移。
+    - `distanceToEdge` 为拖动方向上缩放后内容边界到视口边界的距离（pt）；1x 或非水平主导时为 `nil`。
+    - `engagesDirectionalLock=true` 表示本次手势启用内层方向锁（Nx、水平主导、起始不贴边）。
+    - `source` 有两种取值：`S2NativeZoomScrollView.gestureRecognizerShouldBegin` 与 `S2NativeZoomScrollView.handleInnerPanStateChange`。IC-089 的两段真机录制中该事件一次都没出现，说明前一个钩子在真机上未必被调用；因此 IC-091 在内层 pan 识别器的 `.began` 回调上补一次判定，`source` 即用于区分本次判定实际由哪个钩子发出。同一次手势最多记录一条。
+  - `event=nxHandoffPoint`，来源 `S2NativePagerViewController.noteInnerHandoffIfNeeded`，在**内层于拖动方向到边且仍受拖的第一帧**产生，每次手势至多一条：
+    `details=direction=left|right；innerContentOffset=(x=…,y=…)；distanceToEdge=…；outerContentOffsetX=…；outerIsTracking=…；outerIsDragging=…；zoomDirectionalLock=…；pageIndex=…；assetLocalIdentifier=…`。
+  - `event=nxHandoffWindow`，来源 `S2NativePagerViewController.setHandoffWindowOpen`：
+    `details=state=open|close；reason=…；outerContentOffsetX=…；outerIsTracking=…；outerIsDragging=…；pageIndex=…；assetLocalIdentifier=…`。
+    - `state=open` 由 `nxHandoffPoint` 打开，`reason=交接点`；`state=close` 的 `reason` 取值：`外层拖动结束不减速`、`外层减速结束`、`内层手势结束`、`翻页结算`、`交互状态复位`。
+    - 窗口打开期间 App 不写外层 `contentOffset`（`apply` 与 `layoutNativePages` 的静止偏移写入均跳过），因此这段区间内不应出现来源为这两者的 `外层setContentOffset` 事件。
+  - `event=scrollViewWillBeginDragging`，来源 `S2NativePagerViewController.scrollViewWillBeginDragging`，`details=层级=外层；contentOffsetX=…；isTracking=…；isDragging=…；currentIndex=…；settledIndex=…`。`层级=外层` 用于与内层的同名回调区分（内层该回调本卡未埋点）。
+  - 既有 `event=外层setContentOffset` 的 `details` 在 `animated=…` 之后追加两项，成为
+    `details=x=…；animated=true|false；outerIsTracking=true|false|nil；outerIsDragging=true|false|nil`。两个标志取自写入**发生前**的外层容器；无控制器时为 `nil`。事件名与 `source` 取值不变。
+- 关闭录制时以上埋点零副作用（仅在 `isRecording` 为真时追加记录）。头部「格式版本=1」未递增；递增仍留待后续任务卡。

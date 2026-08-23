@@ -1595,7 +1595,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         func nonAnimatedOffsetWriteCount() -> Int {
             diagnostics.recordedEntries.filter {
                 if case let .event(name, _, details) = $0.payload {
-                    return name == "外层setContentOffset" && details.hasSuffix("animated=false")
+                    // IC-091 R1：details 在 animated= 之后追加了外层 tracking / dragging 两项，
+                    // 原 hasSuffix 判据改为等价的分隔符内含判据，G141 计数语义不变。
+                    return name == "外层setContentOffset" && details.contains("；animated=false；")
                 }
                 return false
             }.count
@@ -3466,6 +3468,366 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(diagnostics.reportText.contains(
             "\tnxDistanceToPreviousBoundary=nil\tnxDistanceToNextBoundary=nil\tnxOverflowDistance=nil"
         ))
+    }
+
+    // IC-091 G185（夹具驱动，真机未覆盖）：R1 探针字段与事件逐条存在。
+    // 1) 头部字段声明行在 nxOverflowDistance 之后追加五项，既有 22 项原序不变；
+    // 2) 真实采样行含五个新字段，且取值等于当次内外层滚动视图的真实读数（非常量）；
+    // 3) 四类事件的 details 原文：nxInnerPanDecision（含 engagesDirectionalLock）、
+    //    nxHandoffPoint、nxHandoffWindow（open / close 各一）、外层 scrollViewWillBeginDragging；
+    // 4) 既有 外层setContentOffset 的 details 追加 outerIsTracking / outerIsDragging；
+    // 5) 停止录制后以上入口零副作用。
+    func testIC091G185SceneEHandoffProbeFieldsAndEvents() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(scale: 2, configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .nxEdgePaging
+        diagnostics.start()
+
+        let paging = controller.pagingScrollView
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let inner = page.zoomScrollView
+        XCTAssertEqual(inner.zoomScale, 2, accuracy: 0.000_001)
+
+        // 外层拖动开始埋点（真实调用产品回调）。
+        controller.scrollViewWillBeginDragging(paging)
+        // 三类新事件经各自记录入口产生。
+        // 判定取显式几何：右边界 500，起始偏移 470 → 拖动方向剩余 30 pt、不贴边。
+        let decision = S2NxEdgeHandoffRule.innerPanDecision(
+            zoomScale: 2,
+            minimumZoomScale: 1,
+            contentOffset: CGPoint(x: 470, y: 0),
+            contentSize: CGSize(width: 800, height: 1_200),
+            viewportSize: CGSize(width: 300, height: 600),
+            contentInset: .zero,
+            translation: CGPoint(x: -80, y: 10),
+            velocity: CGPoint(x: -400, y: 50)
+        )
+        XCTAssertTrue(decision.innerShouldBegin)
+        XCTAssertTrue(decision.engagesDirectionalLock)
+        diagnostics.recordNxInnerPanDecision(
+            decision,
+            translation: CGPoint(x: -80, y: 10),
+            velocity: CGPoint(x: -400, y: 50),
+            source: "S2NativeZoomScrollView.gestureRecognizerShouldBegin",
+            pageIndex: 1,
+            assetLocalIdentifier: "asset-2"
+        )
+        diagnostics.recordNxHandoffPoint(
+            movingLeft: true,
+            innerContentOffset: CGPoint(x: 120, y: 8),
+            distanceToEdge: 0,
+            outerContentOffsetX: paging.contentOffset.x,
+            outerIsTracking: false,
+            outerIsDragging: false,
+            directionalLock: true,
+            pageIndex: 1,
+            assetLocalIdentifier: "asset-2"
+        )
+        diagnostics.recordNxHandoffWindow(
+            isOpen: true,
+            reason: "交接点",
+            outerContentOffsetX: paging.contentOffset.x,
+            outerIsTracking: false,
+            outerIsDragging: false,
+            pageIndex: 1,
+            assetLocalIdentifier: "asset-2"
+        )
+        diagnostics.recordNxHandoffWindow(
+            isOpen: false,
+            reason: "外层减速结束",
+            outerContentOffsetX: paging.contentOffset.x,
+            outerIsTracking: false,
+            outerIsDragging: false,
+            pageIndex: 1,
+            assetLocalIdentifier: "asset-2"
+        )
+        diagnostics.recordPagingContentOffsetWrite(
+            offsetX: 320,
+            animated: false,
+            source: "测试来源"
+        )
+        diagnostics.captureFrame()
+        let expectedPanState = inner.panGestureRecognizer.state.rawValue
+        let expectedDirectionalLock = inner.isDirectionalLockEnabled
+        diagnostics.stop()
+        diagnostics.export()
+
+        let text = diagnostics.reportText
+        XCTAssertTrue(text.contains("场景=E Nx 贴边翻页"))
+        // 1) 头部字段声明行：既有 22 项原序不变，五个新字段追加在末尾。
+        XCTAssertTrue(text.contains(
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame," +
+                "transform,zoomScale,contentOffset,contentSize," +
+                "contentInset,adjustedContentInset,V,s," +
+                "pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating," +
+                "currentIndex,settledIndex,pageIndicesPresent,pageLoadStates," +
+                "nxDistanceToPreviousBoundary,nxDistanceToNextBoundary," +
+                "nxOverflowDistance," +
+                "pagingIsTracking,zoomIsTracking,zoomIsDragging," +
+                "zoomPanState,zoomDirectionalLock"
+        ))
+        // 2) 采样行含五个新字段；取值等于真实读数。
+        XCTAssertTrue(text.contains("\tpagingIsTracking=false"))
+        XCTAssertTrue(text.contains("\tzoomIsTracking=false"))
+        XCTAssertTrue(text.contains("\tzoomIsDragging=false"))
+        XCTAssertTrue(text.contains("\tzoomPanState=\(expectedPanState)"))
+        XCTAssertTrue(text.contains("\tzoomDirectionalLock=false"))
+        let frames = diagnostics.recordedEntries.compactMap {
+            record -> S2OnDeviceTransitionFrameSample? in
+            if case let .frame(sample) = record.payload {
+                return sample
+            }
+            return nil
+        }
+        let last = tryUnwrap(frames.last)
+        XCTAssertEqual(last.pagingIsTracking, paging.isTracking)
+        XCTAssertEqual(last.zoomIsTracking, inner.isTracking)
+        XCTAssertEqual(last.zoomIsDragging, inner.isDragging)
+        XCTAssertEqual(last.zoomPanState, expectedPanState)
+        XCTAssertEqual(last.zoomDirectionalLock, expectedDirectionalLock)
+
+        // 3) 四类事件的 details 原文。
+        XCTAssertTrue(text.contains(
+            "event=nxInnerPanDecision" +
+                "\tsource=S2NativeZoomScrollView.gestureRecognizerShouldBegin" +
+                "\tdetails=innerShouldBegin=true；horizontalDominant=true；" +
+                "atEdgeInDragDirection=false；distanceToEdge=30.000000；" +
+                "translation=-80.000,10.000；velocity=-400.000,50.000；" +
+                "pageIndex=1；asset=asset-2；engagesDirectionalLock=true"
+        ))
+        XCTAssertTrue(text.contains(
+            "event=nxHandoffPoint" +
+                "\tsource=S2NativePagerViewController.noteInnerHandoffIfNeeded" +
+                "\tdetails=direction=left；innerContentOffset=(x=120.000000,y=8.000000)；" +
+                "distanceToEdge=0.000000；outerContentOffsetX=" +
+                String(format: "%.6f", Double(paging.contentOffset.x)) +
+                "；outerIsTracking=false；outerIsDragging=false；" +
+                "zoomDirectionalLock=true；pageIndex=1；assetLocalIdentifier=asset-2"
+        ))
+        XCTAssertTrue(text.contains(
+            "event=nxHandoffWindow" +
+                "\tsource=S2NativePagerViewController.setHandoffWindowOpen" +
+                "\tdetails=state=open；reason=交接点；outerContentOffsetX=" +
+                String(format: "%.6f", Double(paging.contentOffset.x)) +
+                "；outerIsTracking=false；outerIsDragging=false；" +
+                "pageIndex=1；assetLocalIdentifier=asset-2"
+        ))
+        XCTAssertTrue(text.contains(
+            "details=state=close；reason=外层减速结束；outerContentOffsetX="
+        ))
+        XCTAssertTrue(text.contains(
+            "event=scrollViewWillBeginDragging" +
+                "\tsource=S2NativePagerViewController.scrollViewWillBeginDragging" +
+                "\tdetails=层级=外层；contentOffsetX=" +
+                String(
+                    format: "%.6f",
+                    Double(paging.contentOffsetForPage(at: 1).x)
+                ) +
+                "；isTracking=false；isDragging=false；" +
+                "currentIndex=1；settledIndex=1"
+        ))
+        // 4) 既有 外层setContentOffset 的 details 追加两项。
+        XCTAssertTrue(text.contains(
+            "event=外层setContentOffset\tsource=测试来源" +
+                "\tdetails=x=320.000000；animated=false；" +
+                "outerIsTracking=false；outerIsDragging=false"
+        ))
+
+        // 5) 停止录制后零副作用。
+        let countAfterStop = diagnostics.recordedEntries.count
+        diagnostics.recordNxInnerPanDecision(
+            decision,
+            translation: .zero,
+            velocity: .zero,
+            source: "x",
+            pageIndex: nil,
+            assetLocalIdentifier: nil
+        )
+        diagnostics.recordNxHandoffPoint(
+            movingLeft: false,
+            innerContentOffset: .zero,
+            distanceToEdge: 1,
+            outerContentOffsetX: 0,
+            outerIsTracking: true,
+            outerIsDragging: true,
+            directionalLock: false,
+            pageIndex: nil,
+            assetLocalIdentifier: nil
+        )
+        diagnostics.recordNxHandoffWindow(
+            isOpen: true,
+            reason: "x",
+            outerContentOffsetX: 0,
+            outerIsTracking: true,
+            outerIsDragging: true,
+            pageIndex: nil,
+            assetLocalIdentifier: nil
+        )
+        diagnostics.recordOuterWillBeginDragging(
+            contentOffsetX: 0,
+            isTracking: true,
+            isDragging: true,
+            currentIndex: nil,
+            settledIndex: 0
+        )
+        XCTAssertEqual(diagnostics.recordedEntries.count, countAfterStop)
+    }
+
+    // IC-091 G185（纯函数）：判定规则的边界——容差 0.5 pt、零向量退回速度、
+    // 内容窄于视口时两侧皆贴边；`engagesDirectionalLock` 只在 Nx、水平主导且不贴边时为真。
+    // 交接读数 `handoffReading` 在非拖动 / 1x / 非水平主导时返回 nil。
+    func testIC091G185HandoffRuleBoundaries() {
+        func decide(
+            offsetX: CGFloat,
+            contentWidth: CGFloat = 800,
+            horizontalInset: CGFloat = 0,
+            translation: CGPoint,
+            velocity: CGPoint = .zero,
+            zoomScale: CGFloat = 2
+        ) -> S2NxInnerPanDecision {
+            S2NxEdgeHandoffRule.innerPanDecision(
+                zoomScale: zoomScale,
+                minimumZoomScale: 1,
+                contentOffset: CGPoint(x: offsetX, y: 0),
+                contentSize: CGSize(width: contentWidth, height: 1_200),
+                viewportSize: CGSize(width: 300, height: 600),
+                contentInset: UIEdgeInsets(
+                    top: 0,
+                    left: horizontalInset,
+                    bottom: 0,
+                    right: horizontalInset
+                ),
+                translation: translation,
+                velocity: velocity
+            )
+        }
+        // 右边界 500：距 0.5 内视为贴边；0.6 不贴边。
+        XCTAssertFalse(
+            decide(offsetX: 499.5, translation: CGPoint(x: -10, y: 0))
+                .innerShouldBegin
+        )
+        XCTAssertTrue(
+            decide(offsetX: 499.4, translation: CGPoint(x: -10, y: 0))
+                .innerShouldBegin
+        )
+        // 左边界 0：向右拖。
+        XCTAssertFalse(
+            decide(offsetX: 0.2, translation: CGPoint(x: 10, y: 0))
+                .innerShouldBegin
+        )
+        XCTAssertTrue(
+            decide(offsetX: 5, translation: CGPoint(x: 10, y: 0))
+                .innerShouldBegin
+        )
+        // 贴右边界但向右拖（露出左侧）：不贴边，内层平移。
+        XCTAssertTrue(
+            decide(offsetX: 500, translation: CGPoint(x: 10, y: 0))
+                .innerShouldBegin
+        )
+        // 水平 == 竖向：不算水平主导。
+        XCTAssertTrue(
+            decide(offsetX: 500, translation: CGPoint(x: -10, y: 10))
+                .innerShouldBegin
+        )
+        // 零位移时退回速度。
+        XCTAssertFalse(
+            decide(
+                offsetX: 500,
+                translation: .zero,
+                velocity: CGPoint(x: -300, y: 0)
+            ).innerShouldBegin
+        )
+        XCTAssertTrue(
+            decide(offsetX: 500, translation: .zero, velocity: .zero)
+                .innerShouldBegin
+        )
+        // 内容窄于视口（竖图放大后宽度仍不足）：两侧皆贴边，水平拖动交给外层。
+        XCTAssertFalse(decide(
+            offsetX: -50,
+            contentWidth: 200,
+            horizontalInset: 50,
+            translation: CGPoint(x: -10, y: 0)
+        ).innerShouldBegin)
+        XCTAssertFalse(decide(
+            offsetX: -50,
+            contentWidth: 200,
+            horizontalInset: 50,
+            translation: CGPoint(x: 10, y: 0)
+        ).innerShouldBegin)
+        // 1x 不介入，也不启用方向锁。
+        let oneX = decide(
+            offsetX: 500,
+            translation: CGPoint(x: -10, y: 0),
+            zoomScale: 1
+        )
+        XCTAssertTrue(oneX.innerShouldBegin)
+        XCTAssertFalse(oneX.engagesDirectionalLock)
+        XCTAssertNil(oneX.distanceToEdgeInDragDirection)
+        // engagesDirectionalLock：Nx + 水平主导 + 不贴边为真，其余为假。
+        XCTAssertTrue(
+            decide(offsetX: 250, translation: CGPoint(x: -10, y: 0))
+                .engagesDirectionalLock
+        )
+        XCTAssertFalse(
+            decide(offsetX: 500, translation: CGPoint(x: -10, y: 0))
+                .engagesDirectionalLock
+        )
+        XCTAssertFalse(
+            decide(offsetX: 250, translation: CGPoint(x: -10, y: 40))
+                .engagesDirectionalLock
+        )
+
+        func reading(
+            offsetX: CGFloat,
+            dragVector: CGPoint,
+            isDragActive: Bool = true,
+            zoomScale: CGFloat = 2
+        ) -> S2NxHandoffReading? {
+            S2NxEdgeHandoffRule.handoffReading(
+                zoomScale: zoomScale,
+                minimumZoomScale: 1,
+                contentOffset: CGPoint(x: offsetX, y: 0),
+                contentSize: CGSize(width: 800, height: 1_200),
+                viewportSize: CGSize(width: 300, height: 600),
+                contentInset: .zero,
+                dragVector: dragVector,
+                isDragActive: isDragActive
+            )
+        }
+        let atEdge = tryUnwrap(
+            reading(offsetX: 500, dragVector: CGPoint(x: -10, y: 0))
+        )
+        XCTAssertTrue(atEdge.reachedEdge)
+        XCTAssertEqual(atEdge.distanceToEdge, 0, accuracy: 0.000_001)
+        XCTAssertTrue(atEdge.movingLeft)
+        let notAtEdge = tryUnwrap(
+            reading(offsetX: 470, dragVector: CGPoint(x: -10, y: 0))
+        )
+        XCTAssertFalse(notAtEdge.reachedEdge)
+        XCTAssertEqual(notAtEdge.distanceToEdge, 30, accuracy: 0.000_001)
+        XCTAssertNil(reading(
+            offsetX: 500,
+            dragVector: CGPoint(x: -10, y: 0),
+            isDragActive: false
+        ))
+        XCTAssertNil(reading(
+            offsetX: 500,
+            dragVector: CGPoint(x: -10, y: 0),
+            zoomScale: 1
+        ))
+        XCTAssertNil(reading(offsetX: 500, dragVector: CGPoint(x: -10, y: 40)))
+        XCTAssertNil(reading(offsetX: 500, dragVector: .zero))
     }
 
     // B1（IC-082 R3 删除）：自定义溢出投影已移除，Nx 边界后的外层位移由 UIKit 嵌套滚动交接产生；

@@ -222,6 +222,134 @@ final class S2NativePagingScrollView: UIScrollView {
     }
 }
 
+/// IC-091 R1（判定规则复制自 IC-089 `7178de4`，追加 `engagesDirectionalLock` 与
+/// `handoffReading`；本提交只提供纯函数与埋点，不接线）：Nx 下内层单指拖动的起始判定。
+/// 拖动开始时若水平分量占主导且缩放后内容在拖动方向上的边界已与视口边界重合
+/// （≤ `edgeTolerance`），内层 pan **不开始**，整个手势交给外层分页容器接管——
+/// 这是「起始贴边」路径，IC-091 不改动它。若水平主导但**尚未贴边**，内层照常平移，
+/// 并为本次手势启用方向锁（手段 M1），使内层到横向边界后在运动方向上完全不可滚动。
+struct S2NxInnerPanDecision: Equatable {
+    let innerShouldBegin: Bool
+    let horizontalDominant: Bool
+    let atEdgeInDragDirection: Bool
+    let distanceToEdgeInDragDirection: CGFloat?
+    /// IC-091 R2（M1）：本次手势是否启用内层方向锁。仅在 Nx、水平主导且起始不贴边时为真。
+    let engagesDirectionalLock: Bool
+}
+
+/// IC-091 R1：交接点读数。`reachedEdge` 为真即「内层在拖动方向到边且仍受拖」。
+struct S2NxHandoffReading: Equatable {
+    let reachedEdge: Bool
+    let distanceToEdge: CGFloat
+    let movingLeft: Bool
+}
+
+enum S2NxEdgeHandoffRule {
+    static let edgeTolerance: CGFloat = 0.5
+
+    static func innerPanDecision(
+        zoomScale: CGFloat,
+        minimumZoomScale: CGFloat,
+        contentOffset: CGPoint,
+        contentSize: CGSize,
+        viewportSize: CGSize,
+        contentInset: UIEdgeInsets,
+        translation: CGPoint,
+        velocity: CGPoint
+    ) -> S2NxInnerPanDecision {
+        let vector = abs(translation.x) + abs(translation.y) > 0
+            ? translation
+            : velocity
+        let horizontalDominant = abs(vector.x) > abs(vector.y)
+        guard zoomScale > minimumZoomScale + 0.000_001 else {
+            // 1x：内层 pan 本就禁用，判定不介入，也不启用方向锁。
+            return S2NxInnerPanDecision(
+                innerShouldBegin: true,
+                horizontalDominant: horizontalDominant,
+                atEdgeInDragDirection: false,
+                distanceToEdgeInDragDirection: nil,
+                engagesDirectionalLock: false
+            )
+        }
+        guard horizontalDominant, vector.x != 0 else {
+            return S2NxInnerPanDecision(
+                innerShouldBegin: true,
+                horizontalDominant: horizontalDominant,
+                atEdgeInDragDirection: false,
+                distanceToEdgeInDragDirection: nil,
+                engagesDirectionalLock: false
+            )
+        }
+        let distance = distanceToEdge(
+            contentOffset: contentOffset,
+            contentSize: contentSize,
+            viewportSize: viewportSize,
+            contentInset: contentInset,
+            movingLeft: vector.x < 0
+        )
+        let atEdge = distance <= edgeTolerance
+        return S2NxInnerPanDecision(
+            innerShouldBegin: !atEdge,
+            horizontalDominant: true,
+            atEdgeInDragDirection: atEdge,
+            distanceToEdgeInDragDirection: max(0, distance),
+            engagesDirectionalLock: !atEdge
+        )
+    }
+
+    /// IC-091 R1/R2：交接点判据。Nx、拖动仍在进行、拖动方向水平主导时给出读数；
+    /// 其余情形返回 `nil`（不是交接点，也不记录事件）。
+    static func handoffReading(
+        zoomScale: CGFloat,
+        minimumZoomScale: CGFloat,
+        contentOffset: CGPoint,
+        contentSize: CGSize,
+        viewportSize: CGSize,
+        contentInset: UIEdgeInsets,
+        dragVector: CGPoint,
+        isDragActive: Bool
+    ) -> S2NxHandoffReading? {
+        guard isDragActive,
+              zoomScale > minimumZoomScale + 0.000_001,
+              abs(dragVector.x) > abs(dragVector.y),
+              dragVector.x != 0 else {
+            return nil
+        }
+        let movingLeft = dragVector.x < 0
+        let distance = distanceToEdge(
+            contentOffset: contentOffset,
+            contentSize: contentSize,
+            viewportSize: viewportSize,
+            contentInset: contentInset,
+            movingLeft: movingLeft
+        )
+        return S2NxHandoffReading(
+            reachedEdge: distance <= edgeTolerance,
+            distanceToEdge: max(0, distance),
+            movingLeft: movingLeft
+        )
+    }
+
+    /// 手指向右（`movingLeft == false`）露出左侧内容 → 看左边界；向左 → 看右边界。
+    /// 内容窄于视口时两侧的合法偏移重合，距离对两个方向都为 0（两侧皆贴边）。
+    private static func distanceToEdge(
+        contentOffset: CGPoint,
+        contentSize: CGSize,
+        viewportSize: CGSize,
+        contentInset: UIEdgeInsets,
+        movingLeft: Bool
+    ) -> CGFloat {
+        let minimumX = -contentInset.left
+        let maximumX = max(
+            minimumX,
+            contentSize.width - viewportSize.width + contentInset.right
+        )
+        return movingLeft
+            ? maximumX - contentOffset.x
+            : contentOffset.x - minimumX
+    }
+}
+
 final class S2NativeZoomScrollView: UIScrollView {
     private(set) weak var zoomContentView: UIView?
     private(set) weak var presentationContentView: UIView?
@@ -2789,6 +2917,14 @@ final class S2NativePagerViewController: UIViewController,
         guard scrollView === pagingScrollView else {
             return
         }
+        // IC-091 R1：外层拖动开始的时刻是判断「交接是否发生、隔了几帧」的锚点，只记录。
+        transitionDiagnostics?.recordOuterWillBeginDragging(
+            contentOffsetX: pagingScrollView.contentOffset.x,
+            isTracking: pagingScrollView.isTracking,
+            isDragging: pagingScrollView.isDragging,
+            currentIndex: machine?.currentIndex,
+            settledIndex: settledIndex
+        )
         outerDragStartDate = Date()
         lastOuterTranslation = .zero
         lastOuterVelocity = 0
@@ -3734,6 +3870,17 @@ struct S2OnDeviceTransitionFrameSample: Equatable {
     var nxDistanceToPreviousBoundary: CGFloat? = nil
     var nxDistanceToNextBoundary: CGFloat? = nil
     var nxOverflowDistance: CGFloat? = nil
+    /// IC-091 R1 场景 E 追加：内外层的跟踪 / 拖动标志、内层 pan 识别器状态与本次手势方向锁。
+    /// `pagingIsTracking` 与既有的 `pagingIsDragging` 并列——手指已按住但外层 pan 尚未开始时
+    /// 两者不同，中途交接的窗口正落在这个差里。
+    var pagingIsTracking: Bool? = nil
+    var zoomIsTracking: Bool? = nil
+    var zoomIsDragging: Bool? = nil
+    /// 内层 `panGestureRecognizer.state` 的 `rawValue`：
+    /// possible=0、began=1、changed=2、ended=3、cancelled=4、failed=5。
+    var zoomPanState: Int? = nil
+    /// 内层本次手势的方向锁（`isDirectionalLockEnabled`）；静止态恒为 false。
+    var zoomDirectionalLock: Bool? = nil
 }
 
 enum S2OnDeviceTransitionPayload: Equatable {
@@ -3901,7 +4048,13 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             // IC-082 R3：自定义贴边投影已删除，三个字段保留为 nil（见 export-format.md）。
             nxDistanceToPreviousBoundary: nil,
             nxDistanceToNextBoundary: nil,
-            nxOverflowDistance: nil
+            nxOverflowDistance: nil,
+            // IC-091 R1 场景 E：内外层跟踪标志、内层 pan 识别器状态与方向锁。
+            pagingIsTracking: controller?.pagingScrollView.isTracking,
+            zoomIsTracking: scrollView?.isTracking,
+            zoomIsDragging: scrollView?.isDragging,
+            zoomPanState: scrollView?.panGestureRecognizer.state.rawValue,
+            zoomDirectionalLock: scrollView?.isDirectionalLockEnabled
         )))
     }
 
@@ -3956,10 +4109,139 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         animated: Bool,
         source: String
     ) {
+        // IC-091 R1：补记写入瞬间的外层跟踪 / 拖动标志。既有守卫只看
+        // `isTracking / isDragging / isDecelerating`，交接窗口内的写入正是在
+        // 前两者均为 false 时发生的，缺这两列无法在导出文本里归因。
+        let trackingText = S2OnDeviceTransitionText.optionalBool(
+            controller?.pagingScrollView.isTracking
+        )
+        let draggingText = S2OnDeviceTransitionText.optionalBool(
+            controller?.pagingScrollView.isDragging
+        )
+        let offsetText = String(format: "%.6f", Double(offsetX))
         recordEvent(
             name: "外层setContentOffset",
             source: source,
-            details: "x=\(String(format: "%.6f", Double(offsetX)))；animated=\(animated)"
+            details: "x=\(offsetText)；animated=\(animated)；" +
+                "outerIsTracking=\(trackingText)；" +
+                "outerIsDragging=\(draggingText)"
+        )
+    }
+
+    /// IC-091 R1：内层 pan 起始判定（场景 E）。`source` 区分判定实际由哪个钩子发出——
+    /// `gestureRecognizerShouldBegin` 在真机上未必被调用（IC-089 两段录制中一次未出现），
+    /// 因此 R2 另在 pan 识别器的 `.began` 回调上补一次判定。
+    func recordNxInnerPanDecision(
+        _ decision: S2NxInnerPanDecision,
+        translation: CGPoint,
+        velocity: CGPoint,
+        source: String,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        let distanceText = decision.distanceToEdgeInDragDirection
+            .map { String(format: "%.6f", Double($0)) } ?? "nil"
+        let vectors = "translation=" +
+            String(
+                format: "%.3f,%.3f",
+                Double(translation.x),
+                Double(translation.y)
+            ) + "；velocity=" +
+            String(
+                format: "%.3f,%.3f",
+                Double(velocity.x),
+                Double(velocity.y)
+            ) + "；"
+        let head = "innerShouldBegin=\(decision.innerShouldBegin)；" +
+            "horizontalDominant=\(decision.horizontalDominant)；" +
+            "atEdgeInDragDirection=\(decision.atEdgeInDragDirection)；" +
+            "distanceToEdge=\(distanceText)；"
+        let tail = "pageIndex=\(pageIndex.map(String.init) ?? "nil")；" +
+            "asset=\(assetLocalIdentifier ?? "nil")；" +
+            "engagesDirectionalLock=\(decision.engagesDirectionalLock)"
+        recordEvent(
+            name: "nxInnerPanDecision",
+            source: source,
+            details: head + vectors + tail
+        )
+    }
+
+    /// IC-091 R1：交接点——内层在拖动方向到边且仍受拖的第一帧。
+    func recordNxHandoffPoint(
+        movingLeft: Bool,
+        innerContentOffset: CGPoint,
+        distanceToEdge: CGFloat,
+        outerContentOffsetX: CGFloat,
+        outerIsTracking: Bool,
+        outerIsDragging: Bool,
+        directionalLock: Bool,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        let inner = "direction=\(movingLeft ? "left" : "right")；" +
+            "innerContentOffset=(x=" +
+            String(format: "%.6f", Double(innerContentOffset.x)) +
+            ",y=" +
+            String(format: "%.6f", Double(innerContentOffset.y)) +
+            ")；distanceToEdge=" +
+            String(format: "%.6f", Double(distanceToEdge)) + "；"
+        let outer = "outerContentOffsetX=" +
+            String(format: "%.6f", Double(outerContentOffsetX)) +
+            "；outerIsTracking=\(outerIsTracking)；" +
+            "outerIsDragging=\(outerIsDragging)；" +
+            "zoomDirectionalLock=\(directionalLock)；"
+        recordEvent(
+            name: "nxHandoffPoint",
+            source: "S2NativePagerViewController.noteInnerHandoffIfNeeded",
+            details: inner + outer + diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
+        )
+    }
+
+    /// IC-091 R1/R3：交接窗口开 / 关。窗口打开期间 App 不写外层偏移。
+    func recordNxHandoffWindow(
+        isOpen: Bool,
+        reason: String,
+        outerContentOffsetX: CGFloat,
+        outerIsTracking: Bool,
+        outerIsDragging: Bool,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        let head = "state=\(isOpen ? "open" : "close")；reason=\(reason)；"
+        let outer = "outerContentOffsetX=" +
+            String(format: "%.6f", Double(outerContentOffsetX)) +
+            "；outerIsTracking=\(outerIsTracking)；" +
+            "outerIsDragging=\(outerIsDragging)；"
+        recordEvent(
+            name: "nxHandoffWindow",
+            source: "S2NativePagerViewController.setHandoffWindowOpen",
+            details: head + outer + diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
+        )
+    }
+
+    /// IC-091 R1：外层分页容器的拖动开始回调。与内层的同名回调区分靠 `层级=外层`。
+    func recordOuterWillBeginDragging(
+        contentOffsetX: CGFloat,
+        isTracking: Bool,
+        isDragging: Bool,
+        currentIndex: Int?,
+        settledIndex: Int
+    ) {
+        let head = "层级=外层；contentOffsetX=" +
+            String(format: "%.6f", Double(contentOffsetX)) + "；"
+        let flags = "isTracking=\(isTracking)；isDragging=\(isDragging)；" +
+            "currentIndex=\(currentIndex.map(String.init) ?? "nil")；" +
+            "settledIndex=\(settledIndex)"
+        recordEvent(
+            name: "scrollViewWillBeginDragging",
+            source: "S2NativePagerViewController.scrollViewWillBeginDragging",
+            details: head + flags
         )
     }
 
@@ -4177,7 +4459,7 @@ enum S2OnDeviceTransitionText {
             "停止绝对时间=\(timestamp(stoppedAt))",
             "记录总数=\(sortedRecords.count)",
             "顺序=全部记录按同一单调时钟严格递增",
-            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,contentInset,adjustedContentInset,V,s,pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating,currentIndex,settledIndex,pageIndicesPresent,pageLoadStates,nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance",
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,contentInset,adjustedContentInset,V,s,pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating,currentIndex,settledIndex,pageIndicesPresent,pageLoadStates,nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance,pagingIsTracking,zoomIsTracking,zoomIsDragging,zoomPanState,zoomDirectionalLock",
             "离散事件字段=time,event,source,details",
             "---"
         ]
@@ -4186,8 +4468,9 @@ enum S2OnDeviceTransitionText {
                 "\ttime=\(timestamp(record.timestamp - startedAt))"
             switch record.payload {
             case let .frame(sample):
-                lines.append(prefix +
-                    "\tkind=frame" +
+                // IC-091 R1：逐帧行按 IC-068 / IC-079 / IC-082 / IC-091 四段拼接，
+                // 字段顺序与头部声明行完全一致；分段只为不让单个表达式随字段数变长。
+                let base = "\tkind=frame" +
                     "\tanimationKeys=\(animationKeys(sample.animationKeys))" +
                     "\tmodelFrame=\(optionalRect(sample.modelFrame))" +
                     "\tpresentationFrame=\(optionalRect(sample.presentationFrame))" +
@@ -4198,17 +4481,23 @@ enum S2OnDeviceTransitionText {
                     "\tcontentInset=\(optionalInsets(sample.contentInset))" +
                     "\tadjustedContentInset=\(optionalInsets(sample.adjustedContentInset))" +
                     "\tV=\(sample.visibility.map(visibility) ?? "nil")" +
-                    "\ts=\(optionalNumber(sample.scale))" +
-                    "\tpagingContentOffsetX=\(optionalNumber(sample.pagingContentOffsetX))" +
+                    "\ts=\(optionalNumber(sample.scale))"
+                let paging = "\tpagingContentOffsetX=\(optionalNumber(sample.pagingContentOffsetX))" +
                     "\tpagingIsDragging=\(optionalBool(sample.pagingIsDragging))" +
                     "\tpagingIsDecelerating=\(optionalBool(sample.pagingIsDecelerating))" +
                     "\tcurrentIndex=\(optionalIndex(sample.currentIndex))" +
                     "\tsettledIndex=\(optionalIndex(sample.settledIndex))" +
                     "\tpageIndicesPresent=\(indexList(sample.pageIndicesPresent))" +
-                    "\tpageLoadStates=\(loadStates(sample.pageLoadStates))" +
-                    "\tnxDistanceToPreviousBoundary=\(optionalNumber(sample.nxDistanceToPreviousBoundary))" +
+                    "\tpageLoadStates=\(loadStates(sample.pageLoadStates))"
+                let nx = "\tnxDistanceToPreviousBoundary=\(optionalNumber(sample.nxDistanceToPreviousBoundary))" +
                     "\tnxDistanceToNextBoundary=\(optionalNumber(sample.nxDistanceToNextBoundary))" +
-                    "\tnxOverflowDistance=\(optionalNumber(sample.nxOverflowDistance))")
+                    "\tnxOverflowDistance=\(optionalNumber(sample.nxOverflowDistance))"
+                let handoff = "\tpagingIsTracking=\(optionalBool(sample.pagingIsTracking))" +
+                    "\tzoomIsTracking=\(optionalBool(sample.zoomIsTracking))" +
+                    "\tzoomIsDragging=\(optionalBool(sample.zoomIsDragging))" +
+                    "\tzoomPanState=\(optionalIndex(sample.zoomPanState))" +
+                    "\tzoomDirectionalLock=\(optionalBool(sample.zoomDirectionalLock))"
+                lines.append(prefix + base + paging + nx + handoff)
             case let .event(name, source, details):
                 lines.append(prefix +
                     "\tkind=event" +
