@@ -656,14 +656,14 @@ struct S2View: View {
                         calibration.configuration.bottomStripMarkSize
                     ),
                     itemContent: stripItemContent,
+                    assetAspectRatio: assetAspectRatio,
                     onPhotoSwitch: {
                         photoSwitchHapticFeedback.notify(
                             isEnabled: calibration.configuration
                                 .hapticOnPhotoSwitch,
                             source: .bottomStripDrag
                         )
-                    },
-                    assetAspectRatio: assetAspectRatio
+                    }
                 )
                 .frame(height: bottomStripHeight)
                 .background(.regularMaterial)
@@ -1609,25 +1609,595 @@ private struct S2CalibrationSliderRow: View {
     }
 }
 
-/// IC-083：横栏缩略图的裁满布局——内容帧按资产宽高比放大到恰好覆盖项目帧（aspectFill），
-/// 再以项目帧居中裁切；当前项方形、邻居矩形的项目帧尺寸规则不变。
-enum S2BottomStripItemLayout {
-    /// 覆盖 `itemSize` 的最小内容尺寸；`aspectRatio` 为宽 ÷ 高，非法时退回项目帧本身。
-    static func fillSize(itemSize: CGSize, aspectRatio: CGFloat) -> CGSize {
-        guard itemSize.width > 0, itemSize.height > 0,
-              aspectRatio.isFinite, aspectRatio > 0 else {
-            return itemSize
+/// IC-085：横栏几何的单一入口。内容坐标以第 0 张中心为原点，第 i 张中心 = i × 节距；
+/// `contentX` 是视口中心对应的内容坐标；`expansion` 取 0～1，是当前张的展开程度
+/// （1 = 静止态方形放大 + 两侧间隙；0 = 滑动态全部等距矩形）。
+struct S2BottomStripLayout: Equatable {
+    let metrics: S2BottomStripMetrics
+
+    /// 相邻项目中心的节距。
+    var pitch: CGFloat {
+        metrics.switchDistance
+    }
+
+    /// 完全展开时左右邻居各自外移的距离 = 当前张半边增量 + 间隙增量。
+    var expansionShift: CGFloat {
+        (metrics.currentItemSize - metrics.neighborItemWidth) / 2 +
+            (metrics.currentItemGap - metrics.itemSpacing)
+    }
+
+    func contentCenterX(of index: Int) -> CGFloat {
+        CGFloat(index) * pitch
+    }
+
+    func maximumContentX(count: Int) -> CGFloat {
+        CGFloat(max(0, count - 1)) * pitch
+    }
+
+    func clampedContentX(_ x: CGFloat, count: Int) -> CGFloat {
+        min(max(0, x), maximumContentX(count: count))
+    }
+
+    func nearestIndex(toContentX x: CGFloat, count: Int) -> Int {
+        guard count > 0, pitch > 0 else {
+            return 0
         }
-        let widthLimited = CGSize(
-            width: itemSize.width,
-            height: itemSize.width / aspectRatio
+        let raw = Int((x / pitch).rounded())
+        return min(max(0, raw), count - 1)
+    }
+
+    func itemSize(
+        at index: Int,
+        currentIndex: Int,
+        expansion: CGFloat
+    ) -> CGSize {
+        guard index == currentIndex else {
+            return CGSize(
+                width: metrics.neighborItemWidth,
+                height: metrics.neighborItemHeight
+            )
+        }
+        let progress = clampedExpansion(expansion)
+        return CGSize(
+            width: metrics.neighborItemWidth +
+                (metrics.currentItemSize - metrics.neighborItemWidth) * progress,
+            height: metrics.neighborItemHeight +
+                (metrics.currentItemSize - metrics.neighborItemHeight) * progress
         )
-        if widthLimited.height >= itemSize.height {
-            return widthLimited
+    }
+
+    /// 视口坐标中的项目 frame：视口原点在左上角，内容带垂直居中。
+    func frame(
+        at index: Int,
+        currentIndex: Int,
+        expansion: CGFloat,
+        contentX: CGFloat,
+        viewportSize: CGSize
+    ) -> CGRect {
+        let size = itemSize(
+            at: index,
+            currentIndex: currentIndex,
+            expansion: expansion
+        )
+        let progress = clampedExpansion(expansion)
+        var centerX = viewportSize.width / 2 + contentCenterX(of: index) - contentX
+        if index < currentIndex {
+            centerX -= expansionShift * progress
+        } else if index > currentIndex {
+            centerX += expansionShift * progress
+        }
+        return CGRect(
+            x: centerX - size.width / 2,
+            y: (viewportSize.height - size.height) / 2,
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    /// 可能落入视口（含展开位移余量）的索引区间；只为这些索引创建内容视图。
+    func visibleIndices(
+        contentX: CGFloat,
+        viewportWidth: CGFloat,
+        count: Int
+    ) -> Range<Int> {
+        guard count > 0, pitch > 0 else {
+            return 0..<0
+        }
+        let reach = viewportWidth / 2 + expansionShift + metrics.currentItemSize
+        let lower = Int(((contentX - reach) / pitch).rounded(.down))
+        let upper = Int(((contentX + reach) / pitch).rounded(.up))
+        let lowerBound = min(max(0, lower), count)
+        let upperBound = min(count, max(lowerBound, upper + 1))
+        return lowerBound..<upperBound
+    }
+
+    /// 两侧线性渐隐的遮罩停靠点（相对位置 0～1，不透明度 0～1）：
+    /// `leadingInset` 内完全不可见，随后 `edgeFadeWidth` 内线性升到 1，右侧对称。
+    func fadeStops(viewportWidth: CGFloat) -> [(location: CGFloat, opacity: CGFloat)] {
+        guard viewportWidth > 0,
+              metrics.leadingInset + metrics.edgeFadeWidth > 0 else {
+            return [(location: 0, opacity: 1), (location: 1, opacity: 1)]
+        }
+        let insetLocation = min(0.5, max(0, metrics.leadingInset / viewportWidth))
+        let opaqueLocation = min(
+            0.5,
+            max(
+                insetLocation,
+                (metrics.leadingInset + metrics.edgeFadeWidth) / viewportWidth
+            )
+        )
+        return [
+            (location: 0, opacity: 0),
+            (location: insetLocation, opacity: 0),
+            (location: opaqueLocation, opacity: 1),
+            (location: 1 - opaqueLocation, opacity: 1),
+            (location: 1 - insetLocation, opacity: 0),
+            (location: 1, opacity: 0)
+        ]
+    }
+
+    /// IC-085 R3：项目帧固定，与资产宽高比无关；内容按 aspectFill 放大到覆盖项目帧
+    /// （横图裁左右、竖图裁上下），由视图层以帧居中裁切。返回内容框尺寸。
+    static func fillContentSize(
+        cellSize: CGSize,
+        assetAspectRatio: CGFloat
+    ) -> CGSize {
+        guard cellSize.width > 0, cellSize.height > 0,
+              assetAspectRatio.isFinite, assetAspectRatio > 0 else {
+            return cellSize
+        }
+        let cellRatio = cellSize.width / cellSize.height
+        if assetAspectRatio >= cellRatio {
+            return CGSize(
+                width: cellSize.height * assetAspectRatio,
+                height: cellSize.height
+            )
         }
         return CGSize(
-            width: itemSize.height * aspectRatio,
-            height: itemSize.height
+            width: cellSize.width,
+            height: cellSize.width / assetAspectRatio
+        )
+    }
+
+    private func clampedExpansion(_ expansion: CGFloat) -> CGFloat {
+        min(max(0, expansion), 1)
+    }
+}
+
+/// IC-085：横栏惯性减速的闭式模型 v(t) = v0 · k^(1000 t)，k 为每毫秒衰减率
+/// （出厂 0.998 = 系统录屏拟合值 = `UIScrollView.DecelerationRate.normal`）。
+/// 位置由经过的壁钟时间直接求得，不做逐帧累加，掉帧不丢位移。
+enum S2BottomStripInertia {
+    /// ③ 实现常量：减速终止速度。录屏减速尾帧位移 1 px/帧（60 fps）≈ 20 pt/s。
+    static let stopSpeed: CGFloat = 20
+
+    /// ③ 实现常量：吸附 + 展开曲线的指数时间常数，按录屏 600 ms 段逐帧位移拟合
+    /// （100 ms 完成 55%、200 ms 完成 80%）。
+    static let settleTimeConstant: TimeInterval = 0.125
+
+    static func velocity(
+        initial v0: CGFloat,
+        rate k: CGFloat,
+        elapsed t: TimeInterval
+    ) -> CGFloat {
+        guard k > 0, k < 1 else {
+            return 0
+        }
+        return v0 * pow(k, CGFloat(t) * 1000)
+    }
+
+    static func displacement(
+        initial v0: CGFloat,
+        rate k: CGFloat,
+        elapsed t: TimeInterval
+    ) -> CGFloat {
+        guard k > 0, k < 1 else {
+            return 0
+        }
+        return v0 * (pow(k, CGFloat(t) * 1000) - 1) / (1000 * log(k))
+    }
+
+    /// 速度衰减到 `stopSpeed` 所需时间；初速不高于终止速度时为 0。
+    static func duration(initial v0: CGFloat, rate k: CGFloat) -> TimeInterval {
+        guard k > 0, k < 1, abs(v0) > stopSpeed else {
+            return 0
+        }
+        return TimeInterval(log(stopSpeed / abs(v0)) / (1000 * log(k)))
+    }
+
+    /// 吸附 + 展开进度：指数 ease-out，在 `duration` 处归一到 1。
+    static func settleProgress(
+        elapsed t: TimeInterval,
+        duration: TimeInterval
+    ) -> CGFloat {
+        guard duration > 0, t > 0 else {
+            return duration > 0 ? 0 : 1
+        }
+        guard t < duration else {
+            return 1
+        }
+        let tau = settleTimeConstant
+        return CGFloat((1 - exp(-t / tau)) / (1 - exp(-duration / tau)))
+    }
+
+    /// 拖动开始的收缩进度：二次 ease-out。
+    static func collapseProgress(
+        elapsed t: TimeInterval,
+        duration: TimeInterval
+    ) -> CGFloat {
+        guard duration > 0, t > 0 else {
+            return duration > 0 ? 0 : 1
+        }
+        guard t < duration else {
+            return 1
+        }
+        let linear = CGFloat(t / duration)
+        return 1 - (1 - linear) * (1 - linear)
+    }
+}
+
+/// 帧驱动：只负责在需要重算时唤醒控制器，位置本身由时间闭式求得。
+protocol S2BottomStripFrameDriving: AnyObject {
+    func start(_ onFrame: @escaping () -> Void)
+    func stop()
+}
+
+final class S2BottomStripDisplayLinkFrameDriver: NSObject, S2BottomStripFrameDriving {
+    private var displayLink: CADisplayLink?
+    private var onFrame: (() -> Void)?
+
+    deinit {
+        displayLink?.invalidate()
+    }
+
+    func start(_ onFrame: @escaping () -> Void) {
+        self.onFrame = onFrame
+        guard displayLink == nil else {
+            return
+        }
+        let link = CADisplayLink(target: self, selector: #selector(step))
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    func stop() {
+        displayLink?.invalidate()
+        displayLink = nil
+        onFrame = nil
+    }
+
+    @objc private func step() {
+        onFrame?()
+    }
+}
+
+/// IC-085：横栏运动控制器——拖动跟手、松手惯性、停止后吸附到最近项并展开当前张、
+/// 拖动开始收缩。定位项一变化即通过 `hooks.switchPhoto` 切主图（既有语义）。
+/// 触摸序列（`beginSequence`…`endSequence`）覆盖拖动与惯性减速两段；吸附与展开在
+/// 序列结束之后、`bottomStripState == .idle` 下完成。
+final class S2BottomStripMotionController: ObservableObject {
+    enum Phase: Equatable {
+        case idle
+        case dragging
+        case decelerating
+        case settling
+    }
+
+    struct Hooks {
+        var beginSequence: () -> Bool
+        var switchPhoto: (Int) -> Bool
+        var endSequence: () -> Void
+    }
+
+    @Published private(set) var contentX: CGFloat = 0
+    @Published private(set) var expansion: CGFloat = 1
+    @Published private(set) var phase: Phase = .idle
+
+    private(set) var trackedIndex = 0
+    private(set) var itemCount = 0
+
+    var layout: S2BottomStripLayout {
+        didSet {
+            guard layout != oldValue, phase == .idle else {
+                return
+            }
+            contentX = layout.clampedContentX(
+                layout.contentCenterX(of: trackedIndex),
+                count: itemCount
+            )
+        }
+    }
+
+    var hooks: Hooks
+
+    private let clock: () -> TimeInterval
+    private let frameDriver: S2BottomStripFrameDriving
+
+    private var dragAnchorContentX: CGFloat = 0
+    private var dragAnchorTranslation: CGFloat?
+    private var deceleration: (start: TimeInterval, x: CGFloat, v0: CGFloat)?
+    private var settle: (
+        start: TimeInterval,
+        fromX: CGFloat,
+        toX: CGFloat,
+        fromExpansion: CGFloat
+    )?
+    private var collapse: (start: TimeInterval, fromExpansion: CGFloat)?
+
+    init(
+        layout: S2BottomStripLayout,
+        hooks: Hooks,
+        clock: @escaping () -> TimeInterval = { CACurrentMediaTime() },
+        frameDriver: S2BottomStripFrameDriving = S2BottomStripDisplayLinkFrameDriver()
+    ) {
+        self.layout = layout
+        self.hooks = hooks
+        self.clock = clock
+        self.frameDriver = frameDriver
+    }
+
+    deinit {
+        frameDriver.stop()
+    }
+
+    private var metrics: S2BottomStripMetrics {
+        layout.metrics
+    }
+
+    private var collapseDuration: TimeInterval {
+        TimeInterval(metrics.collapseDurationMilliseconds) / 1000
+    }
+
+    private var expandDuration: TimeInterval {
+        TimeInterval(metrics.expandDurationMilliseconds) / 1000
+    }
+
+    /// 外部定位项或张数变化。触摸序列进行中（拖动、减速）不打断——横栏拖动引起的
+    /// 切换由 `updateTrackedIndex` 自行跟踪。
+    /// `animated == false`：直接居中（首帧、张数变化、参数变化）。
+    /// `animated == true`（IC-085 R3，主图翻页引起的定位项变化）：以
+    /// `expandDurationMilliseconds` 的 ease-out 滚动到新当前张并展开，不跳变。
+    func synchronize(count: Int, currentIndex: Int, animated: Bool = false) {
+        itemCount = max(0, count)
+        let target = min(max(0, currentIndex), max(0, itemCount - 1))
+        switch phase {
+        case .dragging, .decelerating:
+            return
+        case .idle, .settling:
+            break
+        }
+        let targetX = layout.clampedContentX(
+            layout.contentCenterX(of: target),
+            count: itemCount
+        )
+        let alreadyThere = target == trackedIndex &&
+            (phase == .settling || (contentX == targetX && expansion == 1))
+        guard !alreadyThere else {
+            return
+        }
+        trackedIndex = target
+        guard animated, expandDuration > 0 else {
+            settle = nil
+            contentX = targetX
+            expansion = 1
+            if phase == .settling {
+                phase = .idle
+                frameDriver.stop()
+            }
+            return
+        }
+        settle = (
+            start: clock(),
+            fromX: contentX,
+            toX: targetX,
+            fromExpansion: 0
+        )
+        expansion = 0
+        phase = .settling
+        frameDriver.start { [weak self] in
+            self?.tick()
+        }
+    }
+
+    @discardableResult
+    func beginDrag() -> Bool {
+        switch phase {
+        case .dragging:
+            return true
+        case .decelerating:
+            break
+        case .idle, .settling:
+            guard hooks.beginSequence() else {
+                return false
+            }
+        }
+        let now = clock()
+        deceleration = nil
+        settle = nil
+        phase = .dragging
+        dragAnchorContentX = contentX
+        dragAnchorTranslation = nil
+        if expansion > 0 {
+            collapse = (start: now, fromExpansion: expansion)
+            frameDriver.start { [weak self] in
+                self?.tick()
+            }
+        }
+        return true
+    }
+
+    func updateDrag(translation: CGFloat) {
+        guard phase == .dragging else {
+            return
+        }
+        guard let anchor = dragAnchorTranslation else {
+            dragAnchorTranslation = translation
+            return
+        }
+        contentX = layout.clampedContentX(
+            dragAnchorContentX - (translation - anchor),
+            count: itemCount
+        )
+        updateTrackedIndex()
+    }
+
+    /// `velocity` 为手指速度（pt/s，向右为正）；内容速度与之反向。
+    func endDrag(velocity: CGFloat) {
+        guard phase == .dragging else {
+            return
+        }
+        let now = clock()
+        // IC-085 R3：手指速度低于阈值视为慢拖松手，无减速段，直接吸附展开。
+        guard abs(velocity) >= metrics.flickVelocityThreshold else {
+            finishSequence(at: now)
+            return
+        }
+        let contentVelocity = -velocity
+        let duration = S2BottomStripInertia.duration(
+            initial: contentVelocity,
+            rate: metrics.decelerationRate
+        )
+        guard duration > 0 else {
+            finishSequence(at: now)
+            return
+        }
+        deceleration = (start: now, x: contentX, v0: contentVelocity)
+        phase = .decelerating
+        frameDriver.start { [weak self] in
+            self?.tick()
+        }
+    }
+
+    /// 按当前壁钟时间重算位置与展开度；由帧驱动或测试显式调用。
+    func tick() {
+        let now = clock()
+        if let collapse {
+            let progress = S2BottomStripInertia.collapseProgress(
+                elapsed: now - collapse.start,
+                duration: collapseDuration
+            )
+            expansion = collapse.fromExpansion * (1 - progress)
+            if progress >= 1 {
+                self.collapse = nil
+            }
+        }
+
+        switch phase {
+        case .decelerating:
+            guard let deceleration else {
+                finishSequence(at: now)
+                return
+            }
+            let elapsed = now - deceleration.start
+            let duration = S2BottomStripInertia.duration(
+                initial: deceleration.v0,
+                rate: metrics.decelerationRate
+            )
+            let unclamped = deceleration.x + S2BottomStripInertia.displacement(
+                initial: deceleration.v0,
+                rate: metrics.decelerationRate,
+                elapsed: min(elapsed, duration)
+            )
+            let clamped = layout.clampedContentX(unclamped, count: itemCount)
+            contentX = clamped
+            updateTrackedIndex()
+            if elapsed >= duration || clamped != unclamped {
+                finishSequence(at: now)
+            }
+        case .settling:
+            guard let settle else {
+                phase = .idle
+                frameDriver.stop()
+                return
+            }
+            let progress = S2BottomStripInertia.settleProgress(
+                elapsed: now - settle.start,
+                duration: expandDuration
+            )
+            contentX = settle.fromX + (settle.toX - settle.fromX) * progress
+            expansion = settle.fromExpansion +
+                (1 - settle.fromExpansion) * progress
+            if progress >= 1 {
+                self.settle = nil
+                phase = .idle
+                frameDriver.stop()
+            }
+        case .idle:
+            if collapse == nil {
+                frameDriver.stop()
+            }
+        case .dragging:
+            if collapse == nil {
+                frameDriver.stop()
+            }
+        }
+    }
+
+    private func updateTrackedIndex() {
+        let target = layout.nearestIndex(toContentX: contentX, count: itemCount)
+        while trackedIndex != target {
+            let step = target > trackedIndex ? 1 : -1
+            guard hooks.switchPhoto(step) else {
+                return
+            }
+            trackedIndex += step
+        }
+    }
+
+    private func finishSequence(at now: TimeInterval) {
+        deceleration = nil
+        collapse = nil
+        hooks.endSequence()
+        let target = layout.nearestIndex(toContentX: contentX, count: itemCount)
+        trackedIndex = target
+        let targetX = layout.clampedContentX(
+            layout.contentCenterX(of: target),
+            count: itemCount
+        )
+        guard expandDuration > 0 else {
+            contentX = targetX
+            expansion = 1
+            phase = .idle
+            frameDriver.stop()
+            return
+        }
+        settle = (
+            start: now,
+            fromX: contentX,
+            toX: targetX,
+            fromExpansion: expansion
+        )
+        phase = .settling
+        frameDriver.start { [weak self] in
+            self?.tick()
+        }
+    }
+}
+
+extension S2BottomStripMotionController {
+    /// 生产与夹具共用的状态机挂钩：序列起止落在 `beginBottomStripDrag` /
+    /// `endBottomStripDrag`，切图经 `S2BottomStripPhotoSwitcher`（含触感回调）。
+    static func hooks(
+        machine: S2StateMachine,
+        onPhotoSwitch: @escaping () -> Void
+    ) -> Hooks {
+        Hooks(
+            beginSequence: { [weak machine] in
+                machine?.beginBottomStripDrag() ?? false
+            },
+            switchPhoto: { [weak machine] offset in
+                guard let machine else {
+                    return false
+                }
+                return S2BottomStripPhotoSwitcher.switchPhoto(
+                    machine: machine,
+                    by: offset,
+                    onPhotoSwitch: onPhotoSwitch
+                )
+            },
+            endSequence: { [weak machine] in
+                _ = machine?.endBottomStripDrag()
+            }
         )
     }
 }
@@ -1638,23 +2208,39 @@ struct S2BottomStripView: View {
     let metrics: S2BottomStripMetrics
     let markSize: CGFloat
     let itemContent: S2View.StripItemContent
+    /// IC-085 R3：资产宽高比，仅用于把内容框放大到 aspectFill 尺寸；项目帧不受影响。
+    let assetAspectRatio: (String) -> CGFloat
     let onPhotoSwitch: () -> Void
-    /// IC-083：资产宽高比（宽 ÷ 高），用于缩略图裁满；默认 1 保持既有夹具构造不变。
-    var assetAspectRatio: (String) -> CGFloat = { _ in 1 }
 
-    @State private var residualTranslation: CGFloat = 0
-    @State private var previousTranslation: CGFloat?
+    @StateObject private var motion: S2BottomStripMotionController
 
-    /// IC-083：项目帧（裁切后的可见内容帧）与裁满内容帧，供夹具断言。
-    func itemFrameSize(at index: Int) -> CGSize {
-        CGSize(width: itemWidth(at: index), height: itemHeight(at: index))
-    }
-
-    func fillContentSize(at index: Int) -> CGSize {
-        S2BottomStripItemLayout.fillSize(
-            itemSize: itemFrameSize(at: index),
-            aspectRatio: assetAspectRatio(machine.orderedAssetIDs[index])
+    init(
+        machine: S2StateMachine,
+        metrics: S2BottomStripMetrics,
+        markSize: CGFloat,
+        itemContent: @escaping S2View.StripItemContent,
+        assetAspectRatio: @escaping (String) -> CGFloat = { _ in 1 },
+        onPhotoSwitch: @escaping () -> Void
+    ) {
+        _machine = ObservedObject(wrappedValue: machine)
+        self.metrics = metrics
+        self.markSize = markSize
+        self.itemContent = itemContent
+        self.assetAspectRatio = assetAspectRatio
+        self.onPhotoSwitch = onPhotoSwitch
+        let motion = S2BottomStripMotionController(
+            layout: S2BottomStripLayout(metrics: metrics),
+            hooks: S2BottomStripMotionController.hooks(
+                machine: machine,
+                onPhotoSwitch: onPhotoSwitch
+            )
         )
+        // 首帧即居中当前张，不等 onAppear（离屏渲染同样成立）。
+        motion.synchronize(
+            count: machine.orderedAssetIDs.count,
+            currentIndex: machine.currentIndex
+        )
+        _motion = StateObject(wrappedValue: motion)
     }
 
     func markPresentation(for assetID: String) -> S2BottomStripMarkPresentation {
@@ -1678,13 +2264,27 @@ struct S2BottomStripView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
-                ForEach(
-                    Array(machine.orderedAssetIDs.enumerated()),
-                    id: \.element
-                ) { index, assetID in
-                    let itemSize = itemFrameSize(at: index)
-                    let fillSize = fillContentSize(at: index)
+            let assetIDs = machine.orderedAssetIDs
+            let layout = motion.layout
+            let visible = layout.visibleIndices(
+                contentX: motion.contentX,
+                viewportWidth: geometry.size.width,
+                count: assetIDs.count
+            )
+            ZStack(alignment: .topLeading) {
+                ForEach(Array(visible), id: \.self) { index in
+                    let assetID = assetIDs[index]
+                    let frame = layout.frame(
+                        at: index,
+                        currentIndex: machine.currentIndex,
+                        expansion: motion.expansion,
+                        contentX: motion.contentX,
+                        viewportSize: geometry.size
+                    )
+                    let contentSize = S2BottomStripLayout.fillContentSize(
+                        cellSize: frame.size,
+                        assetAspectRatio: assetAspectRatio(assetID)
+                    )
                     itemContent(
                         S2BottomStripItemPresentation(
                             assetID: assetID,
@@ -1695,43 +2295,76 @@ struct S2BottomStripView: View {
                             stripState: machine.bottomStripState
                         )
                     )
-                    // IC-083：内容先放大到覆盖项目帧（aspectFill），再以项目帧居中裁切。
-                    .frame(width: fillSize.width, height: fillSize.height)
-                    .frame(width: itemSize.width, height: itemSize.height)
+                    // IC-085 R3：内容框按 aspectFill 放大后以项目帧居中裁切。
+                    .frame(width: contentSize.width, height: contentSize.height)
+                    .frame(width: frame.width, height: frame.height)
                     .clipped()
                     .overlay(alignment: .topTrailing) {
                         stripMark(for: assetID)
                     }
-                    .position(
-                        x: geometry.size.width / 2 +
-                            positionOffset(for: index) +
-                            residualTranslation,
-                        y: geometry.size.height / 2
-                    )
+                    .position(x: frame.midX, y: frame.midY)
                     .accessibilityLabel(L10n.text(
                         "s2.strip.item.accessibility",
                         replacing: [
                             "current": String(index + 1),
-                            "total": String(machine.orderedAssetIDs.count)
+                            "total": String(assetIDs.count)
                         ]
                     ))
                     .accessibilityValue(markAccessibilityValue(for: assetID))
                 }
-
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
-            .contentShape(Rectangle())
-            .gesture(stripGesture)
+            .mask {
+                fadeMask(width: geometry.size.width)
+            }
+            .overlay {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(stripGesture)
+            }
+            .onAppear {
+                motion.synchronize(
+                    count: assetIDs.count,
+                    currentIndex: machine.currentIndex
+                )
+            }
+            .onChange(of: machine.currentIndex) { _, currentIndex in
+                // 主图翻页引起的定位项变化：动画跟随；横栏拖动中由控制器自行跟踪。
+                motion.synchronize(
+                    count: machine.orderedAssetIDs.count,
+                    currentIndex: currentIndex,
+                    animated: true
+                )
+            }
+            .onChange(of: machine.orderedAssetIDs.count) { _, count in
+                motion.synchronize(
+                    count: count,
+                    currentIndex: machine.currentIndex
+                )
+            }
+            .onChange(of: metrics) { _, metrics in
+                motion.layout = S2BottomStripLayout(metrics: metrics)
+                motion.synchronize(
+                    count: machine.orderedAssetIDs.count,
+                    currentIndex: machine.currentIndex
+                )
+            }
         }
     }
 
-    private func itemWidth(at index: Int) -> CGFloat {
-        if machine.bottomStripState == .dragging {
-            return metrics.neighborItemWidth
-        }
-        return index == machine.currentIndex
-            ? metrics.currentItemSize
-            : metrics.neighborItemWidth
+    private func fadeMask(width: CGFloat) -> some View {
+        let stops = motion.layout.fadeStops(viewportWidth: width)
+        return LinearGradient(
+            stops: stops.map { stop in
+                Gradient.Stop(
+                    color: Color.black.opacity(Double(stop.opacity)),
+                    location: stop.location
+                )
+            },
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
 
     private func markAccessibilityValue(for assetID: String) -> String {
@@ -1740,87 +2373,20 @@ struct S2BottomStripView: View {
             : L10n.text("s2.strip.item.unmarked")
     }
 
-    private func itemHeight(at index: Int) -> CGFloat {
-        if machine.bottomStripState == .dragging {
-            return metrics.neighborItemHeight
-        }
-        return index == machine.currentIndex
-            ? metrics.currentItemSize
-            : metrics.neighborItemHeight
-    }
-
-    private func positionOffset(for index: Int) -> CGFloat {
-        let delta = index - machine.currentIndex
-        guard delta != 0 else {
-            return 0
-        }
-
-        if machine.bottomStripState == .dragging {
-            return CGFloat(delta) *
-                (metrics.neighborItemWidth + metrics.itemSpacing)
-        }
-
-        let firstStep = metrics.currentItemSize / 2 +
-            metrics.itemSpacing +
-            metrics.neighborItemWidth / 2
-        let remainingSteps = CGFloat(max(0, abs(delta) - 1)) *
-            (metrics.neighborItemWidth + metrics.itemSpacing)
-        let distance = firstStep + remainingSteps
-        return delta > 0 ? distance : -distance
-    }
-
+    /// 拖动识别沿用原生 pan 默认起始距离；速度取自 iOS 17 `DragGesture.Value.velocity`。
     private var stripGesture: some Gesture {
-        DragGesture(minimumDistance: metrics.dragMinimumDistance)
+        DragGesture()
             .onChanged { value in
-                if previousTranslation == nil {
-                    guard machine.beginBottomStripDrag() else {
+                if motion.phase != .dragging {
+                    guard motion.beginDrag() else {
                         return
                     }
-                    previousTranslation = value.translation.width
-                    return
                 }
-
-                let previous = previousTranslation ?? value.translation.width
-                residualTranslation += value.translation.width - previous
-                previousTranslation = value.translation.width
-                applyStripSwitches()
+                motion.updateDrag(translation: value.translation.width)
             }
-            .onEnded { _ in
-                guard previousTranslation != nil else {
-                    return
-                }
-                residualTranslation = 0
-                previousTranslation = nil
-                _ = machine.endBottomStripDrag()
+            .onEnded { value in
+                motion.endDrag(velocity: value.velocity.width)
             }
-    }
-
-    private func applyStripSwitches() {
-        while residualTranslation <= -metrics.switchDistance {
-            if S2BottomStripPhotoSwitcher.switchPhoto(
-                machine: machine,
-                by: 1,
-                onPhotoSwitch: onPhotoSwitch
-            ) {
-                residualTranslation += metrics.switchDistance
-            } else {
-                residualTranslation = -metrics.switchDistance
-                break
-            }
-        }
-
-        while residualTranslation >= metrics.switchDistance {
-            if S2BottomStripPhotoSwitcher.switchPhoto(
-                machine: machine,
-                by: -1,
-                onPhotoSwitch: onPhotoSwitch
-            ) {
-                residualTranslation -= metrics.switchDistance
-            } else {
-                residualTranslation = metrics.switchDistance
-                break
-            }
-        }
     }
 }
 

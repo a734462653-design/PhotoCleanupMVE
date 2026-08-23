@@ -1197,13 +1197,18 @@ final class S2StateMachineTests: XCTestCase {
             verticalSwipeDistance: 40,
             verticalSwipeVelocity: 100,
             bottomStripMetrics: S2BottomStripMetrics(
-                currentItemSize: 72,
-                neighborItemWidth: 52,
-                neighborItemHeight: 44,
-                itemSpacing: 8,
-                edgeFadeWidth: 24,
-                dragMinimumDistance: 4,
-                switchDistance: 44
+                currentItemSize: 30,
+                neighborItemWidth: 20,
+                neighborItemHeight: 30,
+                itemSpacing: 3,
+                currentItemGap: 13,
+                edgeFadeWidth: 18.7,
+                leadingInset: 20.3,
+                switchDistance: 23,
+                decelerationRate: 0.998,
+                expandDurationMilliseconds: 600,
+                collapseDurationMilliseconds: 100,
+                flickVelocityThreshold: 300
             )
         )!
     }
