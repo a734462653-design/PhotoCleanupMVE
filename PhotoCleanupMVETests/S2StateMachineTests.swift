@@ -1187,8 +1187,8 @@ final class S2StateMachineTests: XCTestCase {
     private var parameters: S2ResolvedParameters {
         S2ResolvedParameters(
             pinchMaxScaleFloor: 4,
-            pinchMaxScaleCeiling: 10,
-            pinchMaxScaleOneToOneMultiplier: 2,
+            pinchMaxScaleCeiling: 40,
+            pinchMaxScaleOneToOneMultiplier: 6,
             zoomSnapBackThreshold: 1.2,
             minDoubleTapScale: 2.5,
             doubleTapAnchorStrategy: .touchPoint,

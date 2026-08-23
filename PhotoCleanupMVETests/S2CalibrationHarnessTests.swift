@@ -828,7 +828,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(placeholder.contains("pinchMaxScaleOneToOneMultiplier"))
         XCTAssertEqual(
             S2CalibrationConfiguration.factoryPlaceholder.pinchMaxScaleOneToOneMultiplier,
-            2
+            6
         )
         XCTAssertEqual(
             S2CalibrationConfiguration.factoryPlaceholder.pinchMaxScaleFloor,
@@ -836,7 +836,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(
             S2CalibrationConfiguration.factoryPlaceholder.pinchMaxScaleCeiling,
-            10
+            40
         )
         for connection in connections {
             XCTAssertFalse(connection.specStatus.title.isEmpty)
