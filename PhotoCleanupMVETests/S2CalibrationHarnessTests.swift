@@ -3830,6 +3830,391 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNil(reading(offsetX: 500, dragVector: .zero))
     }
 
+    // IC-091 G186-A1（夹具驱动，真机未覆盖）：Nx 下内层 bounces / alwaysBounce* /
+    // bouncesZoom 全为 false（与 main 一致，P2/G154 未改）；内层方向锁静止态为 false，
+    // 外层分页容器的 isDirectionalLockEnabled 是既有配置，与内层无关。
+    func testIC091G186A1NxInnerBounceFlagsRemainFalse() {
+        let fixture = makeIC091NxFixture()
+        defer { fixture.window.isHidden = true }
+        let inner = fixture.page.zoomScrollView
+
+        XCTAssertEqual(inner.zoomScale, 2, accuracy: 0.000_001)
+        XCTAssertFalse(inner.bounces)
+        XCTAssertFalse(inner.alwaysBounceHorizontal)
+        XCTAssertFalse(inner.alwaysBounceVertical)
+        XCTAssertFalse(inner.bouncesZoom)
+        XCTAssertFalse(inner.isDirectionalLockEnabled)
+        XCTAssertTrue(inner.panGestureRecognizer.isEnabled)
+        XCTAssertTrue(fixture.controller.pagingScrollView.isDirectionalLockEnabled)
+        assertIC091InnerRestingProperties(inner)
+    }
+
+    // IC-091 G186-A2（夹具驱动，真机未覆盖）：起始距边 30 pt、程序驱动内层向边界滚动 80 pt。
+    // 内层 contentOffset.x == maxX（bounces=false 不越界）；交接点事件恰一次、窗口 open 恰一次；
+    // 窗口打开时调 apply：无 apply / layoutNativePages 来源的外层写入事件；
+    // 关闭窗口后再调 apply：恰有一次 apply 来源的写入。
+    func testIC091G186A2HandoffPointOpensWindowAndSuppressesApplyWrite() {
+        let fixture = makeIC091NxFixture(startRecording: true)
+        defer { fixture.window.isHidden = true }
+        defer { fixture.diagnostics.stop() }
+        let controller = fixture.controller
+        let machine = fixture.machine
+        let page = fixture.page
+        let inner = page.zoomScrollView
+        let paging = controller.pagingScrollView
+        let diagnostics = fixture.diagnostics
+        let minX = -inner.contentInset.left
+        let maxX = max(
+            minX,
+            inner.contentSize.width - inner.bounds.width + inner.contentInset.right
+        )
+        XCTAssertGreaterThan(maxX - minX, 80)
+
+        // 起始距右边界 30 pt，水平主导起手（不贴边）→ 内层开始平移，方向锁为真。
+        inner.setContentOffset(
+            CGPoint(x: maxX - 30, y: inner.contentOffset.y),
+            animated: false
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        let decision = inner.innerPanDecision(
+            translation: CGPoint(x: -80, y: 20),
+            velocity: CGPoint(x: -400, y: 100)
+        )
+        XCTAssertTrue(decision.innerShouldBegin)
+        XCTAssertTrue(decision.horizontalDominant)
+        XCTAssertFalse(decision.atEdgeInDragDirection)
+        XCTAssertTrue(decision.engagesDirectionalLock)
+        XCTAssertEqual(
+            tryUnwrap(decision.distanceToEdgeInDragDirection),
+            30,
+            accuracy: 0.000_001
+        )
+        XCTAssertTrue(inner.isDirectionalLockEnabled)
+
+        // 向边界方向滚动 80 pt（目标 maxX + 50）：内层停在 maxX，不越界。
+        inner.setContentOffset(
+            CGPoint(x: maxX + 50, y: inner.contentOffset.y),
+            animated: false
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        XCTAssertEqual(
+            inner.contentOffset.x,
+            maxX,
+            accuracy: 0.000_001,
+            "内层 bounces=false，程序写入越界值被原生钳回边界"
+        )
+
+        // 交接点：内层在拖动方向到边且仍受拖 → 事件一次、窗口 open 一次。
+        XCTAssertFalse(controller.isNxHandoffWindowOpen)
+        XCTAssertTrue(controller.noteInnerHandoffIfNeeded(
+            on: page,
+            dragVector: CGPoint(x: -80, y: 20),
+            isDragActive: true
+        ))
+        XCTAssertTrue(controller.isNxHandoffWindowOpen)
+        XCTAssertFalse(
+            controller.noteInnerHandoffIfNeeded(
+                on: page,
+                dragVector: CGPoint(x: -120, y: 20),
+                isDragActive: true
+            ),
+            "窗口已开则不重复判定"
+        )
+        XCTAssertEqual(ic091EventCount(diagnostics, name: "nxHandoffPoint"), 1)
+        XCTAssertEqual(
+            ic091EventDetails(diagnostics, name: "nxHandoffWindow")
+                .filter { $0.hasPrefix("state=open") }.count,
+            1
+        )
+        let handoffDetails = tryUnwrap(
+            ic091EventDetails(diagnostics, name: "nxHandoffPoint").first
+        )
+        XCTAssertTrue(handoffDetails.hasPrefix("direction=left；"))
+        XCTAssertTrue(handoffDetails.contains("distanceToEdge=0.000000；"))
+        XCTAssertTrue(handoffDetails.contains("zoomDirectionalLock=true；"))
+        XCTAssertTrue(handoffDetails.contains("outerIsTracking=false；"))
+        XCTAssertTrue(handoffDetails.contains("outerIsDragging=false；"))
+
+        // 窗口打开时调 apply：无 apply / layoutNativePages 来源的外层写入。
+        let suppressedSources: Set<String> = [
+            "S2NativePagerViewController.apply",
+            "S2NativePagerViewController.layoutNativePages"
+        ]
+        let writesBefore = ic091OuterWriteSources(diagnostics)
+            .filter { suppressedSources.contains($0) }.count
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: fixture.configuration
+        )
+        let writesDuringWindow = ic091OuterWriteSources(diagnostics)
+            .filter { suppressedSources.contains($0) }.count
+        XCTAssertEqual(
+            writesDuringWindow - writesBefore,
+            0,
+            "交接窗口内 App 不写外层偏移"
+        )
+        XCTAssertEqual(paging.contentOffset, paging.contentOffsetForPage(at: machine.currentIndex))
+
+        // 关闭窗口后再调 apply：恰有一次 apply 来源的写入。
+        controller.closeNxHandoffWindow(reason: .outerDeceleratingEnded)
+        XCTAssertFalse(controller.isNxHandoffWindowOpen)
+        XCTAssertEqual(
+            ic091EventDetails(diagnostics, name: "nxHandoffWindow")
+                .filter { $0.hasPrefix("state=close；reason=外层减速结束") }.count,
+            1
+        )
+        let applyWritesBefore = ic091OuterWriteSources(diagnostics)
+            .filter { $0 == "S2NativePagerViewController.apply" }.count
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: fixture.configuration
+        )
+        let applyWritesAfter = ic091OuterWriteSources(diagnostics)
+            .filter { $0 == "S2NativePagerViewController.apply" }.count
+        XCTAssertEqual(
+            applyWritesAfter - applyWritesBefore,
+            1,
+            "窗口关闭后下一次 apply 照常写静止偏移"
+        )
+    }
+
+    // IC-091 G186-A3（夹具驱动，真机未覆盖）：竖向主导起手（向量 (10, 80)）。
+    // 判定不启用方向锁；即使内层横向已到边也不产生交接点；内层属性与静止态逐项相等。
+    func testIC091G186A3VerticalDominantStartProducesNoHandoff() {
+        let fixture = makeIC091NxFixture(startRecording: true)
+        defer { fixture.window.isHidden = true }
+        defer { fixture.diagnostics.stop() }
+        let controller = fixture.controller
+        let page = fixture.page
+        let inner = page.zoomScrollView
+        let maxX = max(
+            -inner.contentInset.left,
+            inner.contentSize.width - inner.bounds.width + inner.contentInset.right
+        )
+
+        let decision = inner.innerPanDecision(
+            translation: CGPoint(x: 10, y: 80),
+            velocity: CGPoint(x: 50, y: 400)
+        )
+        XCTAssertTrue(decision.innerShouldBegin)
+        XCTAssertFalse(decision.horizontalDominant)
+        XCTAssertFalse(decision.atEdgeInDragDirection)
+        XCTAssertNil(decision.distanceToEdgeInDragDirection)
+        XCTAssertFalse(decision.engagesDirectionalLock)
+        XCTAssertFalse(inner.isDirectionalLockEnabled)
+
+        inner.setContentOffset(
+            CGPoint(x: maxX, y: inner.contentOffset.y),
+            animated: false
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        XCTAssertFalse(controller.noteInnerHandoffIfNeeded(
+            on: page,
+            dragVector: CGPoint(x: 10, y: 80),
+            isDragActive: true
+        ))
+        XCTAssertFalse(controller.isNxHandoffWindowOpen)
+        XCTAssertEqual(
+            ic091EventCount(fixture.diagnostics, name: "nxHandoffPoint"),
+            0
+        )
+        inner.clearGestureScopedInteractionState()
+        assertIC091InnerRestingProperties(inner)
+    }
+
+    // IC-091 G186-A4（夹具驱动，真机未覆盖）：手势级状态在五个收口点清零。
+    // 翻页结算、双击、捏合开始、复位 1x 四项走真实产品路径；手势结束一项调用
+    // `.ended` 分支所调的同一个清零入口（识别器状态无法在夹具内伪造，标注真机未覆盖）。
+    func testIC091G186A4GestureScopedStateIsClearedAtEveryBoundary() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+
+        // (1) 手势结束。
+        do {
+            let fixture = makeIC091NxFixture(configuration: configuration)
+            defer { fixture.window.isHidden = true }
+            let inner = fixture.page.zoomScrollView
+            ic091EngageDirectionalLock(inner)
+            inner.clearGestureScopedInteractionState()
+            assertIC091InnerRestingProperties(inner)
+        }
+
+        // (2) 翻页结算（外层减速结束 → finishNativePaging）。
+        do {
+            let fixture = makeIC091NxFixture(configuration: configuration)
+            defer { fixture.window.isHidden = true }
+            let controller = fixture.controller
+            let paging = controller.pagingScrollView
+            let inner = fixture.page.zoomScrollView
+            let startIndex = fixture.machine.currentIndex
+            ic091EngageDirectionalLock(inner)
+            let maxX = max(
+                -inner.contentInset.left,
+                inner.contentSize.width - inner.bounds.width +
+                    inner.contentInset.right
+            )
+            inner.setContentOffset(
+                CGPoint(x: maxX, y: inner.contentOffset.y),
+                animated: false
+            )
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+            XCTAssertTrue(controller.noteInnerHandoffIfNeeded(
+                on: fixture.page,
+                dragVector: CGPoint(x: -80, y: 20),
+                isDragActive: true
+            ))
+            XCTAssertTrue(controller.isNxHandoffWindowOpen)
+            controller.scrollViewWillBeginDragging(paging)
+            paging.setContentOffset(
+                paging.contentOffsetForPage(at: startIndex + 1),
+                animated: false
+            )
+            controller.scrollViewDidEndDecelerating(paging)
+            XCTAssertEqual(fixture.machine.currentIndex, startIndex + 1)
+            XCTAssertFalse(controller.isNxHandoffWindowOpen)
+            assertIC091InnerRestingProperties(inner)
+            let newInner = tryUnwrap(
+                controller.pageControllers[fixture.machine.currentIndex]
+            ).zoomScrollView
+            assertIC091InnerRestingProperties(newInner)
+        }
+
+        // (3) 双击。
+        do {
+            let fixture = makeIC091NxFixture(configuration: configuration)
+            defer { fixture.window.isHidden = true }
+            let inner = fixture.page.zoomScrollView
+            ic091EngageDirectionalLock(inner)
+            _ = fixture.controller.handleDoubleTap(
+                on: fixture.page,
+                at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2)
+            )
+            assertIC091InnerRestingProperties(inner)
+            fixture.page.finishActiveDoubleTapTransition()
+        }
+
+        // (4) 捏合开始。
+        do {
+            let fixture = makeIC091NxFixture(configuration: configuration)
+            defer { fixture.window.isHidden = true }
+            let inner = fixture.page.zoomScrollView
+            ic091EngageDirectionalLock(inner)
+            fixture.page.scrollViewWillBeginZooming(
+                inner,
+                with: inner.zoomContentView
+            )
+            assertIC091InnerRestingProperties(inner)
+        }
+
+        // (5) 复位 1x。
+        do {
+            let fixture = makeIC091NxFixture(configuration: configuration)
+            defer { fixture.window.isHidden = true }
+            let inner = fixture.page.zoomScrollView
+            ic091EngageDirectionalLock(inner)
+            inner.applyNativeState(scale: 1, viewportOffset: .zero)
+            XCTAssertEqual(inner.zoomScale, 1, accuracy: 0.000_001)
+            XCTAssertFalse(inner.panGestureRecognizer.isEnabled)
+            assertIC091InnerRestingProperties(inner)
+        }
+    }
+
+    // IC-091 G186-A5（夹具驱动，真机未覆盖）：手段 M1 的方向锁只作用于本次手势。
+    // 水平主导起手（不贴边）→ 真；清零（手势结束）→ 假；竖向主导起手 → 始终为假。
+    func testIC091G186A5DirectionalLockIsScopedToOneGesture() {
+        let fixture = makeIC091NxFixture()
+        defer { fixture.window.isHidden = true }
+        let inner = fixture.page.zoomScrollView
+        let maxX = max(
+            -inner.contentInset.left,
+            inner.contentSize.width - inner.bounds.width + inner.contentInset.right
+        )
+        inner.setContentOffset(
+            CGPoint(x: maxX / 2, y: inner.contentOffset.y),
+            animated: false
+        )
+        XCTAssertFalse(inner.isDirectionalLockEnabled)
+
+        inner.innerPanDecision(
+            translation: CGPoint(x: -80, y: 20),
+            velocity: CGPoint(x: -400, y: 100)
+        )
+        XCTAssertTrue(inner.isDirectionalLockEnabled)
+        XCTAssertFalse(
+            inner.hasResolvedInnerPanDecisionForActiveGesture,
+            "判定标志只由 gestureRecognizerShouldBegin / pan .began 两个钩子置位，" +
+                "夹具直接调判定入口不置位"
+        )
+        inner.clearGestureScopedInteractionState()
+        XCTAssertFalse(inner.isDirectionalLockEnabled)
+
+        inner.innerPanDecision(
+            translation: CGPoint(x: 20, y: -80),
+            velocity: CGPoint(x: 100, y: -400)
+        )
+        XCTAssertFalse(inner.isDirectionalLockEnabled)
+        inner.clearGestureScopedInteractionState()
+        XCTAssertFalse(inner.isDirectionalLockEnabled)
+    }
+
+    // IC-091 G186-A6（夹具驱动，真机未覆盖）：贴边起手（向量 (−80, 40)）。
+    // 判定与 IC-089 相同——innerShouldBegin=false、水平主导、贴边、距离 0；
+    // 不启用方向锁、不产生交接点，即不进入本卡新路径。
+    func testIC091G186A6EdgeStartKeepsIC089Decision() {
+        let fixture = makeIC091NxFixture(startRecording: true)
+        defer { fixture.window.isHidden = true }
+        defer { fixture.diagnostics.stop() }
+        let controller = fixture.controller
+        let page = fixture.page
+        let inner = page.zoomScrollView
+        let maxX = max(
+            -inner.contentInset.left,
+            inner.contentSize.width - inner.bounds.width + inner.contentInset.right
+        )
+        inner.setContentOffset(
+            CGPoint(x: maxX, y: inner.contentOffset.y),
+            animated: false
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+
+        let decision = inner.innerPanDecision(
+            translation: CGPoint(x: -80, y: 40),
+            velocity: CGPoint(x: -400, y: 200)
+        )
+        XCTAssertFalse(decision.innerShouldBegin)
+        XCTAssertTrue(decision.horizontalDominant)
+        XCTAssertTrue(decision.atEdgeInDragDirection)
+        XCTAssertEqual(
+            tryUnwrap(decision.distanceToEdgeInDragDirection),
+            0,
+            accuracy: 0.000_001
+        )
+        XCTAssertFalse(decision.engagesDirectionalLock)
+        XCTAssertFalse(inner.isDirectionalLockEnabled)
+        XCTAssertEqual(tryUnwrap(inner.lastInnerPanDecision), decision)
+        // 事件 details 的前缀与 IC-089 逐项一致（新增项追加在末尾）。
+        let details = tryUnwrap(
+            ic091EventDetails(fixture.diagnostics, name: "nxInnerPanDecision").last
+        )
+        XCTAssertTrue(details.hasPrefix(
+            "innerShouldBegin=false；horizontalDominant=true；" +
+                "atEdgeInDragDirection=true；distanceToEdge=0.000000；"
+        ))
+        XCTAssertTrue(details.hasSuffix("engagesDirectionalLock=false"))
+        // 内层 pan 未开始 → 不受拖 → 无交接点。
+        XCTAssertFalse(controller.noteInnerHandoffIfNeeded(
+            on: page,
+            dragVector: CGPoint(x: -80, y: 40),
+            isDragActive: false
+        ))
+        XCTAssertFalse(controller.isNxHandoffWindowOpen)
+        XCTAssertEqual(
+            ic091EventCount(fixture.diagnostics, name: "nxHandoffPoint"),
+            0
+        )
+    }
+
     // B1（IC-082 R3 删除）：自定义溢出投影已移除，Nx 边界后的外层位移由 UIKit 嵌套滚动交接产生；
     // 对应断言见 testIC082G154…。
 
@@ -7871,6 +8256,197 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         scrollView.contentOffset = scrollView.contentOffsetForPage(at: 1)
         return scrollView
+    }
+
+    /// IC-091 G186：Nx 夹具——300×600 视口、s=2、三张资产，当前页为第 1 张。
+    private func makeIC091NxFixture(
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder,
+        startRecording: Bool = false
+    ) -> (
+        window: UIWindow,
+        machine: S2StateMachine,
+        controller: S2NativePagerViewController,
+        page: S2NativeZoomPageController,
+        diagnostics: S2OnDeviceTransitionDiagnosticsCoordinator,
+        configuration: S2CalibrationConfiguration
+    ) {
+        let machine = makeMachine(scale: 2, configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(
+            frame: CGRect(origin: .zero, size: physicalSize)
+        )
+        window.rootViewController = controller
+        window.isHidden = false
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .nxEdgePaging
+        if startRecording {
+            diagnostics.start()
+        }
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        return (window, machine, controller, page, diagnostics, configuration)
+    }
+
+    /// IC-091 G186：把内层置于「水平主导、起始不贴边」的起手态，方向锁随之为真。
+    private func ic091EngageDirectionalLock(
+        _ inner: S2NativeZoomScrollView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let maxX = max(
+            -inner.contentInset.left,
+            inner.contentSize.width - inner.bounds.width + inner.contentInset.right
+        )
+        inner.setContentOffset(
+            CGPoint(x: maxX / 2, y: inner.contentOffset.y),
+            animated: false
+        )
+        inner.innerPanDecision(
+            translation: CGPoint(x: -80, y: 20),
+            velocity: CGPoint(x: -400, y: 100)
+        )
+        XCTAssertTrue(
+            inner.isDirectionalLockEnabled,
+            "前置：方向锁应已为真",
+            file: file,
+            line: line
+        )
+    }
+
+    /// IC-091 G186：内层静止态属性基准。参照实例走的是与产品同一条
+    /// `configureNativeZoom` 路径，因此等价于 main 的静止态取值。
+    private func assertIC091InnerRestingProperties(
+        _ inner: S2NativeZoomScrollView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let reference = makeNativeZoomScrollView()
+        XCTAssertEqual(
+            inner.bounces,
+            reference.bounces,
+            "bounces",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            inner.alwaysBounceHorizontal,
+            reference.alwaysBounceHorizontal,
+            "alwaysBounceHorizontal",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            inner.alwaysBounceVertical,
+            reference.alwaysBounceVertical,
+            "alwaysBounceVertical",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            inner.bouncesZoom,
+            reference.bouncesZoom,
+            "bouncesZoom",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            inner.isDirectionalLockEnabled,
+            reference.isDirectionalLockEnabled,
+            "isDirectionalLockEnabled",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            inner.isPagingEnabled,
+            reference.isPagingEnabled,
+            "isPagingEnabled",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            inner.delaysContentTouches,
+            reference.delaysContentTouches,
+            "delaysContentTouches",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            inner.contentInsetAdjustmentBehavior,
+            reference.contentInsetAdjustmentBehavior,
+            "contentInsetAdjustmentBehavior",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            inner.showsHorizontalScrollIndicator,
+            reference.showsHorizontalScrollIndicator,
+            "showsHorizontalScrollIndicator",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            inner.showsVerticalScrollIndicator,
+            reference.showsVerticalScrollIndicator,
+            "showsVerticalScrollIndicator",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            inner.minimumZoomScale,
+            reference.minimumZoomScale,
+            accuracy: 0.000_001,
+            "minimumZoomScale",
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(
+            inner.hasResolvedInnerPanDecisionForActiveGesture,
+            "hasResolvedInnerPanDecisionForActiveGesture",
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(
+            reference.hasResolvedInnerPanDecisionForActiveGesture,
+            "参照实例的判定标志也应为假",
+            file: file,
+            line: line
+        )
+    }
+
+    private func ic091EventDetails(
+        _ diagnostics: S2OnDeviceTransitionDiagnosticsCoordinator,
+        name: String
+    ) -> [String] {
+        diagnostics.recordedEntries.compactMap { entry in
+            if case let .event(eventName, _, details) = entry.payload,
+               eventName == name {
+                return details
+            }
+            return nil
+        }
+    }
+
+    private func ic091EventCount(
+        _ diagnostics: S2OnDeviceTransitionDiagnosticsCoordinator,
+        name: String
+    ) -> Int {
+        ic091EventDetails(diagnostics, name: name).count
+    }
+
+    private func ic091OuterWriteSources(
+        _ diagnostics: S2OnDeviceTransitionDiagnosticsCoordinator
+    ) -> [String] {
+        diagnostics.recordedEntries.compactMap { entry in
+            if case let .event(name, source, _) = entry.payload,
+               name == "外层setContentOffset" {
+                return source
+            }
+            return nil
+        }
     }
 
     private func tryUnwrap<T>(

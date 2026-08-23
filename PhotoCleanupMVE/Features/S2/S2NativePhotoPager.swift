@@ -222,8 +222,8 @@ final class S2NativePagingScrollView: UIScrollView {
     }
 }
 
-/// IC-091 R1（判定规则复制自 IC-089 `7178de4`，追加 `engagesDirectionalLock` 与
-/// `handoffReading`；本提交只提供纯函数与埋点，不接线）：Nx 下内层单指拖动的起始判定。
+/// IC-091（判定规则复制自 IC-089 `7178de4`，追加 `engagesDirectionalLock` 与
+/// `handoffReading`）：Nx 下内层单指拖动的起始判定。
 /// 拖动开始时若水平分量占主导且缩放后内容在拖动方向上的边界已与视口边界重合
 /// （≤ `edgeTolerance`），内层 pan **不开始**，整个手势交给外层分页容器接管——
 /// 这是「起始贴边」路径，IC-091 不改动它。若水平主导但**尚未贴边**，内层照常平移，
@@ -364,6 +364,12 @@ final class S2NativeZoomScrollView: UIScrollView {
     private(set) var lastMinimumZoomScaleAnimationWasAnimated: Bool?
     private(set) var independentContentOffsetWriteCount = 0
     private(set) var isApplyingNativeState = false
+    /// IC-091 R2：最近一次内层 pan 起始判定。诊断留痕，不随手势清零。
+    private(set) var lastInnerPanDecision: S2NxInnerPanDecision?
+    /// IC-091 R2：本次手势内是否已做过起始判定。`gestureRecognizerShouldBegin` 在真机上
+    /// 未必被调用（IC-089 两段场景 E 录制中 `nxInnerPanDecision` 一次都没出现），因此
+    /// pan 识别器的 `.began` 回调上补一次；此标志保证同一次手势只判定一次、只记一条事件。
+    private(set) var hasResolvedInnerPanDecisionForActiveGesture = false
     private var diagnosticPageIndex: Int?
     private var diagnosticAssetLocalIdentifier: String?
     weak var transitionDiagnostics:
@@ -783,6 +789,115 @@ final class S2NativeZoomScrollView: UIScrollView {
         if panGestureRecognizer.isEnabled != shouldEnable {
             panGestureRecognizer.isEnabled = shouldEnable
         }
+        // IC-091 R2：复位到 1x 时手势级状态一并清零。1x 下内层 pan 本就禁用，
+        // 方向锁与判定标志不得跨状态残留。`bounces` 在所有状态下保持 false（未改）。
+        if !shouldEnable {
+            clearGestureScopedInteractionState()
+        }
+    }
+
+    /// IC-091 R2（手段 M1）：内层 pan 的起始判定走纯函数 `S2NxEdgeHandoffRule`。
+    /// 起始贴边且水平主导时拒绝内层 pan，整个手势交外层分页容器接管——这条是
+    /// **起始贴边路径**，IC-091 不改动它；起始不贴边且水平主导时内层照常平移，
+    /// 并为**本次手势**启用方向锁，使内层到横向边界后在运动方向上完全不可滚动，
+    /// 交接由 UIKit 原生嵌套滚动完成。
+    override func gestureRecognizerShouldBegin(
+        _ gestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        guard super.gestureRecognizerShouldBegin(gestureRecognizer) else {
+            return false
+        }
+        guard gestureRecognizer === panGestureRecognizer else {
+            return true
+        }
+        let decision = resolveInnerPanDecision(
+            source: "S2NativeZoomScrollView.gestureRecognizerShouldBegin"
+        )
+        if !decision.innerShouldBegin {
+            // 内层 pan 不开始，本次手势不会再有 `.began` / `.ended` 回调来清零，
+            // 就地清零，避免判定标志跨手势残留。
+            clearGestureScopedInteractionState()
+        }
+        return decision.innerShouldBegin
+    }
+
+    /// IC-091 R2：按当前几何求内层 pan 起始判定、按判定设置本次手势的方向锁并记录。
+    /// 夹具可直接以向量调用；真实手势路径由 `gestureRecognizerShouldBegin` 与
+    /// pan 识别器 `.began` 回调进入（`source` 区分两者）。
+    @discardableResult
+    func innerPanDecision(
+        translation: CGPoint,
+        velocity: CGPoint,
+        source: String = "S2NativeZoomScrollView.gestureRecognizerShouldBegin"
+    ) -> S2NxInnerPanDecision {
+        let decision = S2NxEdgeHandoffRule.innerPanDecision(
+            zoomScale: zoomScale,
+            minimumZoomScale: minimumZoomScale,
+            contentOffset: contentOffset,
+            contentSize: contentSize,
+            viewportSize: bounds.size,
+            contentInset: contentInset,
+            translation: translation,
+            velocity: velocity
+        )
+        lastInnerPanDecision = decision
+        setGestureDirectionalLock(decision.engagesDirectionalLock)
+        transitionDiagnostics?.recordNxInnerPanDecision(
+            decision,
+            translation: translation,
+            velocity: velocity,
+            source: source,
+            pageIndex: diagnosticPageIndex,
+            assetLocalIdentifier: diagnosticAssetLocalIdentifier
+        )
+        return decision
+    }
+
+    /// IC-091 R2：手势级状态清零。手势结束 / 取消、翻页结算、双击、捏合开始、复位 1x
+    /// 各调用一次；调用后内层属性与静止态逐项相等（方向锁为 false、判定标志为 false）。
+    func clearGestureScopedInteractionState() {
+        hasResolvedInnerPanDecisionForActiveGesture = false
+        setGestureDirectionalLock(false)
+    }
+
+    @discardableResult
+    private func resolveInnerPanDecision(
+        source: String
+    ) -> S2NxInnerPanDecision {
+        hasResolvedInnerPanDecisionForActiveGesture = true
+        return innerPanDecision(
+            translation: panGestureRecognizer.translation(in: self),
+            velocity: panGestureRecognizer.velocity(in: self),
+            source: source
+        )
+    }
+
+    /// IC-091 R2：方向锁只在本次手势内为真。全局方向锁是禁止项——静止态、
+    /// 竖向主导起手与 1x 下此值恒为 false，系统 Nx 的二维自由平移不受影响。
+    private func setGestureDirectionalLock(_ isEnabled: Bool) {
+        if isDirectionalLockEnabled != isEnabled {
+            isDirectionalLockEnabled = isEnabled
+        }
+    }
+
+    @objc private func handleInnerPanStateChange(
+        _ recognizer: UIPanGestureRecognizer
+    ) {
+        guard recognizer === panGestureRecognizer else {
+            return
+        }
+        switch recognizer.state {
+        case .began:
+            if !hasResolvedInnerPanDecisionForActiveGesture {
+                resolveInnerPanDecision(
+                    source: "S2NativeZoomScrollView.handleInnerPanStateChange"
+                )
+            }
+        case .ended, .cancelled, .failed:
+            clearGestureScopedInteractionState()
+        default:
+            break
+        }
     }
 
     func writePhotoGeometry(
@@ -938,6 +1053,12 @@ final class S2NativeZoomScrollView: UIScrollView {
         backgroundColor = .clear
         clipsToBounds = true
         delaysContentTouches = false
+        // IC-091 R2：内层 pan 的状态回调用于补做起始判定并在手势结束时清零手势级状态。
+        // 只加 target，不改识别器的任何属性，静止态与 main 一致。
+        panGestureRecognizer.addTarget(
+            self,
+            action: #selector(handleInnerPanStateChange(_:))
+        )
     }
 }
 
@@ -1239,6 +1360,13 @@ final class S2NativeZoomPageController: UIViewController,
         zoomScrollView.addGestureRecognizer(singleTapRecognizer)
         zoomScrollView.addGestureRecognizer(doubleTapRecognizer)
         zoomScrollView.addGestureRecognizer(verticalSwipeRecognizer)
+
+        // IC-091 R2：内层 pan 结束 / 取消时关闭交接窗口。判定与方向锁本身在
+        // `S2NativeZoomScrollView` 内处理，这里只负责把窗口状态交回外层控制器。
+        zoomScrollView.panGestureRecognizer.addTarget(
+            self,
+            action: #selector(handleInnerPanForHandoff(_:))
+        )
     }
 
     override func traitCollectionDidChange(
@@ -2029,8 +2157,13 @@ final class S2NativeZoomPageController: UIViewController,
         with view: UIView?
     ) {
         let pinchState = scrollView.pinchGestureRecognizer?.state
-        guard scrollView === zoomScrollView,
-              pinchState == .began || pinchState == .changed,
+        guard scrollView === zoomScrollView else {
+            return
+        }
+        // IC-091 R2：捏合开始即清零内层手势级状态（方向锁与判定标志）。
+        // 判定条件与原实现逐项相同，只把第一项拆出来以插入清零。
+        zoomScrollView.clearGestureScopedInteractionState()
+        guard pinchState == .began || pinchState == .changed,
               owner?.beginNativePinch(on: self) == true else {
             return
         }
@@ -2064,6 +2197,17 @@ final class S2NativeZoomPageController: UIViewController,
               !zoomScrollView.isApplyingNativeState else {
             return
         }
+        // IC-091 R2：交接点判据必须先于 `reportNativeViewport` 过一遍——后者经
+        // `@Published` 触发 SwiftUI 重进 `apply()`，交接窗口若还没打开，这一帧的
+        // 外层偏移就会被写回静止位置（`Q2.txt` t=0.691～0.705 的形态）。
+        // 判据只读几何，不写任何偏移。
+        let panRecognizer = zoomScrollView.panGestureRecognizer
+        owner?.noteInnerHandoffIfNeeded(
+            on: self,
+            dragVector: panRecognizer.translation(in: zoomScrollView),
+            isDragActive: panRecognizer.state == .began ||
+                panRecognizer.state == .changed
+        )
         owner?.reportNativeViewport(from: self)
     }
 
@@ -2272,6 +2416,18 @@ final class S2NativeZoomPageController: UIViewController,
         )
     }
 
+    /// IC-091 R2：内层 pan 结束 / 取消 / 失败时关闭交接窗口。
+    @objc private func handleInnerPanForHandoff(
+        _ recognizer: UIPanGestureRecognizer
+    ) {
+        switch recognizer.state {
+        case .ended, .cancelled, .failed:
+            owner?.closeNxHandoffWindow(reason: .innerGestureEnded, from: self)
+        default:
+            break
+        }
+    }
+
     @objc private func handleVerticalSwipe(_ recognizer: UIPanGestureRecognizer) {
         switch recognizer.state {
         case .began:
@@ -2323,6 +2479,11 @@ final class S2NativePagerViewController: UIViewController,
     private var pendingPresentationTapPageIndex: Int?
     private var presentationTapStartTimestamp: CFTimeInterval?
     private var isHandlingOuterLayoutCallback = false
+    /// IC-091 R2/R3：交接窗口。由交接点（内层在拖动方向到边且仍受拖的第一帧）打开，
+    /// 由外层手势结束、内层手势结束 / 取消、翻页结算或交互状态复位关闭。
+    /// 打开期间 `apply` 与 `layoutNativePages` 都不写外层 `contentOffset`。
+    private(set) var isNxHandoffWindowOpen = false
+    private var nxHandoffPageIndex: Int?
     private(set) var nativeZoomReturnInvocationCount = 0
     private(set) var presentationTapLayoutReading =
         S2PresentationTapLayoutReading()
@@ -2442,7 +2603,12 @@ final class S2NativePagerViewController: UIViewController,
 
         settledIndex = machine.currentIndex
         layoutNativePages()
-        if !pagingScrollView.isTracking &&
+        // IC-091 R3：交接窗口打开期间不写外层偏移。既有的 tracking / dragging /
+        // decelerating 三个守卫在「内层已到边、外层 pan 尚未开始」的那几帧全部为 false
+        // （`Q2.txt` t=0.691～0.705），中途交接正是在这里被写回静止位置钉死的。
+        // 窗口关闭后的下一次 `apply` 照常写静止偏移。
+        if !isNxHandoffWindowOpen &&
+            !pagingScrollView.isTracking &&
             !pagingScrollView.isDragging &&
             !pagingScrollView.isDecelerating {
             writePagingContentOffset(
@@ -2578,7 +2744,10 @@ final class S2NativePagerViewController: UIViewController,
     }
 
     func resetInteractionState() {
+        // IC-091 R2/R3：交互状态复位一并清零手势级状态与交接窗口。
+        closeNxHandoffWindow(reason: .interactionStateReset)
         pageControllers.values.forEach {
+            $0.zoomScrollView.clearGestureScopedInteractionState()
             $0.finishActiveDoubleTapTransition()
             $0.doubleTapTransitionObserver = nil
         }
@@ -2774,6 +2943,8 @@ final class S2NativePagerViewController: UIViewController,
               page.index == machine.currentIndex else {
             return false
         }
+        // IC-091 R2：双击即清零内层手势级状态（方向锁与判定标志）。
+        page.zoomScrollView.clearGestureScopedInteractionState()
         let wasZoomed = machine.zoomState == .nX
         guard machine.handleNativeDoubleTap(
             targetScale: page.doubleTapTargetScale
@@ -2814,6 +2985,87 @@ final class S2NativePagerViewController: UIViewController,
             return false
         }
         return machine.beginPinch()
+    }
+
+    /// IC-091 R2：交接点判据。内层每帧滚动过一次；只读几何、只记录，不写任何偏移。
+    /// `dragVector` / `isDragActive` 由调用方给出——真实路径取内层 pan 识别器的位移与
+    /// 状态，夹具可直接以向量驱动。返回值为本次是否判定为交接点（窗口随之打开）。
+    @discardableResult
+    func noteInnerHandoffIfNeeded(
+        on page: S2NativeZoomPageController,
+        dragVector: CGPoint,
+        isDragActive: Bool
+    ) -> Bool {
+        guard let machine,
+              page.index == machine.currentIndex,
+              !isNxHandoffWindowOpen,
+              !page.zoomScrollView.isApplyingNativeState else {
+            return false
+        }
+        let inner = page.zoomScrollView
+        guard let reading = S2NxEdgeHandoffRule.handoffReading(
+            zoomScale: inner.zoomScale,
+            minimumZoomScale: inner.minimumZoomScale,
+            contentOffset: inner.contentOffset,
+            contentSize: inner.contentSize,
+            viewportSize: inner.bounds.size,
+            contentInset: inner.contentInset,
+            dragVector: dragVector,
+            isDragActive: isDragActive
+        ), reading.reachedEdge else {
+            return false
+        }
+        transitionDiagnostics?.recordNxHandoffPoint(
+            movingLeft: reading.movingLeft,
+            innerContentOffset: inner.contentOffset,
+            distanceToEdge: reading.distanceToEdge,
+            outerContentOffsetX: pagingScrollView.contentOffset.x,
+            outerIsTracking: pagingScrollView.isTracking,
+            outerIsDragging: pagingScrollView.isDragging,
+            directionalLock: inner.isDirectionalLockEnabled,
+            pageIndex: page.index,
+            assetLocalIdentifier: page.diagnosticAssetLocalIdentifier
+        )
+        isNxHandoffWindowOpen = true
+        nxHandoffPageIndex = page.index
+        transitionDiagnostics?.recordNxHandoffWindow(
+            isOpen: true,
+            reason: S2NxHandoffWindowReason.handoffPoint.rawValue,
+            outerContentOffsetX: pagingScrollView.contentOffset.x,
+            outerIsTracking: pagingScrollView.isTracking,
+            outerIsDragging: pagingScrollView.isDragging,
+            pageIndex: page.index,
+            assetLocalIdentifier: page.diagnosticAssetLocalIdentifier
+        )
+        return true
+    }
+
+    /// IC-091 R2/R3：关闭交接窗口。未打开时为零副作用（不记录事件）。
+    /// 传入 `from` 时只有该页打开的窗口才被关闭。
+    func closeNxHandoffWindow(
+        reason: S2NxHandoffWindowReason,
+        from page: S2NativeZoomPageController? = nil
+    ) {
+        guard isNxHandoffWindowOpen else {
+            return
+        }
+        if let page, page.index != nxHandoffPageIndex {
+            return
+        }
+        let pageIndex = nxHandoffPageIndex
+        isNxHandoffWindowOpen = false
+        nxHandoffPageIndex = nil
+        transitionDiagnostics?.recordNxHandoffWindow(
+            isOpen: false,
+            reason: reason.rawValue,
+            outerContentOffsetX: pagingScrollView.contentOffset.x,
+            outerIsTracking: pagingScrollView.isTracking,
+            outerIsDragging: pagingScrollView.isDragging,
+            pageIndex: pageIndex,
+            assetLocalIdentifier: pageIndex.flatMap {
+                pageControllers[$0]?.diagnosticAssetLocalIdentifier
+            }
+        )
     }
 
     func reportNativeViewport(from page: S2NativeZoomPageController) {
@@ -2941,6 +3193,9 @@ final class S2NativePagerViewController: UIViewController,
         captureOuterGestureReading()
         let handledVerticalGesture = handleOneXVerticalGestureIfNeeded()
         if handledVerticalGesture || !decelerate {
+            // IC-091 R3：手势就此结束（不进入减速），交接窗口关闭，
+            // 随后的原生分页结算照常写外层偏移。
+            closeNxHandoffWindow(reason: .outerDragEndedWithoutDeceleration)
             finishNativePaging()
         }
     }
@@ -2949,6 +3204,8 @@ final class S2NativePagerViewController: UIViewController,
         guard scrollView === pagingScrollView else {
             return
         }
+        // IC-091 R3：减速结束即本次手势结算完成，交接窗口关闭。
+        closeNxHandoffWindow(reason: .outerDeceleratingEnded)
         finishNativePaging()
     }
 
@@ -3005,7 +3262,10 @@ final class S2NativePagerViewController: UIViewController,
                 )
             }
         }
-        if !pagingScrollView.isTracking &&
+        // IC-091 R3：交接窗口打开期间 `layoutNativePages` 照常执行页布局与内层原生
+        // 状态，但不改外层 `contentOffset`。
+        if !isNxHandoffWindowOpen &&
+            !pagingScrollView.isTracking &&
             !pagingScrollView.isDragging &&
             !pagingScrollView.isDecelerating {
             let settledOffset = pagingScrollView.contentOffsetForPage(
@@ -3071,6 +3331,12 @@ final class S2NativePagerViewController: UIViewController,
     private func finishNativePaging() {
         guard let machine else {
             return
+        }
+        // IC-091 R2/R3：翻页结算即清零手势级状态并关闭交接窗口，
+        // 之后的 `synchronizeNativeStateToMachine` 才能照常写静止偏移。
+        closeNxHandoffWindow(reason: .pagingSettled)
+        pageControllers.values.forEach {
+            $0.zoomScrollView.clearGestureScopedInteractionState()
         }
         let targetIndex = pagingScrollView.pageIndex(
             forContentOffsetX: pagingScrollView.contentOffset.x
@@ -3808,6 +4074,17 @@ final class S2GeometryDiagnosticsRun {
     private func visibilityText(_ value: S2InterfaceVisibility) -> String {
         value == .visible ? "显示" : "隐藏"
     }
+}
+
+/// IC-091 R2/R3：交接窗口的开 / 关原因。取值只进入场景 E 导出文本的 `reason=` 字段，
+/// 与其余导出词表同段声明，不是用户可见文案。
+enum S2NxHandoffWindowReason: String {
+    case handoffPoint = "交接点"
+    case outerDragEndedWithoutDeceleration = "外层拖动结束不减速"
+    case outerDeceleratingEnded = "外层减速结束"
+    case innerGestureEnded = "内层手势结束"
+    case pagingSettled = "翻页结算"
+    case interactionStateReset = "交互状态复位"
 }
 
 enum S2OnDeviceTransitionScenario: String, CaseIterable, Identifiable {
