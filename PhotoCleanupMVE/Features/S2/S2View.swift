@@ -662,7 +662,8 @@ struct S2View: View {
                                 .hapticOnPhotoSwitch,
                             source: .bottomStripDrag
                         )
-                    }
+                    },
+                    assetAspectRatio: assetAspectRatio
                 )
                 .frame(height: bottomStripHeight)
                 .background(.regularMaterial)
@@ -1608,6 +1609,29 @@ private struct S2CalibrationSliderRow: View {
     }
 }
 
+/// IC-083：横栏缩略图的裁满布局——内容帧按资产宽高比放大到恰好覆盖项目帧（aspectFill），
+/// 再以项目帧居中裁切；当前项方形、邻居矩形的项目帧尺寸规则不变。
+enum S2BottomStripItemLayout {
+    /// 覆盖 `itemSize` 的最小内容尺寸；`aspectRatio` 为宽 ÷ 高，非法时退回项目帧本身。
+    static func fillSize(itemSize: CGSize, aspectRatio: CGFloat) -> CGSize {
+        guard itemSize.width > 0, itemSize.height > 0,
+              aspectRatio.isFinite, aspectRatio > 0 else {
+            return itemSize
+        }
+        let widthLimited = CGSize(
+            width: itemSize.width,
+            height: itemSize.width / aspectRatio
+        )
+        if widthLimited.height >= itemSize.height {
+            return widthLimited
+        }
+        return CGSize(
+            width: itemSize.height * aspectRatio,
+            height: itemSize.height
+        )
+    }
+}
+
 struct S2BottomStripView: View {
     @ObservedObject var machine: S2StateMachine
 
@@ -1615,9 +1639,23 @@ struct S2BottomStripView: View {
     let markSize: CGFloat
     let itemContent: S2View.StripItemContent
     let onPhotoSwitch: () -> Void
+    /// IC-083：资产宽高比（宽 ÷ 高），用于缩略图裁满；默认 1 保持既有夹具构造不变。
+    var assetAspectRatio: (String) -> CGFloat = { _ in 1 }
 
     @State private var residualTranslation: CGFloat = 0
     @State private var previousTranslation: CGFloat?
+
+    /// IC-083：项目帧（裁切后的可见内容帧）与裁满内容帧，供夹具断言。
+    func itemFrameSize(at index: Int) -> CGSize {
+        CGSize(width: itemWidth(at: index), height: itemHeight(at: index))
+    }
+
+    func fillContentSize(at index: Int) -> CGSize {
+        S2BottomStripItemLayout.fillSize(
+            itemSize: itemFrameSize(at: index),
+            aspectRatio: assetAspectRatio(machine.orderedAssetIDs[index])
+        )
+    }
 
     func markPresentation(for assetID: String) -> S2BottomStripMarkPresentation {
         S2BottomStripMarkPresentation.make(
@@ -1645,6 +1683,8 @@ struct S2BottomStripView: View {
                     Array(machine.orderedAssetIDs.enumerated()),
                     id: \.element
                 ) { index, assetID in
+                    let itemSize = itemFrameSize(at: index)
+                    let fillSize = fillContentSize(at: index)
                     itemContent(
                         S2BottomStripItemPresentation(
                             assetID: assetID,
@@ -1655,10 +1695,10 @@ struct S2BottomStripView: View {
                             stripState: machine.bottomStripState
                         )
                     )
-                    .frame(
-                        width: itemWidth(at: index),
-                        height: itemHeight(at: index)
-                    )
+                    // IC-083：内容先放大到覆盖项目帧（aspectFill），再以项目帧居中裁切。
+                    .frame(width: fillSize.width, height: fillSize.height)
+                    .frame(width: itemSize.width, height: itemSize.height)
+                    .clipped()
                     .overlay(alignment: .topTrailing) {
                         stripMark(for: assetID)
                     }

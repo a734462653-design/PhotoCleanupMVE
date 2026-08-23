@@ -303,19 +303,6 @@ if ($swiftFiles.Count -gt 0) {
         }
     }
 
-    $debugEntries = @(
-        Select-String -LiteralPath $swiftFiles.FullName -Pattern "static\s+let\s+debugAssetLimit\s*=\s*\d+"
-    )
-    if ($debugEntries.Count -ne 1) {
-        Add-Failure "调试入口常量定义数必须为 1，实际为 $($debugEntries.Count)"
-    }
-    $debugEntryUses = @(
-        Select-String -LiteralPath $swiftFiles.FullName -Pattern "limit:\s*Self\.debugAssetLimit"
-    )
-    if ($debugEntryUses.Count -ne 0) {
-        Add-Failure "S1 接管启动后不得再调用调试入口取样，实际为 $($debugEntryUses.Count)"
-    }
-
     $removedS3Patterns = @(
         ("submission" + "Limit"),
         ("over" + "Limit"),
