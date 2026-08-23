@@ -3850,9 +3850,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // IC-091 G186-A2（夹具驱动，真机未覆盖）：起始距边 30 pt、程序驱动内层向边界滚动 80 pt。
-    // 内层 contentOffset.x == maxX（bounces=false 不越界）；交接点事件恰一次、窗口 open 恰一次；
-    // 窗口打开时调 apply：无 apply / layoutNativePages 来源的外层写入事件；
-    // 关闭窗口后再调 apply：恰有一次 apply 来源的写入。
+    // 卡内「内层 contentOffset.x == maxX（不越界）」一句的前提已被 CI #157 实测推翻——
+    // bounces=false 不钳制程序写入的越界偏移，详见本测试内注释与 IC-091 自验报告；
+    // 这里改为「探针记录 UIKit 实际行为 + 断言产品钳制层不改横向边界偏移」。
+    // 其余不变：交接点事件恰一次、窗口 open 恰一次；窗口打开时调 apply 无
+    // apply / layoutNativePages 来源的外层写入事件；关闭窗口后再调 apply 恰有一次写入。
     func testIC091G186A2HandoffPointOpensWindowAndSuppressesApplyWrite() {
         let fixture = makeIC091NxFixture(startRecording: true)
         defer { fixture.window.isHidden = true }
@@ -3891,7 +3893,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertTrue(inner.isDirectionalLockEnabled)
 
-        // 向边界方向滚动 80 pt（目标 maxX + 50 越界）：内层停在 maxX，不越界。
+        // 卡内 A2 写「程序驱动内层向边界滚动 80 pt：内层 contentOffset.x == maxX（不越界）」。
+        // ①（CI #157 实测，overshoot=50.0）：该前提不成立——`bounces=false` 不钳制**程序写入**
+        // 的越界偏移，写入 maxX+50 后仍是 maxX+50。`bounces` 管的是拖动期的橡皮筋，
+        // 夹具产生不了真实拖动，「不越界」这一条只能由 A1 的 `bounces==false` 加 H37 兜底。
+        // 这里保留探针以钉住 UIKit 的实际行为：若某版 iOS 改为钳制，本断言会立刻暴露。
         inner.setContentOffset(
             CGPoint(x: maxX + 50, y: inner.contentOffset.y),
             animated: false
@@ -3899,20 +3905,29 @@ final class S2CalibrationHarnessTests: XCTestCase {
         inner.setNeedsLayout()
         inner.layoutIfNeeded()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
-        let overshoot = inner.contentOffset.x - maxX
+        XCTAssertFalse(inner.bounces, "内层橡皮筋全程关闭")
         XCTAssertEqual(
-            overshoot,
-            0,
+            inner.contentOffset.x,
+            maxX + 50,
             accuracy: 0.000_001,
-            "内层 bounces=false 不应停在越界偏移上（实测 overshoot=\(overshoot)）"
+            "探针：bounces=false 不钳制程序写入的越界偏移"
         )
-        // 后续各项判据只依赖「内层在边界」，与上一条对 UIKit 程序写入钳制时机的断言解耦：
-        // 即便上一条不成立，交接点与 R3 守卫的结论仍能在同一次 CI 里取到。
+        // 产品自身的钳制层不得改动横向边界偏移：内容在横向大于视口时，
+        // `bounds.didSet` 与 `applyJointCentering` 都只钳制「内容小于视口」的轴。
+        // 这一条才是本卡拥有的不变量。
         inner.setContentOffset(
             CGPoint(x: maxX, y: inner.contentOffset.y),
             animated: false
         )
+        inner.setNeedsLayout()
+        inner.layoutIfNeeded()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        XCTAssertEqual(
+            inner.contentOffset.x,
+            maxX,
+            accuracy: 0.000_001,
+            "内层停在内容边界，产品钳制层不改横向偏移"
+        )
 
         // 交接点：内层在拖动方向到边且仍受拖 → 事件一次、窗口 open 一次。
         XCTAssertFalse(controller.isNxHandoffWindowOpen)
