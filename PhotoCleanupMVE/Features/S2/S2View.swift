@@ -656,6 +656,7 @@ struct S2View: View {
                         calibration.configuration.bottomStripMarkSize
                     ),
                     itemContent: stripItemContent,
+                    assetAspectRatio: assetAspectRatio,
                     onPhotoSwitch: {
                         photoSwitchHapticFeedback.notify(
                             isEnabled: calibration.configuration
@@ -1725,6 +1726,29 @@ struct S2BottomStripLayout: Equatable {
         ]
     }
 
+    /// IC-085 R3：项目帧固定，与资产宽高比无关；内容按 aspectFill 放大到覆盖项目帧
+    /// （横图裁左右、竖图裁上下），由视图层以帧居中裁切。返回内容框尺寸。
+    static func fillContentSize(
+        cellSize: CGSize,
+        assetAspectRatio: CGFloat
+    ) -> CGSize {
+        guard cellSize.width > 0, cellSize.height > 0,
+              assetAspectRatio.isFinite, assetAspectRatio > 0 else {
+            return cellSize
+        }
+        let cellRatio = cellSize.width / cellSize.height
+        if assetAspectRatio >= cellRatio {
+            return CGSize(
+                width: cellSize.height * assetAspectRatio,
+                height: cellSize.height
+            )
+        }
+        return CGSize(
+            width: cellSize.width,
+            height: cellSize.width / assetAspectRatio
+        )
+    }
+
     private func clampedExpansion(_ expansion: CGFloat) -> CGFloat {
         min(max(0, expansion), 1)
     }
@@ -1918,18 +1942,51 @@ final class S2BottomStripMotionController: ObservableObject {
         TimeInterval(metrics.expandDurationMilliseconds) / 1000
     }
 
-    /// 外部定位项或张数变化：静止态直接居中，不动画；触摸序列进行中不打断。
-    func synchronize(count: Int, currentIndex: Int) {
+    /// 外部定位项或张数变化。触摸序列进行中（拖动、减速）不打断——横栏拖动引起的
+    /// 切换由 `updateTrackedIndex` 自行跟踪。
+    /// `animated == false`：直接居中（首帧、张数变化、参数变化）。
+    /// `animated == true`（IC-085 R3，主图翻页引起的定位项变化）：以
+    /// `expandDurationMilliseconds` 的 ease-out 滚动到新当前张并展开，不跳变。
+    func synchronize(count: Int, currentIndex: Int, animated: Bool = false) {
         itemCount = max(0, count)
-        guard phase == .idle else {
+        let target = min(max(0, currentIndex), max(0, itemCount - 1))
+        switch phase {
+        case .dragging, .decelerating:
             return
+        case .idle, .settling:
+            break
         }
-        trackedIndex = min(max(0, currentIndex), max(0, itemCount - 1))
-        contentX = layout.clampedContentX(
-            layout.contentCenterX(of: trackedIndex),
+        let targetX = layout.clampedContentX(
+            layout.contentCenterX(of: target),
             count: itemCount
         )
-        expansion = 1
+        let alreadyThere = target == trackedIndex &&
+            (phase == .settling || (contentX == targetX && expansion == 1))
+        guard !alreadyThere else {
+            return
+        }
+        trackedIndex = target
+        guard animated, expandDuration > 0 else {
+            settle = nil
+            contentX = targetX
+            expansion = 1
+            if phase == .settling {
+                phase = .idle
+                frameDriver.stop()
+            }
+            return
+        }
+        settle = (
+            start: clock(),
+            fromX: contentX,
+            toX: targetX,
+            fromExpansion: 0
+        )
+        expansion = 0
+        phase = .settling
+        frameDriver.start { [weak self] in
+            self?.tick()
+        }
     }
 
     @discardableResult
@@ -1980,6 +2037,11 @@ final class S2BottomStripMotionController: ObservableObject {
             return
         }
         let now = clock()
+        // IC-085 R3：手指速度低于阈值视为慢拖松手，无减速段，直接吸附展开。
+        guard abs(velocity) >= metrics.flickVelocityThreshold else {
+            finishSequence(at: now)
+            return
+        }
         let contentVelocity = -velocity
         let duration = S2BottomStripInertia.duration(
             initial: contentVelocity,
@@ -2136,6 +2198,8 @@ struct S2BottomStripView: View {
     let metrics: S2BottomStripMetrics
     let markSize: CGFloat
     let itemContent: S2View.StripItemContent
+    /// IC-085 R3：资产宽高比，仅用于把内容框放大到 aspectFill 尺寸；项目帧不受影响。
+    let assetAspectRatio: (String) -> CGFloat
     let onPhotoSwitch: () -> Void
 
     @StateObject private var motion: S2BottomStripMotionController
@@ -2145,22 +2209,28 @@ struct S2BottomStripView: View {
         metrics: S2BottomStripMetrics,
         markSize: CGFloat,
         itemContent: @escaping S2View.StripItemContent,
+        assetAspectRatio: @escaping (String) -> CGFloat = { _ in 1 },
         onPhotoSwitch: @escaping () -> Void
     ) {
         _machine = ObservedObject(wrappedValue: machine)
         self.metrics = metrics
         self.markSize = markSize
         self.itemContent = itemContent
+        self.assetAspectRatio = assetAspectRatio
         self.onPhotoSwitch = onPhotoSwitch
-        _motion = StateObject(
-            wrappedValue: S2BottomStripMotionController(
-                layout: S2BottomStripLayout(metrics: metrics),
-                hooks: S2BottomStripMotionController.hooks(
-                    machine: machine,
-                    onPhotoSwitch: onPhotoSwitch
-                )
+        let motion = S2BottomStripMotionController(
+            layout: S2BottomStripLayout(metrics: metrics),
+            hooks: S2BottomStripMotionController.hooks(
+                machine: machine,
+                onPhotoSwitch: onPhotoSwitch
             )
         )
+        // 首帧即居中当前张，不等 onAppear（离屏渲染同样成立）。
+        motion.synchronize(
+            count: machine.orderedAssetIDs.count,
+            currentIndex: machine.currentIndex
+        )
+        _motion = StateObject(wrappedValue: motion)
     }
 
     func markPresentation(for assetID: String) -> S2BottomStripMarkPresentation {
@@ -2201,6 +2271,10 @@ struct S2BottomStripView: View {
                         contentX: motion.contentX,
                         viewportSize: geometry.size
                     )
+                    let contentSize = S2BottomStripLayout.fillContentSize(
+                        cellSize: frame.size,
+                        assetAspectRatio: assetAspectRatio(assetID)
+                    )
                     itemContent(
                         S2BottomStripItemPresentation(
                             assetID: assetID,
@@ -2211,7 +2285,10 @@ struct S2BottomStripView: View {
                             stripState: machine.bottomStripState
                         )
                     )
+                    // IC-085 R3：内容框按 aspectFill 放大后以项目帧居中裁切。
+                    .frame(width: contentSize.width, height: contentSize.height)
                     .frame(width: frame.width, height: frame.height)
+                    .clipped()
                     .overlay(alignment: .topTrailing) {
                         stripMark(for: assetID)
                     }
@@ -2243,9 +2320,11 @@ struct S2BottomStripView: View {
                 )
             }
             .onChange(of: machine.currentIndex) { _, currentIndex in
+                // 主图翻页引起的定位项变化：动画跟随；横栏拖动中由控制器自行跟踪。
                 motion.synchronize(
                     count: machine.orderedAssetIDs.count,
-                    currentIndex: currentIndex
+                    currentIndex: currentIndex,
+                    animated: true
                 )
             }
             .onChange(of: machine.orderedAssetIDs.count) { _, count in
