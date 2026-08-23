@@ -346,8 +346,9 @@ extension S2CalibrationConfiguration {
         .init(name: "zoomSnapBackThreshold", specStatus: .decided, wiringStatus: .effective),
         .init(name: "minDoubleTapScale", specStatus: .decided, wiringStatus: .effective),
         .init(name: "doubleTapAnchorStrategy", specStatus: .placeholder, wiringStatus: .effective),
-        .init(name: "edgePagingTriggerDistance", specStatus: .decided, wiringStatus: .effective),
-        .init(name: "edgePagingTriggerVelocity", specStatus: .decided, wiringStatus: .effective),
+        // IC-082 R3：Nx 贴边翻页改由 UIKit 嵌套滚动交接，两项阈值不再接线；规格状态保持 decided，去留由 Decision_log 另记。
+        .init(name: "edgePagingTriggerDistance", specStatus: .decided, wiringStatus: .unwired),
+        .init(name: "edgePagingTriggerVelocity", specStatus: .decided, wiringStatus: .unwired),
         .init(name: "verticalSwipeDistance", specStatus: .decided, wiringStatus: .effective),
         .init(name: "verticalSwipeVelocity", specStatus: .decided, wiringStatus: .effective),
         .init(name: "doubleTapDecisionWindowMilliseconds", specStatus: .decided, wiringStatus: .unwired),

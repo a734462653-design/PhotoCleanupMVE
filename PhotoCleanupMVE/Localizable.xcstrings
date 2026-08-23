@@ -716,6 +716,17 @@
         }
       }
     },
+    "s2.calibration.transition_diagnostics.scenario_e" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "E Nx 贴边翻页"
+          }
+        }
+      }
+    },
     "s2.calibration.transition_diagnostics.scenario_d" : {
       "extractionState" : "manual",
       "localizations" : {

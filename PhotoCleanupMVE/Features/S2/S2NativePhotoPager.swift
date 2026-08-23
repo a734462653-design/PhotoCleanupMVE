@@ -81,47 +81,6 @@ struct S2ImmersiveTransition: Equatable {
     }
 }
 
-struct S2NxEdgePagingProjection: Equatable {
-    let direction: S2PageDirection?
-    let overflowDistance: CGFloat
-    let pagingContentOffsetX: CGFloat
-}
-
-struct S2NxEdgePagingInteraction: Equatable {
-    let restingPagingOffsetX: CGFloat
-    let pageStride: CGFloat
-    let translationOriginX: CGFloat
-    let distanceToPreviousBoundary: CGFloat
-    let distanceToNextBoundary: CGFloat
-
-    func projection(translationX: CGFloat) -> S2NxEdgePagingProjection {
-        let translation = translationX - translationOriginX
-        guard translation != 0 else {
-            return S2NxEdgePagingProjection(
-                direction: nil,
-                overflowDistance: 0,
-                pagingContentOffsetX: restingPagingOffsetX
-            )
-        }
-        let direction: S2PageDirection = translation < 0
-            ? .next
-            : .previous
-        let distanceToBoundary = direction == .next
-            ? distanceToNextBoundary
-            : distanceToPreviousBoundary
-        let overflow = max(0, abs(translation) - distanceToBoundary)
-        let boundedOverflow = min(max(0, pageStride), overflow)
-        let offset = direction == .next
-            ? restingPagingOffsetX + boundedOverflow
-            : restingPagingOffsetX - boundedOverflow
-        return S2NxEdgePagingProjection(
-            direction: direction,
-            overflowDistance: overflow,
-            pagingContentOffsetX: offset
-        )
-    }
-}
-
 struct S2NativePhotoPager: UIViewControllerRepresentable {
     let machine: S2StateMachine
     let configuration: S2CalibrationConfiguration
@@ -1152,10 +1111,6 @@ final class S2NativeZoomPageController: UIViewController,
         zoomScrollView.addGestureRecognizer(singleTapRecognizer)
         zoomScrollView.addGestureRecognizer(doubleTapRecognizer)
         zoomScrollView.addGestureRecognizer(verticalSwipeRecognizer)
-        zoomScrollView.panGestureRecognizer.addTarget(
-            self,
-            action: #selector(handleNativePan(_:))
-        )
     }
 
     override func traitCollectionDidChange(
@@ -2212,10 +2167,6 @@ final class S2NativeZoomPageController: UIViewController,
             break
         }
     }
-
-    @objc private func handleNativePan(_ recognizer: UIPanGestureRecognizer) {
-        owner?.handleNativePan(on: self, recognizer: recognizer)
-    }
 }
 
 struct S2PresentationTapLayoutReading: Equatable {
@@ -2241,8 +2192,6 @@ final class S2NativePagerViewController: UIViewController,
     private var lastOuterTranslation = CGSize.zero
     private var lastOuterVelocity: CGFloat = 0
     private var lastOuterDuration: TimeInterval = 0
-    private var nXEdgePagingInteraction: S2NxEdgePagingInteraction?
-    private var lastNXEdgePagingProjection: S2NxEdgePagingProjection?
     private var pendingPresentationTapPageIndex: Int?
     private var presentationTapStartTimestamp: CFTimeInterval?
     private var isHandlingOuterLayoutCallback = false
@@ -2509,8 +2458,6 @@ final class S2NativePagerViewController: UIViewController,
         pendingPresentationTapPageIndex = nil
         presentationTapStartTimestamp = nil
         lastOuterTranslation = .zero
-        nXEdgePagingInteraction = nil
-        lastNXEdgePagingProjection = nil
         onLongPress = nil
         diagnosticsRun?.cancel()
         diagnosticsRun = nil
@@ -2833,128 +2780,10 @@ final class S2NativePagerViewController: UIViewController,
         return handled
     }
 
-    func handleNativePan(
-        on page: S2NativeZoomPageController,
-        recognizer: UIPanGestureRecognizer
-    ) {
-        guard let machine,
-              page.index == machine.currentIndex,
-              machine.zoomState == .nX else {
-            resetNXEdgePaging(animated: false)
-            return
-        }
-        switch recognizer.state {
-        case .began:
-            beginNXEdgePaging(on: page, recognizer: recognizer)
-        case .changed:
-            updateNXEdgePaging(recognizer: recognizer)
-        case .ended:
-            updateNXEdgePaging(recognizer: recognizer)
-            finishNXEdgePaging(
-                velocity: abs(recognizer.velocity(
-                    in: page.zoomScrollView
-                ).x)
-            )
-        case .cancelled, .failed:
-            resetNXEdgePaging(
-                animated: configuration.animationsEnabled
-            )
-        default:
-            break
-        }
-    }
-
-    private func beginNXEdgePaging(
-        on page: S2NativeZoomPageController,
-        recognizer: UIPanGestureRecognizer
-    ) {
-        guard let machine,
-              let contentFrame = page.zoomScrollView.visibleContentFrame()
-        else {
-            return
-        }
-        let bounds = page.zoomScrollView.bounds
-        nXEdgePagingInteraction = S2NxEdgePagingInteraction(
-            restingPagingOffsetX: pagingScrollView
-                .contentOffsetForPage(at: machine.currentIndex).x,
-            pageStride: pagingScrollView.pageStride,
-            translationOriginX: recognizer.translation(
-                in: page.zoomScrollView
-            ).x,
-            distanceToPreviousBoundary: max(
-                0,
-                bounds.minX - contentFrame.minX
-            ),
-            distanceToNextBoundary: max(
-                0,
-                contentFrame.maxX - bounds.maxX
-            )
-        )
-        lastNXEdgePagingProjection = nil
-    }
-
-    private func updateNXEdgePaging(recognizer: UIPanGestureRecognizer) {
-        guard let machine, let interaction = nXEdgePagingInteraction else {
-            return
-        }
-        let projection = interaction.projection(
-            translationX: recognizer.translation(in: pagingScrollView).x
-        )
-        lastNXEdgePagingProjection = projection
-        guard let direction = projection.direction,
-              machine.orderedAssetIDs.indices.contains(
-                machine.currentIndex + direction.indexOffset
-              ) else {
-            writePagingContentOffset(
-                CGPoint(
-                    x: interaction.restingPagingOffsetX,
-                    y: pagingScrollView.contentOffset.y
-                ),
-                animated: false,
-                source: "S2NativePagerViewController.updateNXEdgePaging"
-            )
-            return
-        }
-        writePagingContentOffset(
-            CGPoint(
-                x: projection.pagingContentOffsetX,
-                y: pagingScrollView.contentOffset.y
-            ),
-            animated: false,
-            source: "S2NativePagerViewController.updateNXEdgePaging"
-        )
-    }
-
-    private func finishNXEdgePaging(velocity: CGFloat) {
-        guard let machine,
-              let projection = lastNXEdgePagingProjection,
-              let direction = projection.direction else {
-            resetNXEdgePaging(animated: configuration.animationsEnabled)
-            return
-        }
-        _ = machine.handleHorizontalSwipe(
-            direction: direction,
-            startedAtPagingEdge: projection.overflowDistance > 0,
-            distance: projection.overflowDistance,
-            velocity: velocity
-        )
-        settledIndex = machine.currentIndex
-        nXEdgePagingInteraction = nil
-        lastNXEdgePagingProjection = nil
-        synchronizeNativeStateToMachine(
-            animatedPaging: configuration.animationsEnabled
-        )
-    }
-
-    private func resetNXEdgePaging(animated: Bool) {
-        guard nXEdgePagingInteraction != nil ||
-                lastNXEdgePagingProjection != nil else {
-            return
-        }
-        nXEdgePagingInteraction = nil
-        lastNXEdgePagingProjection = nil
-        synchronizeNativeStateToMachine(animatedPaging: animated)
-    }
+    /// IC-082 R3（v15 决策 4）：Nx 下左右拖动不再由自定义投影写外层偏移。内层缩放滚动视图在
+    /// 拖动方向仍可滚动时只平移；内层到达内容边界后，同一手势由 UIKit 嵌套滚动交接给外层分页
+    /// 滚动视图，外层按原生分页判定是否翻页并原生回弹，结算沿用 `finishNativePaging`。
+    /// 这天然满足「画面已平移贴边」：起始不贴边时内层先消耗位移，外层不动。
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         guard scrollView === pagingScrollView else {
@@ -3130,6 +2959,11 @@ final class S2NativePagerViewController: UIViewController,
         guard let machine else {
             return
         }
+        transitionDiagnostics?.recordSynchronizeNativeState(
+            animatedPaging: animatedPaging,
+            currentIndex: machine.currentIndex,
+            scale: machine.scale
+        )
         isApplyingSnapshot = true
         for (index, controller) in pageControllers {
             controller.zoomScrollView.applyNativeState(
@@ -3174,11 +3008,19 @@ final class S2NativePagerViewController: UIViewController,
         let velocity = lastOuterDuration > 0
             ? max(lastOuterVelocity, distance / CGFloat(lastOuterDuration))
             : CGFloat.infinity
-        _ = machine.handleHorizontalSwipe(
+        let accepted = machine.handleHorizontalSwipe(
             direction: direction,
             startedAtPagingEdge: true,
             distance: distance,
             velocity: velocity
+        )
+        transitionDiagnostics?.recordHorizontalSwipe(
+            direction: direction,
+            startedAtPagingEdge: true,
+            distance: distance,
+            velocity: velocity,
+            accepted: accepted,
+            source: "S2NativePagerViewController.reportSequenceBoundaryAttemptIfNeeded"
         )
     }
 
@@ -3837,6 +3679,7 @@ enum S2OnDeviceTransitionScenario: String, CaseIterable, Identifiable {
     case tapHide
     case pinchStart
     case fastPaging
+    case nxEdgePaging
 
     var id: String { rawValue }
 
@@ -3850,6 +3693,8 @@ enum S2OnDeviceTransitionScenario: String, CaseIterable, Identifiable {
             return "C 捏合起始"
         case .fastPaging:
             return "D 快速连续翻页"
+        case .nxEdgePaging:
+            return "E Nx 贴边翻页"
         }
     }
 }
@@ -3885,6 +3730,10 @@ struct S2OnDeviceTransitionFrameSample: Equatable {
     var settledIndex: Int? = nil
     var pageIndicesPresent: [Int] = []
     var pageLoadStates: [Int: String] = [:]
+    /// IC-082 场景 E 追加：贴边翻页起始时的边界距离与当前投影溢出量；非贴边拖动期间为 nil。
+    var nxDistanceToPreviousBoundary: CGFloat? = nil
+    var nxDistanceToNextBoundary: CGFloat? = nil
+    var nxOverflowDistance: CGFloat? = nil
 }
 
 enum S2OnDeviceTransitionPayload: Equatable {
@@ -4048,8 +3897,45 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             currentIndex: machine?.currentIndex,
             settledIndex: controller?.settledIndex,
             pageIndicesPresent: controller?.diagnosticPageIndicesPresent ?? [],
-            pageLoadStates: controller?.diagnosticPageLoadStates ?? [:]
+            pageLoadStates: controller?.diagnosticPageLoadStates ?? [:],
+            // IC-082 R3：自定义贴边投影已删除，三个字段保留为 nil（见 export-format.md）。
+            nxDistanceToPreviousBoundary: nil,
+            nxDistanceToNextBoundary: nil,
+            nxOverflowDistance: nil
         )))
+    }
+
+    /// IC-082 R1/R3：`handleHorizontalSwipe` 调用与返回值（R3 后仅序列边界尝试路径调用）、原生状态同步。
+    func recordHorizontalSwipe(
+        direction: S2PageDirection,
+        startedAtPagingEdge: Bool,
+        distance: CGFloat,
+        velocity: CGFloat,
+        accepted: Bool,
+        source: String
+    ) {
+        recordEvent(
+            name: "handleHorizontalSwipe",
+            source: source,
+            details: "direction=\(direction == .next ? "next" : "previous")；" +
+                "startedAtPagingEdge=\(startedAtPagingEdge)；" +
+                "distance=\(String(format: "%.6f", Double(distance)))；" +
+                "velocity=\(String(format: "%.6f", Double(velocity)))；" +
+                "accepted=\(accepted)"
+        )
+    }
+
+    func recordSynchronizeNativeState(
+        animatedPaging: Bool,
+        currentIndex: Int,
+        scale: CGFloat
+    ) {
+        recordEvent(
+            name: "synchronizeNativeStateToMachine",
+            source: "S2NativePagerViewController.synchronizeNativeStateToMachine",
+            details: "animatedPaging=\(animatedPaging)；currentIndex=\(currentIndex)；" +
+                "s=\(String(format: "%.6f", Double(scale)))"
+        )
     }
 
     /// IC-079 R1：页创建 / 移除、外层 `setContentOffset` 写入、`handleNativePageChange`。
@@ -4291,7 +4177,7 @@ enum S2OnDeviceTransitionText {
             "停止绝对时间=\(timestamp(stoppedAt))",
             "记录总数=\(sortedRecords.count)",
             "顺序=全部记录按同一单调时钟严格递增",
-            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,contentInset,adjustedContentInset,V,s,pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating,currentIndex,settledIndex,pageIndicesPresent,pageLoadStates",
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame,transform,zoomScale,contentOffset,contentSize,contentInset,adjustedContentInset,V,s,pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating,currentIndex,settledIndex,pageIndicesPresent,pageLoadStates,nxDistanceToPreviousBoundary,nxDistanceToNextBoundary,nxOverflowDistance",
             "离散事件字段=time,event,source,details",
             "---"
         ]
@@ -4319,7 +4205,10 @@ enum S2OnDeviceTransitionText {
                     "\tcurrentIndex=\(optionalIndex(sample.currentIndex))" +
                     "\tsettledIndex=\(optionalIndex(sample.settledIndex))" +
                     "\tpageIndicesPresent=\(indexList(sample.pageIndicesPresent))" +
-                    "\tpageLoadStates=\(loadStates(sample.pageLoadStates))")
+                    "\tpageLoadStates=\(loadStates(sample.pageLoadStates))" +
+                    "\tnxDistanceToPreviousBoundary=\(optionalNumber(sample.nxDistanceToPreviousBoundary))" +
+                    "\tnxDistanceToNextBoundary=\(optionalNumber(sample.nxDistanceToNextBoundary))" +
+                    "\tnxOverflowDistance=\(optionalNumber(sample.nxOverflowDistance))")
             case let .event(name, source, details):
                 lines.append(prefix +
                     "\tkind=event" +
