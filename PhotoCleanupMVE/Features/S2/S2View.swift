@@ -1218,6 +1218,8 @@ struct S2View: View {
                         .font(.system(.caption2, design: .monospaced))
                         .textSelection(.enabled)
                 }
+                // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
+                // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
                     calibration.restoreFactoryPlaceholder()
                 }

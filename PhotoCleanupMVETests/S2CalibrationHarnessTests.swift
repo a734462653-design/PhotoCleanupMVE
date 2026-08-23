@@ -422,6 +422,115 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(failingModel.persistenceFailed)
     }
 
+    // IC-087 G172（夹具驱动，真机未覆盖）：「恢复出厂值」把配置重置为出厂、删除存储条目；
+    // 经 applyCalibration + 重新 apply 后当前页 maximumZoomScale == 出厂规则值，
+    // contentOffset / contentSize / contentInset / 照片 frame 不变，照片几何写入事件 0 条。
+    func testIC087G172RestoreFactoryResetsDeletesStoreAndAppliesToCurrentPage() throws {
+        XCTAssertTrue(
+            L10n.text("s2.calibration.restore_factory").hasPrefix("【未定项 21 占位】")
+        )
+        let store = InMemoryCalibrationPersistence(
+            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 12)
+        )
+        let model = S2CalibrationModel(persistence: store)
+        XCTAssertEqual(model.configuration.pinchMaxScaleCeiling, 12)
+        var configuration = model.configuration
+        let machine = makeMachine(
+            configuration: configuration,
+            orderedAssetIDs: ["asset-1", "asset-2"],
+            currentIndex: 0
+        )
+        let pixelSizes: [String: CGSize] = [
+            "asset-1": CGSize(width: 4_032, height: 3_024),
+            "asset-2": CGSize(width: 600, height: 1_200)
+        ]
+        let zoomGeometry: (String, CGSize) -> S2AssetZoomGeometry? = { assetID, fitSize in
+            S2AssetZoomGeometry(
+                assetPixelSize: pixelSizes[assetID] ?? .zero,
+                fitSize: fitSize,
+                displayScale: 3
+            )
+        }
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration,
+            zoomGeometry: zoomGeometry
+        )
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.start()
+        defer { diagnostics.stop() }
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+
+        let current = tryUnwrap(controller.pageControllers[0])
+        func expected(ceiling: CGFloat) -> CGFloat {
+            S2PinchMaxScaleRule.pinchMaxScale(
+                assetPixelSize: pixelSizes["asset-1"]!,
+                fitSize: current.zoomScrollView.nativeZoomBaseSize,
+                displayScale: 3,
+                floor: 4,
+                ceiling: ceiling,
+                multiplier: 6
+            )
+        }
+        // 存储值 ceiling 12 在生效：4032 宽 × 6 超过 12，被钳到 12。
+        XCTAssertEqual(current.zoomScrollView.maximumZoomScale, expected(ceiling: 12), accuracy: 0.000_001)
+        XCTAssertEqual(current.zoomScrollView.maximumZoomScale, 12, accuracy: 0.000_001)
+
+        struct GeometrySnapshot: Equatable {
+            let contentOffset: CGPoint
+            let contentSize: CGSize
+            let contentInset: UIEdgeInsets
+            let photoFrame: CGRect
+        }
+        func snapshot(_ page: S2NativeZoomPageController) -> GeometrySnapshot {
+            GeometrySnapshot(
+                contentOffset: page.zoomScrollView.contentOffset,
+                contentSize: page.zoomScrollView.contentSize,
+                contentInset: page.zoomScrollView.contentInset,
+                photoFrame: page.zoomScrollView.presentationContentView?.frame ?? .null
+            )
+        }
+        let before = snapshot(current)
+        let writesBefore = diagnostics.photoGeometryWriteCount
+
+        // 恢复出厂值：配置 == 出厂、存储为空（删除而非覆盖）。
+        model.restoreFactoryPlaceholder()
+        XCTAssertEqual(model.configuration, .factoryPlaceholder)
+        XCTAssertNil(store.data)
+        XCTAssertEqual(store.deleteCount, 1)
+        XCTAssertEqual(store.saveCount, 0)
+        XCTAssertFalse(model.persistenceFailed)
+
+        // 即时生效（产品侧链路：onChange → applyCalibration → apply）。
+        configuration = model.configuration
+        XCTAssertTrue(machine.applyCalibration(configuration))
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            zoomGeometry: zoomGeometry
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        XCTAssertEqual(
+            current.zoomScrollView.maximumZoomScale,
+            expected(ceiling: 40),
+            accuracy: 0.000_001
+        )
+        XCTAssertGreaterThan(current.zoomScrollView.maximumZoomScale, 12)
+        XCTAssertEqual(machine.pinchMaxScale(for: "asset-1"), expected(ceiling: 40), accuracy: 0.000_001)
+
+        XCTAssertEqual(snapshot(current), before)
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, writesBefore)
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
+        XCTAssertEqual(current.zoomScrollView.zoomScale, 1)
+        XCTAssertEqual(machine.scale, 1)
+    }
+
     /// IC-087：按出厂值编码后改写顶层 `schemaVersion`（nil 表示删除该字段）与 `pinchMaxScaleCeiling`。
     private func makeStoredCalibration(
         schemaVersion: Int?,
