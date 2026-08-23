@@ -1,12 +1,18 @@
-# IC-20260823-090 自验报告（横栏圆角 + 捏合松手探针）
+# IC-20260823-090 自验报告 v2（横栏圆角 + 捏合松手探针）
+
+> 本文件是 **v2 完整版**，覆盖 v1。第一～六节为阶段一（v1）内容，按阶段二的结果更新了受影响的结论；第七节起为阶段二（v2）。第八节为人工判定项。
+
+---
 
 ## 一、结论（先行）
 
-- **R1 圆角测量完成，实装完成，几何门禁通过。** 系统缩略图四角实测半径 **8.08–8.20 px = 2.69–2.73 pt**（@3x），**邻居与当前张同值**，**与项目尺寸无关、展开／收缩全程为常量**。按任务卡「四舍五入到 0.5 pt」规则取出厂值 **2.5 pt**，`schemaVersion` 升为 4。
-- **⚠️ 出厂值与实测值存在 −0.19～−0.23 pt（−0.58～−0.70 px）的系统偏差。** 实测值最接近 **8 px = 2.667 pt**（@3x 的整像素值）；卡规定的 0.5 pt 取整把它压到 2.5 pt = 7.5 px。这是本卡最需要技术负责人裁定的一点，执行端不自行改动（见第六节第 1 条）。
-- **R2 探针完成，五个逐帧字段与五类事件全部落地并通过断言**，`export-format.md` 纯追加。
-- **CI 未绿，G184 不通过。** 三轮修复尝试用尽（4 次 CI 运行），最后一次 482 项测试中**只剩 1 个测试失败**：`testIC090G181StripMarkOverlayIsClippedByTheSameCornerRadius`。失败在断言侧、不在产品侧——该断言的前提「两个同尺寸同纯色内容的项目除标记外逐像素相同」在渲染位图里不成立。按执行纪律第 2 条（三次尝试上限）停下报告，未做第四次尝试。诊断与修法见第五节。
-- **因 XCTest 步骤失败，工作流未走到打包步骤，本卡没有产出 IPA。** 因此 **H36 与场景 C 真机录制这两项人工判定本卡无法开始**——Lynn 需要一个绿色 CI 的包。
+- **R1／R3 圆角：测量、定值、实装、门禁全部完成。** 系统缩略图四角实测半径 **8.08–8.20 px**（执行端）／**8.22–8.37 px**（技术负责人独立复核），**邻居与当前张同值**，**与项目尺寸无关、展开／收缩全程为常量**。出厂值经④ Lynn 定案取 **8/3 pt = 8 px @3x**（导出 `2.666667`），圆弧 `.circular`。`schemaVersion` = 4。
+- **R2 探针：完成。** 场景 C 五个逐帧字段与五类事件全部落地并通过断言，`export-format.md` 纯追加，产品行为未改。
+- **R4：G181 标记断言改取证手法完成。** 只在已标记项目右上 `markSize × markSize` 框内取证；过程中定位并修正了一个**测试位图助手的 y 方向缺陷**（见第九节），该缺陷此前被所有既有断言的上下对称性掩盖。
+- **CI 全绿。** 运行 **#156**（`32653618003`），被测提交 `1325c7dca3d8626ff768f2cc469b649fb293e0ef`，**482 项测试 0 失败**，被测命令真实退出码 **0**，作业退出码 **0**。计数算式 **477 + 5 − 0 = 482**。
+- **IPA 已产出并本地重下校验一致**：`782141` 字节，SHA-256 `cbeb7bef63460a2566191c88556f2a6951c4bb91bf446f0b31310e005b9e4933`。
+- **阶段一遗留的「出厂值比实测系统性偏小 0.2 pt」已由阶段二关闭。**
+- **H36 与场景 C 真机录制具备开始条件**，保留给 Lynn，执行端不代为下结论。
 
 ---
 
@@ -14,19 +20,22 @@
 
 | 项 | 值 |
 |---|---|
-| 任务卡 | `<top>/Tasks/IC-20260823-090-strip-corner-and-pinch-end-probe.md` |
-| 继承提交 | `main` = `bf7bab1f8b9fea1194b57151f0beae34fa03756f`（IC-088，CI #149） |
-| 目标分支 | `feature/ic-090-strip-corner-pinch-end`（从 `bf7bab1` 切出，已推送） |
-| 分支 tip | `0ab6fa9026eb5f44211414321703cfd2ee309fed` |
+| 任务卡 | `<top>/Tasks/IC-20260823-090-strip-corner-and-pinch-end-probe.md`（v2） |
+| 阶段一继承提交 | `main` = `bf7bab1f8b9fea1194b57151f0beae34fa03756f`（IC-088，CI #149） |
+| 阶段二继承提交 | `feature/ic-090-strip-corner-pinch-end` @ `691298224f203296ee538d66dae4018fd2b1b5b3` |
+| 目标分支 | `feature/ic-090-strip-corner-pinch-end`（未重切、未 rebase） |
+| 分支产品 tip | `1325c7dca3d8626ff768f2cc469b649fb293e0ef` |
 | 测量素材 | IC-085 R1 录屏 `IMG_6743.MP4`（1206×2622，59.99 fps，HEVC，11.38 s） |
-| 开工前工作树 | `git status --porcelain` 为空，无其他会话改动 |
+| 开工前工作树 | 阶段一、阶段二两次 `git status --porcelain` 均为空 |
 
-**范围边界**：只动横栏圆角与场景 C 诊断埋点。未改横栏几何／运动参数、`pinchMaxScale*` 与任何其他出厂值；未新增 XCUITest；未改 `SPEC-*`、`Decision_log.md`、`Scripts/`、`ci.yml`；未合并 `main`、未 force push、未改写历史。**未修捏合松手抖动本身**（卡明令下一张卡按数据修）。
+**范围边界**：只动横栏圆角与场景 C 诊断埋点。未改横栏几何／运动参数、`pinchMaxScale*` 与任何其他出厂值；未新增 XCUITest；未改 `SPEC-*`、`Decision_log.md`、`Scripts/`、`ci.yml`；未合并 `main`、未 force push、未改写历史。**未修捏合松手抖动本身**。阶段二未动 `S2BottomStripView` 的任何产品代码（掩码、裁切、标记层级均未改）。
 
 **闸门**
 
-- **闸门 A（圆角裁切若必须改动主图或图片请求 → 停）：未触发。** 圆角裁切只加在 `S2BottomStripView` 的项目层（`.clipShape` 加在「aspectFill 内容 + 标记叠层」合成之后）。主图路径（`S2NativeZoomPageController` / `S2NativeZoomScrollView`）与图片请求策略（`S2ImageRequestStrategy`、`S2TemporaryPhotoKitImageStrategy`）在 R1 里一行未动。
-- **闸门 B（任一既有几何门禁失败 → 停）：未触发。** IC-085 的布局与运动门禁（G163 两项、G164 四项、G162 两项）在最后一次 CI 全部通过。IC-085 R3 的像素门禁 `testIC085R3RenderedStripHasNoBackgroundInsideItemFrames` 是**按新行为更新**、不是失败：四角原断言「非背景」与本卡「四角按半径裁切」直接冲突，已改为「四角为背景 + 沿对角线内移 ceil(r) 后为内容」，并把「帧内无背景像素」的计数排除四角 ceil(r)×ceil(r) 方块。该测试在最后一次 CI 通过。
+- **闸门 A（圆角裁切若必须改动主图或图片请求 → 停）：未触发。** 裁切只加在 `S2BottomStripView` 的项目层。主图路径（`S2NativeZoomPageController` / `S2NativeZoomScrollView`）与图片请求策略在 R1 里一行未动。
+- **闸门 B（任一既有几何门禁失败 → 停）：未触发。** IC-085 的布局与运动门禁全部通过。IC-085 R3 的像素门禁是**按新行为更新**、不是失败：四角原断言「非背景」与「四角按半径裁切」直接冲突，已改为「四角为背景 + 沿对角线内移 `ceil(r)` 后为内容」。
+- **闸门 C（R4 在 2 次 CI 内不能全绿 → 停）：未触发。** 用满 2 次（#155 失败并输出定位证据、#156 全绿）。
+- **闸门 D（R3 改值后任何既有几何门禁失败 → 停）：未触发。** 见第八节第 2 小节的覆盖率核算与 CI #156 实测。
 
 ---
 
@@ -96,7 +105,7 @@
 | **8** | **[4, 2, 1, 1, 0]** | **逐项吻合** |
 | 9 | [4, 3, 2, 1, 0] | 不符 |
 
-两种独立方法同指 **r ≈ 8 px**。
+两种独立方法同指 **r ≈ 8 px**。技术负责人以 759 个邻居实例独立复核得四角 8.22～8.37 px，与本报告差 < 0.3 px（①）。
 
 ### 4. 分段表（样本少、可信度低，列出以备核对）
 
@@ -122,100 +131,246 @@
 | 项目宽（px） | 60 | 66 | 75 | 82 | | 90 | | 90 |
 | 剖面 d=0…3 | [4,2,1,0] | [4,2,0,0] | [4,0,0,0] | [3,1,1,0] | | [3,1,1,1] | | [3,1,1,1] |
 
-全程不超过静止段参考剖面 [4,2,1,1]，且无随宽度增大的趋势；若半径按宽度成比例，w = 90 时 r = 12.1 px，模型剖面为 [7,5,4,3]，实测从未出现。**逐帧单张 α 估计不可用**（单帧只有一个样本，内容明暗直接混进 α），故中途只能给到「排除比例关系」这个强度，无法给出中途半径的点估计。
+全程不超过静止段参考剖面 [4,2,1,1]，且无随宽度增大的趋势；若半径按宽度成比例，w = 90 时 r = 12.1 px，模型剖面为 [7,5,4,3]，实测从未出现。**逐帧单张 α 估计不可用**（单帧只有一个样本，内容明暗直接混进 α），故中途只能给到「排除比例关系」这个强度。
 
 → **实装取常量半径**，展开／收缩动画中不随帧变化。
 
-### 6. 出厂值取定
+### 6. 出厂值取定（阶段二定案）
 
 | 项 | 值 |
 |---|---|
-| 实测（跨段合并，两法互证） | 8.08–8.20 px = **2.69–2.73 pt** |
-| 最接近的整像素值（@3x） | 8 px = 2.667 pt |
-| 卡规定：四舍五入到 0.5 pt | **2.5 pt** |
-| 实装出厂值 `bottomStripCornerRadius` | **2.5**（= 7.5 px @3x） |
-| 与实测的差 | **−0.58～−0.70 px = −0.19～−0.23 pt** |
+| 执行端实测（跨段合并，两法互证） | 8.08–8.20 px = 2.69–2.73 pt |
+| 技术负责人独立复核（759 个邻居实例） | 8.22–8.37 px |
+| 最接近的整像素值（@3x） | **8 px = 8/3 pt = 2.6667 pt** |
+| **实装出厂值 `bottomStripCornerRadius`** | **`8.0 / 3.0`**（导出 `2.666667`） |
 
-按卡执行取 2.5 pt。偏差见第六节第 1 条。
+阶段一按 v1 卡的「四舍五入到 0.5 pt」取 2.5 pt = 7.5 px，比实测系统性偏小 0.58–0.70 px；阶段一报告已把该偏差列为待裁定项。**④ Lynn 2026-08-23 选 A**：改为 8/3 pt，圆弧不变。阶段二已实装，本条关闭。
 
 ---
 
-## 四、逐条验收门禁
+## 四、R2 探针（G182）
+
+场景 C 逐帧新增五个字段、离散事件新增五类，全部只在 `isRecording` 为真时追加；`Reports/IC-068/export-format.md` 纯追加一节（20 行新增、0 行删除）。
+
+| 逐帧字段 | 取值 |
+|---|---|
+| `presentationZoomScale` | 被缩放视图（`viewForZooming` 的 `zoomContentView`）图层 `presentation()` 的 `transform.a`，即呈现层实际倍率；不在动画中时 `nil` |
+| `isZoomBouncing` / `isDecelerating` | 内层缩放滚动视图的同名标志（与既有的外层 `pagingIsDecelerating` 并列而不相同） |
+| `imageRequestResult` | 当前张最近一次 `S2ImageRequestResult` 分支名 |
+| `lastImageReplacement` | 全局最近一次真正发生的图片替换 `(asset,result,w,h,t)`，`t` 与逐帧同源 |
+
+| 事件 | 来源 |
+|---|---|
+| `scrollViewDidEndZooming` | `S2NativeZoomPageController.scrollViewDidEndZooming` |
+| `finishNativePinch` | `S2NativePagerViewController.finishNativePinch`（含实际分支 `path=returnToMinimum\|setZoomScale\|noWrite\|none`） |
+| `setZoomScale` | `S2NativeZoomScrollView.setZoomScale`（重写统一记录，覆盖全部调用点） |
+| `吸附归位写入` | `…restoreOneXGeometry` / `…enforceOneXContentGeometry` |
+| `图片替换` | `S2TemporaryPhotoImageView.requestImage` |
+
+**行为不变**：`finishNativePinch` 仍只调用一次状态机、分支判定与写入顺序原样；`setZoomScale` 重写只记录后调 `super`；`enforceOneXContentGeometry` 只多了四个布尔累加。
+
+---
+
+## 五、阶段一 G181 标记断言的失败与定位（历史记录）
+
+阶段一 v1 的标记断言用「整帧逐像素比较已标记与未标记两个同尺寸项目」定位标记像素，前提是「两项目除标记外逐像素相同」。该前提在渲染位图里不成立：
+
+- **①已验证事实**（CI #153）：项目内容用 `Color.black` 时差异集**为空**——横栏标记 `trash.circle.fill` 以系统前景色渲染，浅色环境下同为纯黑，黑标记叠黑内容逐像素相同。
+- **①已验证事实**（CI #154）：项目内容改为 `Color(white: 0.1)` 后差异集出现，但**铺满全部 90 行**，不只在标记框内。
+- **③合理推测（阶段二未要求验证，亦未验证）**：横栏整体的渐隐 `LinearGradient` 掩码在渲染时对不同 x 位置引入 ±1 级 alpha 差；黑内容下 `0 × α` 恒为 0 看不出来，非黑内容下就变成 1 级差。验证方式：夹具旁路 `.mask(fadeMask)` 后重比。
+
+阶段二 R4 按任务卡把取证范围收进右上 `markSize × markSize` 框，整帧比较连同其不成立的前提一并删除。
+
+---
+
+## 六、阶段一 CI 记录（历史）
+
+| # | 运行编号 | 被测提交 | 结论 | 退出码 | 原因 |
+|---|---|---|---|---|---|
+| 151 | 32649018232 | `e9f70db…` | failure | 65 | 编译错误 1 处：IC-074 G96 逐字段构造的期望配置未跟上新参数 |
+| 152 | 32649784298 | `64d6bba…` | failure | 65 | 同一处编译错误（推 R2 时尚未修） |
+| 153 | 32650455085 | `278d382…` | failure | 65 | 482 项 2 失败：IC-085 G162 计数 12≠13；G181 标记差异集为空 |
+| 154 | 32651137095 | `0ab6fa9…` | failure | 65 | 482 项 1 个测试失败：G181 标记像素越出标记框 |
+
+阶段一三轮修复用尽后按纪律第 2 条停下报告；因 XCTest 失败，工作流未走到打包步骤，阶段一无 IPA。
+
+---
+
+## 七、阶段二 R3：出厂值改定为 8/3 pt
+
+- `S2CalibrationConfiguration.factoryPlaceholder.bottomStripCornerRadius` 与 `init(from:)` 的解码缺省值均改为 `8.0 / 3.0`；两处以同一表达式书写，故 `Equatable` 比较逐位相等，缺键回退往返一致（G180 覆盖）。
+- `S2BottomStripSystemReference.cornerRadius`（测试侧参考表）同步为 `8.0 / 3.0`，注释记录两家测量与取值依据。
+- 导出文本 `bottomStripCornerRadius=2.666667`（`%.6f` 格式化 8/3）。
+- **`schemaVersion` 保持 4**，理由见第十一节「占位值登记」。
+- 未改任何其他出厂值；登记表仍为 `decided / effective`，条目数与 decided 计数不变。
+
+---
+
+## 八、阶段二 R3：G181 圆角几何断言按 r = 8 px 重算（闸门 D）
+
+### 1. 逐像素覆盖率重算（解析解，圆心 (r,r)、半径 r，4000² 超采样）
+
+**scale = 3（G181 位图，1 pt = 3 px，r = 8 px）：**
+
+| 45° 对角线偏移 | 0 | 1 | 2 | 3 | 4…7 |
+|---|---|---|---|---|---|
+| 覆盖率 | 0.000 | 0.000 | 0.760 | 1.000 | 1.000 |
+
+| 直线（首行／首列）偏移 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 覆盖率 r = 8 px | 0.000 | 0.000 | 0.000 | **0.000** | 0.191 | 0.593 | 0.853 | 0.979 | 1.000 | 1.000 |
+| 覆盖率 r = 7.5 px（阶段一） | 0.000 | 0.000 | 0.000 | 0.016 | 0.367 | 0.722 | 0.927 | 0.997 | 1.000 | 1.000 |
+
+**阈值调整**：对角线阈值（0/1 背景、3…7 内容）在 r = 8 px 下覆盖率仍为 0.000 / 1.000，**不变**；直线偏移 3 的覆盖率由 0.016 变为 **精确 0.000**，故背景区间由 0…2 **收紧**为 0…3。只按几何重算，未放宽任何一项。
+
+**重算后的夹逼**：对角偏移 1 为背景 ⇒ r > 6.83 px；偏移 3 为内容 ⇒ r ≤ 10.24 px；直线偏移 3 为背景 ⇒ r ≥ 7.83 px；直线偏移 8 为内容 ⇒ r ≤ 8.00 px。合计 **7.83 px ≤ r ≤ 8.00 px**。
+
+**分辨率限制（如实记录）**：scale = 3 的二值判据**无法**把 7.5 px 与 8.0 px 分开——两者的差别全部落在部分覆盖像素上（例如直线偏移 4 的覆盖率 0.367 vs 0.191，两者按 > 128 阈值都判为背景）。出厂值本身由 **G190 以 `accuracy: 1e-9` 比对 `8.0 / 3.0`** 钉死，并另断言 @3x 下正好 8 个设备像素。
+
+### 2. 闸门 D 核算：既有 IC-085 R3 像素门禁（scale = 1）
+
+该门禁在 scale = 1 位图上断言「四角最外一像素为背景」。改值后角点覆盖率变化：
+
+| r（px，scale = 1） | 角点 (0,0) 覆盖率 | 合成亮度 | 判定 |
+|---|---|---|---|
+| 2.5（阶段一） | 0.137 | 220 | 背景 ✅ |
+| **8/3 ≈ 2.667（阶段二）** | **0.093** | **231** | **背景 ✅** |
+
+`cornerMargin = ceil(r)` 仍为 3；内移 3 px 后的像素覆盖率为 1.000（内容）✅。**闸门 D 未触发**，并已由 CI #156 实测通过。
+
+---
+
+## 九、阶段二 R4：标记断言改取证手法，并修正一个测试位图助手缺陷
+
+### 1. 新取证手法（严格按任务卡三条）
+
+单次渲染（`markSize = 14` 出厂值、内容 `Color(white: 0.1)`、只标记索引 0 的邻居项目）：
+
+- **(a)** 已标记项目**右上角**沿 45° 对角线偏移 0/1 的像素为背景 —— 标记所在角同样被圆角裁掉；
+- **(b)** 右上 `14 × 14 pt`（= 42 × 42 px）框内存在**明显暗于项目内容色**（≥ 8 级）的像素 —— 标记确实渲染了；
+- **(c)** 框外不做逐像素比较。
+
+**(b) 为什么取「暗于内容」而不是「不等于内容」**：圆角裁切与抗锯齿只会把像素**混向背景白**（更亮），只有标记字形能比平坦内容更暗。若取「不等于」，框内的圆角缺口本身就会满足判据，断言变成空转。
+
+**取证强度的如实说明**：(a) 对 14 pt 的圆形标记是**必要而非充分**条件——`trash.circle.fill` 自身轮廓距项目帧角点约 2.9 pt，而 8/3 pt 圆角的边界距角点仅 0.78 pt，即使没有裁切，标记也不会进入被裁区域。「标记叠层与内容受同一圆角约束」在结构上由 `.clipShape` 加在 `.overlay` **之后**保证；像素侧的充分证据需要超出标记框的取证，已按卡规则排除。**最终判定是 H36。**
+
+### 2. CI #155 定位到的测试位图助手 y 方向缺陷（①已验证事实）
+
+R4 首次推送（CI #155）仍失败，但本卡为断言加的自诊断输出直接给出定位：
+
+```
+IC090_G181_MARKBOX frame=(153.0, 0.0, 20.0, 30.0) box=x[477…518] y[0…41]
+                   content=8 min=25 max=255
+（框内降采样位图 14×14 全为空白，无一个暗于内容的像素）
+```
+
+读「右上 42×42 框」得到的是平坦内容 25 与背景 255（无标记像素），而框外参照点（读 y = 69）读到亮度 **8** 的暗像素。`.topTrailing` 的标记只可能在顶部，故**读坐标的 y 实际是自下而上**。
+
+**根因**：`S2StripBitmap` 里 `offset = ((height - 1 - y) * width + x) * 4` 的翻转是多余的。`CGBitmapContext` 的内存首行即图像顶行（用户空间 y 向上，但缓冲区按行自顶向下存储），按 `y` 直接索引即为自上而下；原式反而把 y 变成自下而上，与其文档注释相反。
+
+**为什么此前不可见**：`S2StripBitmap` 自 IC-085 引入，全仓仅 `S2CalibrationHarnessTests.swift` 使用。其既有断言要么取四角（上下对称）、要么满高循环、要么取中线（`row = 视口高 / 2`），对垂直方向都不敏感。**第一个把它暴露出来的就是本卡的右上角标记断言。**
+
+**修正**：去掉翻转（`offset = (y * width + x) * 4`），逐处核对 17 个调用点确认既有断言不受影响；CI #156 实测 482 项 0 失败，确认无回归。修正只动测试代码，产品代码未动。
+
+**修正后的预期已由失败运行的实测读数直接推得并被 #156 证实**：那个亮度 8 的像素位于缓冲区第 20 行、x = 489，落在修正后的框内（dx ∈ [18,60)、dy ∈ [0,42)），`8 + 8 = 16 < 25`（内容色）。
+
+---
+
+## 十、逐条验收门禁
+
+### 阶段二（v2）
 
 | 门禁 | 结果 | 对应测试函数 |
 |---|---|---|
-| **G180** 测量表入报告（帧号、像素、换算）；参数出厂 = 测量值；`schemaVersion == 4` | ✅ 通过 | `testIC090G180FactoryCornerRadiusMatchesSystemReference`（出厂 = `S2BottomStripSystemReference.cornerRadius`、`schemaVersion == 4`、导出含 `bottomStripCornerRadius=2.500000`、登记表 decided/effective、无 `bottomStripCurrentCornerRadius`、负值非法、缺键按出厂值补齐、往返一致）；测量表见本报告第三节 |
-| **G181** 四角像素断言通过 | ⚠️ **部分通过** | `testIC090G181RenderedStripCornersAreClippedByCornerRadius` ✅ 通过（scale = 3 位图，5 个项目 × 4 角：45° 对角线偏移 0/1 为背景、3…7 为内容；首行末行与首列末列偏移 0…2 为背景、8 为内容）。`testIC090G181StripMarkOverlayIsClippedByTheSameCornerRadius` ❌ **失败**，见第五节 |
-| **G181** 横栏既有断言（IC-085 G163/G164/G166b）仍通过 | ✅ 通过 | `testIC085G163IdleLayoutCurrentItemSquareWithGaps`、`testIC085G163DraggingLayoutEquallySpacedAndHeightUnchanged`、`testIC085G164DragStartCollapsesWithinHundredMilliseconds`、`testIC085G164DecelerationMatchesReferenceCurve`、`testIC085G164SettleSnapsToNearestItemAndExpandsWithinSixHundredMilliseconds`、`testIC085G164ReleaseBelowHalfPitchSnapsBackWithoutSwitching`、`testIC085G164TouchDuringDecelerationTakesOverAndExternalIndexRecenters`、`testIC085G162FactoryBottomStripValuesMatchSystemReference`、`testIC085G162PersistedConfigurationRoundTripsNewStripKeys`、`testIC085R3RenderedStripHasNoBackgroundInsideItemFrames`（后者按新行为更新，见第二节闸门 B） |
-| **G182** 场景 C 新字段与事件断言存在 | ✅ 通过 | `testIC090G182PinchEndScenarioExportsNewFieldsAndEvents`（头部字段声明行既有 22 项原序不变 + 五个新字段追加末尾；逐帧值取自真实滚动视图；五类事件的来源与 details 键逐条断言；停止录制后同样调用记录条数不变）、`testIC090G182ImageRequestResultRegistryTracksLatestResultAndReplacement` |
-| **G182** `export-format.md` 只增不删 | ✅ 通过 | `git diff bf7bab1..0ab6fa9 -- Reports/IC-068/export-format.md` 为 20 行纯新增、0 行删除／修改 |
-| **G183** IC-063～IC-088 既有门禁仍通过 | ✅ 通过 | 482 项中 481 项通过；唯一失败项为本卡新增的 G181 标记断言，无既有门禁回归 |
-| **G183** 本地三项门禁 0 | ✅ 通过 | 见第五节第 3 小节 |
-| **G184** CI success，真实退出码 0，XCTest 0 失败 | ❌ **不通过** | 见第五节 |
+| **G190** 出厂 = 8/3（`accuracy: 1e-9`），导出 `2.666667`，`schemaVersion == 4`，登记表 decided/effective 不变 | ✅ 通过 | `testIC090G180FactoryCornerRadiusMatchesSystemReference`（另断言 `metrics.cornerRadius * 3 == 8`、无 `bottomStripCurrentCornerRadius`、负值非法、缺键按出厂值补齐、往返一致）；计数由 `testIC074G96…`、`testIC074G97…`、`testIC067C5…`、`S2ImageLoadingStateTests` 覆盖 |
+| **G191** G181 两支均通过；既有横栏门禁通过 | ✅ 通过 | `testIC090G181RenderedStripCornersAreClippedByCornerRadius`、`testIC090G181StripMarkOverlayIsClippedByTheSameCornerRadius`；`testIC085G163…`×2、`testIC085G164…`×5、`testIC085G162…`×2、`testIC085R3RenderedStripHasNoBackgroundInsideItemFrames` |
+| **G192** CI success、真实退出码 0、XCTest 0 失败、计数算式、IPA 校验 | ✅ 通过 | 见第十二节 |
+| 本地三项门禁退出码 0 | ✅ 通过 | 见第十二节第 3 小节 |
+
+### 阶段一（v1，全部保持通过）
+
+| 门禁 | 结果 | 对应测试函数 |
+|---|---|---|
+| **G180** 测量表入报告；参数出厂 = 测量值；`schemaVersion == 4` | ✅ 通过 | 同 G190；测量表见第三节 |
+| **G181** 四角像素断言 | ✅ 通过 | `testIC090G181RenderedStripCornersAreClippedByCornerRadius`（阈值按 r = 8 px 重算，见第八节） |
+| **G181** 横栏既有断言仍通过 | ✅ 通过 | 见上表 G191 行 |
+| **G182** 场景 C 新字段与事件断言存在 | ✅ 通过 | `testIC090G182PinchEndScenarioExportsNewFieldsAndEvents`、`testIC090G182ImageRequestResultRegistryTracksLatestResultAndReplacement` |
+| **G182** `export-format.md` 只增不删 | ✅ 通过 | `git diff bf7bab1..HEAD -- Reports/IC-068/export-format.md` = 20 行新增、**0 行删除** |
+| **G183** IC-063～IC-088 既有门禁仍通过 | ✅ 通过 | 482 项 0 失败，无既有门禁回归 |
+| **G184** CI success、真实退出码 0、XCTest 0 失败 | ✅ 通过 | 见第十二节 |
 
 ---
 
-## 五、CI 与本地门禁
+## 十一、占位值登记
 
-### 1. CI 运行明细（真实退出码，未被日志管道吞掉）
+| 参数 | 规格状态 | 接线状态 | 出厂值 | 来源 |
+|---|---|---|---|---|
+| `bottomStripCornerRadius` | `decided` | `effective` | **`8.0 / 3.0`**（pt，= 8 px @3x，导出 `2.666667`） | 系统 Photos 录屏 `IMG_6743.MP4` 静止段四角实测：执行端 8.08–8.20 px、技术负责人独立复核 8.22–8.37 px；取最接近的 @3x 整像素值。④ Lynn 2026-08-23 定案（选 A） |
 
-工作流 `set -o pipefail` + `exit "$test_status"`；四次运行的作业退出码均由 `##[error]Process completed with exit code …` 直接读出。
+### `schemaVersion` 不递增的理由（IC-090 R3 / v2）
 
-| # | 运行编号 | 被测提交（完整 SHA） | 结论 | 退出码 | XCTest | 原因 |
-|---|---|---|---|---|---|---|
-| 1 | 32649018232 | `e9f70db6819f3f300a7568382c0bb1051dd8b44a` | failure | 65 | 未执行（构建失败即取消） | 编译错误 1 处：`S2CalibrationHarnessTests.swift:875:51 missing argument for parameter 'bottomStripCornerRadius' in call`——IC-074 G96 里逐字段构造的期望配置没跟上新参数 |
-| 2 | 32649784298 | `64d6bba28a3632dd03c7b8b49e64fc68cffa8268` | failure | 65 | 未执行 | 同一处编译错误（推 R2 时该缺陷尚未修，非新问题） |
-| 3 | 32650455085 | `278d38261c0bd241f5e09789ea0488049d1793a9` | failure | 65 | **482 项，2 失败** | ① `testIC085G162FactoryBottomStripValuesMatchSystemReference:7994`：横栏 decided+effective 期望 12，新增圆角后为 13；② `testIC090G181StripMarkOverlayIsClippedByTheSameCornerRadius:8600`「出厂尺寸下标记未渲染」 |
-| 4 | 32651137095 | `0ab6fa9026eb5f44211414321703cfd2ee309fed` | failure | 65 | **482 项，1 个测试失败**（1198 条断言，全部来自该测试的逐像素循环） | 仅 `testIC090G181StripMarkOverlayIsClippedByTheSameCornerRadius:8643`：差异像素的 y 达 87/88/89，越出右上 14 pt 标记框 |
+`S2CalibrationConfiguration.schemaVersion` 在阶段一由 3 递增为 **4**（出厂值集合新增 `bottomStripCornerRadius`）。阶段二改动了该出厂值，但 **`schemaVersion` 保持 4，不再递增**，理由：
 
-**修复尝试计数：3 轮**（第 1、2 次运行是同一缺陷未修时的两次推送，算 1 轮）。第 3 轮后仍有 1 项失败，按执行纪律第 2 条「三次尝试上限，停下报告，不要继续试」停止，**未做第四次尝试**。
+1. **schema 4 从未随任何可安装包发出。** 阶段一四次 CI 均在 XCTest 步骤失败（退出码 65），工作流未走到打包步骤，没有产出过 IPA；CI #156 是第一个带 schema 4 的包。
+2. **真机 Keychain 里仍是 schema 3 的数据。** 任何 schema 4 的包装上去，版本门控都会把 schema 3 的整套数据丢弃并删除条目，随后按当前出厂值重建——新出厂值不会被旧值覆盖。
+3. 因此这是**同一未发布版本内**的出厂值调整，不构成需要区分的持久化格式代际。
 
-**IPA 校验：无。** 工作流的「构建未签名应用」步骤排在「运行 XCTest」之后，XCTest 以 65 退出即中止作业，四次运行都没有走到打包步骤，因此本卡**没有 IPA 字节数与 SHA-256 可报**。
+IC-087 定案「出厂值变更必须递增 `schemaVersion`」的目的是防止 Keychain 旧值覆盖新出厂值；在本情形下该风险不存在（第 2 条）。**若阶段二的包在下发给 Lynn 之前又要改这个出厂值，仍不需要递增；一旦 Lynn 装过带 schema 4 的包，再改出厂值就必须递增为 5。**
 
-### 2. 唯一失败项的诊断（G181 标记子断言）
+未新增任何 `factoryPlaceholder` 语义的未定项参数；未改动任何其他出厂值。**未新增 `bottomStripCurrentCornerRadius`**——实测邻居与当前张同半径。
 
-失败断言：已标记项目（`frames[0]`，20×30）与未标记项目（`frames[2]`，同尺寸）逐像素比较，差异像素应全部落在右上 14 pt 标记框内；实测差异像素铺满全部 90 行（y 最大 89），约 599 / 5400 个像素。
+---
 
-**断言的前提不成立**：该前提是「两个同尺寸、同纯色内容、同圆角、同整点位置的项目，除标记外逐像素相同」。证据：
+## 十二、CI 与本地门禁
 
-- **①已验证事实**：CI #32650455085 里项目内容用 `Color.black`，差异集**为空**——连标记区域都没有差异。原因是横栏标记 `trash.circle.fill` 以系统前景色渲染，浅色环境下同为纯黑，黑标记叠在黑内容上逐像素相同。
-- **①已验证事实**：CI #32651137095 里项目内容改为 `Color(white: 0.1)`（避开与标记同色），差异集出现，但**铺满整帧**，不只在标记框内。
-- **③合理推测（未验证）**：横栏整体带 `.mask(fadeMask)`（`LinearGradient`，本卡未改）。两个项目虽都落在渐变的「不透明」平台区，但渲染时梯度的抖动／插值会在不同 x 位置引入 ±1 级的 alpha 差；黑色内容下 `0 × α` 恒为 0 看不出来，`0.1` 白（≈26）下就变成 26 与 27 的差，于是全帧出现 1 级差异。
-  **验证方式**：夹具里旁路 `.mask(fadeMask)` 后重比，或直接把比较范围限定在右上 14 pt 标记框内，看差异集是否只剩标记像素。
-- **产品侧无问题的旁证**：圆角几何门禁 `testIC090G181RenderedStripCornersAreClippedByCornerRadius` 与超大标记那一支（正对照「标记确实渲染了」+「帧左沿之外仍为纯白 255」+「四角仍为纯白」）**全部通过**，说明 `.clipShape` 对内容与标记叠层的裁切在渲染层是成立的；失败只在「用整帧逐像素比较来定位标记像素」这一取证手法上。
+### 1. 阶段二 CI（真实退出码，未被日志管道吞掉）
 
-**按纪律未继续修。** 若技术负责人要收口，最小改法是把该测试后半段的比较范围从整帧改为右上 `markSize × markSize` 框（框外不再断言），或在夹具里旁路渐隐掩码；两者都只动测试、不动产品。
+工作流 `set -o pipefail` + `exit "$test_status"`。
+
+| # | 运行编号 | 被测提交（完整 SHA） | 结论 | 退出码 | XCTest |
+|---|---|---|---|---|---|
+| 155 | 32653136006 | `7bb7b501fd5e77cfd1f03193b036c166e48d00c1` | failure | 65 | 482 项 2 失败（均在 G181 标记断言，定位证据见第九节第 2 小节） |
+| **156** | **32653618003** | **`1325c7dca3d8626ff768f2cc469b649fb293e0ef`** | **success** | **0** | **482 项 0 失败**（日志 `test_status=0`、`** TEST SUCCEEDED **`） |
+
+**阶段二 CI 用满 2 次上限，以全绿收口。**
+
+### 2. 计数算式与 IPA 校验（G192）
+
+- **XCTest 计数**：`main`（`bf7bab1`）基线 **477** 项 → 本卡新增 **5** 项、删除 **0** 项 → **477 + 5 − 0 = 482**，与 CI #156 报告的 482 一致。新增的 5 项为 `testIC090G180FactoryCornerRadiusMatchesSystemReference`、`testIC090G181RenderedStripCornersAreClippedByCornerRadius`、`testIC090G181StripMarkOverlayIsClippedByTheSameCornerRadius`、`testIC090G182PinchEndScenarioExportsNewFieldsAndEvents`、`testIC090G182ImageRequestResultRegistryTracksLatestResultAndReplacement`（`git grep` 逐名比对 `bf7bab1` 与 tip，差集恰为这 5 个、无删除）。
+- **IPA**：CI 报告 `未签名 IPA 已生成：782141 字节，SHA-256=cbeb7bef63460a2566191c88556f2a6951c4bb91bf446f0b31310e005b9e4933`。
+- **本地重下校验**：`gh run download 32653618003` 取回 `PhotoCleanupMVE-unsigned.ipa`，本地 `ls -l` 得 **782141 字节**、`sha256sum` 得 **`cbeb7bef63460a2566191c88556f2a6951c4bb91bf446f0b31310e005b9e4933`**，与 CI 报告**逐字节一致** ✅。
 
 ### 3. 本地门禁（本机 Windows，真实退出码）
 
 | 门禁 | 退出码 | 说明 |
 |---|---|---|
-| `Scripts/selfcheck.ps1` | **0** | 结构自验通过：文件、工程配置、String Catalog、PNG、禁联网门禁、硬编码扫描及不少于 189 项测试的数量门禁均符合要求 |
+| `Scripts/selfcheck.ps1` | **0** | 结构自验通过 |
 | `Scripts/scan-hardcoded-user-visible-strings.ps1` | **0** | 用户可见硬编码残留 0；目录条目 171、产品源码引用 key 171 一致 |
 | `git diff --check` | **0** | 无空白错误 |
 
-`S2ImageRequestResult.diagnosticName` 因此放在 `S2NativePhotoPager.swift` 的诊断协议段落内（与既有 `S2ImageLoadState.diagnosticName` 同处），而不是随类型定义放在 `S2TemporaryPhotoImageStrategy.swift`——后者会被扫描器按「用户消息或展示 helper 直接返回字符串」判为残留。`Scripts/` 属范围外，未改扫描器。
+`S2ImageRequestResult.diagnosticName` 放在 `S2NativePhotoPager.swift` 的诊断协议段落内（与既有 `S2ImageLoadState.diagnosticName` 同处），否则会被扫描器按「用户消息或展示 helper 直接返回字符串」判为残留。`Scripts/` 属范围外，未改扫描器。
 
 ---
 
-## 六、发现但未处理的问题（按纪律只报告不修）
+## 十三、发现但未处理的问题（按纪律只报告不修）
 
-1. **出厂值与实测值的 −0.2 pt 偏差（最需要裁定的一项）。** 实测 8.08–8.20 px = 2.69–2.73 pt，两种独立方法互证，且最接近 **8 px = 2.667 pt** 这个 @3x 整像素值。卡规定的「四舍五入到 0.5 pt」把它压到 2.5 pt = 7.5 px，缺口面积从实测的 14.0 px² 降到 12.1 px²（−14%）。H36 是并排观感判定，这 0.2 pt 是否可感知由 Lynn 判；若不可接受，把 `bottomStripCornerRadius` 改为 2.667（或把取整粒度改为 1/3 pt）即可，属出厂值变更，需再升 `schemaVersion`。执行端未自行改动。
-2. **圆角曲线类型未能判定性区分。** 超椭圆族拟合里圆弧（n = 2）最优，故实装用 `.circular`；但 r ≈ 8 px 的分辨率不足以把圆弧与 Apple「连续」圆角分开（②）。若 H36 观感不一致，先复核这一项（改 `style: .continuous` 即可，属实现手段不属出厂值）。
-3. **`S2BottomStripView` 里的 `.clipped()` 已被 `.clipShape(RoundedRectangle)` 覆盖。** 圆角裁切是矩形裁切的子集，`.clipped()` 现在是冗余的一层。保留未删（卡未授权清理），留给后续清理卡。
-4. **探针盲区：`enforceOneXContentGeometry` 在 `zoomContentView` / `presentationContentView` 为 nil 时提前返回，此时不产生「吸附归位写入」事件。** 这一条未写进 `export-format.md`。真机场景 C 下两个视图都应存在，影响面小，但读数据时若某次归位没有对应事件，先排除这条。
-5. **`setZoomScale` 事件覆盖全部调用点。** 该事件由 `setZoomScale(_:animated:)` 的重写统一记录，双击、`applyNativeState`、`animateToMinimumZoomScale` 都会产生记录，A/B/D/E 四个场景的记录量也会变多。已在 `export-format.md` 写明，不影响既有字段。
-6. **场景 C 的真机动作在本卡改为「放大约 3 倍 → 松手 → 等 1 秒」，与 IC-068 原表述（「缓慢放大少许后松手」）不同。** 已在 `export-format.md` 的 IC-090 节写明，场景名与 `exportTitle` 未改。
+1. **圆角曲线类型未能判定性区分。** 超椭圆族拟合里圆弧（n = 2）最优，故实装用 `.circular`；但 r ≈ 8 px 的分辨率不足以把圆弧与 Apple「连续」圆角分开（②）。若 H36 观感不一致，这是第一个要复核的项（改 `style: .continuous` 属实现手段、不属出厂值）。
+2. **`S2BottomStripView` 里的 `.clipped()` 已被 `.clipShape(RoundedRectangle)` 覆盖**，是冗余的一层。保留未删（卡未授权清理），留给后续清理卡。
+3. **探针盲区：`enforceOneXContentGeometry` 在 `zoomContentView` / `presentationContentView` 为 nil 时提前返回，此时不产生「吸附归位写入」事件。** 这一条未写进 `export-format.md`。真机场景 C 下两个视图都应存在，影响面小，但读数据时若某次归位没有对应事件，先排除这条。
+4. **`setZoomScale` 事件覆盖全部调用点**（双击、`applyNativeState`、`animateToMinimumZoomScale` 都会产生记录），A/B/D/E 四个场景的记录量也会变多。已在 `export-format.md` 写明。
+5. **场景 C 的真机动作在本卡改为「放大约 3 倍 → 松手 → 等 1 秒」**，与 IC-068 原表述不同。已在 `export-format.md` 的 IC-090 节写明，场景名与 `exportTitle` 未改。
+6. **G181 标记断言的 (a) 对 14 pt 圆形标记是必要非充分条件**（第九节第 1 小节）。像素侧的充分证据需要超出标记框取证，已按卡规则排除；结构侧由 `.clipShape` 的位置保证。
+7. **横栏渐隐掩码在渲染位图上引入 ±1 级位置相关差异**（③，第五节）。本卡未验证、未处理；它使「跨项目逐像素比较」这一取证手法在本项目里整体不可靠，后续若再需要类似取证请避开。
 
 ---
 
-## 七、须人工判定（真机）——本卡无法开始
+## 十四、须人工判定（真机）
 
-**因 CI 未绿、未产出 IPA，以下两项本卡不具备开始条件，均保留给 Lynn，执行端不代为下结论。**
+CI #156 的 IPA 已产出并本地校验一致，以下两项**具备开始条件**，保留给 Lynn，执行端不代为下结论。
 
-- **H36：横栏缩略图圆角与系统并排观感一致；标记不被圆角裁掉。**
-  夹具侧可提供的旁证（**夹具驱动，真机未覆盖**）：`ImageRenderer` scale = 3 位图上，四角在半径内为背景、半径外为内容，半径被夹逼在 6.45 px ≤ r ≤ 8.00 px（= 2.15–2.67 pt）区间内；标记为 `trash.circle.fill`（圆形），其自身轮廓距项目帧角点约 2.9 pt，而 2.5 pt 圆角的边界距角点仅 0.73 pt，几何上标记不进入被裁掉的区域。**观感一致与否仍须真机并排判定。**
-- **场景 C 录制一次（放大约 3 倍 → 松手 → 等 1 秒 → 停止 → 导出）发技术负责人。**
-  R2 的埋点已就位，但没有可安装的包就无法录制，因此**卡里要求的「按帧列出松手后 500 ms 内 `presentationFrame` / `zoomScale` / `contentOffset` 的逐帧差分、标出 > 1 pt 的往返跳变与同时刻事件、给出归因」本卡未能开始，标注为未覆盖**。这部分需要在 CI 转绿、拿到包并由 Lynn 录制后另行完成。
+- **H36：横栏缩略图圆角与系统并排观感一致；标记不被圆角裁掉。** 若观感「更尖 / 更圆」，只反馈方向。
+  夹具侧旁证（**夹具驱动，真机未覆盖**）：`ImageRenderer` scale = 3 位图上四角在半径内为背景、半径外为内容，二值判据把半径夹逼在 7.83–8.00 px；出厂值另由 G190 以 `accuracy: 1e-9` 钉死为 8/3 pt = 8 px @3x。
+- **场景 C 录制一次**（开始录制 → 双指放大到约 3 倍 → 松手 → 等 1 秒 → 停止 → 导出）发技术负责人转交。
+  收到导出后由执行端按阶段三要求做逐帧差分分析（`presentationFrame` / `zoomScale` / `presentationZoomScale` / `contentOffset`，标出 > 1 pt 的往返跳变与同时刻事件，给出归因③与验证方式），**不改产品**，以一个 docs 提交追加到 `Reports/IC-090/`。
 
-**关于捏合松手抖动的根因**：卡把原因标注为③未知，本卡是探针卡、不做归因。执行端**没有**在无数据的情况下给出任何归因，也**没有**修改抖动相关的任何行为。
+**关于捏合松手抖动的根因**：本卡是探针卡，不做归因。执行端**没有**在无真机数据的情况下给出任何归因，也**没有**修改抖动相关的任何行为。
