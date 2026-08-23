@@ -7047,6 +7047,316 @@ extension S2CalibrationHarnessTests {
         )
     }
 
+    // IC-085 R3-1：项目帧固定（邻居 20×30、当前张 30×30），与资产宽高比无关；
+    // 内容框按 aspectFill 放大到覆盖项目帧（横图裁左右、竖图裁上下）。
+    func testIC085R3ItemFramesFixedAndContentFillsCell() {
+        let layout = S2BottomStripLayout(metrics: Self.referenceMetrics)
+        let neighbor = CGSize(width: 20, height: 30)
+        let current = CGSize(width: 30, height: 30)
+
+        // 帧：`frame(at:)` 不接收宽高比，任何索引只有邻居/当前张两种尺寸。
+        for index in 0..<5 {
+            let frame = layout.frame(
+                at: index,
+                currentIndex: 2,
+                expansion: 1,
+                contentX: layout.contentCenterX(of: 2),
+                viewportSize: Self.stripViewportSize
+            )
+            XCTAssertEqual(frame.size, index == 2 ? current : neighbor, "index=\(index)")
+        }
+
+        // 内容框：横图按高填满、竖图按宽填满，且永不小于帧。
+        let landscapeInNeighbor = S2BottomStripLayout.fillContentSize(cellSize: neighbor, assetAspectRatio: 4.0 / 3.0)
+        XCTAssertEqual(landscapeInNeighbor.width, 40, accuracy: 0.001)
+        XCTAssertEqual(landscapeInNeighbor.height, 30, accuracy: 0.001)
+        let portraitInNeighbor = S2BottomStripLayout.fillContentSize(cellSize: neighbor, assetAspectRatio: 3.0 / 4.0)
+        XCTAssertEqual(portraitInNeighbor.width, 20, accuracy: 0.001)
+        XCTAssertEqual(portraitInNeighbor.height, 30, accuracy: 0.001)
+        let tallInNeighbor = S2BottomStripLayout.fillContentSize(cellSize: neighbor, assetAspectRatio: 9.0 / 16.0)
+        XCTAssertEqual(tallInNeighbor.width, 20, accuracy: 0.001)
+        XCTAssertEqual(tallInNeighbor.height, 20 * 16 / 9, accuracy: 0.001)
+        let landscapeInCurrent = S2BottomStripLayout.fillContentSize(cellSize: current, assetAspectRatio: 4.0 / 3.0)
+        XCTAssertEqual(landscapeInCurrent.width, 40, accuracy: 0.001)
+        XCTAssertEqual(landscapeInCurrent.height, 30, accuracy: 0.001)
+        let portraitInCurrent = S2BottomStripLayout.fillContentSize(cellSize: current, assetAspectRatio: 3.0 / 4.0)
+        XCTAssertEqual(portraitInCurrent.width, 30, accuracy: 0.001)
+        XCTAssertEqual(portraitInCurrent.height, 40, accuracy: 0.001)
+        for ratio: CGFloat in [0.25, 0.5, 0.75, 1, 4.0 / 3.0, 16.0 / 9.0, 3] {
+            for cell in [neighbor, current] {
+                let size = S2BottomStripLayout.fillContentSize(cellSize: cell, assetAspectRatio: ratio)
+                XCTAssertGreaterThanOrEqual(size.width + 0.001, cell.width, "ratio=\(ratio)")
+                XCTAssertGreaterThanOrEqual(size.height + 0.001, cell.height, "ratio=\(ratio)")
+                XCTAssertEqual(size.width / size.height, ratio, accuracy: 0.001, "ratio=\(ratio)")
+            }
+        }
+        // 非法比例退化为帧本身。
+        XCTAssertEqual(S2BottomStripLayout.fillContentSize(cellSize: neighbor, assetAspectRatio: 0), neighbor)
+        XCTAssertEqual(S2BottomStripLayout.fillContentSize(cellSize: neighbor, assetAspectRatio: .nan), neighbor)
+    }
+
+    // IC-085 R3-2：松手速度 |v| < bottomStripFlickVelocityThreshold（placeholder，出厂 300 pt/s）
+    // 无减速段，直接吸附展开；达到阈值才进入减速。新参数登记为 placeholder / effective。
+    func testIC085R3SlowReleaseSkipsInertiaBelowFlickThreshold() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        XCTAssertEqual(configuration.bottomStripFlickVelocityThreshold, 300, accuracy: 0.5)
+        let connection = tryUnwrap(
+            S2CalibrationConfiguration.parameterConnections
+                .first { $0.name == "bottomStripFlickVelocityThreshold" }
+        )
+        XCTAssertEqual(connection.specStatus, .placeholder)
+        XCTAssertEqual(connection.wiringStatus, .effective)
+        XCTAssertTrue(configuration.exportText().contains("bottomStripFlickVelocityThreshold=300.000000"))
+        XCTAssertEqual(
+            tryUnwrap(configuration.resolvedParameters).bottomStripMetrics.flickVelocityThreshold,
+            300
+        )
+
+        // 慢拖：拖 8 pt 后以 299 pt/s 松手 → 立即进入吸附（无 decelerating），状态机已 idle。
+        let slow = makeStripMotion(assetCount: 9, currentIndex: 4)
+        let startX = slow.motion.contentX
+        XCTAssertTrue(slow.motion.beginDrag())
+        slow.motion.updateDrag(translation: 0)
+        slow.motion.updateDrag(translation: -8)
+        slow.clock.advance(by: 0.2)
+        slow.motion.tick()
+        slow.motion.endDrag(velocity: -299)
+        XCTAssertEqual(slow.motion.phase, .settling)
+        XCTAssertEqual(slow.machine.bottomStripState, .idle)
+        XCTAssertEqual(slow.machine.currentIndex, 4)
+        slow.clock.advance(by: 0.6)
+        slow.motion.tick()
+        XCTAssertEqual(slow.motion.phase, .idle)
+        XCTAssertEqual(slow.motion.contentX, startX, accuracy: 0.001)
+        XCTAssertEqual(slow.motion.expansion, 1, accuracy: 0.001)
+        XCTAssertFalse(slow.driver.isRunning)
+
+        // 同样位移、300 pt/s 松手 → 进入减速，状态机保持 dragging。
+        let flick = makeStripMotion(assetCount: 9, currentIndex: 4)
+        XCTAssertTrue(flick.motion.beginDrag())
+        flick.motion.updateDrag(translation: 0)
+        flick.motion.updateDrag(translation: -8)
+        flick.clock.advance(by: 0.2)
+        flick.motion.tick()
+        flick.motion.endDrag(velocity: -300)
+        XCTAssertEqual(flick.motion.phase, .decelerating)
+        XCTAssertEqual(flick.machine.bottomStripState, .dragging)
+
+        // 阈值为 0 时任何速度都减速（面板可调到 0）。
+        let zero = makeStripMotion(assetCount: 9, currentIndex: 4)
+        let base = zero.motion.layout.metrics
+        let metrics = S2BottomStripMetrics(
+            currentItemSize: base.currentItemSize,
+            neighborItemWidth: base.neighborItemWidth,
+            neighborItemHeight: base.neighborItemHeight,
+            itemSpacing: base.itemSpacing,
+            currentItemGap: base.currentItemGap,
+            edgeFadeWidth: base.edgeFadeWidth,
+            leadingInset: base.leadingInset,
+            switchDistance: base.switchDistance,
+            decelerationRate: base.decelerationRate,
+            expandDurationMilliseconds: base.expandDurationMilliseconds,
+            collapseDurationMilliseconds: base.collapseDurationMilliseconds,
+            flickVelocityThreshold: 0
+        )
+        zero.motion.layout = S2BottomStripLayout(metrics: metrics)
+        XCTAssertTrue(zero.motion.beginDrag())
+        zero.motion.updateDrag(translation: 0)
+        zero.motion.updateDrag(translation: -8)
+        zero.motion.endDrag(velocity: -60)
+        XCTAssertEqual(zero.motion.phase, .decelerating)
+    }
+
+    // IC-085 R3-3：主图翻页（非横栏拖动）引起的定位项变化：横栏以 expandDuration 的
+    // ease-out 滚到新当前张并展开，不跳变；横栏拖动引起的切换不触发该动画。
+    func testIC085R3ExternalIndexChangeScrollsAndExpandsWithoutJump() {
+        let fixture = makeStripMotion(assetCount: 9, currentIndex: 2)
+        let layout = fixture.motion.layout
+        let fromX = fixture.motion.contentX
+        let toX = layout.contentCenterX(of: 5)
+        XCTAssertEqual(fixture.motion.phase, .idle)
+
+        // 外部翻到第 6 张（索引 5）：立即进入 settling，位置不跳变，展开度从 0 起。
+        fixture.motion.synchronize(count: 9, currentIndex: 5, animated: true)
+        XCTAssertEqual(fixture.motion.phase, .settling)
+        XCTAssertEqual(fixture.motion.contentX, fromX, accuracy: 0.001)
+        XCTAssertEqual(fixture.motion.expansion, 0, accuracy: 0.001)
+        XCTAssertTrue(fixture.driver.isRunning)
+        XCTAssertEqual(fixture.machine.bottomStripState, .idle)
+
+        // 进度与 R2 吸附曲线一致；逐帧单调、无跳变（单帧位移 < 总位移的 1/3）。
+        var previousX = fromX
+        var frame = 0
+        while fixture.motion.phase == .settling, frame < 120 {
+            fixture.clock.advance(by: 1.0 / 60.0)
+            fixture.motion.tick()
+            frame += 1
+            let x = fixture.motion.contentX
+            XCTAssertGreaterThanOrEqual(x + 0.001, previousX, "frame=\(frame)")
+            XCTAssertLessThanOrEqual(x, toX + 0.001, "frame=\(frame)")
+            XCTAssertLessThan(abs(x - previousX), abs(toX - fromX) / 3, "frame=\(frame)")
+            previousX = x
+            let elapsed = TimeInterval(frame) / 60
+            for sample in S2BottomStripSystemReference.settleProgressSamples
+            where abs(elapsed - sample.elapsed) < 1.0 / 120 {
+                let progress = (x - fromX) / (toX - fromX)
+                XCTAssertEqual(progress, sample.progress, accuracy: 0.1, "t=\(sample.elapsed)")
+                XCTAssertEqual(fixture.motion.expansion, progress, accuracy: 0.001, "t=\(sample.elapsed)")
+            }
+        }
+        XCTAssertTrue((36...37).contains(frame), "600 ms ≈ 36 帧后结束，实际 \(frame)")
+        XCTAssertEqual(fixture.motion.phase, .idle)
+        XCTAssertEqual(fixture.motion.contentX, toX, accuracy: 0.001)
+        XCTAssertEqual(fixture.motion.expansion, 1, accuracy: 0.001)
+        XCTAssertEqual(fixture.motion.trackedIndex, 5)
+        XCTAssertFalse(fixture.driver.isRunning)
+
+        // 同一索引重复同步：不重启动画。
+        let startCount = fixture.driver.startCount
+        fixture.motion.synchronize(count: 9, currentIndex: 5, animated: true)
+        XCTAssertEqual(fixture.motion.phase, .idle)
+        XCTAssertEqual(fixture.driver.startCount, startCount)
+
+        // 动画进行中再次翻页：改向新目标，不跳变。
+        fixture.motion.synchronize(count: 9, currentIndex: 7, animated: true)
+        fixture.clock.advance(by: 0.1)
+        fixture.motion.tick()
+        let midX = fixture.motion.contentX
+        fixture.motion.synchronize(count: 9, currentIndex: 3, animated: true)
+        XCTAssertEqual(fixture.motion.phase, .settling)
+        XCTAssertEqual(fixture.motion.contentX, midX, accuracy: 0.001)
+        fixture.clock.advance(by: 0.6)
+        fixture.motion.tick()
+        XCTAssertEqual(fixture.motion.contentX, layout.contentCenterX(of: 3), accuracy: 0.001)
+        XCTAssertEqual(fixture.motion.phase, .idle)
+
+        // 横栏拖动引起的切换：拖动中 onChange 同样会调 synchronize(animated:)，必须是空操作。
+        let drag = makeStripMotion(assetCount: 9, currentIndex: 3)
+        XCTAssertTrue(drag.motion.beginDrag())
+        drag.motion.updateDrag(translation: 0)
+        drag.motion.updateDrag(translation: -layout.pitch)
+        XCTAssertEqual(drag.machine.currentIndex, 4)
+        let dragX = drag.motion.contentX
+        drag.motion.synchronize(count: 9, currentIndex: 4, animated: true)
+        XCTAssertEqual(drag.motion.phase, .dragging)
+        XCTAssertEqual(drag.motion.contentX, dragX, accuracy: 0.001)
+        drag.motion.endDrag(velocity: -900)
+        XCTAssertEqual(drag.motion.phase, .decelerating)
+        drag.motion.synchronize(count: 9, currentIndex: drag.machine.currentIndex, animated: true)
+        XCTAssertEqual(drag.motion.phase, .decelerating)
+
+        // 非动画同步（首帧/张数变化）仍直接居中。
+        let snap = makeStripMotion(assetCount: 9, currentIndex: 2)
+        snap.motion.synchronize(count: 9, currentIndex: 6)
+        XCTAssertEqual(snap.motion.phase, .idle)
+        XCTAssertEqual(snap.motion.contentX, layout.contentCenterX(of: 6), accuracy: 0.001)
+        XCTAssertEqual(snap.motion.expansion, 1, accuracy: 0.001)
+    }
+
+    // IC-085 R3-4 像素门禁：横栏渲染为位图（不透明测试内容，按资产比例 fit 的黑块），
+    // 断言每个项目帧内无背景像素；当前张 30×30 正方形且四角非背景；邻居 20×30；
+    // 帧间距 3、当前张两侧 13。
+    @MainActor
+    func testIC085R3RenderedStripHasNoBackgroundInsideItemFrames() throws {
+        let assetIDs = (1...5).map { "asset-\($0)" }
+        let machine = makeMachine(orderedAssetIDs: assetIDs, currentIndex: 1)
+        let metrics = tryUnwrap(
+            S2CalibrationConfiguration.factoryPlaceholder.resolvedParameters
+        ).bottomStripMetrics
+        let viewport = Self.stripViewportSize
+        // 偶数索引横图 4:3、奇数索引竖图 3:4；内容按自身比例 fit（模拟 App 层 .fit 闭包）。
+        let ratio: (String) -> CGFloat = { assetID in
+            let index = assetIDs.firstIndex(of: assetID) ?? 0
+            return index.isMultiple(of: 2) ? 4.0 / 3.0 : 3.0 / 4.0
+        }
+        let strip = S2BottomStripView(
+            machine: machine,
+            metrics: metrics,
+            markSize: 0,
+            itemContent: { item in
+                AnyView(
+                    Color.black.aspectRatio(ratio(item.assetID), contentMode: .fit)
+                )
+            },
+            assetAspectRatio: ratio,
+            onPhotoSwitch: {}
+        )
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.white
+                strip
+            }
+            .frame(width: viewport.width, height: viewport.height)
+        )
+        renderer.scale = 1
+        renderer.proposedSize = ProposedViewSize(viewport)
+        let cgImage = try XCTUnwrap(renderer.cgImage)
+        let bitmap = try S2StripBitmap(cgImage: cgImage)
+        XCTAssertEqual(bitmap.width, Int(viewport.width))
+        XCTAssertEqual(bitmap.height, Int(viewport.height))
+
+        let layout = S2BottomStripLayout(metrics: metrics)
+        let contentX = layout.contentCenterX(of: 1)
+        let frames = (0..<5).map { index in
+            layout.frame(
+                at: index,
+                currentIndex: 1,
+                expansion: 1,
+                contentX: contentX,
+                viewportSize: viewport
+            )
+        }
+        // 预期帧（整数像素）：当前张 186–216×0–30；左邻 153–173；右邻 229–249；再右 252–272。
+        XCTAssertEqual(frames[1], CGRect(x: 186, y: 0, width: 30, height: 30))
+        XCTAssertEqual(frames[0], CGRect(x: 153, y: 0, width: 20, height: 30))
+        XCTAssertEqual(frames[2], CGRect(x: 229, y: 0, width: 20, height: 30))
+        XCTAssertEqual(frames[3], CGRect(x: 252, y: 0, width: 20, height: 30))
+        XCTAssertEqual(frames[4], CGRect(x: 275, y: 0, width: 20, height: 30))
+
+        // 每个项目帧内无背景像素。
+        for (index, frame) in frames.enumerated() {
+            var background = 0
+            for y in Int(frame.minY)..<Int(frame.maxY) {
+                for x in Int(frame.minX)..<Int(frame.maxX) where bitmap.isBackground(x: x, y: y) {
+                    background += 1
+                }
+            }
+            XCTAssertEqual(background, 0, "index=\(index) frame=\(frame)")
+        }
+        // 当前张四角非背景、正方形。
+        let current = frames[1]
+        XCTAssertEqual(current.width, current.height)
+        for (x, y) in [
+            (Int(current.minX), Int(current.minY)),
+            (Int(current.maxX) - 1, Int(current.minY)),
+            (Int(current.minX), Int(current.maxY) - 1),
+            (Int(current.maxX) - 1, Int(current.maxY) - 1)
+        ] {
+            XCTAssertFalse(bitmap.isBackground(x: x, y: y), "corner=(\(x),\(y))")
+        }
+        // 间隙像素为背景：当前张两侧各 13、邻居间 3，按中线逐像素计数。
+        let row = Int(viewport.height / 2)
+        func backgroundRun(from x: Int, direction: Int) -> Int {
+            var count = 0
+            var cursor = x
+            while cursor >= 0, cursor < bitmap.width, bitmap.isBackground(x: cursor, y: row) {
+                count += 1
+                cursor += direction
+            }
+            return count
+        }
+        XCTAssertEqual(backgroundRun(from: Int(current.minX) - 1, direction: -1), 13)
+        XCTAssertEqual(backgroundRun(from: Int(current.maxX), direction: 1), 13)
+        XCTAssertEqual(backgroundRun(from: Int(frames[2].maxX), direction: 1), 3)
+        XCTAssertEqual(backgroundRun(from: Int(frames[3].maxX), direction: 1), 3)
+        // 邻居帧上下边之外立即是背景（高度正好 30 = 视口高，无上下越界内容可验；
+        // 改验邻居帧宽度：左右边之外为背景）。
+        XCTAssertTrue(bitmap.isBackground(x: Int(frames[0].minX) - 1, y: row))
+        XCTAssertTrue(bitmap.isBackground(x: Int(frames[0].maxX), y: row))
+        XCTAssertFalse(bitmap.isBackground(x: Int(frames[0].minX), y: row))
+        XCTAssertFalse(bitmap.isBackground(x: Int(frames[0].maxX) - 1, y: row))
+    }
+
     // IC-085 G162：旧版持久化数据缺新键时按出厂值补齐；含新键时往返一致。
     func testIC085G162PersistedConfigurationRoundTripsNewStripKeys() throws {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
@@ -7453,3 +7763,36 @@ final class S2StripTestClock {
     }
 }
 
+/// IC-085 R3 像素门禁用位图：RGBA8，背景判定为亮度 > 128（测试背景白、内容黑）。
+struct S2StripBitmap {
+    let width: Int
+    let height: Int
+    private let pixels: [UInt8]
+
+    init(cgImage: CGImage) throws {
+        width = cgImage.width
+        height = cgImage.height
+        var buffer = [UInt8](repeating: 0, count: width * height * 4)
+        let context = try XCTUnwrap(CGContext(
+            data: &buffer,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        pixels = buffer
+    }
+
+    /// `y` 自上而下（CGContext 原点在左下，读取时翻转）。
+    func isBackground(x: Int, y: Int) -> Bool {
+        guard x >= 0, x < width, y >= 0, y < height else {
+            return true
+        }
+        let offset = ((height - 1 - y) * width + x) * 4
+        let luminance = (Int(pixels[offset]) + Int(pixels[offset + 1]) + Int(pixels[offset + 2])) / 3
+        return luminance > 128
+    }
+}
