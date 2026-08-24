@@ -112,3 +112,25 @@
   - 既有 `event=外层setContentOffset` 的 `details` 在 `animated=…` 之后追加两项，成为
     `details=x=…；animated=true|false；outerIsTracking=true|false|nil；outerIsDragging=true|false|nil`。两个标志取自写入**发生前**的外层容器；无控制器时为 `nil`。事件名与 `source` 取值不变。
 - 关闭录制时以上埋点零副作用（仅在 `isRecording` 为真时追加记录）。头部「格式版本=1」未递增；递增仍留待后续任务卡。
+
+### 自 IC-092 起的事件追加（格式版本仍为 1）
+
+本节只追加，不修改上文任何既有约定。**逐帧字段一个不加**——IC-091 的五个字段够用。
+
+背景（①，IC-091 H37 三段录制）：内层到边后 UIKit 并不把同一手势交给外层，而是把位移改道给自由轴（方向锁下 y 以约 1 px/帧爬动）；外层在内层 pan 开始的瞬间就停止跟踪触摸，已无触摸可接。因此交接窗口内改由 App 把内层 pan 的横向增量映射到外层偏移。窗口内 App 是**唯一写者**（`apply` 与 `layoutNativePages` 由 IC-091 R3 守卫排除，外层原生拖动经①证明不会出现，另有让位保险兜底）。
+
+- 离散事件新增三类：
+  - `event=nxWindowFollow`，来源 `S2NativePagerViewController.followNxHandoffWindow`，交接窗口内每次跟随写入产生一条：
+    `details=translationDeltaX=…；outerContentOffsetX=…；clamped=true|false；restingOffsetX=…；pageStride=…；pageIndex=…；assetLocalIdentifier=…`。
+    - `translationDeltaX` 是内层 pan 相对**交接点**的横向增量（手指左移为负）；映射为 `outerContentOffsetX = 交接点外层偏移 − translationDeltaX`，1:1。
+    - `clamped=true` 表示本帧被 ±1 页步距的钳制改写。
+    - 每条 `nxWindowFollow` 之后紧跟一条 `event=外层setContentOffset`，来源 `S2NativePagerViewController.nxWindowFollow`、`animated=false`。**窗口开与关之间出现来源不是 `…nxWindowFollow` 的 `外层setContentOffset`，即第二写者，是闸门 C' 的判据。**
+  - `event=nxWindowVerticalSuppression`，来源同上，只在内层 y 相对交接点值偏差达到死区（1 pt）时产生：
+    `details=deviation=…；restoredOffsetY=…；deadband=1.000000；pageIndex=…；assetLocalIdentifier=…`。回写与同帧的跟随写入在**同一个 `CATransaction` 提交边界**内，边界本身由既有 `event=CATransaction提交边界`（来源 `S2NativePagerViewController.followNxHandoffWindow`）记录。
+  - `event=nxWindowSettlement`，来源 `S2NativePagerViewController.settleNxHandoffWindow`，松手 / 取消时产生一条：
+    `details=progress=…；directionalVelocity=…；triggerVelocity=…；progressThreshold=0.500000；shouldPage=true|false；direction=next|previous|none；from=…；to=…；pageIndex=…；assetLocalIdentifier=…`。
+    - `progress` = |外层偏移 − 静止偏移| / 步距；`directionalVelocity` 是内层 pan `velocity(in:).x` 按翻页方向取正后的值；`triggerVelocity` 取标定参数 `edgePagingTriggerVelocity`（出厂 300 pt/s，IC-092 复接线）。
+    - 判据：`progress > 0.5` **或** `directionalVelocity >= triggerVelocity` → 翻页；两者皆不满足 → 弹回。边界严格（`0.5` 与 `299` 都判弹回）。
+    - `to` 是钳到序列范围内的目标索引；`from == to` 即本次为弹回。
+- 既有 `event=nxHandoffWindow` 的 `reason` 新增两种取值：`结算完成`（松手结算路径关窗）、`原生接管`（让位保险：窗口内外层自身 `isDragging` 变真，或外层 `scrollViewWillBeginDragging` 到来）。上文列出的五种取值仍然有效。
+- 关闭录制时以上埋点零副作用。逐帧字段与头部「格式版本=1」均未变。

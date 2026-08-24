@@ -350,6 +350,100 @@ enum S2NxEdgeHandoffRule {
     }
 }
 
+/// IC-092 R1：交接窗口内一次跟随写入的读数。
+struct S2NxWindowFollowReading: Equatable {
+    /// 映射并钳制后的外层 `contentOffset.x`。
+    let outerOffsetX: CGFloat
+    /// 相对交接点的内层 pan 横向增量（手指左移为负）。
+    let translationDeltaX: CGFloat
+    /// 本次是否被 ±1 页步距的钳制改写。
+    let clampedToLimit: Bool
+}
+
+/// IC-092 R2：一次松手结算的判定读数。
+struct S2NxWindowSettlement: Equatable {
+    /// |外层偏移 − 静止偏移| / 步距。
+    let progress: CGFloat
+    /// 按翻页方向取正的松手横向速度（pt/s）。
+    let directionalVelocity: CGFloat
+    let triggerVelocity: CGFloat
+    let shouldPage: Bool
+    /// 位移方向；外层没离开静止偏移时为 nil。
+    let direction: S2PageDirection?
+}
+
+/// IC-092 R1/R2：交接窗口的跟随映射与松手结算规则。
+///
+/// IC-091 的 H37 三段真机录制（①）否定了「内层到边后 UIKit 会把同一手势交给外层」：
+/// 方向锁生效后 UIKit 把位移改道给自由轴（y 以约 1 px/帧爬动），外层
+/// `isTracking` / `isDragging` 全程未变真；且外层在内层 pan 开始的瞬间就停止跟踪触摸，
+/// 已无触摸可接。因此窗口内改由 App 自己把横向增量映射到外层偏移——窗口内 App 是
+/// 唯一写者（`apply` 已被 IC-091 R3 守卫排除），窗口外该禁令照旧。
+enum S2NxWindowFollowRule {
+    /// 竖向抑制的死区：内层 y 相对交接点值偏移达到该值才回写。
+    static let verticalSuppressionDeadband: CGFloat = 1
+    /// 松手翻页的进度阈值（严格大于才翻页）。
+    static let pagingProgressThreshold: CGFloat = 0.5
+
+    static func follow(
+        baseOuterOffsetX: CGFloat,
+        baseTranslationX: CGFloat,
+        translationX: CGFloat,
+        restingOffsetX: CGFloat,
+        pageStride: CGFloat
+    ) -> S2NxWindowFollowReading {
+        let delta = translationX - baseTranslationX
+        // 手指左移（delta < 0）露出下一张 → 外层偏移增大，故取负号，1:1。
+        let raw = baseOuterOffsetX - delta
+        let limit = max(0, pageStride)
+        let clamped = min(restingOffsetX + limit, max(restingOffsetX - limit, raw))
+        return S2NxWindowFollowReading(
+            outerOffsetX: clamped,
+            translationDeltaX: delta,
+            clampedToLimit: abs(clamped - raw) > 0.000_001
+        )
+    }
+
+    static func settlement(
+        outerOffsetX: CGFloat,
+        restingOffsetX: CGFloat,
+        pageStride: CGFloat,
+        panVelocityX: CGFloat,
+        triggerVelocity: CGFloat
+    ) -> S2NxWindowSettlement {
+        let signedDelta = outerOffsetX - restingOffsetX
+        let progress = pageStride > 0
+            ? abs(signedDelta) / pageStride
+            : 0
+        let direction: S2PageDirection?
+        if abs(signedDelta) <= 0.000_001 {
+            direction = nil
+        } else {
+            direction = signedDelta > 0 ? .next : .previous
+        }
+        // 「按翻页方向取正」：翻下一张时手指左移，`velocity.x` 为负，故取反。
+        let directionalVelocity: CGFloat
+        switch direction {
+        case .next:
+            directionalVelocity = -panVelocityX
+        case .previous:
+            directionalVelocity = panVelocityX
+        case nil:
+            directionalVelocity = 0
+        }
+        let shouldPage = direction != nil &&
+            (progress > pagingProgressThreshold ||
+                directionalVelocity >= triggerVelocity)
+        return S2NxWindowSettlement(
+            progress: progress,
+            directionalVelocity: directionalVelocity,
+            triggerVelocity: triggerVelocity,
+            shouldPage: shouldPage,
+            direction: direction
+        )
+    }
+}
+
 final class S2NativeZoomScrollView: UIScrollView {
     private(set) weak var zoomContentView: UIView?
     private(set) weak var presentationContentView: UIView?
@@ -4081,6 +4175,10 @@ enum S2NxHandoffWindowReason: String {
     case innerGestureEnded = "内层手势结束"
     case pagingSettled = "翻页结算"
     case interactionStateReset = "交互状态复位"
+    /// IC-092 R2：松手结算完成后由结算路径关闭。
+    case settlementCompleted = "结算完成"
+    /// IC-092 R1 让位保险：窗口内外层自身开始拖动，跟随停手、本次手势交回 UIKit。
+    case nativeTakeover = "原生接管"
 }
 
 enum S2OnDeviceTransitionScenario: String, CaseIterable, Identifiable {
@@ -4492,6 +4590,102 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             name: "nxHandoffWindow",
             source: "S2NativePagerViewController.setHandoffWindowOpen",
             details: head + outer + diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
+        )
+    }
+
+    /// IC-092 R3：交接窗口内的一次跟随写入。与紧随其后的 `外层setContentOffset`
+    /// （来源 `…nxWindowFollow`）成对出现；`clamped=true` 表示本帧被 ±1 页步距钳住。
+    func recordNxWindowFollow(
+        translationDeltaX: CGFloat,
+        outerContentOffsetX: CGFloat,
+        clampedToLimit: Bool,
+        restingOffsetX: CGFloat,
+        pageStride: CGFloat,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        let head = "translationDeltaX=" +
+            String(format: "%.6f", Double(translationDeltaX)) +
+            "；outerContentOffsetX=" +
+            String(format: "%.6f", Double(outerContentOffsetX)) +
+            "；clamped=\(clampedToLimit)；"
+        let geometry = "restingOffsetX=" +
+            String(format: "%.6f", Double(restingOffsetX)) +
+            "；pageStride=" +
+            String(format: "%.6f", Double(pageStride)) + "；"
+        recordEvent(
+            name: "nxWindowFollow",
+            source: "S2NativePagerViewController.followNxHandoffWindow",
+            details: head + geometry + diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
+        )
+    }
+
+    /// IC-092 R3：交接窗口内的一次竖向回写。只在偏差达到死区时产生。
+    func recordNxWindowVerticalSuppression(
+        deviation: CGFloat,
+        restoredOffsetY: CGFloat,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        let head = "deviation=" +
+            String(format: "%.6f", Double(deviation)) +
+            "；restoredOffsetY=" +
+            String(format: "%.6f", Double(restoredOffsetY)) +
+            "；deadband=" +
+            String(
+                format: "%.6f",
+                Double(S2NxWindowFollowRule.verticalSuppressionDeadband)
+            ) + "；"
+        recordEvent(
+            name: "nxWindowVerticalSuppression",
+            source: "S2NativePagerViewController.followNxHandoffWindow",
+            details: head + diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
+        )
+    }
+
+    /// IC-092 R3：一次松手结算的判定与结论。
+    func recordNxWindowSettlement(
+        _ settlement: S2NxWindowSettlement,
+        fromIndex: Int,
+        toIndex: Int,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        let directionText: String
+        switch settlement.direction {
+        case .next:
+            directionText = "next"
+        case .previous:
+            directionText = "previous"
+        case nil:
+            directionText = "none"
+        }
+        let decision = "progress=" +
+            String(format: "%.6f", Double(settlement.progress)) +
+            "；directionalVelocity=" +
+            String(format: "%.6f", Double(settlement.directionalVelocity)) +
+            "；triggerVelocity=" +
+            String(format: "%.6f", Double(settlement.triggerVelocity)) + "；"
+        let outcome = "progressThreshold=" +
+            String(
+                format: "%.6f",
+                Double(S2NxWindowFollowRule.pagingProgressThreshold)
+            ) +
+            "；shouldPage=\(settlement.shouldPage)；" +
+            "direction=\(directionText)；from=\(fromIndex)；to=\(toIndex)；"
+        recordEvent(
+            name: "nxWindowSettlement",
+            source: "S2NativePagerViewController.settleNxHandoffWindow",
+            details: decision + outcome + diagnosticContext(
                 pageIndex: pageIndex,
                 assetLocalIdentifier: assetLocalIdentifier
             )
