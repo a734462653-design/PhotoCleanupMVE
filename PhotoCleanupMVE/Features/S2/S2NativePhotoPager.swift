@@ -2506,11 +2506,18 @@ final class S2NativeZoomPageController: UIViewController,
         )
     }
 
-    /// IC-091 R2：内层 pan 结束 / 取消 / 失败时关闭交接窗口。
+    /// IC-091 R2 / IC-092 R1：内层 pan 的状态回调。
+    /// `.changed` 是交接窗口跟随写入的驱动源——内层到边后 `scrollViewDidScroll` 断流，
+    /// 只有识别器回调还在，用 didScroll 当驱动会在交接点之后立刻断掉。
     @objc private func handleInnerPanForHandoff(
         _ recognizer: UIPanGestureRecognizer
     ) {
         switch recognizer.state {
+        case .changed:
+            owner?.followNxHandoffWindow(
+                on: self,
+                translation: recognizer.translation(in: zoomScrollView)
+            )
         case .ended, .cancelled, .failed:
             owner?.closeNxHandoffWindow(reason: .innerGestureEnded, from: self)
         default:
@@ -2574,6 +2581,14 @@ final class S2NativePagerViewController: UIViewController,
     /// 打开期间 `apply` 与 `layoutNativePages` 都不写外层 `contentOffset`。
     private(set) var isNxHandoffWindowOpen = false
     private var nxHandoffPageIndex: Int?
+    /// IC-092 R1：跟随基准，在窗口打开的那一帧取定，窗口内只读不改。
+    private var nxWindowBaseOuterOffsetX: CGFloat = 0
+    private var nxWindowBaseInnerTranslationX: CGFloat = 0
+    private var nxWindowBaseInnerOffsetY: CGFloat = 0
+    /// IC-092 R1：窗口内是否仍允许跟随写入。让位保险触发后置假。
+    private(set) var isNxWindowFollowActive = false
+    /// IC-092 R1：最近一次跟随读数（夹具与诊断读取）。
+    private(set) var lastNxWindowFollowReading: S2NxWindowFollowReading?
     private(set) var nativeZoomReturnInvocationCount = 0
     private(set) var presentationTapLayoutReading =
         S2PresentationTapLayoutReading()
@@ -3118,6 +3133,13 @@ final class S2NativePagerViewController: UIViewController,
         )
         isNxHandoffWindowOpen = true
         nxHandoffPageIndex = page.index
+        // IC-092 R1：跟随基准就在这一帧取定——外层此刻仍在静止偏移上，
+        // 内层横向已到边界，竖向值即「交接点 y」，后续窗口内全部相对它们计算。
+        nxWindowBaseOuterOffsetX = pagingScrollView.contentOffset.x
+        nxWindowBaseInnerTranslationX = dragVector.x
+        nxWindowBaseInnerOffsetY = inner.contentOffset.y
+        isNxWindowFollowActive = true
+        lastNxWindowFollowReading = nil
         transitionDiagnostics?.recordNxHandoffWindow(
             isOpen: true,
             reason: S2NxHandoffWindowReason.handoffPoint.rawValue,
@@ -3145,6 +3167,7 @@ final class S2NativePagerViewController: UIViewController,
         let pageIndex = nxHandoffPageIndex
         isNxHandoffWindowOpen = false
         nxHandoffPageIndex = nil
+        isNxWindowFollowActive = false
         transitionDiagnostics?.recordNxHandoffWindow(
             isOpen: false,
             reason: reason.rawValue,
@@ -3156,6 +3179,86 @@ final class S2NativePagerViewController: UIViewController,
                 pageControllers[$0]?.diagnosticAssetLocalIdentifier
             }
         )
+    }
+
+    /// IC-092 R1：**交接窗口内唯一的几何写入口**。把内层 pan 的横向增量 1:1 映射到外层
+    /// `contentOffset.x`（非动画、来源 `nxWindowFollow`，钳制在 ±1 页步距），并在**同一个
+    /// `CATransaction` 提交边界内**把内层竖向偏移回写到交接点值。窗口外、让位后、非窗口页
+    /// 一律不写。返回值为本次是否真的写入。
+    ///
+    /// 驱动源是内层 pan 识别器的 `.changed` 回调而不是 `scrollViewDidScroll`：内层到边后
+    /// 不再滚动，`didScroll` 不再产出，用它当驱动会在交接点之后立刻断流。
+    @discardableResult
+    func followNxHandoffWindow(
+        on page: S2NativeZoomPageController,
+        translation: CGPoint
+    ) -> Bool {
+        guard isNxHandoffWindowOpen,
+              isNxWindowFollowActive,
+              page.index == nxHandoffPageIndex else {
+            return false
+        }
+        // 让位保险：外层自己开始拖动就停手，本次手势交回 UIKit。
+        // ① 说这不会发生（`091-a/b` 中外层 `isDragging` 全程为假），纯防御。
+        guard !pagingScrollView.isDragging else {
+            closeNxHandoffWindow(reason: .nativeTakeover)
+            return false
+        }
+        let restingOffsetX = pagingScrollView.contentOffsetForPage(
+            at: settledIndex
+        ).x
+        let reading = S2NxWindowFollowRule.follow(
+            baseOuterOffsetX: nxWindowBaseOuterOffsetX,
+            baseTranslationX: nxWindowBaseInnerTranslationX,
+            translationX: translation.x,
+            restingOffsetX: restingOffsetX,
+            pageStride: pagingScrollView.pageStride
+        )
+        lastNxWindowFollowReading = reading
+        let inner = page.zoomScrollView
+        let verticalDeviation = inner.contentOffset.y - nxWindowBaseInnerOffsetY
+        let suppressesVertical = abs(verticalDeviation) >=
+            S2NxWindowFollowRule.verticalSuppressionDeadband
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        transitionDiagnostics?.recordNxWindowFollow(
+            translationDeltaX: reading.translationDeltaX,
+            outerContentOffsetX: reading.outerOffsetX,
+            clampedToLimit: reading.clampedToLimit,
+            restingOffsetX: restingOffsetX,
+            pageStride: pagingScrollView.pageStride,
+            pageIndex: page.index,
+            assetLocalIdentifier: page.diagnosticAssetLocalIdentifier
+        )
+        writePagingContentOffset(
+            CGPoint(
+                x: reading.outerOffsetX,
+                y: pagingScrollView.contentOffset.y
+            ),
+            animated: false,
+            source: "S2NativePagerViewController.nxWindowFollow"
+        )
+        if suppressesVertical {
+            transitionDiagnostics?.recordNxWindowVerticalSuppression(
+                deviation: verticalDeviation,
+                restoredOffsetY: nxWindowBaseInnerOffsetY,
+                pageIndex: page.index,
+                assetLocalIdentifier: page.diagnosticAssetLocalIdentifier
+            )
+            inner.setContentOffset(
+                CGPoint(
+                    x: inner.contentOffset.x,
+                    y: nxWindowBaseInnerOffsetY
+                ),
+                animated: false
+            )
+        }
+        CATransaction.commit()
+        transitionDiagnostics?.recordCATransactionCommit(
+            source: "S2NativePagerViewController.followNxHandoffWindow"
+        )
+        return true
     }
 
     func reportNativeViewport(from page: S2NativeZoomPageController) {
@@ -3259,6 +3362,9 @@ final class S2NativePagerViewController: UIViewController,
         guard scrollView === pagingScrollView else {
             return
         }
+        // IC-092 R1 让位保险：窗口内外层自己开始拖动，就停止跟随并关窗，
+        // 本次手势交回 UIKit。① 说这不会发生（`091-a/b` 外层 `isDragging` 全程为假），纯防御。
+        closeNxHandoffWindow(reason: .nativeTakeover)
         // IC-091 R1：外层拖动开始的时刻是判断「交接是否发生、隔了几帧」的锚点，只记录。
         transitionDiagnostics?.recordOuterWillBeginDragging(
             contentOffsetX: pagingScrollView.contentOffset.x,
