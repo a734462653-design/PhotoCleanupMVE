@@ -346,9 +346,12 @@ extension S2CalibrationConfiguration {
         .init(name: "zoomSnapBackThreshold", specStatus: .decided, wiringStatus: .effective),
         .init(name: "minDoubleTapScale", specStatus: .decided, wiringStatus: .effective),
         .init(name: "doubleTapAnchorStrategy", specStatus: .placeholder, wiringStatus: .effective),
-        // IC-082 R3：Nx 贴边翻页改由 UIKit 嵌套滚动交接，两项阈值不再接线；规格状态保持 decided，去留由 Decision_log 另记。
+        // IC-082 R3：Nx 贴边翻页改由 UIKit 嵌套滚动交接，两项阈值不再接线。
+        // IC-092 R2：IC-091 的真机数据（①）否定了「UIKit 会接管」，交接窗口内改由 App 跟随写外层偏移，
+        // 松手结算的速度判据复接 `edgePagingTriggerVelocity`（出厂值 300 未改、`schemaVersion` 未动）；
+        // `edgePagingTriggerDistance` 仍不接线（结算用进度比 p，不用绝对距离）。
         .init(name: "edgePagingTriggerDistance", specStatus: .decided, wiringStatus: .unwired),
-        .init(name: "edgePagingTriggerVelocity", specStatus: .decided, wiringStatus: .unwired),
+        .init(name: "edgePagingTriggerVelocity", specStatus: .decided, wiringStatus: .effective),
         .init(name: "verticalSwipeDistance", specStatus: .decided, wiringStatus: .effective),
         .init(name: "verticalSwipeVelocity", specStatus: .decided, wiringStatus: .effective),
         .init(name: "doubleTapDecisionWindowMilliseconds", specStatus: .decided, wiringStatus: .unwired),

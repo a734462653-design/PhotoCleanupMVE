@@ -963,8 +963,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(statuses["pinchMaxScaleCeiling"], .effective)
         XCTAssertEqual(statuses["pinchMaxScaleOneToOneMultiplier"], .effective)
         // IC-082 R3：贴边翻页交给原生嵌套滚动，两项阈值登记为 unwired。
+        // IC-092 R2：交接窗口的松手结算复接速度阈值，`edgePagingTriggerVelocity` 改为 effective；
+        // 距离阈值仍不接线（结算用进度比 p）。出厂值与 schemaVersion 未动。
         XCTAssertEqual(statuses["edgePagingTriggerDistance"], .unwired)
-        XCTAssertEqual(statuses["edgePagingTriggerVelocity"], .unwired)
+        XCTAssertEqual(statuses["edgePagingTriggerVelocity"], .effective)
     }
 
     // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion 与 v15 规格基线。
@@ -4233,6 +4235,544 @@ final class S2CalibrationHarnessTests: XCTestCase {
             ic091EventCount(fixture.diagnostics, name: "nxHandoffPoint"),
             0
         )
+    }
+
+    // IC-092 B1（纯函数）：松手结算判定与 ±1 页钳制。
+    // p > 0.5 或 方向速度 >= 阈值 → 翻页；边界严格（0.5 与 299 均判弹回）；方向取反对称。
+    func testIC092B1SettlementRuleAndClamp() {
+        func settle(
+            progress: CGFloat,
+            directionalVelocity: CGFloat,
+            toNext: Bool = true,
+            triggerVelocity: CGFloat = 300
+        ) -> S2NxWindowSettlement {
+            let stride: CGFloat = 100
+            let resting: CGFloat = 500
+            let signed = toNext ? progress * stride : -progress * stride
+            // 「按翻页方向取正」：翻下一张时手指左移，velocity.x 取负。
+            let panVelocityX = toNext
+                ? -directionalVelocity
+                : directionalVelocity
+            return S2NxWindowFollowRule.settlement(
+                outerOffsetX: resting + signed,
+                restingOffsetX: resting,
+                pageStride: stride,
+                panVelocityX: panVelocityX,
+                triggerVelocity: triggerVelocity
+            )
+        }
+
+        // 卡内四例。
+        XCTAssertFalse(settle(progress: 0.4, directionalVelocity: 200).shouldPage)
+        XCTAssertTrue(settle(progress: 0.4, directionalVelocity: 350).shouldPage)
+        XCTAssertTrue(settle(progress: 0.6, directionalVelocity: 0).shouldPage)
+        XCTAssertFalse(settle(progress: 0.5, directionalVelocity: 299).shouldPage)
+        // 边界严格：恰好等于阈值的速度翻页，恰好 0.5 的进度不翻页。
+        XCTAssertTrue(settle(progress: 0.5, directionalVelocity: 300).shouldPage)
+        XCTAssertFalse(settle(progress: 0.5, directionalVelocity: 0).shouldPage)
+
+        // 读数本身。
+        let paging = settle(progress: 0.4, directionalVelocity: 350)
+        XCTAssertEqual(paging.progress, 0.4, accuracy: 0.000_001)
+        XCTAssertEqual(
+            paging.directionalVelocity,
+            350,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(paging.triggerVelocity, 300, accuracy: 0.000_001)
+        XCTAssertEqual(paging.direction, .next)
+
+        // 方向取反对称。
+        for (progress, velocity, expected) in [
+            (CGFloat(0.4), CGFloat(200), false),
+            (CGFloat(0.4), CGFloat(350), true),
+            (CGFloat(0.6), CGFloat(0), true),
+            (CGFloat(0.5), CGFloat(299), false)
+        ] {
+            let forward = settle(
+                progress: progress,
+                directionalVelocity: velocity
+            )
+            let backward = settle(
+                progress: progress,
+                directionalVelocity: velocity,
+                toNext: false
+            )
+            XCTAssertEqual(forward.shouldPage, expected)
+            XCTAssertEqual(backward.shouldPage, expected)
+            XCTAssertEqual(forward.direction, .next)
+            XCTAssertEqual(backward.direction, .previous)
+            XCTAssertEqual(
+                forward.directionalVelocity,
+                backward.directionalVelocity,
+                accuracy: 0.000_001
+            )
+        }
+
+        // 无位移：方向为 nil、不翻页，速度再大也不翻。
+        let idle = S2NxWindowFollowRule.settlement(
+            outerOffsetX: 500,
+            restingOffsetX: 500,
+            pageStride: 100,
+            panVelocityX: -5_000,
+            triggerVelocity: 300
+        )
+        XCTAssertNil(idle.direction)
+        XCTAssertFalse(idle.shouldPage)
+        XCTAssertEqual(idle.directionalVelocity, 0, accuracy: 0.000_001)
+
+        // 钳制在 ±1 页步距，1:1 映射（手指左移 → 外层偏移增大）。
+        func follow(_ translationX: CGFloat) -> S2NxWindowFollowReading {
+            S2NxWindowFollowRule.follow(
+                baseOuterOffsetX: 500,
+                baseTranslationX: -20,
+                translationX: translationX,
+                restingOffsetX: 500,
+                pageStride: 100
+            )
+        }
+        XCTAssertEqual(follow(-20).outerOffsetX, 500, accuracy: 0.000_001)
+        XCTAssertFalse(follow(-20).clampedToLimit)
+        XCTAssertEqual(follow(-70).outerOffsetX, 550, accuracy: 0.000_001)
+        XCTAssertEqual(follow(-70).translationDeltaX, -50, accuracy: 0.000_001)
+        XCTAssertFalse(follow(-70).clampedToLimit)
+        XCTAssertEqual(follow(30).outerOffsetX, 450, accuracy: 0.000_001)
+        XCTAssertFalse(follow(30).clampedToLimit)
+        // 上钳：raw 680 → 600。
+        XCTAssertEqual(follow(-200).outerOffsetX, 600, accuracy: 0.000_001)
+        XCTAssertTrue(follow(-200).clampedToLimit)
+        // 下钳：raw 280 → 400。
+        XCTAssertEqual(follow(200).outerOffsetX, 400, accuracy: 0.000_001)
+        XCTAssertTrue(follow(200).clampedToLimit)
+    }
+
+    // IC-092 B2（夹具驱动，真机未覆盖）：窗口开启下驱动横向增量。
+    // 外层偏移随增量 1:1 变化并被 ±1 页钳制；同刻 apply 不写（IC-091 A2 语义保持）；
+    // 窗口关闭后增量不再映射。
+    func testIC092B2WindowFollowMapsAndClampsOuterOffset() {
+        let fixture = makeIC091NxFixture(startRecording: true)
+        defer { fixture.window.isHidden = true }
+        defer { fixture.diagnostics.stop() }
+        let controller = fixture.controller
+        let page = fixture.page
+        let paging = controller.pagingScrollView
+        let diagnostics = fixture.diagnostics
+        let restingX = paging.contentOffsetForPage(
+            at: fixture.machine.currentIndex
+        ).x
+        ic092OpenHandoffWindow(fixture)
+        XCTAssertTrue(controller.isNxHandoffWindowOpen)
+        XCTAssertTrue(controller.isNxWindowFollowActive)
+
+        // 相对交接点向量 (−80, 20) 再左移 60 pt → 外层 +60。
+        XCTAssertTrue(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -140, y: 20)
+        ))
+        XCTAssertEqual(
+            paging.contentOffset.x,
+            restingX + 60,
+            accuracy: 0.000_001
+        )
+        let firstFollow = tryUnwrap(controller.lastNxWindowFollowReading)
+        XCTAssertEqual(firstFollow.translationDeltaX, -60, accuracy: 0.000_001)
+        XCTAssertFalse(firstFollow.clampedToLimit)
+        let followDetails = tryUnwrap(
+            ic091EventDetails(diagnostics, name: "nxWindowFollow").last
+        )
+        XCTAssertTrue(followDetails.hasPrefix("translationDeltaX=-60.000000；"))
+        XCTAssertTrue(followDetails.contains("clamped=false；"))
+        // 跟随写入必须以 nxWindowFollow 为来源记进 外层setContentOffset。
+        XCTAssertEqual(
+            ic091OuterWriteSources(diagnostics)
+                .filter { $0 == "S2NativePagerViewController.nxWindowFollow" }
+                .count,
+            1
+        )
+
+        // 反向：相对交接点右移 40 pt → 外层 −40。
+        XCTAssertTrue(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -40, y: 20)
+        ))
+        XCTAssertEqual(
+            paging.contentOffset.x,
+            restingX - 40,
+            accuracy: 0.000_001
+        )
+
+        // 超过一页步距被钳制。
+        XCTAssertTrue(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -5_000, y: 20)
+        ))
+        XCTAssertEqual(
+            paging.contentOffset.x,
+            restingX + paging.pageStride,
+            accuracy: 0.000_001
+        )
+        XCTAssertTrue(
+            tryUnwrap(controller.lastNxWindowFollowReading).clampedToLimit
+        )
+
+        // 同刻 apply 不写外层偏移（IC-091 A2 语义保持）。
+        let suppressed: Set<String> = [
+            "S2NativePagerViewController.apply",
+            "S2NativePagerViewController.layoutNativePages"
+        ]
+        let before = ic091OuterWriteSources(diagnostics)
+            .filter { suppressed.contains($0) }.count
+        applyNativePagerController(
+            controller,
+            machine: fixture.machine,
+            configuration: fixture.configuration
+        )
+        let after = ic091OuterWriteSources(diagnostics)
+            .filter { suppressed.contains($0) }.count
+        XCTAssertEqual(after - before, 0, "交接窗口内 apply 不写外层偏移")
+        XCTAssertEqual(
+            paging.contentOffset.x,
+            restingX + paging.pageStride,
+            accuracy: 0.000_001,
+            "apply 没把跟随位置抹掉"
+        )
+
+        // 窗口关闭后不再映射。
+        controller.closeNxHandoffWindow(reason: .interactionStateReset)
+        let offsetAfterClose = paging.contentOffset.x
+        XCTAssertFalse(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -300, y: 20)
+        ))
+        XCTAssertEqual(
+            paging.contentOffset.x,
+            offsetAfterClose,
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-092 B3（夹具驱动，真机未覆盖）：窗口内竖向抑制。
+    // 偏差 ≥ 1 pt 回写一次并记录；< 1 pt 不写；窗口外任何偏差不触发。
+    func testIC092B3WindowSuppressesVerticalDrift() {
+        let fixture = makeIC091NxFixture(startRecording: true)
+        defer { fixture.window.isHidden = true }
+        defer { fixture.diagnostics.stop() }
+        let controller = fixture.controller
+        let page = fixture.page
+        let inner = page.zoomScrollView
+        let diagnostics = fixture.diagnostics
+        ic092OpenHandoffWindow(fixture)
+        let baseY = inner.contentOffset.y
+
+        // 偏差 0.5 pt：不回写、不记录。
+        inner.setContentOffset(
+            CGPoint(x: inner.contentOffset.x, y: baseY + 0.5),
+            animated: false
+        )
+        XCTAssertTrue(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -100, y: 20)
+        ))
+        XCTAssertEqual(
+            ic091EventCount(diagnostics, name: "nxWindowVerticalSuppression"),
+            0
+        )
+        XCTAssertEqual(
+            inner.contentOffset.y,
+            baseY + 0.5,
+            accuracy: 0.000_001,
+            "死区内不回写"
+        )
+
+        // 偏差 3.5 pt：回写到交接点值并记录一次。
+        inner.setContentOffset(
+            CGPoint(x: inner.contentOffset.x, y: baseY + 3.5),
+            animated: false
+        )
+        XCTAssertTrue(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -120, y: 20)
+        ))
+        XCTAssertEqual(
+            inner.contentOffset.y,
+            baseY,
+            accuracy: 0.000_001,
+            "回写到交接点 y"
+        )
+        let suppressionDetails = ic091EventDetails(
+            diagnostics,
+            name: "nxWindowVerticalSuppression"
+        )
+        XCTAssertEqual(suppressionDetails.count, 1)
+        XCTAssertTrue(
+            tryUnwrap(suppressionDetails.first)
+                .hasPrefix("deviation=3.500000；")
+        )
+        XCTAssertTrue(
+            tryUnwrap(suppressionDetails.first).contains("deadband=1.000000；")
+        )
+        // 跟随写入与回写在同一个提交边界内。
+        XCTAssertFalse(
+            ic091EventDetails(
+                diagnostics,
+                name: "CATransaction提交边界"
+            ).isEmpty
+        )
+
+        // 窗口外：任何偏差都不触发。
+        controller.closeNxHandoffWindow(reason: .interactionStateReset)
+        inner.setContentOffset(
+            CGPoint(x: inner.contentOffset.x, y: baseY + 20),
+            animated: false
+        )
+        XCTAssertFalse(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -200, y: 20)
+        ))
+        XCTAssertEqual(
+            ic091EventCount(diagnostics, name: "nxWindowVerticalSuppression"),
+            1,
+            "窗口外不再产生抑制事件"
+        )
+        XCTAssertEqual(
+            inner.contentOffset.y,
+            baseY + 20,
+            accuracy: 0.000_001,
+            "窗口外不回写"
+        )
+    }
+
+    // IC-092 B4（夹具驱动，真机未覆盖）：结算两条路径。
+    // 翻页：currentIndex+1、新页 scale==1、旧页复位、窗口关闭原因=结算完成、无残留动画组；
+    // 弹回：currentIndex 不变、外层回静止偏移。
+    func testIC092B4SettlementPagesOrSnapsBack() {
+        // 翻页：进度 0.6，速度 0。
+        do {
+            let fixture = makeIC091NxFixture(startRecording: true)
+            defer { fixture.window.isHidden = true }
+            defer { fixture.diagnostics.stop() }
+            let controller = fixture.controller
+            let paging = controller.pagingScrollView
+            let page = fixture.page
+            let startIndex = fixture.machine.currentIndex
+            let restingX = paging.contentOffsetForPage(at: startIndex).x
+            ic092OpenHandoffWindow(fixture)
+            let baseTranslationX: CGFloat = -80
+            let advance = paging.pageStride * 0.6
+            XCTAssertTrue(controller.followNxHandoffWindow(
+                on: page,
+                translation: CGPoint(x: baseTranslationX - advance, y: 20)
+            ))
+            XCTAssertEqual(
+                paging.contentOffset.x,
+                restingX + advance,
+                accuracy: 0.000_001
+            )
+
+            XCTAssertTrue(controller.settleNxHandoffWindow(
+                on: page,
+                panVelocity: .zero
+            ))
+            let settlement = tryUnwrap(controller.lastNxWindowSettlement)
+            XCTAssertEqual(settlement.progress, 0.6, accuracy: 0.000_001)
+            XCTAssertTrue(settlement.shouldPage)
+            XCTAssertEqual(settlement.direction, .next)
+            XCTAssertEqual(fixture.machine.currentIndex, startIndex + 1)
+            XCTAssertEqual(fixture.machine.scale, 1)
+            let newPage = tryUnwrap(
+                controller.pageControllers[fixture.machine.currentIndex]
+            )
+            XCTAssertEqual(
+                newPage.zoomScrollView.zoomScale,
+                1,
+                accuracy: 0.000_001,
+                "新页 s=1"
+            )
+            XCTAssertEqual(
+                page.zoomScrollView.zoomScale,
+                1,
+                accuracy: 0.000_001,
+                "旧页复位"
+            )
+            // 动画写回：目标是新页静止偏移，animated=true。
+            let expectedX = paging.contentOffsetForPage(
+                at: fixture.machine.currentIndex
+            ).x
+            XCTAssertTrue(ic091EventDetails(
+                fixture.diagnostics,
+                name: "外层setContentOffset"
+            ).contains {
+                $0.hasPrefix(
+                    "x=" + String(format: "%.6f", Double(expectedX)) +
+                        "；animated=true；"
+                )
+            })
+            // 动画期间窗口仍开着守住 apply；收口回调后以「结算完成」关闭。
+            XCTAssertTrue(controller.isNxWindowSettling)
+            XCTAssertTrue(controller.isNxHandoffWindowOpen)
+            XCTAssertFalse(controller.isNxWindowFollowActive)
+            controller.scrollViewDidEndScrollingAnimation(paging)
+            XCTAssertFalse(controller.isNxWindowSettling)
+            XCTAssertFalse(controller.isNxHandoffWindowOpen)
+            XCTAssertEqual(
+                ic091EventDetails(fixture.diagnostics, name: "nxHandoffWindow")
+                    .filter { $0.hasPrefix("state=close；reason=结算完成") }
+                    .count,
+                1
+            )
+            // 陷阱 8：收口后任何一层都不留动画组。
+            for controllerPage in controller.pageControllers.values {
+                let photoLayer = controllerPage.zoomScrollView
+                    .presentationContentView?.layer
+                XCTAssertTrue(
+                    (photoLayer?.animationKeys() ?? []).isEmpty,
+                    "照片层无残留动画组"
+                )
+                XCTAssertTrue(
+                    (controllerPage.fitBorderLayer.animationKeys() ?? [])
+                        .isEmpty,
+                    "描边层无残留动画组"
+                )
+            }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.8))
+            XCTAssertEqual(
+                paging.contentOffset.x,
+                expectedX,
+                accuracy: 1,
+                "动画落到新页静止偏移"
+            )
+        }
+
+        // 弹回：进度 0.3，速度 0。
+        do {
+            let fixture = makeIC091NxFixture(startRecording: true)
+            defer { fixture.window.isHidden = true }
+            defer { fixture.diagnostics.stop() }
+            let controller = fixture.controller
+            let paging = controller.pagingScrollView
+            let page = fixture.page
+            let startIndex = fixture.machine.currentIndex
+            let restingX = paging.contentOffsetForPage(at: startIndex).x
+            ic092OpenHandoffWindow(fixture)
+            let advance = paging.pageStride * 0.3
+            XCTAssertTrue(controller.followNxHandoffWindow(
+                on: page,
+                translation: CGPoint(x: -80 - advance, y: 20)
+            ))
+            XCTAssertTrue(controller.settleNxHandoffWindow(
+                on: page,
+                panVelocity: .zero
+            ))
+            let settlement = tryUnwrap(controller.lastNxWindowSettlement)
+            XCTAssertEqual(settlement.progress, 0.3, accuracy: 0.000_001)
+            XCTAssertFalse(settlement.shouldPage)
+            XCTAssertEqual(fixture.machine.currentIndex, startIndex)
+            XCTAssertEqual(fixture.machine.scale, 2)
+            XCTAssertTrue(ic091EventDetails(
+                fixture.diagnostics,
+                name: "外层setContentOffset"
+            ).contains {
+                $0.hasPrefix(
+                    "x=" + String(format: "%.6f", Double(restingX)) +
+                        "；animated=true；"
+                )
+            })
+            controller.scrollViewDidEndScrollingAnimation(paging)
+            XCTAssertFalse(controller.isNxHandoffWindowOpen)
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.8))
+            XCTAssertEqual(
+                paging.contentOffset.x,
+                restingX,
+                accuracy: 1,
+                "弹回静止偏移"
+            )
+        }
+    }
+
+    // IC-092 B5（夹具驱动，真机未覆盖）：让位保险。
+    // 外层 scrollViewWillBeginDragging 到来即停止跟随并关窗，原因=原生接管。
+    func testIC092B5NativeTakeoverStopsFollow() {
+        let fixture = makeIC091NxFixture(startRecording: true)
+        defer { fixture.window.isHidden = true }
+        defer { fixture.diagnostics.stop() }
+        let controller = fixture.controller
+        let page = fixture.page
+        let paging = controller.pagingScrollView
+        ic092OpenHandoffWindow(fixture)
+        XCTAssertTrue(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -120, y: 20)
+        ))
+        let offsetBeforeTakeover = paging.contentOffset.x
+
+        controller.scrollViewWillBeginDragging(paging)
+        XCTAssertFalse(controller.isNxHandoffWindowOpen)
+        XCTAssertFalse(controller.isNxWindowFollowActive)
+        XCTAssertEqual(
+            ic091EventDetails(fixture.diagnostics, name: "nxHandoffWindow")
+                .filter { $0.hasPrefix("state=close；reason=原生接管") }
+                .count,
+            1
+        )
+        XCTAssertFalse(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -400, y: 20)
+        ))
+        XCTAssertEqual(
+            paging.contentOffset.x,
+            offsetBeforeTakeover,
+            accuracy: 0.000_001,
+            "让位后不再写外层偏移"
+        )
+    }
+
+    // IC-092 B7：登记表——速度阈值复接为 effective，距离阈值仍 unwired；
+    // 出厂值与 schemaVersion 无 diff。
+    func testIC092B7EdgePagingVelocityIsWiredAgain() {
+        let statuses = Dictionary(
+            uniqueKeysWithValues: S2CalibrationConfiguration
+                .parameterConnections.map { ($0.name, $0) }
+        )
+        let velocity = tryUnwrap(statuses["edgePagingTriggerVelocity"])
+        XCTAssertEqual(velocity.specStatus, .decided)
+        XCTAssertEqual(velocity.wiringStatus, .effective)
+        let distance = tryUnwrap(statuses["edgePagingTriggerDistance"])
+        XCTAssertEqual(distance.specStatus, .decided)
+        XCTAssertEqual(distance.wiringStatus, .unwired)
+        // 出厂值与版本未动。
+        XCTAssertEqual(
+            S2CalibrationConfiguration.factoryPlaceholder
+                .edgePagingTriggerVelocity,
+            300
+        )
+        XCTAssertEqual(
+            S2CalibrationConfiguration.factoryPlaceholder
+                .edgePagingTriggerDistance,
+            40
+        )
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 3)
+        // 阈值确实被结算读到：把配置里的速度阈值调高，同一读数就不再翻页。
+        var configuration = S2CalibrationConfiguration.factoryPlaceholder
+        configuration.edgePagingTriggerVelocity = 900
+        let atFactory = S2NxWindowFollowRule.settlement(
+            outerOffsetX: 540,
+            restingOffsetX: 500,
+            pageStride: 100,
+            panVelocityX: -400,
+            triggerVelocity: CGFloat(
+                S2CalibrationConfiguration.factoryPlaceholder
+                    .edgePagingTriggerVelocity
+            )
+        )
+        let atRaised = S2NxWindowFollowRule.settlement(
+            outerOffsetX: 540,
+            restingOffsetX: 500,
+            pageStride: 100,
+            panVelocityX: -400,
+            triggerVelocity: CGFloat(configuration.edgePagingTriggerVelocity)
+        )
+        XCTAssertTrue(atFactory.shouldPage)
+        XCTAssertFalse(atRaised.shouldPage)
     }
 
     // B1（IC-082 R3 删除）：自定义溢出投影已移除，Nx 边界后的外层位移由 UIKit 嵌套滚动交接产生；
@@ -8420,6 +8960,43 @@ final class S2CalibrationHarnessTests: XCTestCase {
             reference.minimumZoomScale,
             accuracy: 0.000_001,
             "minimumZoomScale",
+            file: file,
+            line: line
+        )
+    }
+
+    /// IC-092：把内层置于横向边界并以向量 (−80, 20) 打开交接窗口。
+    /// 跟随基准因此是「外层静止偏移 / 内层 translation.x = −80 / 当前内层 y」。
+    private func ic092OpenHandoffWindow(
+        _ fixture: (
+            window: UIWindow,
+            machine: S2StateMachine,
+            controller: S2NativePagerViewController,
+            page: S2NativeZoomPageController,
+            diagnostics: S2OnDeviceTransitionDiagnosticsCoordinator,
+            configuration: S2CalibrationConfiguration
+        ),
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let inner = fixture.page.zoomScrollView
+        let maxX = max(
+            -inner.contentInset.left,
+            inner.contentSize.width - inner.bounds.width +
+                inner.contentInset.right
+        )
+        inner.setContentOffset(
+            CGPoint(x: maxX, y: inner.contentOffset.y),
+            animated: false
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        XCTAssertTrue(
+            fixture.controller.noteInnerHandoffIfNeeded(
+                on: fixture.page,
+                dragVector: CGPoint(x: -80, y: 20),
+                isDragActive: true
+            ),
+            "前置：交接窗口应已打开",
             file: file,
             line: line
         )

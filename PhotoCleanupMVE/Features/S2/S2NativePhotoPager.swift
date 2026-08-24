@@ -2506,9 +2506,10 @@ final class S2NativeZoomPageController: UIViewController,
         )
     }
 
-    /// IC-091 R2 / IC-092 R1：内层 pan 的状态回调。
-    /// `.changed` 是交接窗口跟随写入的驱动源——内层到边后 `scrollViewDidScroll` 断流，
-    /// 只有识别器回调还在，用 didScroll 当驱动会在交接点之后立刻断掉。
+    /// IC-091 R2 / IC-092 R1+R2：内层 pan 的状态回调。
+    /// `.changed` 是交接窗口跟随写入的驱动源（内层到边后 `scrollViewDidScroll` 断流，
+    /// 只有识别器回调还在）；`.ended` / `.cancelled` / `.failed` 交给结算收口，
+    /// 窗口未开时结算零副作用，此时仍按 IC-091 语义关窗（同样是零副作用）。
     @objc private func handleInnerPanForHandoff(
         _ recognizer: UIPanGestureRecognizer
     ) {
@@ -2519,6 +2520,10 @@ final class S2NativeZoomPageController: UIViewController,
                 translation: recognizer.translation(in: zoomScrollView)
             )
         case .ended, .cancelled, .failed:
+            owner?.settleNxHandoffWindow(
+                on: self,
+                panVelocity: recognizer.velocity(in: zoomScrollView)
+            )
             owner?.closeNxHandoffWindow(reason: .innerGestureEnded, from: self)
         default:
             break
@@ -2587,8 +2592,14 @@ final class S2NativePagerViewController: UIViewController,
     private var nxWindowBaseInnerOffsetY: CGFloat = 0
     /// IC-092 R1：窗口内是否仍允许跟随写入。让位保险触发后置假。
     private(set) var isNxWindowFollowActive = false
-    /// IC-092 R1：最近一次跟随读数（夹具与诊断读取）。
+    /// IC-092 R2：结算动画进行中。此间交接窗口**保持打开**，为的是让 R3 的守卫继续
+    /// 挡住 `apply`：`handleNativePageChange` 一发布，SwiftUI 就会重进 `apply`，
+    /// 一次非动画写入会把结算动画抹成瞬移（弹回曲线与翻页曲线都会消失）。
+    /// 窗口在 `scrollViewDidEndScrollingAnimation` 里以「结算完成」关闭。
+    private(set) var isNxWindowSettling = false
+    /// IC-092 R1/R2：最近一次跟随读数与结算读数（夹具与诊断读取）。
     private(set) var lastNxWindowFollowReading: S2NxWindowFollowReading?
+    private(set) var lastNxWindowSettlement: S2NxWindowSettlement?
     private(set) var nativeZoomReturnInvocationCount = 0
     private(set) var presentationTapLayoutReading =
         S2PresentationTapLayoutReading()
@@ -2712,6 +2723,7 @@ final class S2NativePagerViewController: UIViewController,
         // decelerating 三个守卫在「内层已到边、外层 pan 尚未开始」的那几帧全部为 false
         // （`Q2.txt` t=0.691～0.705），中途交接正是在这里被写回静止位置钉死的。
         // 窗口关闭后的下一次 `apply` 照常写静止偏移。
+        // IC-092 R2：结算动画期间窗口仍是打开的，因此这条守卫同时护住了动画。
         if !isNxHandoffWindowOpen &&
             !pagingScrollView.isTracking &&
             !pagingScrollView.isDragging &&
@@ -3168,6 +3180,7 @@ final class S2NativePagerViewController: UIViewController,
         isNxHandoffWindowOpen = false
         nxHandoffPageIndex = nil
         isNxWindowFollowActive = false
+        isNxWindowSettling = false
         transitionDiagnostics?.recordNxHandoffWindow(
             isOpen: false,
             reason: reason.rawValue,
@@ -3259,6 +3272,84 @@ final class S2NativePagerViewController: UIViewController,
             source: "S2NativePagerViewController.followNxHandoffWindow"
         )
         return true
+    }
+
+    /// IC-092 R2：松手结算。按进度 p 与按方向取正的速度定翻页 / 弹回，随后走既有
+    /// `finishNativePaging → handleNativePageChange`，回写沿用
+    /// `synchronizeNativeStateToMachine(animatedPaging: true)` 那条路径（同曲线同时长）。
+    /// 需要动画时窗口留到 `scrollViewDidEndScrollingAnimation` 才以「结算完成」关闭
+    /// （期间 R3 守卫继续挡住 `apply`）；目标就在脚下时当场关窗、不进动画态。
+    /// 窗口未开、非窗口页时零副作用。
+    @discardableResult
+    func settleNxHandoffWindow(
+        on page: S2NativeZoomPageController,
+        panVelocity: CGPoint
+    ) -> Bool {
+        guard isNxHandoffWindowOpen,
+              page.index == nxHandoffPageIndex,
+              let machine else {
+            return false
+        }
+        let restingOffsetX = pagingScrollView.contentOffsetForPage(
+            at: settledIndex
+        ).x
+        let settlement = S2NxWindowFollowRule.settlement(
+            outerOffsetX: pagingScrollView.contentOffset.x,
+            restingOffsetX: restingOffsetX,
+            pageStride: pagingScrollView.pageStride,
+            panVelocityX: panVelocity.x,
+            triggerVelocity: CGFloat(configuration.edgePagingTriggerVelocity)
+        )
+        lastNxWindowSettlement = settlement
+        let previousIndex = machine.currentIndex
+        var targetIndex = previousIndex
+        if settlement.shouldPage, let direction = settlement.direction {
+            let candidate = previousIndex + direction.indexOffset
+            if machine.orderedAssetIDs.indices.contains(candidate) {
+                targetIndex = candidate
+            }
+        }
+        transitionDiagnostics?.recordNxWindowSettlement(
+            settlement,
+            fromIndex: previousIndex,
+            toIndex: targetIndex,
+            pageIndex: page.index,
+            assetLocalIdentifier: page.diagnosticAssetLocalIdentifier
+        )
+        // 结算目标就在脚下时不进入动画态——`setContentOffset(animated:)` 对零位移
+        // 未必回调 `scrollViewDidEndScrollingAnimation`，那样窗口会永远关不掉。
+        let targetOffsetX = pagingScrollView.contentOffsetForPage(
+            at: targetIndex
+        ).x
+        let needsAnimation = abs(
+            pagingScrollView.contentOffset.x - targetOffsetX
+        ) > 0.5
+        isNxWindowFollowActive = false
+        if needsAnimation {
+            isNxWindowSettling = true
+            finishNativePaging(
+                targetIndex: targetIndex,
+                animatedPaging: true
+            )
+        } else {
+            closeNxHandoffWindow(reason: .settlementCompleted)
+            finishNativePaging(
+                targetIndex: targetIndex,
+                animatedPaging: false
+            )
+        }
+        return true
+    }
+
+    /// IC-092 R2：结算动画收口。真实路径由 UIKit 在动画结束时经
+    /// `scrollViewDidEndScrollingAnimation` 调用；夹具可直接驱动同一回调。
+    /// 收口后窗口关闭（原因=结算完成），`apply` 恢复写入，下一次写的就是静止偏移。
+    private func finishNxWindowSettlementIfNeeded() {
+        guard isNxWindowSettling else {
+            return
+        }
+        isNxWindowSettling = false
+        closeNxHandoffWindow(reason: .settlementCompleted)
     }
 
     func reportNativeViewport(from page: S2NativeZoomPageController) {
@@ -3405,6 +3496,15 @@ final class S2NativePagerViewController: UIViewController,
         finishNativePaging()
     }
 
+    /// IC-092 R2：外层 `setContentOffset(animated:)` 的动画结束回调。
+    /// 交接窗口的结算动画在此收口；非结算态时零副作用。
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        guard scrollView === pagingScrollView else {
+            return
+        }
+        finishNxWindowSettlementIfNeeded()
+    }
+
     @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
         guard recognizer.state == .began else {
             return
@@ -3524,17 +3624,27 @@ final class S2NativePagerViewController: UIViewController,
         return true
     }
 
-    private func finishNativePaging() {
+    /// IC-092 R2：`targetIndex` 缺省时沿用既有语义——按外层当前偏移四舍五入到页。
+    /// 交接窗口结算传入已判定的目标索引（进度未过半但速度够时，四舍五入会得出当前页，
+    /// 与结算结论相反），并要求回写走动画路径。既有调用点用缺省值，行为不变。
+    private func finishNativePaging(
+        targetIndex explicitTargetIndex: Int? = nil,
+        animatedPaging: Bool = false
+    ) {
         guard let machine else {
             return
         }
         // IC-091 R2/R3：翻页结算即清零手势级状态并关闭交接窗口，
         // 之后的 `synchronizeNativeStateToMachine` 才能照常写静止偏移。
-        closeNxHandoffWindow(reason: .pagingSettled)
+        // IC-092 R2：交接窗口结算走动画时窗口要留到动画结束才关（见 `isNxWindowSettling`），
+        // 此处跳过；既有两条调用路径进来时窗口早已关闭，这里本就是零副作用。
+        if !isNxWindowSettling {
+            closeNxHandoffWindow(reason: .pagingSettled)
+        }
         pageControllers.values.forEach {
             $0.zoomScrollView.clearGestureScopedInteractionState()
         }
-        let targetIndex = pagingScrollView.pageIndex(
+        let targetIndex = explicitTargetIndex ?? pagingScrollView.pageIndex(
             forContentOffsetX: pagingScrollView.contentOffset.x
         )
         let previousIndex = machine.currentIndex
@@ -3549,7 +3659,7 @@ final class S2NativePagerViewController: UIViewController,
             reportSequenceBoundaryAttemptIfNeeded()
         }
         settledIndex = machine.currentIndex
-        synchronizeNativeStateToMachine(animatedPaging: false)
+        synchronizeNativeStateToMachine(animatedPaging: animatedPaging)
         outerDragStartDate = nil
     }
 
