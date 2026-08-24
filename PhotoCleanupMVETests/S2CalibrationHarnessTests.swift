@@ -4453,6 +4453,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // IC-092 B3（夹具驱动，真机未覆盖）：窗口内竖向抑制。
     // 偏差 ≥ 1 pt 回写一次并记录；< 1 pt 不写；窗口外任何偏差不触发。
+    // 偏差一律取 contentOffset 的读回值——UIScrollView 会把它吸附到设备像素网格
+    // （CI #159 实测：模拟器 scale=3，写入 +0.5 读回 +0.666667）。
     func testIC092B3WindowSuppressesVerticalDrift() {
         let fixture = makeIC091NxFixture(startRecording: true)
         defer { fixture.window.isHidden = true }
@@ -4464,11 +4466,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ic092OpenHandoffWindow(fixture)
         let baseY = inner.contentOffset.y
 
-        // 偏差 0.5 pt：不回写、不记录。
+        // ①（CI #159 实测）：`UIScrollView` 把 `contentOffset` 吸附到设备像素网格
+        // （模拟器 scale=3 → 1/3 pt），写入 `baseY + 0.5` 读回来是 `baseY + 0.666667`。
+        // 因此偏差一律取**读回值**，不假设写入值被原样保留；死区判据本身不受影响。
+        // 偏差落在死区内（< 1 pt）：不回写、不记录。
         inner.setContentOffset(
             CGPoint(x: inner.contentOffset.x, y: baseY + 0.5),
             animated: false
         )
+        let deviationInsideDeadband = inner.contentOffset.y - baseY
+        XCTAssertLessThan(
+            abs(deviationInsideDeadband),
+            1,
+            "前置：像素吸附后仍应落在死区内"
+        )
+        let offsetYBeforeFollow = inner.contentOffset.y
         XCTAssertTrue(controller.followNxHandoffWindow(
             on: page,
             translation: CGPoint(x: -100, y: 20)
@@ -4479,15 +4491,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(
             inner.contentOffset.y,
-            baseY + 0.5,
+            offsetYBeforeFollow,
             accuracy: 0.000_001,
             "死区内不回写"
         )
 
-        // 偏差 3.5 pt：回写到交接点值并记录一次。
+        // 偏差达到死区（≥ 1 pt）：回写到交接点值并记录一次。
         inner.setContentOffset(
             CGPoint(x: inner.contentOffset.x, y: baseY + 3.5),
             animated: false
+        )
+        let deviationOutsideDeadband = inner.contentOffset.y - baseY
+        XCTAssertGreaterThanOrEqual(
+            abs(deviationOutsideDeadband),
+            1,
+            "前置：偏差应已达到死区"
         )
         XCTAssertTrue(controller.followNxHandoffWindow(
             on: page,
@@ -4505,8 +4523,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(suppressionDetails.count, 1)
         XCTAssertTrue(
-            tryUnwrap(suppressionDetails.first)
-                .hasPrefix("deviation=3.500000；")
+            tryUnwrap(suppressionDetails.first).hasPrefix(
+                "deviation=" +
+                    String(
+                        format: "%.6f",
+                        Double(deviationOutsideDeadband)
+                    ) + "；"
+            )
         )
         XCTAssertTrue(
             tryUnwrap(suppressionDetails.first).contains("deadband=1.000000；")
@@ -4525,6 +4548,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
             CGPoint(x: inner.contentOffset.x, y: baseY + 20),
             animated: false
         )
+        let offsetYOutsideWindow = inner.contentOffset.y
+        XCTAssertGreaterThanOrEqual(
+            abs(offsetYOutsideWindow - baseY),
+            1,
+            "前置：窗口外的偏差已远超死区"
+        )
         XCTAssertFalse(controller.followNxHandoffWindow(
             on: page,
             translation: CGPoint(x: -200, y: 20)
@@ -4536,7 +4565,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         XCTAssertEqual(
             inner.contentOffset.y,
-            baseY + 20,
+            offsetYOutsideWindow,
             accuracy: 0.000_001,
             "窗口外不回写"
         )
