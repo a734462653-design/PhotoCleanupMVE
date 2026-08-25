@@ -115,7 +115,7 @@ extension S2ResolvedParameters {
 struct S2CalibrationConfiguration: Codable, Equatable {
     /// IC-087：出厂值版本。持久化数据顶层写入 `schemaVersion`；加载时与本值不等即整套丢弃并删除条目。
     /// **纪律：任何改动 `factoryPlaceholder` 出厂值的卡必须同时递增本值。**
-    static let schemaVersion = 3
+    static let schemaVersion = 5
 
     var pinchMaxScaleFloor: Double
     var pinchMaxScaleCeiling: Double
@@ -161,6 +161,11 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var bottomStripMarkSize: Double
     var markPulseDurationMilliseconds: Double
     var feedbackToastDurationMilliseconds: Double
+    /// IC-092 R5（占位）：动量到边露出回弹的峰值系数（秒）。
+    /// 峰值露出 = min(到边瞬间横向速度 × 本值, 0.5 × 页步距)。
+    var nxMomentumBouncePeakVelocityFactor: Double
+    /// IC-092 R5（占位）：动量到边露出回弹的总时长（毫秒），出、回各占一半。
+    var nxMomentumBounceDurationMilliseconds: Double
 
     // IC-064 显隐过渡与描边项目判断默认值；既有数值延续 IC-063。
     static let factoryPlaceholder = S2CalibrationConfiguration(
@@ -207,7 +212,9 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         bottomStripFlickVelocityThreshold: 300,
         bottomStripMarkSize: 14,
         markPulseDurationMilliseconds: 150,
-        feedbackToastDurationMilliseconds: 2000
+        feedbackToastDurationMilliseconds: 2000,
+        nxMomentumBouncePeakVelocityFactor: 0.05,
+        nxMomentumBounceDurationMilliseconds: 350
     )
 
     var resolvedParameters: S2ResolvedParameters? {
@@ -271,7 +278,9 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             pageSpacing >= 0 &&
             bottomStripMarkSize >= 0 &&
             markPulseDurationMilliseconds >= 0 &&
-            feedbackToastDurationMilliseconds >= 0
+            feedbackToastDurationMilliseconds >= 0 &&
+            nxMomentumBouncePeakVelocityFactor >= 0 &&
+            nxMomentumBounceDurationMilliseconds >= 0
     }
 
     func exportText() -> String {
@@ -322,7 +331,9 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("bottomStripFlickVelocityThreshold", formatted(bottomStripFlickVelocityThreshold)),
             ("bottomStripMarkSize", formatted(bottomStripMarkSize)),
             ("markPulseDurationMilliseconds", formatted(markPulseDurationMilliseconds)),
-            ("feedbackToastDurationMilliseconds", formatted(feedbackToastDurationMilliseconds))
+            ("feedbackToastDurationMilliseconds", formatted(feedbackToastDurationMilliseconds)),
+            ("nxMomentumBouncePeakVelocityFactor", formatted(nxMomentumBouncePeakVelocityFactor)),
+            ("nxMomentumBounceDurationMilliseconds", formatted(nxMomentumBounceDurationMilliseconds))
         ]
         return values.map { "\($0.0)=\($0.1)" }.joined(separator: "\n")
     }
@@ -388,7 +399,11 @@ extension S2CalibrationConfiguration {
         .init(name: "bottomStripFlickVelocityThreshold", specStatus: .placeholder, wiringStatus: .effective),
         .init(name: "bottomStripMarkSize", specStatus: .decided, wiringStatus: .effective),
         .init(name: "markPulseDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
-        .init(name: "feedbackToastDurationMilliseconds", specStatus: .decided, wiringStatus: .effective)
+        .init(name: "feedbackToastDurationMilliseconds", specStatus: .decided, wiringStatus: .effective),
+        // IC-092 R5：动量到边露出回弹的两个占位量。规格未定（待 Lynn 真机标定），
+        // 但已在产品路径上生效，故 placeholder / effective。
+        .init(name: "nxMomentumBouncePeakVelocityFactor", specStatus: .placeholder, wiringStatus: .effective),
+        .init(name: "nxMomentumBounceDurationMilliseconds", specStatus: .placeholder, wiringStatus: .effective)
     ]
 }
 
@@ -438,6 +453,8 @@ extension S2CalibrationConfiguration {
         case bottomStripMarkSize
         case markPulseDurationMilliseconds
         case feedbackToastDurationMilliseconds
+        case nxMomentumBouncePeakVelocityFactor
+        case nxMomentumBounceDurationMilliseconds
     }
 
     // IC-087：先做版本门控——存储的 `schemaVersion`（缺失视为 0）不等于代码版本时抛出不匹配错误，
@@ -494,7 +511,9 @@ extension S2CalibrationConfiguration {
             bottomStripFlickVelocityThreshold: try values.decodeIfPresent(Double.self, forKey: .bottomStripFlickVelocityThreshold) ?? 300,
             bottomStripMarkSize: try values.decodeIfPresent(Double.self, forKey: .bottomStripMarkSize) ?? 14,
             markPulseDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .markPulseDurationMilliseconds) ?? 150,
-            feedbackToastDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .feedbackToastDurationMilliseconds) ?? 2000
+            feedbackToastDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .feedbackToastDurationMilliseconds) ?? 2000,
+            nxMomentumBouncePeakVelocityFactor: try values.decodeIfPresent(Double.self, forKey: .nxMomentumBouncePeakVelocityFactor) ?? 0.05,
+            nxMomentumBounceDurationMilliseconds: try values.decodeIfPresent(Double.self, forKey: .nxMomentumBounceDurationMilliseconds) ?? 350
         )
     }
 
@@ -544,6 +563,8 @@ extension S2CalibrationConfiguration {
         try values.encode(bottomStripMarkSize, forKey: .bottomStripMarkSize)
         try values.encode(markPulseDurationMilliseconds, forKey: .markPulseDurationMilliseconds)
         try values.encode(feedbackToastDurationMilliseconds, forKey: .feedbackToastDurationMilliseconds)
+        try values.encode(nxMomentumBouncePeakVelocityFactor, forKey: .nxMomentumBouncePeakVelocityFactor)
+        try values.encode(nxMomentumBounceDurationMilliseconds, forKey: .nxMomentumBounceDurationMilliseconds)
     }
 }
 

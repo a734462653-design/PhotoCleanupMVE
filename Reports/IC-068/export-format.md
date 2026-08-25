@@ -134,3 +134,20 @@
     - `to` 是钳到序列范围内的目标索引；`from == to` 即本次为弹回。
 - 既有 `event=nxHandoffWindow` 的 `reason` 新增两种取值：`结算完成`（松手结算路径关窗）、`原生接管`（让位保险：窗口内外层自身 `isDragging` 变真，或外层 `scrollViewWillBeginDragging` 到来）。上文列出的五种取值仍然有效。
 - 关闭录制时以上埋点零副作用。逐帧字段与头部「格式版本=1」均未变。
+
+### 自 IC-092 阶段二起的事件追加（格式版本仍为 1）
+
+本节只追加，不修改上文任何既有约定。**逐帧字段仍然一个不加。**
+
+背景（①，H38 录制 `#160a.txt` / `#160b.txt`）：(a) 弹回动画被自家关窗路径上的第二次非动画写抹成瞬移；(b) 快甩时手指在到边**之前**就离开，内层靠减速滑到边界后死停，交接点条件「到边且仍受拖」不成立，整段没有任何表现。
+
+- 离散事件新增三类：
+  - `event=外层setContentOffset被抑制`，来源为被拦下的那次写入的原来源，`details=x=…；animated=false；reason=结算动画进行中`。结算动画（含动量露出回弹）发出后到收口之间，**任何路径**的非动画外层写都会被唯一写入口拦下并记这一条。**窗口开与关之间出现来源不是 `…nxWindowFollow` / `…nxMomentumBounce*` 的成功写入，仍是闸门 C' 的判据；本事件则是「拦住了」的正面证据。**
+  - `event=nxSettlementCloseSuppressed`，来源 `S2NativePagerViewController.scrollViewDidEndDragging` 或 `…scrollViewDidEndDecelerating`，`details=suppressedReason=外层拖动结束不减速|外层减速结束；state=结算动画进行中`。`#160a.txt` 里那次 0.4 ms 后的「外层减速结束」是误触发——外层从未拖动、从未减速；结算动画期间这类回调一律忽略，本事件把忽略记下来。
+  - `event=nxMomentumBounce`，来源 `S2NativePagerViewController.beginNxMomentumBounce`，`details=edgeVelocityX=…；peakOffset=…；durationSeconds=…；direction=left|right；restingOffsetX=…；outwardOffsetX=…；pageIndex=…；assetLocalIdentifier=…`。
+    - `edgeVelocityX` 是**到边瞬间**的横向速度（pt/s，内层偏移空间，正值表示偏移增大 = 手指曾向左甩），由减速段最后两帧的偏移差分求得——`velocity(in:)` 在手指离开后不再更新，只能走几何差分。
+    - `peakOffset = min(|edgeVelocityX| × nxMomentumBouncePeakVelocityFactor, 0.5 × 页步距)`；`durationSeconds` 取 `nxMomentumBounceDurationMilliseconds / 1000`，出、回各占一半，分别为缓出 / 缓入。
+    - 露出与回位两段的外层写各记一条既有 `event=外层setContentOffset`，来源分别是 `S2NativePagerViewController.nxMomentumBounceOut` 与 `…nxMomentumBounceBack`，`animated=false`（模型值在 `UIView` 动画块内一次到位，呈现层由渲染层驱动）。
+- 既有 `event=nxHandoffWindow` 的 `reason` 再新增一种打开取值：`动量到边`（手指已离开、内层靠减速滑到边界时打开窗口做露出回弹）。关闭取值不变，动量路径同样以 `结算完成` 收口。
+- 两个新标定参数进导出文本：`nxMomentumBouncePeakVelocityFactor`（出厂 0.05）、`nxMomentumBounceDurationMilliseconds`（出厂 350）；`schemaVersion` 随出厂值集合变更递增为 **5**。
+- 关闭录制时以上埋点零副作用。逐帧字段与头部「格式版本=1」均未变。

@@ -362,12 +362,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // IC-087 G171：持久化数据的 `schemaVersion` 与代码版本不等（或缺失）→ 整套丢弃、取出厂值并删除条目；
-    // 相等 → 按现行逐字段解码。导出文本含 schemaVersion=3。
+    // 相等 → 按现行逐字段解码。导出文本含 schemaVersion=5（IC-092 R5 递增）。
     func testIC087G171SchemaVersionGateDiscardsStaleStoreAndDeletesEntry() throws {
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 3)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 5)
         XCTAssertTrue(
             S2CalibrationConfiguration.factoryPlaceholder.exportText()
-                .contains("schemaVersion=3")
+                .contains("schemaVersion=5")
         )
 
         // 1) schemaVersion=2 且 ceiling=10 → 出厂 40，且存储被删除。
@@ -382,9 +382,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(stale.saveCount, 0)
         XCTAssertFalse(staleModel.persistenceFailed)
 
-        // 2) schemaVersion=3 且 ceiling=12 → 12，存储保留。
+        // 2) schemaVersion=5（= 代码版本）且 ceiling=12 → 12，存储保留。
         let current = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 5, ceiling: 12)
         )
         let currentModel = S2CalibrationModel(persistence: current)
         XCTAssertEqual(currentModel.configuration.pinchMaxScaleCeiling, 12)
@@ -400,13 +400,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNil(legacy.data)
         XCTAssertEqual(legacy.deleteCount, 1)
 
-        // 保存后的数据顶层带 schemaVersion=3，重新加载得同一配置。
+        // 保存后的数据顶层带 schemaVersion=5，重新加载得同一配置。
         XCTAssertTrue(currentModel.update { $0.pinchMaxScaleCeiling = 15 })
         let saved = try XCTUnwrap(current.data)
         let object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: saved) as? [String: Any]
         )
-        XCTAssertEqual(object["schemaVersion"] as? Int, 3)
+        XCTAssertEqual(object["schemaVersion"] as? Int, 5)
         XCTAssertEqual(
             S2CalibrationModel(persistence: current).configuration,
             currentModel.configuration
@@ -430,7 +430,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             L10n.text("s2.calibration.restore_factory").hasPrefix("【未定项 21 占位】")
         )
         let store = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 5, ceiling: 12)
         )
         let model = S2CalibrationModel(persistence: store)
         XCTAssertEqual(model.configuration.pinchMaxScaleCeiling, 12)
@@ -972,19 +972,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion 与 v15 规格基线。
     // IC-085：废止 1 项、新增 5 项横栏参数，字段 37 → 41，导出 41 + 4 行；R3 新增 1 项：42。
     // IC-088 合并：+ IC-081 乘数 1 项 = 43，导出 43 + 4 = 47；IC-087：schemaVersion=3。
+    // IC-092 R5：+ 动量回弹 2 项 = 45，导出 45 + 4 = 49；schemaVersion 递增为 5。
     func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
         ).children.compactMap(\.label)
-        XCTAssertEqual(fieldNames.count, 43)
+        // IC-092 R5：新增两个动量回弹占位参数，43 → 45。
+        XCTAssertEqual(fieldNames.count, 45)
 
         let lines = S2CalibrationConfiguration.factoryPlaceholder
             .exportText()
             .split(separator: "\n")
             .map(String.init)
-        XCTAssertEqual(lines.count, 43 + 4)
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 3)
-        XCTAssertTrue(lines.contains("schemaVersion=3"))
+        XCTAssertEqual(lines.count, 45 + 4)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 5)
+        XCTAssertTrue(lines.contains("schemaVersion=5"))
         XCTAssertTrue(lines.contains(
             "taskID=IC-20260821-074-parameter-layer-v15-alignment"
         ))
@@ -1004,8 +1006,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-085：登记表 41 条；横栏 11 项（6 项既有 + 5 项新增）全部 decided；R3 新增 placeholder 1 项：42 条。
     func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
         let connections = S2CalibrationConfiguration.parameterConnections
-        XCTAssertEqual(connections.count, 43)
-        XCTAssertEqual(Set(connections.map(\.name)).count, 43)
+        // IC-092 R5：新增两个 placeholder / effective 参数，43 → 45。
+        XCTAssertEqual(connections.count, 45)
+        XCTAssertEqual(Set(connections.map(\.name)).count, 45)
 
         let decided = Set(connections
             .filter { $0.specStatus == .decided }
@@ -1036,7 +1039,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ])
         // IC-088 合并：decided 34（IC-085）；placeholder 8（IC-085）+ 乘数 1（IC-081）= 9。
         XCTAssertEqual(decided.count, 34)
-        XCTAssertEqual(placeholder.count, 9)
+        // IC-092 R5：placeholder 9 + 动量回弹 2 = 11。
+        XCTAssertEqual(placeholder.count, 11)
         XCTAssertTrue(placeholder.contains("bottomStripFlickVelocityThreshold"))
         XCTAssertTrue(decided.isDisjoint(with: placeholder))
         XCTAssertFalse(placeholder.contains("pinchMaxScale"))
@@ -4861,6 +4865,250 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
+    // IC-092 E3（纯函数）：动量到边的峰值规则。
+    // 峰值 = min(|到边速度| × 0.05, 0.5 × 页步距)；步距 422 时上限 211。
+    // v=1000 → 50；v=6000 → 211（被上限截断）；方向对称（取绝对值）。
+    func testIC092E3MomentumBouncePeakRule() {
+        func peak(_ velocity: CGFloat, stride: CGFloat = 422) -> CGFloat {
+            S2NxMomentumBounceRule.peakOffset(
+                edgeVelocityX: velocity,
+                pageStride: stride,
+                peakVelocityFactor: 0.05
+            )
+        }
+        XCTAssertEqual(peak(1_000), 50, accuracy: 0.000_001)
+        XCTAssertEqual(peak(6_000), 211, accuracy: 0.000_001)
+        XCTAssertEqual(peak(4_220), 211, accuracy: 0.000_001, "恰好触到上限")
+        XCTAssertEqual(peak(4_219), 210.95, accuracy: 0.000_001, "上限之下不截断")
+        // 方向对称：正负同速给出同一峰值（方向由调用方另行给出）。
+        for velocity in [CGFloat(1_000), 6_000, 137.5] {
+            XCTAssertEqual(
+                peak(velocity),
+                peak(-velocity),
+                accuracy: 0.000_001
+            )
+        }
+        // 退化输入不产生负峰值。
+        XCTAssertEqual(peak(0), 0, accuracy: 0.000_001)
+        XCTAssertEqual(peak(1_000, stride: 0), 0, accuracy: 0.000_001)
+        XCTAssertEqual(
+            S2NxMomentumBounceRule.peakOffset(
+                edgeVelocityX: 1_000,
+                pageStride: 422,
+                peakVelocityFactor: -1
+            ),
+            0,
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-092 E4（夹具驱动，真机未覆盖）：动量到边的判据与露出回弹动作。
+    // 减速中到边 → 开窗（原因=动量到边）、外层越出到峰值、apply 被抑制、不翻页；
+    // 收口后关窗并清零。防抖：同一次减速只触发一次；1x 与竖向到边不触发。
+    func testIC092E4MomentumEdgeOpensBounceWindow() {
+        let fixture = makeIC091NxFixture(startRecording: true)
+        defer { fixture.window.isHidden = true }
+        defer { fixture.diagnostics.stop() }
+        let controller = fixture.controller
+        let paging = controller.pagingScrollView
+        let page = fixture.page
+        let inner = page.zoomScrollView
+        let diagnostics = fixture.diagnostics
+        let startIndex = fixture.machine.currentIndex
+        let restingX = paging.contentOffsetForPage(at: startIndex).x
+        let maxX = max(
+            -inner.contentInset.left,
+            inner.contentSize.width - inner.bounds.width +
+                inner.contentInset.right
+        )
+
+        // 竖向到边不触发：横向偏移不变，只有 y 在动。
+        inner.setContentOffset(
+            CGPoint(x: maxX - 5, y: inner.contentOffset.y),
+            animated: false
+        )
+        XCTAssertFalse(controller.noteInnerMomentumEdgeIfNeeded(
+            on: page,
+            isDecelerating: true,
+            isDragActive: false,
+            timestamp: 100
+        ), "首帧只采样，不触发")
+        XCTAssertFalse(controller.noteInnerMomentumEdgeIfNeeded(
+            on: page,
+            isDecelerating: true,
+            isDragActive: false,
+            timestamp: 100.016
+        ), "横向没动 → 不是水平主导 → 不触发")
+
+        // 手指还在时不触发（走的是交接点路径）。
+        inner.setContentOffset(
+            CGPoint(x: maxX, y: inner.contentOffset.y),
+            animated: false
+        )
+        XCTAssertFalse(controller.noteInnerMomentumEdgeIfNeeded(
+            on: page,
+            isDecelerating: true,
+            isDragActive: true,
+            timestamp: 100.032
+        ))
+
+        // 减速中到边：两帧偏移差分给出速度，触发露出回弹。
+        inner.setContentOffset(
+            CGPoint(x: maxX - 5, y: inner.contentOffset.y),
+            animated: false
+        )
+        XCTAssertFalse(controller.noteInnerMomentumEdgeIfNeeded(
+            on: page,
+            isDecelerating: true,
+            isDragActive: false,
+            timestamp: 200
+        ))
+        inner.setContentOffset(
+            CGPoint(x: maxX, y: inner.contentOffset.y),
+            animated: false
+        )
+        XCTAssertTrue(controller.noteInnerMomentumEdgeIfNeeded(
+            on: page,
+            isDecelerating: true,
+            isDragActive: false,
+            timestamp: 200.016
+        ))
+
+        let reading = tryUnwrap(controller.lastNxMomentumBounceReading)
+        XCTAssertEqual(
+            reading.edgeVelocityX,
+            5 / 0.016,
+            accuracy: 0.001,
+            "速度取减速段最后两帧的偏移差分"
+        )
+        XCTAssertTrue(reading.movingLeft, "内层偏移增大 = 曾向左甩 = 下一张方向")
+        XCTAssertEqual(
+            reading.peakOffset,
+            S2NxMomentumBounceRule.peakOffset(
+                edgeVelocityX: reading.edgeVelocityX,
+                pageStride: paging.pageStride,
+                peakVelocityFactor: CGFloat(
+                    fixture.configuration.nxMomentumBouncePeakVelocityFactor
+                )
+            ),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            reading.duration,
+            fixture.configuration.nxMomentumBounceDurationMilliseconds / 1_000,
+            accuracy: 0.000_001
+        )
+        XCTAssertTrue(controller.isNxMomentumBounceActive)
+        XCTAssertTrue(controller.isNxHandoffWindowOpen)
+        XCTAssertTrue(controller.isNxWindowSettling)
+        XCTAssertFalse(controller.isNxWindowFollowActive)
+        XCTAssertEqual(
+            ic091EventDetails(diagnostics, name: "nxHandoffWindow")
+                .filter { $0.hasPrefix("state=open；reason=动量到边") }.count,
+            1
+        )
+        let bounceDetails = tryUnwrap(
+            ic091EventDetails(diagnostics, name: "nxMomentumBounce").first
+        )
+        XCTAssertTrue(bounceDetails.contains("direction=left；"))
+        XCTAssertTrue(bounceDetails.contains(
+            "peakOffset=" + String(format: "%.6f", Double(reading.peakOffset))
+        ))
+        // 外层已越出到峰值（模型值在动画块内一次到位），且没有翻页。
+        XCTAssertEqual(
+            paging.contentOffset.x,
+            restingX + reading.peakOffset,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(fixture.machine.currentIndex, startIndex, "不翻页")
+        XCTAssertEqual(fixture.machine.scale, 2)
+
+        // 防抖：同一次减速不再触发。
+        XCTAssertFalse(controller.noteInnerMomentumEdgeIfNeeded(
+            on: page,
+            isDecelerating: true,
+            isDragActive: false,
+            timestamp: 200.032
+        ))
+        XCTAssertEqual(
+            ic091EventCount(diagnostics, name: "nxMomentumBounce"),
+            1
+        )
+
+        // 露出期间 apply 写不进外层。
+        let suppressed: Set<String> = [
+            "S2NativePagerViewController.apply",
+            "S2NativePagerViewController.layoutNativePages"
+        ]
+        let before = ic091OuterWriteSources(diagnostics)
+            .filter { suppressed.contains($0) }.count
+        applyNativePagerController(
+            controller,
+            machine: fixture.machine,
+            configuration: fixture.configuration
+        )
+        XCTAssertEqual(
+            ic091OuterWriteSources(diagnostics)
+                .filter { suppressed.contains($0) }.count - before,
+            0,
+            "露出回弹期间 apply 不写外层偏移"
+        )
+
+        // 收口：窗口关、动量态清零、apply 恢复。
+        controller.scrollViewDidEndScrollingAnimation(paging)
+        XCTAssertFalse(controller.isNxHandoffWindowOpen)
+        XCTAssertFalse(controller.isNxMomentumBounceActive)
+        XCTAssertFalse(controller.isNxWindowSettling)
+        XCTAssertEqual(
+            ic091EventDetails(diagnostics, name: "nxHandoffWindow")
+                .filter { $0.hasPrefix("state=close；reason=结算完成") }.count,
+            1
+        )
+        let applyBefore = ic091OuterWriteSources(diagnostics)
+            .filter { $0 == "S2NativePagerViewController.apply" }.count
+        applyNativePagerController(
+            controller,
+            machine: fixture.machine,
+            configuration: fixture.configuration
+        )
+        XCTAssertEqual(
+            ic091OuterWriteSources(diagnostics)
+                .filter { $0 == "S2NativePagerViewController.apply" }.count
+                - applyBefore,
+            1
+        )
+    }
+
+    // IC-092 E4（续，夹具驱动）：1x 下动量到边不触发。
+    func testIC092E4MomentumEdgeDoesNotTriggerAtOneX() {
+        let fixture = makeIC091NxFixture()
+        defer { fixture.window.isHidden = true }
+        let controller = fixture.controller
+        let page = fixture.page
+        let inner = page.zoomScrollView
+        inner.applyNativeState(scale: 1, viewportOffset: .zero)
+        XCTAssertEqual(inner.zoomScale, 1, accuracy: 0.000_001)
+
+        XCTAssertFalse(controller.noteInnerMomentumEdgeIfNeeded(
+            on: page,
+            isDecelerating: true,
+            isDragActive: false,
+            timestamp: 300
+        ))
+        inner.setContentOffset(
+            CGPoint(x: inner.contentOffset.x + 5, y: inner.contentOffset.y),
+            animated: false
+        )
+        XCTAssertFalse(controller.noteInnerMomentumEdgeIfNeeded(
+            on: page,
+            isDecelerating: true,
+            isDragActive: false,
+            timestamp: 300.016
+        ), "1x 下内层 pan 本就禁用，动量路径不介入")
+        XCTAssertFalse(controller.isNxHandoffWindowOpen)
+        XCTAssertFalse(controller.isNxMomentumBounceActive)
+    }
+
     // IC-092 B5（夹具驱动，真机未覆盖）：让位保险。
     // 外层 scrollViewWillBeginDragging 到来即停止跟随并关窗，原因=原生接管。
     func testIC092B5NativeTakeoverStopsFollow() {
@@ -4922,7 +5170,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 .edgePagingTriggerDistance,
             40
         )
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 3)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 5)
         // 阈值确实被结算读到：把配置里的速度阈值调高，同一读数就不再翻页。
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
         configuration.edgePagingTriggerVelocity = 900

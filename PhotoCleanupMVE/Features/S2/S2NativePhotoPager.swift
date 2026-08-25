@@ -372,6 +372,36 @@ struct S2NxWindowSettlement: Equatable {
     let direction: S2PageDirection?
 }
 
+/// IC-092 R5：一次动量到边露出回弹的读数。
+struct S2NxMomentumBounceReading: Equatable {
+    /// 到边瞬间的横向速度（pt/s，内层偏移空间；正值为偏移增大 = 手指曾向左甩）。
+    let edgeVelocityX: CGFloat
+    /// 峰值露出量（pt，非负）。
+    let peakOffset: CGFloat
+    /// 总时长（秒）。
+    let duration: TimeInterval
+    /// 露出方向：真为向下一张（外层偏移增大）。
+    let movingLeft: Bool
+}
+
+/// IC-092 R5：动量到边露出回弹的峰值规则。
+///
+/// 依据（①，`#160b.txt`）：快甩时手指在到边**之前**就离开，内层靠减速滑到边界后
+/// 死停（`bounces=false`），交接点条件「到边且仍受拖」不满足，窗口不开、无任何表现。
+/// 系统在同样场景下会露出黑边与相邻页再弹回、不翻页（④ Lynn）。本规则只算露出量，
+/// 不碰内层减速本身（闸门 F）。
+enum S2NxMomentumBounceRule {
+    /// 峰值露出 = min(|到边速度| × 峰值系数, 0.5 × 页步距)。
+    static func peakOffset(
+        edgeVelocityX: CGFloat,
+        pageStride: CGFloat,
+        peakVelocityFactor: CGFloat
+    ) -> CGFloat {
+        let raw = abs(edgeVelocityX) * max(0, peakVelocityFactor)
+        return min(raw, 0.5 * max(0, pageStride))
+    }
+}
+
 /// IC-092 R1/R2：交接窗口的跟随映射与松手结算规则。
 ///
 /// IC-091 的 H37 三段真机录制（①）否定了「内层到边后 UIKit 会把同一手势交给外层」：
@@ -2292,11 +2322,20 @@ final class S2NativeZoomPageController: UIViewController,
         // 外层偏移就会被写回静止位置（`Q2.txt` t=0.691～0.705 的形态）。
         // 判据只读几何，不写任何偏移。
         let panRecognizer = zoomScrollView.panGestureRecognizer
+        let isDragActive = panRecognizer.state == .began ||
+            panRecognizer.state == .changed
         owner?.noteInnerHandoffIfNeeded(
             on: self,
             dragVector: panRecognizer.translation(in: zoomScrollView),
-            isDragActive: panRecognizer.state == .began ||
-                panRecognizer.state == .changed
+            isDragActive: isDragActive
+        )
+        // IC-092 R5：手指已离开、内层靠减速滑到边界时，交接点条件（到边且仍受拖）
+        // 不成立，改由动量路径接管（`#160b.txt` 里这条路径整段没有任何表现）。
+        owner?.noteInnerMomentumEdgeIfNeeded(
+            on: self,
+            isDecelerating: zoomScrollView.isDecelerating,
+            isDragActive: isDragActive,
+            timestamp: CACurrentMediaTime()
         )
         owner?.reportNativeViewport(from: self)
     }
@@ -2605,6 +2644,13 @@ final class S2NativePagerViewController: UIViewController,
     /// 一旦回到目标（≤ 0.5 pt）就收口。不引入任何新的时长量。
     private var nxSettlementTargetOffsetX: CGFloat?
     private var hasObservedNxSettlementProgress = false
+    /// IC-092 R5：动量到边的采样与防抖。采样只在内层减速中进行，速度取最后两帧的偏移差分。
+    private var nxMomentumLastInnerOffsetX: CGFloat?
+    private var nxMomentumLastSampleTimestamp: CFTimeInterval?
+    private var hasTriggeredNxMomentumBounceForDeceleration = false
+    /// IC-092 R5：露出回弹进行中；最近一次读数（夹具与诊断读取）。
+    private(set) var isNxMomentumBounceActive = false
+    private(set) var lastNxMomentumBounceReading: S2NxMomentumBounceReading?
     /// IC-092 R1/R2：最近一次跟随读数与结算读数（夹具与诊断读取）。
     private(set) var lastNxWindowFollowReading: S2NxWindowFollowReading?
     private(set) var lastNxWindowSettlement: S2NxWindowSettlement?
@@ -3181,25 +3227,34 @@ final class S2NativePagerViewController: UIViewController,
             pageIndex: page.index,
             assetLocalIdentifier: page.diagnosticAssetLocalIdentifier
         )
-        isNxHandoffWindowOpen = true
-        nxHandoffPageIndex = page.index
         // IC-092 R1：跟随基准就在这一帧取定——外层此刻仍在静止偏移上，
         // 内层横向已到边界，竖向值即「交接点 y」，后续窗口内全部相对它们计算。
         nxWindowBaseOuterOffsetX = pagingScrollView.contentOffset.x
         nxWindowBaseInnerTranslationX = dragVector.x
         nxWindowBaseInnerOffsetY = inner.contentOffset.y
+        openNxHandoffWindow(on: page, reason: .handoffPoint)
         isNxWindowFollowActive = true
         lastNxWindowFollowReading = nil
+        return true
+    }
+
+    /// IC-092：打开交接窗口并记录。手指驱动路径（原因=交接点）与动量路径
+    /// （原因=动量到边）共用。
+    private func openNxHandoffWindow(
+        on page: S2NativeZoomPageController,
+        reason: S2NxHandoffWindowReason
+    ) {
+        isNxHandoffWindowOpen = true
+        nxHandoffPageIndex = page.index
         transitionDiagnostics?.recordNxHandoffWindow(
             isOpen: true,
-            reason: S2NxHandoffWindowReason.handoffPoint.rawValue,
+            reason: reason.rawValue,
             outerContentOffsetX: pagingScrollView.contentOffset.x,
             outerIsTracking: pagingScrollView.isTracking,
             outerIsDragging: pagingScrollView.isDragging,
             pageIndex: page.index,
             assetLocalIdentifier: page.diagnosticAssetLocalIdentifier
         )
-        return true
     }
 
     /// IC-091 R2/R3：关闭交接窗口。未打开时为零副作用（不记录事件）。
@@ -3221,6 +3276,7 @@ final class S2NativePagerViewController: UIViewController,
         isNxWindowSettling = false
         nxSettlementTargetOffsetX = nil
         hasObservedNxSettlementProgress = false
+        isNxMomentumBounceActive = false
         transitionDiagnostics?.recordNxHandoffWindow(
             isOpen: false,
             reason: reason.rawValue,
@@ -3383,6 +3439,171 @@ final class S2NativePagerViewController: UIViewController,
         return true
     }
 
+    /// IC-092 R5：动量到边判据。内层**减速中**（手指已离开）在水平方向到达内容边界时触发
+    /// 一次露出回弹。速度取减速段最后两帧的偏移差分——`velocity(in:)` 在手指离开后不再更新，
+    /// 只能从几何差分求。只旁观内层减速，不碰 `decelerationRate` / `bounces` / pan 配置（闸门 F）。
+    /// 返回值为本次是否触发。
+    @discardableResult
+    func noteInnerMomentumEdgeIfNeeded(
+        on page: S2NativeZoomPageController,
+        isDecelerating: Bool,
+        isDragActive: Bool,
+        timestamp: CFTimeInterval
+    ) -> Bool {
+        guard let machine, page.index == machine.currentIndex else {
+            return false
+        }
+        // 手指还在、或减速已结束：采样与防抖一并复位，下一次减速重新计。
+        guard isDecelerating, !isDragActive else {
+            nxMomentumLastInnerOffsetX = nil
+            nxMomentumLastSampleTimestamp = nil
+            hasTriggeredNxMomentumBounceForDeceleration = false
+            return false
+        }
+        let inner = page.zoomScrollView
+        let offsetX = inner.contentOffset.x
+        let previousOffsetX = nxMomentumLastInnerOffsetX
+        let previousTimestamp = nxMomentumLastSampleTimestamp
+        nxMomentumLastInnerOffsetX = offsetX
+        nxMomentumLastSampleTimestamp = timestamp
+        // 防抖：一次减速只触发一次；手指驱动路径已开窗时不重复触发。
+        guard !hasTriggeredNxMomentumBounceForDeceleration,
+              !isNxHandoffWindowOpen,
+              !isNxMomentumBounceActive,
+              !inner.isApplyingNativeState else {
+            return false
+        }
+        guard let previousOffsetX,
+              let previousTimestamp,
+              timestamp > previousTimestamp else {
+            return false
+        }
+        let deltaOffsetX = offsetX - previousOffsetX
+        let edgeVelocityX = deltaOffsetX / CGFloat(timestamp - previousTimestamp)
+        // 内层偏移增大 = 内容左移 = 手指曾向左甩；换算成与手指位移同向的向量再复用既有判据。
+        guard let reading = S2NxEdgeHandoffRule.handoffReading(
+            zoomScale: inner.zoomScale,
+            minimumZoomScale: inner.minimumZoomScale,
+            contentOffset: inner.contentOffset,
+            contentSize: inner.contentSize,
+            viewportSize: inner.bounds.size,
+            contentInset: inner.contentInset,
+            dragVector: CGPoint(x: -deltaOffsetX, y: 0),
+            isDragActive: true
+        ), reading.reachedEdge else {
+            return false
+        }
+        return beginNxMomentumBounce(
+            on: page,
+            edgeVelocityX: edgeVelocityX,
+            movingLeft: reading.movingLeft
+        )
+    }
+
+    /// IC-092 R5：露出回弹动作。开窗（原因=动量到边）→ 向翻页方向平滑越出到峰值 →
+    /// 平滑回到静止偏移 → 按 R4 收口关窗。**不翻页**，`currentIndex` 与内层都不动。
+    /// 夹具可直接以速度调用。
+    @discardableResult
+    func beginNxMomentumBounce(
+        on page: S2NativeZoomPageController,
+        edgeVelocityX: CGFloat,
+        movingLeft: Bool
+    ) -> Bool {
+        guard let machine,
+              page.index == machine.currentIndex,
+              !isNxHandoffWindowOpen,
+              !isNxMomentumBounceActive else {
+            return false
+        }
+        let stride = pagingScrollView.pageStride
+        let peak = S2NxMomentumBounceRule.peakOffset(
+            edgeVelocityX: edgeVelocityX,
+            pageStride: stride,
+            peakVelocityFactor: CGFloat(
+                configuration.nxMomentumBouncePeakVelocityFactor
+            )
+        )
+        // 峰值不足半点时不做动作：一次看不见的露出只会白白挡住 `apply` 一个动画时长。
+        guard peak > 0.5 else {
+            return false
+        }
+        let duration = max(
+            0,
+            configuration.nxMomentumBounceDurationMilliseconds
+        ) / 1_000
+        guard duration > 0 else {
+            return false
+        }
+        let restingX = pagingScrollView.contentOffsetForPage(
+            at: settledIndex
+        ).x
+        let outwardX = movingLeft ? restingX + peak : restingX - peak
+        let reading = S2NxMomentumBounceReading(
+            edgeVelocityX: edgeVelocityX,
+            peakOffset: peak,
+            duration: duration,
+            movingLeft: movingLeft
+        )
+        lastNxMomentumBounceReading = reading
+        hasTriggeredNxMomentumBounceForDeceleration = true
+        openNxHandoffWindow(on: page, reason: .momentumEdge)
+        // 复用 R4 的非动画写守卫护住整段露出回弹；几何兜底对本路径不适用
+        // （模型偏移在动画块内一次到位，兜底会误判为已收口），故不装载目标。
+        isNxWindowSettling = true
+        nxSettlementTargetOffsetX = nil
+        hasObservedNxSettlementProgress = false
+        isNxMomentumBounceActive = true
+        isNxWindowFollowActive = false
+        transitionDiagnostics?.recordNxMomentumBounce(
+            reading,
+            restingOffsetX: restingX,
+            outwardOffsetX: outwardX,
+            pageIndex: page.index,
+            assetLocalIdentifier: page.diagnosticAssetLocalIdentifier
+        )
+        let half = duration / 2
+        UIView.animate(
+            withDuration: half,
+            delay: 0,
+            options: [.curveEaseOut, .beginFromCurrentState]
+        ) { [weak self] in
+            guard let self else {
+                return
+            }
+            self.writePagingContentOffset(
+                CGPoint(
+                    x: outwardX,
+                    y: self.pagingScrollView.contentOffset.y
+                ),
+                animated: false,
+                source: "S2NativePagerViewController.nxMomentumBounceOut",
+                duringSettlementAnimation: true
+            )
+        } completion: { [weak self] _ in
+            guard let self, self.isNxMomentumBounceActive else {
+                return
+            }
+            UIView.animate(
+                withDuration: half,
+                delay: 0,
+                options: [.curveEaseIn, .beginFromCurrentState]
+            ) {
+                self.writePagingContentOffset(
+                    CGPoint(
+                        x: restingX,
+                        y: self.pagingScrollView.contentOffset.y
+                    ),
+                    animated: false,
+                    source: "S2NativePagerViewController.nxMomentumBounceBack",
+                    duringSettlementAnimation: true
+                )
+            } completion: { _ in
+                self.finishNxWindowSettlementIfNeeded()
+            }
+        }
+        return true
+    }
+
     /// IC-092 R2：结算动画收口。真实路径由 UIKit 在动画结束时经
     /// `scrollViewDidEndScrollingAnimation` 调用；夹具可直接驱动同一回调。
     /// 收口后窗口关闭（原因=结算完成），`apply` 恢复写入，下一次写的就是静止偏移。
@@ -3393,6 +3614,7 @@ final class S2NativePagerViewController: UIViewController,
         isNxWindowSettling = false
         nxSettlementTargetOffsetX = nil
         hasObservedNxSettlementProgress = false
+        isNxMomentumBounceActive = false
         closeNxHandoffWindow(reason: .settlementCompleted)
     }
 
@@ -4457,6 +4679,8 @@ enum S2NxHandoffWindowReason: String {
     case settlementCompleted = "结算完成"
     /// IC-092 R1 让位保险：窗口内外层自身开始拖动，跟随停手、本次手势交回 UIKit。
     case nativeTakeover = "原生接管"
+    /// IC-092 R5：手指已离开、内层靠减速滑到边界时打开窗口做露出回弹。
+    case momentumEdge = "动量到边"
 }
 
 enum S2OnDeviceTransitionScenario: String, CaseIterable, Identifiable {
@@ -4987,6 +5211,35 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             name: "scrollViewWillBeginDragging",
             source: "S2NativePagerViewController.scrollViewWillBeginDragging",
             details: head + flags
+        )
+    }
+
+    /// IC-092 R5：一次动量到边露出回弹的触发读数。
+    func recordNxMomentumBounce(
+        _ reading: S2NxMomentumBounceReading,
+        restingOffsetX: CGFloat,
+        outwardOffsetX: CGFloat,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        let motion = "edgeVelocityX=" +
+            String(format: "%.6f", Double(reading.edgeVelocityX)) +
+            "；peakOffset=" +
+            String(format: "%.6f", Double(reading.peakOffset)) +
+            "；durationSeconds=" +
+            String(format: "%.6f", Double(reading.duration)) + "；"
+        let geometry = "direction=\(reading.movingLeft ? "left" : "right")；" +
+            "restingOffsetX=" +
+            String(format: "%.6f", Double(restingOffsetX)) +
+            "；outwardOffsetX=" +
+            String(format: "%.6f", Double(outwardOffsetX)) + "；"
+        recordEvent(
+            name: "nxMomentumBounce",
+            source: "S2NativePagerViewController.beginNxMomentumBounce",
+            details: motion + geometry + diagnosticContext(
+                pageIndex: pageIndex,
+                assetLocalIdentifier: assetLocalIdentifier
+            )
         )
     }
 
