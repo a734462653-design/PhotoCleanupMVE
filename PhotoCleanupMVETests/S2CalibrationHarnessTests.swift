@@ -875,7 +875,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
             bottomStripFlickVelocityThreshold: 300,
             bottomStripMarkSize: 14,
             markPulseDurationMilliseconds: 150,
-            feedbackToastDurationMilliseconds: 2000
+            feedbackToastDurationMilliseconds: 2000,
+            // IC-092 R5：动量到边露出回弹的两个占位出厂值。
+            nxMomentumBouncePeakVelocityFactor: 0.05,
+            nxMomentumBounceDurationMilliseconds: 350
         )
         let actual = S2CalibrationConfiguration.factoryPlaceholder
 
@@ -4953,10 +4956,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ))
 
         // 减速中到边：两帧偏移差分给出速度，触发露出回弹。
+        // 期望值一律取 contentOffset 的**读回值**——UIScrollView 把偏移吸附到设备
+        // 像素网格（IC-092 阶段一 CI #159 的①），写进去的值不等于读出来的值。
         inner.setContentOffset(
             CGPoint(x: maxX - 5, y: inner.contentOffset.y),
             animated: false
         )
+        let sampledX0 = inner.contentOffset.x
         XCTAssertFalse(controller.noteInnerMomentumEdgeIfNeeded(
             on: page,
             isDecelerating: true,
@@ -4967,6 +4973,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             CGPoint(x: maxX, y: inner.contentOffset.y),
             animated: false
         )
+        let sampledX1 = inner.contentOffset.x
+        XCTAssertGreaterThan(sampledX1 - sampledX0, 0, "前置：横向确实在推进")
         XCTAssertTrue(controller.noteInnerMomentumEdgeIfNeeded(
             on: page,
             isDecelerating: true,
@@ -4977,7 +4985,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let reading = tryUnwrap(controller.lastNxMomentumBounceReading)
         XCTAssertEqual(
             reading.edgeVelocityX,
-            5 / 0.016,
+            (sampledX1 - sampledX0) / CGFloat(200.016 - 200),
             accuracy: 0.001,
             "速度取减速段最后两帧的偏移差分"
         )
@@ -5015,10 +5023,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             "peakOffset=" + String(format: "%.6f", Double(reading.peakOffset))
         ))
         // 外层已越出到峰值（模型值在动画块内一次到位），且没有翻页。
+        // 容差 0.5 pt：外层 contentOffset 同样被吸附到像素网格，峰值是小数。
         XCTAssertEqual(
             paging.contentOffset.x,
             restingX + reading.peakOffset,
-            accuracy: 0.000_001
+            accuracy: 0.5
         )
         XCTAssertEqual(fixture.machine.currentIndex, startIndex, "不翻页")
         XCTAssertEqual(fixture.machine.scale, 2)

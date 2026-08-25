@@ -3453,10 +3453,16 @@ final class S2NativePagerViewController: UIViewController,
         guard let machine, page.index == machine.currentIndex else {
             return false
         }
-        // 手指还在、或减速已结束：采样与防抖一并复位，下一次减速重新计。
+        // 手指按下时采样无意义（位移由手指驱动），清掉；防抖标志在任何「非减速中」
+        // 的一帧都复位，保证「一次减速只触发一次」。
+        // 采样本身**不随减速结束清除**：跨减速的陈旧采样只会把差分算出的速度拉小
+        // （dt 变大），只可能少触发、不可能凭空多触发一次露出；而清掉它会让
+        // 「减速中每一帧之间夹着别的 `didScroll`」的真实时序永远凑不齐两帧。
         guard isDecelerating, !isDragActive else {
-            nxMomentumLastInnerOffsetX = nil
-            nxMomentumLastSampleTimestamp = nil
+            if isDragActive {
+                nxMomentumLastInnerOffsetX = nil
+                nxMomentumLastSampleTimestamp = nil
+            }
             hasTriggeredNxMomentumBounceForDeceleration = false
             return false
         }
