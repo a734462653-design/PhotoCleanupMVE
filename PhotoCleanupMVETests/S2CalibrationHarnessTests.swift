@@ -4718,6 +4718,149 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
+    // IC-092 E1（夹具驱动，真机未覆盖）：R4 弹回支的结算动画保护。
+    // `#160a.txt` 的塌陷序列——动画写发出后 0.4 ms 被误触发的「外层减速结束」关窗，
+    // 紧跟一次非动画写把动画抹平。此处断言：误触发既不关窗也不产生非动画写；
+    // 期间 apply 同样写不进去；`scrollViewDidEndScrollingAnimation` 收口后窗口关、apply 恢复。
+    func testIC092E1SettlementAnimationSurvivesSpuriousDeceleratingEnd() {
+        let fixture = makeIC091NxFixture(startRecording: true)
+        defer { fixture.window.isHidden = true }
+        defer { fixture.diagnostics.stop() }
+        let controller = fixture.controller
+        let paging = controller.pagingScrollView
+        let page = fixture.page
+        let diagnostics = fixture.diagnostics
+        let startIndex = fixture.machine.currentIndex
+        let restingX = paging.contentOffsetForPage(at: startIndex).x
+        ic092OpenHandoffWindow(fixture)
+        // 进度 0.3、速度 0 → 弹回。
+        XCTAssertTrue(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -80 - paging.pageStride * 0.3, y: 20)
+        ))
+        XCTAssertTrue(controller.settleNxHandoffWindow(
+            on: page,
+            panVelocity: .zero
+        ))
+        XCTAssertFalse(tryUnwrap(controller.lastNxWindowSettlement).shouldPage)
+        XCTAssertTrue(controller.isNxWindowSettling)
+        XCTAssertTrue(controller.isNxHandoffWindowOpen)
+        XCTAssertTrue(ic092OuterWrites(diagnostics, animated: true).contains {
+            $0.hasPrefix("x=" + String(format: "%.6f", Double(restingX)) + "；")
+        })
+
+        // 误触发一：外层减速结束。
+        let nonAnimatedBefore = ic092OuterWrites(diagnostics, animated: false).count
+        controller.scrollViewDidEndDecelerating(paging)
+        XCTAssertTrue(controller.isNxHandoffWindowOpen, "误触发不得关窗")
+        XCTAssertTrue(controller.isNxWindowSettling)
+        XCTAssertEqual(fixture.machine.currentIndex, startIndex)
+        XCTAssertEqual(
+            ic092OuterWrites(diagnostics, animated: false).count,
+            nonAnimatedBefore,
+            "误触发不得产生非动画写"
+        )
+        XCTAssertEqual(
+            ic091EventCount(diagnostics, name: "nxSettlementCloseSuppressed"),
+            1
+        )
+
+        // 误触发二：外层拖动结束（不减速）。
+        controller.scrollViewDidEndDragging(paging, willDecelerate: false)
+        XCTAssertTrue(controller.isNxHandoffWindowOpen)
+        XCTAssertEqual(
+            ic091EventCount(diagnostics, name: "nxSettlementCloseSuppressed"),
+            2
+        )
+
+        // 结算动画期间 apply 也写不进去（守卫 + 单点拦截双保险）。
+        applyNativePagerController(
+            controller,
+            machine: fixture.machine,
+            configuration: fixture.configuration
+        )
+        XCTAssertEqual(
+            ic092OuterWrites(diagnostics, animated: false).count,
+            nonAnimatedBefore,
+            "结算动画期间任何路径都不得非动画写"
+        )
+
+        // 收口：窗口关、settling 清零、apply 恢复一次静止写回。
+        controller.scrollViewDidEndScrollingAnimation(paging)
+        XCTAssertFalse(controller.isNxWindowSettling)
+        XCTAssertFalse(controller.isNxHandoffWindowOpen)
+        XCTAssertEqual(
+            ic091EventDetails(diagnostics, name: "nxHandoffWindow")
+                .filter { $0.hasPrefix("state=close；reason=结算完成") }.count,
+            1
+        )
+        let applyBefore = ic091OuterWriteSources(diagnostics)
+            .filter { $0 == "S2NativePagerViewController.apply" }.count
+        applyNativePagerController(
+            controller,
+            machine: fixture.machine,
+            configuration: fixture.configuration
+        )
+        XCTAssertEqual(
+            ic091OuterWriteSources(diagnostics)
+                .filter { $0 == "S2NativePagerViewController.apply" }.count
+                - applyBefore,
+            1,
+            "收口后 apply 恢复静止写回"
+        )
+    }
+
+    // IC-092 E2（夹具驱动，真机未覆盖）：R4 翻页支同样受保护。
+    func testIC092E2PagingSettlementAnimationIsProtected() {
+        let fixture = makeIC091NxFixture(startRecording: true)
+        defer { fixture.window.isHidden = true }
+        defer { fixture.diagnostics.stop() }
+        let controller = fixture.controller
+        let paging = controller.pagingScrollView
+        let page = fixture.page
+        let diagnostics = fixture.diagnostics
+        let startIndex = fixture.machine.currentIndex
+        ic092OpenHandoffWindow(fixture)
+        // 进度 0.6 → 翻页。
+        XCTAssertTrue(controller.followNxHandoffWindow(
+            on: page,
+            translation: CGPoint(x: -80 - paging.pageStride * 0.6, y: 20)
+        ))
+        XCTAssertTrue(controller.settleNxHandoffWindow(
+            on: page,
+            panVelocity: .zero
+        ))
+        XCTAssertTrue(tryUnwrap(controller.lastNxWindowSettlement).shouldPage)
+        XCTAssertEqual(fixture.machine.currentIndex, startIndex + 1)
+        XCTAssertTrue(controller.isNxWindowSettling)
+        XCTAssertTrue(controller.isNxHandoffWindowOpen)
+
+        let nonAnimatedBefore = ic092OuterWrites(diagnostics, animated: false).count
+        controller.scrollViewDidEndDecelerating(paging)
+        XCTAssertTrue(controller.isNxHandoffWindowOpen)
+        XCTAssertEqual(
+            ic092OuterWrites(diagnostics, animated: false).count,
+            nonAnimatedBefore,
+            "翻页支的动画同样不得被非动画写抹平"
+        )
+        XCTAssertEqual(
+            fixture.machine.currentIndex,
+            startIndex + 1,
+            "误触发不得再结算一次"
+        )
+
+        controller.scrollViewDidEndScrollingAnimation(paging)
+        XCTAssertFalse(controller.isNxHandoffWindowOpen)
+        XCTAssertFalse(controller.isNxWindowSettling)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.8))
+        XCTAssertEqual(
+            paging.contentOffset.x,
+            paging.contentOffsetForPage(at: startIndex + 1).x,
+            accuracy: 1,
+            "动画落到新页静止偏移"
+        )
+    }
+
     // IC-092 B5（夹具驱动，真机未覆盖）：让位保险。
     // 外层 scrollViewWillBeginDragging 到来即停止跟随并关窗，原因=原生接管。
     func testIC092B5NativeTakeoverStopsFollow() {
@@ -9029,6 +9172,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
             file: file,
             line: line
         )
+    }
+
+    /// IC-092：按 `animated=` 过滤外层写入事件的 details。
+    private func ic092OuterWrites(
+        _ diagnostics: S2OnDeviceTransitionDiagnosticsCoordinator,
+        animated: Bool
+    ) -> [String] {
+        let marker = animated ? "；animated=true；" : "；animated=false；"
+        return ic091EventDetails(diagnostics, name: "外层setContentOffset")
+            .filter { $0.contains(marker) }
     }
 
     private func ic091EventDetails(

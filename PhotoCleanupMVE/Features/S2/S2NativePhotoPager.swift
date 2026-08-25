@@ -2597,6 +2597,14 @@ final class S2NativePagerViewController: UIViewController,
     /// 一次非动画写入会把结算动画抹成瞬移（弹回曲线与翻页曲线都会消失）。
     /// 窗口在 `scrollViewDidEndScrollingAnimation` 里以「结算完成」关闭。
     private(set) var isNxWindowSettling = false
+    /// IC-092 R4：结算动画的目标偏移与「已观察到动画在推进」标志。
+    /// `scrollViewDidEndScrollingAnimation` 是首选收口点；但 `#160a.txt` 里 UIKit 在动画写
+    /// 之后 0.4 ms 就发了一次 `didEndDecelerating`，说明这条链上的回调时序并不如文档直觉。
+    /// 若收口回调始终不到，窗口会一直开着、`apply` 再也写不了外层偏移——那是比抖动严重
+    /// 得多的故障。故补一条**由几何而非时长**判定的兜底：观察到偏移确实离开过目标之后，
+    /// 一旦回到目标（≤ 0.5 pt）就收口。不引入任何新的时长量。
+    private var nxSettlementTargetOffsetX: CGFloat?
+    private var hasObservedNxSettlementProgress = false
     /// IC-092 R1/R2：最近一次跟随读数与结算读数（夹具与诊断读取）。
     private(set) var lastNxWindowFollowReading: S2NxWindowFollowReading?
     private(set) var lastNxWindowSettlement: S2NxWindowSettlement?
@@ -2843,15 +2851,45 @@ final class S2NativePagerViewController: UIViewController,
         guard scrollView === pagingScrollView, !isApplyingSnapshot else {
             return
         }
+        noteNxSettlementProgress()
         ensurePagesExistAroundPagingOffset()
+    }
+
+    /// IC-092 R4：结算动画的几何兜底收口（见 `nxSettlementTargetOffsetX` 的说明）。
+    /// 只在结算态生效，且必须先观察到偏移离开过目标，避免动画刚起步就被判为已到位。
+    private func noteNxSettlementProgress() {
+        guard isNxWindowSettling,
+              let target = nxSettlementTargetOffsetX else {
+            return
+        }
+        if abs(pagingScrollView.contentOffset.x - target) > 0.5 {
+            hasObservedNxSettlementProgress = true
+        } else if hasObservedNxSettlementProgress {
+            finishNxWindowSettlementIfNeeded()
+        }
     }
 
     /// IC-079 R1：外层分页偏移的唯一 `setContentOffset` 入口，带来源与 animated 标志记入诊断。
     private func writePagingContentOffset(
         _ offset: CGPoint,
         animated: Bool,
-        source: String
+        source: String,
+        duringSettlementAnimation: Bool = false
     ) {
+        // IC-092 R4：结算动画发出后到 `scrollViewDidEndScrollingAnimation` 收口之间，
+        // **任何路径**的非动画写都会把动画抹成瞬移。`#160a.txt` t=1.2732～1.2738 就是
+        // 这么塌的：动画写 12238 之后 0.4 ms，窗口被误触发的「外层减速结束」关掉，
+        // 紧跟的第二次 `synchronizeNativeStateToMachine(animatedPaging=false)` 又写了
+        // 一次 12238，弹回曲线当场消失。守卫放在唯一写入口上，覆盖 `apply` /
+        // `layoutNativePages` / `synchronizeNativeStateToMachine` / 关窗处理全部来路；
+        // 结算与露出回弹自身的写以 `duringSettlementAnimation` 放行。
+        if isNxWindowSettling, !animated, !duringSettlementAnimation {
+            transitionDiagnostics?.recordPagingContentOffsetWriteSuppressed(
+                offsetX: offset.x,
+                source: source
+            )
+            return
+        }
         transitionDiagnostics?.recordPagingContentOffsetWrite(
             offsetX: offset.x,
             animated: animated,
@@ -3181,6 +3219,8 @@ final class S2NativePagerViewController: UIViewController,
         nxHandoffPageIndex = nil
         isNxWindowFollowActive = false
         isNxWindowSettling = false
+        nxSettlementTargetOffsetX = nil
+        hasObservedNxSettlementProgress = false
         transitionDiagnostics?.recordNxHandoffWindow(
             isOpen: false,
             reason: reason.rawValue,
@@ -3327,6 +3367,8 @@ final class S2NativePagerViewController: UIViewController,
         isNxWindowFollowActive = false
         if needsAnimation {
             isNxWindowSettling = true
+            nxSettlementTargetOffsetX = targetOffsetX
+            hasObservedNxSettlementProgress = false
             finishNativePaging(
                 targetIndex: targetIndex,
                 animatedPaging: true
@@ -3349,6 +3391,8 @@ final class S2NativePagerViewController: UIViewController,
             return
         }
         isNxWindowSettling = false
+        nxSettlementTargetOffsetX = nil
+        hasObservedNxSettlementProgress = false
         closeNxHandoffWindow(reason: .settlementCompleted)
     }
 
@@ -3477,6 +3521,16 @@ final class S2NativePagerViewController: UIViewController,
         guard scrollView === pagingScrollView else {
             return
         }
+        // IC-092 R4：结算动画期间外层根本不在手势中，这条回调必是误触发（见 `#160a.txt`）。
+        // 既不关窗也不再结算一次，本次结算由 `scrollViewDidEndScrollingAnimation` 收口。
+        if isNxWindowSettling {
+            transitionDiagnostics?.recordNxSettlementCloseSuppressed(
+                reason: S2NxHandoffWindowReason.outerDragEndedWithoutDeceleration
+                    .rawValue,
+                source: "S2NativePagerViewController.scrollViewDidEndDragging"
+            )
+            return
+        }
         captureOuterGestureReading()
         let handledVerticalGesture = handleOneXVerticalGestureIfNeeded()
         if handledVerticalGesture || !decelerate {
@@ -3489,6 +3543,14 @@ final class S2NativePagerViewController: UIViewController,
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         guard scrollView === pagingScrollView else {
+            return
+        }
+        // IC-092 R4：同上——结算动画期间的「减速结束」是误触发，直接忽略。
+        if isNxWindowSettling {
+            transitionDiagnostics?.recordNxSettlementCloseSuppressed(
+                reason: S2NxHandoffWindowReason.outerDeceleratingEnded.rawValue,
+                source: "S2NativePagerViewController.scrollViewDidEndDecelerating"
+            )
             return
         }
         // IC-091 R3：减速结束即本次手势结算完成，交接窗口关闭。
@@ -4925,6 +4987,31 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             name: "scrollViewWillBeginDragging",
             source: "S2NativePagerViewController.scrollViewWillBeginDragging",
             details: head + flags
+        )
+    }
+
+    /// IC-092 R4：被结算动画守卫拦下的非动画外层写。只记录，不写。
+    func recordPagingContentOffsetWriteSuppressed(
+        offsetX: CGFloat,
+        source: String
+    ) {
+        let offsetText = String(format: "%.6f", Double(offsetX))
+        recordEvent(
+            name: "外层setContentOffset被抑制",
+            source: source,
+            details: "x=\(offsetText)；animated=false；reason=结算动画进行中"
+        )
+    }
+
+    /// IC-092 R4：结算动画期间被忽略的「外层手势结束 / 减速结束」关窗触发。
+    func recordNxSettlementCloseSuppressed(
+        reason: String,
+        source: String
+    ) {
+        recordEvent(
+            name: "nxSettlementCloseSuppressed",
+            source: source,
+            details: "suppressedReason=\(reason)；state=结算动画进行中"
         )
     }
 
