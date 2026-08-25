@@ -321,7 +321,8 @@ final class S2ImageLoadingStateTests: XCTestCase {
         XCTAssertEqual(statuses["degradedPreviewPolicy"], .decided)
         XCTAssertEqual(statuses["scaleChangeRequestPolicy"], .decided)
         XCTAssertEqual(connections.filter { $0.specStatus == .decided }.count, 34)
-        XCTAssertEqual(connections.filter { $0.specStatus == .placeholder }.count, 9)
+        // IC-092 R5：placeholder 9 + 动量回弹 2 = 11（decided 34 不变）。
+        XCTAssertEqual(connections.filter { $0.specStatus == .placeholder }.count, 11)
     }
 }
 
