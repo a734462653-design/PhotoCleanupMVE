@@ -56,6 +56,9 @@ struct S2ImageContentContext {
     /// IC-090 R2：请求返回结果与图片替换回调，仅供诊断埋点记录。
     var onRequestResult: (S2ImageRequestResult) -> Void = { _ in }
     var onImageReplaced: (S2ImageRequestResult) -> Void = { _ in }
+    /// IC-093 R1：被抑制的替换回调，仅供诊断埋点记录。
+    var onImageReplacementSuppressed:
+        (S2ImageReplacementSuppressionReading) -> Void = { _ in }
 }
 
 struct S2BottomStripItemPresentation {
@@ -623,6 +626,16 @@ struct S2View: View {
                     )
                     imageLoadStateRegistry.recordImageReplacement(record)
                     transitionDiagnostics.recordImageReplacement(record)
+                },
+                // IC-093 R1：像素更少而未上屏的返回结果只记事件，不改任何登记状态。
+                onImageReplacementSuppressed: {
+                    [transitionDiagnostics] reading in
+                    transitionDiagnostics.recordImageReplacementSuppressed(
+                        assetID: assetID,
+                        resultName: reading.result.diagnosticName,
+                        displayedPixelSize: reading.displayedPixelSize,
+                        candidatePixelSize: reading.candidatePixelSize
+                    )
                 }
             ))
             return S2NativePageContent(

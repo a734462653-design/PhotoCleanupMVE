@@ -206,6 +206,320 @@ final class S2ImageLoadingStateTests: XCTestCase {
         XCTAssertNotNil(coordinator.s2Machine)
     }
 
+    // IC-093 C0（纯函数）：只升不降的判定本身。
+    // 无已显示图像（首次显示 / 资产切换）一律放行；否则按像素面积比较，
+    // 候选不低于在显示的才放行。像素尺寸 = 点尺寸 × scale。
+    func testIC093C0UpgradeDecisionComparesPixelArea() throws {
+        // 无已显示图像：放行。
+        XCTAssertTrue(S2ImageUpgradeDecision.shouldReplaceDisplayedImage(
+            displayedPixelSize: nil,
+            candidatePixelSize: CGSize(width: 90, height: 120)
+        ))
+        // 更小：拦。
+        XCTAssertFalse(S2ImageUpgradeDecision.shouldReplaceDisplayedImage(
+            displayedPixelSize: CGSize(width: 3_060, height: 4_080),
+            candidatePixelSize: CGSize(width: 90, height: 120)
+        ))
+        // 相等：放行（边界不严格）。
+        XCTAssertTrue(S2ImageUpgradeDecision.shouldReplaceDisplayedImage(
+            displayedPixelSize: CGSize(width: 3_060, height: 4_080),
+            candidatePixelSize: CGSize(width: 3_060, height: 4_080)
+        ))
+        // 更大：放行。
+        XCTAssertTrue(S2ImageUpgradeDecision.shouldReplaceDisplayedImage(
+            displayedPixelSize: CGSize(width: 3_060, height: 4_080),
+            candidatePixelSize: CGSize(width: 4_032, height: 3_024)
+        ))
+        // 判据是面积而不是逐边：宽变小但总面积更大 → 放行。
+        XCTAssertTrue(S2ImageUpgradeDecision.shouldReplaceDisplayedImage(
+            displayedPixelSize: CGSize(width: 100, height: 100),
+            candidatePixelSize: CGSize(width: 50, height: 300)
+        ))
+        // 像素尺寸 = 点尺寸 × scale。
+        let image = makeSizedImage(width: 90, height: 120)
+        XCTAssertEqual(image.scale, 1, accuracy: 0.000_001)
+        XCTAssertEqual(
+            S2ImageUpgradeDecision.pixelSize(of: image),
+            CGSize(width: 90, height: 120)
+        )
+        let doubled = UIImage(
+            cgImage: try XCTUnwrap(image.cgImage),
+            scale: 2,
+            orientation: .up
+        )
+        XCTAssertEqual(
+            S2ImageUpgradeDecision.pixelSize(of: doubled),
+            CGSize(width: 90, height: 120),
+            "点尺寸减半、scale 加倍，像素尺寸不变"
+        )
+    }
+
+    // IC-093 C1（夹具驱动，真机未覆盖）：同资产已显示 3060×4080，再到达 90×120 降质结果。
+    // 不上屏（无替换回调）、加载态仍 displayed、产生一条抑制读数且新旧像素尺寸正确。
+    func testIC093C1LowerResolutionResultIsSuppressedForSameAsset() {
+        let strategy = S2ScriptedImageStrategy()
+        let host = makeUpgradeHost(strategy: strategy)
+        defer { host.window.isHidden = true }
+        let big = makeSizedImage(width: 3_060, height: 4_080)
+        let small = makeSizedImage(width: 90, height: 120)
+
+        strategy.deliver(.finalImage(big))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(host.recorder.replaced.count, 1)
+        XCTAssertEqual(host.recorder.states.last, .displayed)
+
+        // 捏合松手后的新请求（`scaleChangePolicy == .pinchEnded`）。
+        host.model.requestRevision += 1
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(strategy.requestCount, 2)
+
+        strategy.deliver(.degradedPreview(small))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(
+            host.recorder.replaced.count,
+            1,
+            "降质结果不上屏：替换回调没有再发生"
+        )
+        XCTAssertEqual(host.recorder.suppressed.count, 1)
+        let suppressed = host.recorder.suppressed.first
+        XCTAssertEqual(
+            suppressed?.displayedPixelSize,
+            CGSize(width: 3_060, height: 4_080)
+        )
+        XCTAssertEqual(
+            suppressed?.candidatePixelSize,
+            CGSize(width: 90, height: 120)
+        )
+        XCTAssertEqual(suppressed?.result.diagnosticName, "degradedPreview")
+        XCTAssertEqual(
+            host.recorder.states.last,
+            .displayed,
+            "加载态不变"
+        )
+        XCTAssertFalse(host.recorder.states.contains(.failed))
+
+        // 同一次请求随后到达的最终图（更大）照常上屏。
+        strategy.deliver(.finalImage(big))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(host.recorder.replaced.count, 2)
+        XCTAssertEqual(host.recorder.suppressed.count, 1)
+    }
+
+    // IC-093 C2（夹具驱动，真机未覆盖）：未显示任何图时降质结果照常显示。
+    // 决策 28 的首次加载行为不回归。
+    func testIC093C2FirstDegradedPreviewStillDisplays() {
+        let strategy = S2ScriptedImageStrategy()
+        let host = makeUpgradeHost(strategy: strategy)
+        defer { host.window.isHidden = true }
+
+        strategy.deliver(.degradedPreview(makeSizedImage(width: 90, height: 120)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(host.recorder.replaced.count, 1)
+        XCTAssertTrue(host.recorder.suppressed.isEmpty)
+        XCTAssertEqual(host.recorder.states.last, .displayed)
+    }
+
+    // IC-093 C3（夹具驱动，真机未覆盖）：显示的是资产 X、请求资产 Y 返回降质图 → 照常替换。
+    // 资产切换不受只升不降限制。
+    func testIC093C3AssetChangeAllowsLowerResolutionPreview() {
+        let strategy = S2ScriptedImageStrategy()
+        let host = makeUpgradeHost(assetID: "asset-2", strategy: strategy)
+        defer { host.window.isHidden = true }
+
+        strategy.deliver(.finalImage(makeSizedImage(width: 3_060, height: 4_080)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(host.recorder.replaced.count, 1)
+
+        host.model.assetID = "asset-3"
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(strategy.requestCount(for: "asset-3"), 1)
+
+        strategy.deliver(
+            .degradedPreview(makeSizedImage(width: 90, height: 120)),
+            to: "asset-3"
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(
+            host.recorder.replaced.count,
+            2,
+            "换资产后降质预览照常先上屏"
+        )
+        XCTAssertTrue(host.recorder.suppressed.isEmpty)
+    }
+
+    // IC-093 C4（夹具驱动，真机未覆盖）：同资产等尺寸或更高尺寸照常替换。
+    func testIC093C4EqualOrHigherResolutionReplaces() {
+        let strategy = S2ScriptedImageStrategy()
+        let host = makeUpgradeHost(strategy: strategy)
+        defer { host.window.isHidden = true }
+
+        strategy.deliver(.finalImage(makeSizedImage(width: 1_000, height: 1_000)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(host.recorder.replaced.count, 1)
+
+        // 等尺寸。
+        host.model.requestRevision += 1
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        strategy.deliver(.finalImage(makeSizedImage(width: 1_000, height: 1_000)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(host.recorder.replaced.count, 2)
+
+        // 更高尺寸。
+        host.model.requestRevision += 1
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        strategy.deliver(.finalImage(makeSizedImage(width: 2_000, height: 1_000)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(host.recorder.replaced.count, 3)
+        XCTAssertTrue(host.recorder.suppressed.isEmpty)
+    }
+
+    // IC-093 C5（夹具驱动，真机未覆盖）：已显示图像时高分辨率请求失败不进失败态。
+    // 该分支在只升不降判定之前，既有取定（IC-076/077 链、第 123 条）不变。
+    func testIC093C5FailureWithDisplayedImageKeepsDisplayedState() {
+        let strategy = S2ScriptedImageStrategy()
+        let host = makeUpgradeHost(strategy: strategy)
+        defer { host.window.isHidden = true }
+
+        strategy.deliver(.finalImage(makeSizedImage(width: 1_000, height: 1_000)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        host.model.requestRevision += 1
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        strategy.deliver(.failure)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(host.recorder.states.last, .displayed)
+        XCTAssertFalse(host.recorder.states.contains(.failed))
+        XCTAssertEqual(host.recorder.replaced.count, 1)
+        XCTAssertTrue(
+            host.recorder.suppressed.isEmpty,
+            "失败没有图像，不进入只升不降判定"
+        )
+    }
+
+    // IC-093 C6（夹具驱动，真机未覆盖）：`finalImageOnly` 策略下行为与 main 一致——
+    // 降质结果被既有 `shouldDisplay` 挡在前面，不进入只升不降判定、不产生抑制读数。
+    func testIC093C6FinalImageOnlyPolicyIsUnaffected() {
+        let strategy = S2ScriptedImageStrategy()
+        let host = makeUpgradeHost(
+            strategy: strategy,
+            requestStrategy: S2ImageRequestStrategy(
+                scaleChangePolicy: .pinchEnded,
+                degradedPreviewPolicy: .finalImageOnly
+            )
+        )
+        defer { host.window.isHidden = true }
+
+        // 首次降质：既有策略就不上屏。
+        strategy.deliver(.degradedPreview(makeSizedImage(width: 90, height: 120)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertTrue(host.recorder.replaced.isEmpty)
+        XCTAssertTrue(host.recorder.suppressed.isEmpty)
+        XCTAssertEqual(host.recorder.states.last, .loading)
+
+        // 最终图照常上屏。
+        strategy.deliver(.finalImage(makeSizedImage(width: 3_060, height: 4_080)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(host.recorder.replaced.count, 1)
+
+        // 已显示后再来降质：仍由 `shouldDisplay` 挡下，抑制读数为 0。
+        host.model.requestRevision += 1
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        strategy.deliver(.degradedPreview(makeSizedImage(width: 90, height: 120)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(host.recorder.replaced.count, 1)
+        XCTAssertTrue(host.recorder.suppressed.isEmpty)
+    }
+
+    // MARK: - IC-093 夹具
+
+    private final class UpgradeAssetModel: ObservableObject {
+        @Published var assetID: String
+        @Published var requestRevision: Int
+
+        init(assetID: String, requestRevision: Int) {
+            self.assetID = assetID
+            self.requestRevision = requestRevision
+        }
+    }
+
+    private final class UpgradeRecorder {
+        var replaced: [S2ImageRequestResult] = []
+        var suppressed: [S2ImageReplacementSuppressionReading] = []
+        var states: [S2ImageLoadState] = []
+    }
+
+    private struct UpgradeHostView: View {
+        @ObservedObject var model: UpgradeAssetModel
+        let strategy: any S2PhotoImageRequesting
+        let requestStrategy: S2ImageRequestStrategy
+        let requestBaseSize: CGSize
+        let recorder: UpgradeRecorder
+
+        var body: some View {
+            S2TemporaryPhotoImageView(
+                strategy: strategy,
+                assetID: model.assetID,
+                requestBaseSize: requestBaseSize,
+                requestedScale: 1,
+                requestStrategy: requestStrategy,
+                requestRevision: model.requestRevision,
+                showsOpaqueLoadingBackground: true,
+                onReading: { _ in },
+                onLoadStateChange: { recorder.states.append($0) },
+                onImageReplaced: { recorder.replaced.append($0) },
+                onImageReplacementSuppressed: { recorder.suppressed.append($0) }
+            )
+        }
+    }
+
+    private struct UpgradeHost {
+        let model: UpgradeAssetModel
+        let recorder: UpgradeRecorder
+        let window: UIWindow
+    }
+
+    /// IC-093：宿主一个真实的 `S2TemporaryPhotoImageView`，资产标识与请求版本可变，
+    /// 因此能在同一个视图上驱动「资产切换」与「捏合松手后重新请求」两条真实路径。
+    private func makeUpgradeHost(
+        assetID: String = "asset-2",
+        strategy: S2ScriptedImageStrategy,
+        requestStrategy: S2ImageRequestStrategy =
+            S2CalibrationConfiguration.factoryPlaceholder.imageRequestStrategy
+    ) -> UpgradeHost {
+        let model = UpgradeAssetModel(assetID: assetID, requestRevision: 0)
+        let recorder = UpgradeRecorder()
+        let controller = UIHostingController(
+            rootView: UpgradeHostView(
+                model: model,
+                strategy: strategy,
+                requestStrategy: requestStrategy,
+                requestBaseSize: physicalSize,
+                recorder: recorder
+            )
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(strategy.requestCount, 1)
+        return UpgradeHost(model: model, recorder: recorder, window: window)
+    }
+
+    /// 生成指定**像素**尺寸、`scale == 1` 的图（与 PhotoKit 返回的图同口径）。
+    private func makeSizedImage(width: Int, height: Int) -> UIImage {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: width, height: height),
+            format: format
+        )
+        return renderer.image { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
+
     private struct HostedRun {
         let readings: [S2ImageReturnType]
         let states: [S2ImageLoadState]

@@ -8661,6 +8661,45 @@ extension S2CalibrationHarnessTests {
         // (c) 框外不做逐像素比较。
     }
 
+    // IC-093 R1：`图片替换被抑制` 事件的 details 原文；关闭录制时零副作用。
+    func testIC093SuppressedReplacementEventDetails() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .pinchStart
+        diagnostics.start()
+        diagnostics.recordImageReplacementSuppressed(
+            assetID: "asset-2",
+            resultName: "degradedPreview",
+            displayedPixelSize: CGSize(width: 3_060, height: 4_080),
+            candidatePixelSize: CGSize(width: 90, height: 120)
+        )
+        diagnostics.stop()
+        diagnostics.export()
+
+        XCTAssertTrue(diagnostics.reportText.contains(
+            "event=图片替换被抑制" +
+                "\tsource=S2TemporaryPhotoImageView.requestImage" +
+                "\tdetails=asset=asset-2；result=degradedPreview；" +
+                "displayed=(w=3060.000000,h=4080.000000)；" +
+                "candidate=(w=90.000000,h=120.000000)"
+        ))
+
+        let countAfterStop = diagnostics.recordedEntries.count
+        diagnostics.recordImageReplacementSuppressed(
+            assetID: "x",
+            resultName: "y",
+            displayedPixelSize: .zero,
+            candidatePixelSize: .zero
+        )
+        XCTAssertEqual(diagnostics.recordedEntries.count, countAfterStop)
+    }
+
     // IC-085 G162：旧版持久化数据缺新键时按出厂值补齐；含新键时往返一致。
     func testIC085G162PersistedConfigurationRoundTripsNewStripKeys() throws {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
