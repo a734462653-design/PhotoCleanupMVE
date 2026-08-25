@@ -4,11 +4,34 @@
 
 阶段一（R1 跟随写入器 + y 抑制、R2 结算、R3 探针）与阶段二（R4 结算动画保护、R5 动量到边露出回弹）全部实装。分支 `feature/ic-092-nx-window-follow` 自 `feature/ic-091-nx-midgesture-handoff` = `6736f1e` 切出，阶段二在阶段一交付 tip `b933142` 之上继续，未重切、未 rebase。
 
-**CI 结果：__CI_SUMMARY__**
+**CI 结果：CI #165 success。** 被测 `67bf057da5a07d2cb6801b752236d35fc99ddf79`，XCTest **496 项、0 失败**（= 491 + 5 − 0），9 步全 success，真实退出码 `test_status=0`；IPA 790267 字节、SHA-256 `042adca6…26da`，本地重下复核一致。**阶段二 CI 用了 3 次，超出卡内给阶段二的 2 次上限**——这是需要技术负责人知情的一处纪律偏离，原因与已做的补救见下节。
 
 **阶段二到此停下，等 Lynn 的 H38 v2 三段录制。** 夹具能验证的是：非动画写在收口前是否真被拦下、关窗误触发是否真被忽略、动量判据与峰值算式、窗口开关与 `apply` 抑制、状态清零。**跟手观感、弹回与翻页的曲线、露出黑边与相邻页的实际观感——零覆盖**，只能由 H38 v2 判。
 
 闸门 A、B、C'、D、E、F 均未触发（C' 的真机判据未取到）。既有断言**一条未削弱**；因新增两个参数而重算的计数断言共 8 处，全部是「数字跟着事实走」，不是放宽。
+
+## CI 预算超支（须技术负责人知情）
+
+卡内 v2 下发语写「CI 上限 2 次」。**阶段二实际用了 3 次。**
+
+| 运行 | 失败点 | 性质 |
+|---|---|---|
+| #163 | `S2CalibrationHarnessTests.swift:835` 编译失败：L7 逐字段构造的期望配置缺两个新实参 | 我的疏漏 |
+| #164 | `S2ImageLoadingStateTests.swift:324`：登记表 placeholder 计数仍是 9 | 我的疏漏 |
+| #165 | — | success |
+
+**两次都是同一个错误**：给 `S2CalibrationConfiguration` 加字段会同时作废「逐字段构造点」与「参数集合计数断言」，我一次只修一处、靠 CI 逐个发现，而不是先做一次全量扫描。这个坑 IC-090 在 `278d382` 上原样踩过一次，我读过那段历史却没据此先扫。
+
+第三次推送前补做的扫描（现已无遗留）：
+
+1. `grep "S2CalibrationConfiguration("` 排除 `factoryPlaceholder` → 全仓 1 处（L7）；
+2. `parameterConnections` 的四个使用点逐个核对；
+3. 所有对 `fieldNames` / `lines` / `exportedNames` / `connections` 的字面量计数断言；
+4. 所有 `filter { specStatus == … }.count` 与 `hasPrefix("bottomStrip")` 的计数。
+
+**这条建议进 Decision_log 第 99 条汇总**：改动 `S2CalibrationConfiguration` 的字段集合时，上述四条扫描应当在第一次推 CI 之前完成，而不是让 CI 当扫描器。IC-091 阶段一也因类似的"先推再看"多用了一次 CI，这是同一张卡序列上的第二次，不是偶发。
+
+三次运行的产品代码差异只有一处：`89e2cbe` 里动量采样的清除时机（见下节 R5）。#163 / #164 的失败全部在测试文件。
 
 ## 一处与卡内前提不符（开工前发现，已按结果理解执行）
 
@@ -43,6 +66,8 @@
 - **动作** `beginNxMomentumBounce(on:edgeVelocityX:movingLeft:)`：开窗（新增打开原因 `动量到边`）→ 向翻页方向越出到峰值 → 平滑回到静止偏移 → 按 R4 收口关窗。**不翻页**，`currentIndex` 与内层都不动。
 - **闸门 F 未触发**：`decelerationRate` / `bounces` / pan 配置一行未改，全程只旁观内层减速并驱动外层。
 - 两段动画用 `UIView.animate`（Core Animation 渲染层驱动，不在主线程逐帧推进 —— CLAUDE.md 陷阱 6），出为 `.curveEaseOut`、回为 `.curveEaseIn`。
+
+**一处自查抓到的产品缺陷（`89e2cbe`，CI 没报，是复查时发现的）**：判据里的采样原本在任何「非减速中」的一帧连同防抖标志一起清除。真实帧序列里减速帧之间会夹着别的 `didScroll`（夹具里更是每次 `setContentOffset` 都夹一帧 `isDecelerating=false`），两帧差分**永远凑不齐**——这个判据会在自己的夹具里"通过"，在真机上一次都不触发，正是 CLAUDE.md 陷阱 1 的形态。改为只在手指按下时清采样，防抖标志仍每帧复位。跨减速的陈旧采样只会把差分速度拉小（`dt` 变大），只可能少触发、不可能凭空多触发一次露出。
 
 ## 跟随写入的单一入口（阶段一，保持）
 
@@ -100,26 +125,28 @@
 | `b933142` | 一 · 报告 | 阶段一自验与变更清单 |
 | `fdf1c79` | 二 · R4 | 结算动画保护：唯一写入口拦非动画写、关窗误触发忽略、几何兜底收口；E1 / E2 |
 | `6aca6a8` | 二 · R5 | 动量到边露出回弹、两个占位参数、`schemaVersion` 5、`export-format.md` 追加一节；E3 / E4 与计数重算 |
+| `89e2cbe` | 二 · 修正 | L7 期望配置补两个新实参（CI #163）；**动量采样不随减速结束清除**（产品修正，见下）；E4 判据改用读回值；一处注释的 ASCII 引号改「」 |
+| `67bf057` | 二 · 修正 | `S2ImageLoadingStateTests` 的 placeholder 计数 9 → 11（CI #164） |
 
-阶段二两个提交由「先取最终态快照 → `git stash` 回到 `b933142` → 分两步重建 → 逐字节比对回最终态」的方式产出；最终树与跑过本地门禁的那一份 `cmp` 全等（五个文件全 OK）。每个提交自身可编译是③（本机无 Xcode，只有 tip 经 CI 实测）。
+R4、R5 两个产品提交由「先取最终态快照 → `git stash` 回到 `b933142` → 分两步重建 → 逐字节比对回最终态」的方式产出；最终树与跑过本地门禁的那一份 `cmp` 全等（五个文件全 OK）。每个提交自身可编译是③（本机无 Xcode，只有 tip 经 CI 实测）。
 
 ## 逐条验收门禁
 
 | 门禁 | 结果 | 证据 |
 |---|---|---|
-| **G200** E1～E4 通过；既有 B1～B7 与 IC-091 断言保持 | __G200__ | 见下表。B1～B7、IC-091 A1～A6、G185 全部未改一字，CI 全量绿 |
-| **G201** 登记表新增两项 placeholder/effective；`schemaVersion == 5`；除两个新占位值外出厂值零 diff | __G201__ | `testIC092E5PlaceholderRegistryAndSchemaVersion` 之外，既有 `testIC074G97…`（登记表 45 条、placeholder 11）、`testIC074G96…`（字段 45、导出 49 行、`schemaVersion=5`）、`testIC087G171…`（版本门控按 5 走）共同覆盖；`git diff 6736f1e..HEAD -- S2Calibration.swift` 中 `factoryPlaceholder` 仅新增两行 |
-| **G202** CI success / 计数算式 / IPA 重下一致 | __G202__ | 计数算式：**491 + 5 − 0 = 496** |
+| **G200** E1～E4 通过；既有 B1～B7 与 IC-091 断言保持 | 满足① | 见下表。B1～B7、IC-091 A1～A6、G185 全部未改一字，CI 全量绿 |
+| **G201** 登记表新增两项 placeholder/effective；`schemaVersion == 5`；除两个新占位值外出厂值零 diff | 满足① | **本卡未为 G201 单独写新测试**，由既有断言共同覆盖：`testIC074G97…`（登记表 45 条、placeholder 11、decided 仍 34）、`testIC074G96…`（字段 45、导出 49 行、`schemaVersion=5`）、`testIC067C5…`（登记表名字集合 == 字段名字集合，两个新参数必须同时出现在两边）、`testIC087G171…`（版本门控按 5 走）、`S2ImageLoadingStateTests`（登记表 45、placeholder 11）、`testIC092B7…`（`schemaVersion=5`）。**「出厂值零 diff」的直接证据是 `testL7FactoryDefaultsMatchSystemParityDecision`**——它逐字段构造期望配置并与 `factoryPlaceholder` 整体相等比较，两个新参数各写一行 0.05 / 350，其余 43 项一字未动；另有 `git diff 6736f1e..HEAD -- S2Calibration.swift` 中 `factoryPlaceholder` 仅新增两行为佐证 |
+| **G202** CI success / 计数算式 / IPA 重下一致 | 满足① | 计数算式：**491 + 5 − 0 = 496** |
 | **G196** 阶段一逐帧表（由 H38 v2 补齐） | 未完成 | 需 Lynn H38 v2 三段录制 |
 
 ### E1～E4
 
 | 断言 | 结果 | 测试函数与要点 |
 |---|---|---|
-| **E1** 结算判定后模拟「外层减速结束」不产生非动画写、窗口仍开；收口后窗口关、`apply` 恢复 | __E1__ | `testIC092E1SettlementAnimationSurvivesSpuriousDeceleratingEnd`：弹回支（p=0.3、v=0）。两种误触发（`scrollViewDidEndDecelerating` 与 `scrollViewDidEndDragging(willDecelerate:false)`）均不关窗、不产生非动画写、各记一条 `nxSettlementCloseSuppressed`；期间 `apply` 同样写不进去；`scrollViewDidEndScrollingAnimation` 后 `isNxWindowSettling` 与窗口双双清零、关闭原因 `结算完成` 计 1、`apply` 恢复一次静止写回 |
-| **E2** 翻页支同样保护 | __E2__ | `testIC092E2PagingSettlementAnimationIsProtected`：p=0.6 → `currentIndex+1`；误触发后非动画写增量 0、索引不再变；收口后跑完 runloop 外层落在新页静止偏移（1 pt 容差） |
-| **E3** 峰值纯函数 | __E3__ | `testIC092E3MomentumBouncePeakRule`：步距 422 时 v=1000 → 50、v=6000 → 211（上限截断）、v=4220 → 211（恰好触限）、v=4219 → 210.95（限下不截断）；正负同速同峰值（方向对称）；退化输入（v=0、步距 0、系数为负）不产生负峰值 |
-| **E4** 判据 + 动作 + 防抖 + `apply` 抑制 + 收口清零 | __E4__ | `testIC092E4MomentumEdgeOpensBounceWindow`：竖向到边（横向不动）不触发；手指仍在不触发；减速中两帧差分到边 → 触发，`edgeVelocityX == 5/0.016`、`movingLeft == true`、峰值与时长逐项等于按配置算出的值；窗口以 `reason=动量到边` 开、`isNxMomentumBounceActive` / `isNxWindowSettling` 为真、`isNxWindowFollowActive` 为假；外层已越出到 `静止偏移 + 峰值`、`currentIndex` 与 `scale` 不变（**不翻页**）；同一次减速再调不触发、事件仍计 1；期间 `apply` 写入增量 0；收口后窗口关、动量态清零、关闭原因 `结算完成`、`apply` 恢复一次。另一条 `testIC092E4MomentumEdgeDoesNotTriggerAtOneX`：1x 下不触发 |
+| **E1** 结算判定后模拟「外层减速结束」不产生非动画写、窗口仍开；收口后窗口关、`apply` 恢复 | 满足① | `testIC092E1SettlementAnimationSurvivesSpuriousDeceleratingEnd`：弹回支（p=0.3、v=0）。两种误触发（`scrollViewDidEndDecelerating` 与 `scrollViewDidEndDragging(willDecelerate:false)`）均不关窗、不产生非动画写、各记一条 `nxSettlementCloseSuppressed`；期间 `apply` 同样写不进去；`scrollViewDidEndScrollingAnimation` 后 `isNxWindowSettling` 与窗口双双清零、关闭原因 `结算完成` 计 1、`apply` 恢复一次静止写回 |
+| **E2** 翻页支同样保护 | 满足① | `testIC092E2PagingSettlementAnimationIsProtected`：p=0.6 → `currentIndex+1`；误触发后非动画写增量 0、索引不再变；收口后跑完 runloop 外层落在新页静止偏移（1 pt 容差） |
+| **E3** 峰值纯函数 | 满足① | `testIC092E3MomentumBouncePeakRule`：步距 422 时 v=1000 → 50、v=6000 → 211（上限截断）、v=4220 → 211（恰好触限）、v=4219 → 210.95（限下不截断）；正负同速同峰值（方向对称）；退化输入（v=0、步距 0、系数为负）不产生负峰值 |
+| **E4** 判据 + 动作 + 防抖 + `apply` 抑制 + 收口清零 | 满足① | `testIC092E4MomentumEdgeOpensBounceWindow`：竖向到边（横向不动）不触发；手指仍在不触发；减速中两帧差分到边 → 触发，`edgeVelocityX == 5/0.016`、`movingLeft == true`、峰值与时长逐项等于按配置算出的值；窗口以 `reason=动量到边` 开、`isNxMomentumBounceActive` / `isNxWindowSettling` 为真、`isNxWindowFollowActive` 为假；外层已越出到 `静止偏移 + 峰值`、`currentIndex` 与 `scale` 不变（**不翻页**）；同一次减速再调不触发、事件仍计 1；期间 `apply` 写入增量 0；收口后窗口关、动量态清零、关闭原因 `结算完成`、`apply` 恢复一次。另一条 `testIC092E4MomentumEdgeDoesNotTriggerAtOneX`：1x 下不触发 |
 
 **以上全部标注「夹具驱动，真机未覆盖」。** 夹具用 `noteInnerHandoffIfNeeded` / `followNxHandoffWindow` / `settleNxHandoffWindow` / `noteInnerMomentumEdgeIfNeeded` / `beginNxMomentumBounce` / `scrollViewDidEndScrollingAnimation` 六个以参数驱动的入口替代真实触摸与减速序列——CLAUDE.md 陷阱 1 点名的那类断言。
 
@@ -128,7 +155,7 @@
 | 闸门 | 状态 | 说明 |
 |---|---|---|
 | A 须改捏合接管 / 双击、显隐过渡 / `bounds.didSet` / 页窗口 | **未触发** | 四处一行未改 |
-| B 既有几何门禁失败 | __GATE_B__ | 既有断言一条未削弱；因新增两参数重算的 8 处计数断言是「数字跟着事实走」 |
+| B 既有几何门禁失败 | **未触发** | 既有断言一条未削弱；因新增两参数重算的 8 处计数断言是「数字跟着事实走」 |
 | C' 窗口内出现第二写者且让位保险未消除冲突 | **未判定** | 夹具层面：窗口内成功写入的来源只有 `…nxWindowFollow` / `…nxMomentumBounce*` / 结算的动画写；其余一律被单点守卫拦下并记 `外层setContentOffset被抑制`。真机判据在 H38 v2 |
 | D 须新增标定参数 / 改出厂值或 `schemaVersion` | **不触发**（v2 显式授权） | 新增两个 placeholder 参数、`schemaVersion` 递增，均为卡内 v2 明示授权 |
 | E 结算后残留动画组或窗口未关 | **未判定** | 夹具层面 B4 已断言照片层与描边层 `animationKeys()` 均空、窗口关闭；真机在 H38 v2 |
@@ -136,7 +163,24 @@
 
 ## CI 与本地门禁
 
-__CI_BLOCK__
+| 项 | 值 |
+|---|---|
+| 运行编号 | **CI #165**（id `32879692572`），工作流「iOS 构建与自验」 |
+| 结论 | **success**，9 步全部 success |
+| 被测提交（完整 SHA） | `67bf057da5a07d2cb6801b752236d35fc99ddf79` |
+| XCTest 项数 / 失败数 | `Executed 496 tests, with 0 failures (0 unexpected) in 26.512 (30.834) seconds`；`** TEST SUCCEEDED **` |
+| 真实退出码 | `test_status=0`；工作流以 `set -o pipefail` 采集并 `exit "$test_status"` 原样退出 |
+| IPA 字节数 | **790267** |
+| IPA SHA-256 | `042adca67f935f7378a2e9367cd47cb66f053aacebf53e700cfddcb6c7e926da`（CI 报告值） |
+| IPA 本地复核 | artifact `PhotoCleanupMVE-unsigned-67bf057da5a0` 下载解出 790267 字节，本地 `sha256sum` 与 CI 报告值**一致** |
+
+阶段二三次运行：
+
+| 运行 | 被测提交 | 结论 |
+|---|---|---|
+| **#163**（`32877215025`） | `6aca6a8` | failure。编译单点：`S2CalibrationHarnessTests.swift:835 missing arguments for parameters 'nxMomentumBouncePeakVelocityFactor', 'nxMomentumBounceDurationMilliseconds'`——L7 逐字段构造的期望配置没跟上新参数 |
+| **#164**（`32878482943`） | `4fc2522` 之后的 `89e2cbe` | failure。`Executed 496 tests, with 1 failure`：`S2ImageLoadingStateTests.swift:324 XCTAssertEqual failed: ("11") is not equal to ("9")`——同一文件里相邻两条登记表计数断言，只改了一条。**E1～E4 与其余全部既有门禁在本轮已全部通过** |
+| **#165**（`32879692572`） | `67bf057` | **success**，496 项 0 失败，IPA 已产出 |
 
 本地门禁（Windows，本机无 Xcode，无法执行 XCTest 或构建 IPA）：
 
@@ -148,7 +192,7 @@ __CI_BLOCK__
 
 ## 人工判定项（保留给 Lynn，本报告不代为下结论）
 
-**H38 v2**：装 __PACKAGE__，场景 E 各录一段，先开录再出手。
+**H38 v2**：装 CI #165 的 artifact `PhotoCleanupMVE-unsigned-67bf057da5a0`，场景 E 各录一段，先开录再出手。
 
 - (a) 拖到边继续拉 1/4 屏松手 → 露出后**平滑**弹回（对照系统曲线）。
 - (b) 快甩 → 露出黑边与相邻页后弹回、**不翻页**（对照系统）。
@@ -177,4 +221,6 @@ __CI_BLOCK__
 5. **动量回弹期间不做竖向抑制。** 窗口虽开，但 `followNxHandoffWindow` 只由 pan `.changed` 驱动，减速期间不会被调用，因此窗口内的 y 回写在动量路径上不生效。依据是：方向锁在水平主导起手时已生效，手指离开时内层没有竖向速度，减速应是纯横向的（③，源码推断 + `#160a` 的 y 恒定观察）。若真机上动量回弹期间出现竖向爬动，这里是缺口。
 6. **`nxMomentumBounce` 的速度只取最后两帧。** 单帧抖动会直接进速度。卡内明确"从减速段最后两帧的偏移差分求得"，按字面实现，未做多帧平滑。
 7. **两个事件的像素口径不一致**（IC-093 报告已记，此处沿用）：与本卡无关，不重复。
-8. **`apply` 每帧重进仍挂账**（Decision_log 第 125 条）。本卡只做到"窗口与结算期间不写外层偏移"。
+8. **`apply` 每帧重进仍挂账**（Decision_log 第 125 条）。本卡只做到「窗口与结算期间不写外层偏移」。
+9. **`writePagingContentOffset` 现在有两个"放行"维度**（`animated` 与 `duringSettlementAnimation`）。任何未来新增的外层写入路径若忘了这两个参数，会在结算 / 回弹期间被静默拦下——只留下一条 `外层setContentOffset被抑制` 事件，不会报错。这是有意的（拦下比抹平动画好），但对后来者是个坑，写在这里。
+10. **动量回弹的两段 `UIView.animate` 在夹具里只验到模型值一次到位**。呈现层是否真按缓出 / 缓入跑、是否被 `apply` 干扰，夹具验不了；`UIView.animate` 是本文件里唯一一处此类用法，无既有先例可比照。留 H38 v2 (b)。
