@@ -228,6 +228,12 @@ final class S2ImageLoadingStateTests: XCTestCase {
         // 更大：放行。
         XCTAssertTrue(S2ImageUpgradeDecision.shouldReplaceDisplayedImage(
             displayedPixelSize: CGSize(width: 3_060, height: 4_080),
+            candidatePixelSize: CGSize(width: 4_080, height: 5_440)
+        ))
+        // 反例（CI #161 实测钉住）：4032×3024 = 12 192 768 像素，**小于**
+        // 3060×4080 = 12 484 800——单边更宽不等于像素更多，按面积判定即被拦下。
+        XCTAssertFalse(S2ImageUpgradeDecision.shouldReplaceDisplayedImage(
+            displayedPixelSize: CGSize(width: 3_060, height: 4_080),
             candidatePixelSize: CGSize(width: 4_032, height: 3_024)
         ))
         // 判据是面积而不是逐边：宽变小但总面积更大 → 放行。
@@ -414,7 +420,10 @@ final class S2ImageLoadingStateTests: XCTestCase {
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
         XCTAssertTrue(host.recorder.replaced.isEmpty)
         XCTAssertTrue(host.recorder.suppressed.isEmpty)
-        XCTAssertEqual(host.recorder.states.last, .loading)
+        // `setLoadState` 只在加载态**变化**时回调，初始态即 `.loading`，
+        // 因此「没离开过 loading」的判据是「从未回调过 displayed」而不是 `last == .loading`。
+        XCTAssertFalse(host.recorder.states.contains(.displayed))
+        XCTAssertFalse(host.recorder.states.contains(.failed))
 
         // 最终图照常上屏。
         strategy.deliver(.finalImage(makeSizedImage(width: 3_060, height: 4_080)))
