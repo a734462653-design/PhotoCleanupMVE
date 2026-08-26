@@ -1039,6 +1039,19 @@ final class S2NativeZoomPageController: UIViewController,
         pendingPresentationPage != nil && !isPresentationTransitionActive
     }
 
+    /// IC-095 R2：本页是否有手势、缩放、减速或双击 / 呈现过渡动画在途。
+    /// 外层静止偏移的写回判定用它排除「任何手势或动画在途」的时刻——
+    /// 内层被拖动时外层即便被 UIKit 带偏也不写回，交回 UIKit 自己结算。
+    var isInteractionOrTransitionActive: Bool {
+        pinchIsActive ||
+            isDoubleTapTransitionActive ||
+            isPresentationTransitionActive ||
+            zoomScrollView.isTracking ||
+            zoomScrollView.isDragging ||
+            zoomScrollView.isDecelerating ||
+            zoomScrollView.isZooming
+    }
+
     var diagnosticInterfaceVisibility: S2InterfaceVisibility {
         interfaceVisibility
     }
@@ -2367,11 +2380,12 @@ final class S2NativePagerViewController: UIViewController,
 
         settledIndex = machine.currentIndex
         layoutNativePages()
-        if !pagingScrollView.isTracking &&
-            !pagingScrollView.isDragging &&
-            !pagingScrollView.isDecelerating {
+        // IC-095 R2：外层静止偏移只在确已偏离且无任何手势 / 动画在途时写一次。
+        // `layoutNativePages` 已按同一判定写过时这里返回 nil，本次总计仍是一次写入；
+        // 该重排可能改变 `contentSize` 并被 UIKit 反钳偏移，故此处再判一次。
+        if let settledOffset = pendingSettledPagingOffset() {
             writePagingContentOffset(
-                pagingScrollView.contentOffsetForPage(at: settledIndex),
+                settledOffset,
                 animated: false,
                 source: "S2NativePagerViewController.apply"
             )
@@ -2917,9 +2931,99 @@ final class S2NativePagerViewController: UIViewController,
         onLongPress?()
     }
 
+    /// IC-095 R2：`layoutNativePages` 的重排输入。这些量全部相等时，重排的每一步
+    /// 都只会写回与现值相同的几何，因此本次调用整段跳过。
+    private struct S2NativePagerLayoutInputs: Equatable {
+        struct Page: Equatable {
+            let index: Int
+            let assetID: String
+            let fittedSize: CGSize
+            let nativeZoomBaseSize: CGSize
+        }
+
+        let viewportSize: CGSize
+        let itemCount: Int
+        let pageSpacing: CGFloat
+        let currentIndex: Int
+        let scale: CGFloat
+        let viewportOffset: CGSize
+        let pages: [Page]
+    }
+
+    private var lastLayoutInputs: S2NativePagerLayoutInputs?
+
+    private func currentLayoutInputs() -> S2NativePagerLayoutInputs {
+        S2NativePagerLayoutInputs(
+            viewportSize: viewportSize,
+            itemCount: machine?.orderedAssetIDs.count ?? 0,
+            pageSpacing: CGFloat(configuration.pageSpacing),
+            currentIndex: machine?.currentIndex ?? 0,
+            scale: machine?.scale ?? 1,
+            viewportOffset: machine?.viewportOffset ?? .zero,
+            pages: pageControllers.keys.sorted().compactMap { index in
+                guard let controller = pageControllers[index] else {
+                    return nil
+                }
+                return S2NativePagerLayoutInputs.Page(
+                    index: index,
+                    assetID: controller.diagnosticAssetLocalIdentifier,
+                    fittedSize: controller.fittedSize,
+                    nativeZoomBaseSize: controller.nativeZoomBaseSize
+                )
+            }
+        )
+    }
+
+    /// IC-095 R2：外层静止偏移写回的唯一判定入口。返回非 nil 表示「应当写一次」。
+    /// 三个条件同时成立才写，任一不成立就一个字节都不写：
+    /// 1. 外层自身无手势、无减速——`isTracking` / `isDragging` / `isDecelerating` 均为假；
+    /// 2. 没有任何页的内层手势、缩放、减速或双击 / 呈现过渡在途；
+    /// 3. 外层当前偏移确已偏离 `settledIndex` 的静止偏移，差值超过 ε = 0.000001。
+    private func pendingSettledPagingOffset() -> CGPoint? {
+        guard !pagingScrollView.isTracking,
+              !pagingScrollView.isDragging,
+              !pagingScrollView.isDecelerating,
+              !pageControllers.values.contains(
+                  where: \.isInteractionOrTransitionActive
+              ) else {
+            return nil
+        }
+        let settledOffset = pagingScrollView.contentOffsetForPage(
+            at: settledIndex
+        )
+        guard abs(pagingScrollView.contentOffset.x - settledOffset.x) >
+            0.000_001 ||
+            abs(pagingScrollView.contentOffset.y - settledOffset.y) >
+            0.000_001 else {
+            return nil
+        }
+        return settledOffset
+    }
+
     private func layoutNativePages() {
         let previousApplyingState = isApplyingSnapshot
         isApplyingSnapshot = true
+        let inputs = currentLayoutInputs()
+        // IC-095 R2：页集合、视口尺寸、页间距、逐页几何输入与状态机视口状态全部未变时
+        // 不重排——重排的每一步都是几何写入的来源。等待呈现结算的单击页例外：
+        // 该页的布局回调计数与抑制计数必须逐次落实（IC-067 / IC-076 门禁）。
+        if inputs != lastLayoutInputs || pendingPresentationTapPageIndex != nil {
+            layoutNativePagesUnconditionally()
+            lastLayoutInputs = inputs
+        }
+        // 外层静止偏移的偏离判定不在跳过之列：外层可能被 UIKit 带偏而重排输入未变。
+        if let settledOffset = pendingSettledPagingOffset() {
+            transitionDiagnostics?.recordPagingContentOffsetWrite(
+                offsetX: settledOffset.x,
+                animated: false,
+                source: "S2NativePagerViewController.layoutNativePages"
+            )
+            pagingScrollView.contentOffset = settledOffset
+        }
+        isApplyingSnapshot = previousApplyingState
+    }
+
+    private func layoutNativePagesUnconditionally() {
         pagingScrollView.configure(
             viewportSize: viewportSize,
             itemCount: machine?.orderedAssetIDs.count ?? 0,
@@ -2929,6 +3033,12 @@ final class S2NativePagerViewController: UIViewController,
             let pageFrame = pagingScrollView.frameForPage(at: index)
             if controller.view.frame != pageFrame {
                 controller.view.frame = pageFrame
+                transitionDiagnostics?.recordPageFrameWrite(
+                    pageIndex: index,
+                    frame: pageFrame,
+                    assetLocalIdentifier:
+                        controller.diagnosticAssetLocalIdentifier
+                )
             }
             let canApplyNativeState =
                 !controller.isDoubleTapTransitionActive &&
@@ -2963,22 +3073,6 @@ final class S2NativePagerViewController: UIViewController,
                 )
             }
         }
-        if !pagingScrollView.isTracking &&
-            !pagingScrollView.isDragging &&
-            !pagingScrollView.isDecelerating {
-            let settledOffset = pagingScrollView.contentOffsetForPage(
-                at: settledIndex
-            )
-            if pagingScrollView.contentOffset != settledOffset {
-                transitionDiagnostics?.recordPagingContentOffsetWrite(
-                    offsetX: settledOffset.x,
-                    animated: false,
-                    source: "S2NativePagerViewController.layoutNativePages"
-                )
-                pagingScrollView.contentOffset = settledOffset
-            }
-        }
-        isApplyingSnapshot = previousApplyingState
     }
 
     private func captureOuterGestureReading() {
