@@ -128,6 +128,9 @@ struct S2BottomStripMetrics: Equatable {
     let collapseDurationMilliseconds: CGFloat
     /// IC-085 R3：松手手指速度低于此值（pt/s）无减速段，直接吸附展开。
     let flickVelocityThreshold: CGFloat
+    /// IC-090 R1：横栏项目圆角半径（pt）。系统录屏静止段测得邻居与当前张同值，
+    /// 与项目尺寸无关，展开／收缩全程为常量。
+    let cornerRadius: CGFloat
 
     var height: CGFloat {
         max(currentItemSize, neighborItemHeight)
@@ -146,7 +149,8 @@ struct S2BottomStripMetrics: Equatable {
             decelerationRate < 1 &&
             expandDurationMilliseconds >= 0 &&
             collapseDurationMilliseconds >= 0 &&
-            flickVelocityThreshold >= 0
+            flickVelocityThreshold >= 0 &&
+            cornerRadius >= 0
     }
 }
 

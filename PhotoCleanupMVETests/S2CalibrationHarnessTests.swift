@@ -362,17 +362,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // IC-087 G171：持久化数据的 `schemaVersion` 与代码版本不等（或缺失）→ 整套丢弃、取出厂值并删除条目；
-    // 相等 → 按现行逐字段解码。导出文本含 schemaVersion=3。
+    // 相等 → 按现行逐字段解码。IC-090 R1：出厂值集合新增圆角半径，版本 3 → 4，导出文本含 schemaVersion=4。
     func testIC087G171SchemaVersionGateDiscardsStaleStoreAndDeletesEntry() throws {
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 3)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 4)
         XCTAssertTrue(
             S2CalibrationConfiguration.factoryPlaceholder.exportText()
-                .contains("schemaVersion=3")
+                .contains("schemaVersion=4")
         )
 
-        // 1) schemaVersion=2 且 ceiling=10 → 出厂 40，且存储被删除。
+        // 1) schemaVersion=3（IC-087 旧版）且 ceiling=10 → 出厂 40，且存储被删除。
         let stale = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 2, ceiling: 10)
+            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 10)
         )
         let staleModel = S2CalibrationModel(persistence: stale)
         XCTAssertEqual(staleModel.configuration, .factoryPlaceholder)
@@ -382,9 +382,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(stale.saveCount, 0)
         XCTAssertFalse(staleModel.persistenceFailed)
 
-        // 2) schemaVersion=3 且 ceiling=12 → 12，存储保留。
+        // 2) schemaVersion=4 且 ceiling=12 → 12，存储保留。
         let current = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 4, ceiling: 12)
         )
         let currentModel = S2CalibrationModel(persistence: current)
         XCTAssertEqual(currentModel.configuration.pinchMaxScaleCeiling, 12)
@@ -400,13 +400,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNil(legacy.data)
         XCTAssertEqual(legacy.deleteCount, 1)
 
-        // 保存后的数据顶层带 schemaVersion=3，重新加载得同一配置。
+        // 保存后的数据顶层带 schemaVersion=4，重新加载得同一配置。
         XCTAssertTrue(currentModel.update { $0.pinchMaxScaleCeiling = 15 })
         let saved = try XCTUnwrap(current.data)
         let object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: saved) as? [String: Any]
         )
-        XCTAssertEqual(object["schemaVersion"] as? Int, 3)
+        XCTAssertEqual(object["schemaVersion"] as? Int, 4)
         XCTAssertEqual(
             S2CalibrationModel(persistence: current).configuration,
             currentModel.configuration
@@ -414,7 +414,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
         // 删除失败时 persistenceFailed 置位，配置仍为出厂。
         let failing = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 2, ceiling: 10)
+            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 10)
         )
         failing.deleteError = S2CalibrationPersistenceError.keychain(-1)
         let failingModel = S2CalibrationModel(persistence: failing)
@@ -430,7 +430,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             L10n.text("s2.calibration.restore_factory").hasPrefix("【未定项 21 占位】")
         )
         let store = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 3, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 4, ceiling: 12)
         )
         let model = S2CalibrationModel(persistence: store)
         XCTAssertEqual(model.configuration.pinchMaxScaleCeiling, 12)
@@ -873,6 +873,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             bottomStripExpandDurationMilliseconds: 600,
             bottomStripCollapseDurationMilliseconds: 100,
             bottomStripFlickVelocityThreshold: 300,
+            bottomStripCornerRadius: 8.0 / 3.0,
             bottomStripMarkSize: 14,
             markPulseDurationMilliseconds: 150,
             feedbackToastDurationMilliseconds: 2000
@@ -970,19 +971,20 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion 与 v15 规格基线。
     // IC-085：废止 1 项、新增 5 项横栏参数，字段 37 → 41，导出 41 + 4 行；R3 新增 1 项：42。
     // IC-088 合并：+ IC-081 乘数 1 项 = 43，导出 43 + 4 = 47；IC-087：schemaVersion=3。
+    // IC-090 R1：+ bottomStripCornerRadius 1 项 = 44，导出 44 + 4 = 48；出厂值集合变了，schemaVersion=4。
     func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
         ).children.compactMap(\.label)
-        XCTAssertEqual(fieldNames.count, 43)
+        XCTAssertEqual(fieldNames.count, 44)
 
         let lines = S2CalibrationConfiguration.factoryPlaceholder
             .exportText()
             .split(separator: "\n")
             .map(String.init)
-        XCTAssertEqual(lines.count, 43 + 4)
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 3)
-        XCTAssertTrue(lines.contains("schemaVersion=3"))
+        XCTAssertEqual(lines.count, 44 + 4)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 4)
+        XCTAssertTrue(lines.contains("schemaVersion=4"))
         XCTAssertTrue(lines.contains(
             "taskID=IC-20260821-074-parameter-layer-v15-alignment"
         ))
@@ -1000,10 +1002,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // IC-074 G97：登记表 33 条、双状态；decided 集合恰为 v15 第十一节第 1、2 部分已存在的 16 项。
     // IC-085：登记表 41 条；横栏 11 项（6 项既有 + 5 项新增）全部 decided；R3 新增 placeholder 1 项：42 条。
+    // IC-090 R1：+ bottomStripCornerRadius（decided / effective）：44 条，decided 35。
     func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
         let connections = S2CalibrationConfiguration.parameterConnections
-        XCTAssertEqual(connections.count, 43)
-        XCTAssertEqual(Set(connections.map(\.name)).count, 43)
+        XCTAssertEqual(connections.count, 44)
+        XCTAssertEqual(Set(connections.map(\.name)).count, 44)
 
         let decided = Set(connections
             .filter { $0.specStatus == .decided }
@@ -1030,10 +1033,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
             "bottomStripLeadingInset", "bottomStripSwitchDistance",
             "bottomStripDecelerationRate",
             "bottomStripExpandDurationMilliseconds",
-            "bottomStripCollapseDurationMilliseconds"
+            "bottomStripCollapseDurationMilliseconds",
+            "bottomStripCornerRadius"
         ])
         // IC-088 合并：decided 34（IC-085）；placeholder 8（IC-085）+ 乘数 1（IC-081）= 9。
-        XCTAssertEqual(decided.count, 34)
+        // IC-090 R1：decided 34 → 35（圆角半径），placeholder 不变。
+        XCTAssertEqual(decided.count, 35)
         XCTAssertEqual(placeholder.count, 9)
         XCTAssertTrue(placeholder.contains("bottomStripFlickVelocityThreshold"))
         XCTAssertTrue(decided.isDisjoint(with: placeholder))
@@ -5721,6 +5726,256 @@ final class S2CalibrationHarnessTests: XCTestCase {
         }
     }
 
+
+    // IC-090 G182：场景 C 逐帧新增 presentationZoomScale / isZoomBouncing / isDecelerating /
+    // imageRequestResult / lastImageReplacement 五个字段，离散事件新增
+    // scrollViewDidEndZooming / finishNativePinch / setZoomScale / 吸附归位写入 / 图片替换 五类。
+    // 既有字段与事件一项不改；关闭录制时全部埋点零副作用。
+    // （夹具驱动：真实两指捏合无法在 XCTest 内复现，`pinchWasActive` 恒为 false；
+    //   松手抖动本身的归因留给 Lynn 的场景 C 真机录制。）
+    func testIC090G182PinchEndScenarioExportsNewFieldsAndEvents() {
+        XCTAssertEqual(S2OnDeviceTransitionScenario.pinchStart.exportTitle, "C 捏合起始")
+
+        let hosted = makeIC065HostedPage(
+            assetAspectRatio: 3.0 / 4.0,
+            isScreenshot: false
+        )
+        defer { hosted.window.isHidden = true }
+        let controller = hosted.controller
+        let registry = S2ImageLoadStateRegistry()
+        registry.update(.displayed, for: "asset-2")
+        controller.imageLoadStateRegistry = registry
+        XCTAssertEqual(hosted.machine.currentIndex, 1)
+        XCTAssertEqual(hosted.machine.orderedAssetIDs[1], "asset-2")
+
+        // 登记表在录制之外也持续登记，故录制一开始即能读到当前张已有的请求状态。
+        registry.updateRequestResult(.finalImage(UIImage()), for: "asset-2")
+        let replacement = S2ImageReplacementRecord(
+            assetID: "asset-2",
+            resultName: S2ImageRequestResult.finalImage(UIImage()).diagnosticName,
+            pixelSize: CGSize(width: 1_206, height: 2_622),
+            timestamp: 1_234.5
+        )
+        registry.recordImageReplacement(replacement)
+        XCTAssertEqual(controller.diagnosticCurrentImageRequestResult, "finalImage")
+        XCTAssertEqual(controller.diagnosticLastImageReplacement, replacement)
+
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .pinchStart
+        diagnostics.start()
+        let page = hosted.page
+        let scrollView = page.zoomScrollView
+
+        // 真实调用点：`setZoomScale(_:animated:)` 的重写与 1x 归位写入。
+        // 先 `prepareForNativeZoom()` 确保内外层视图已就绪且几何被改脏，
+        // 归位才真的有写入可记（返回 true 即两个内容视图都存在）。
+        XCTAssertTrue(scrollView.prepareForNativeZoom())
+        scrollView.setZoomScale(scrollView.minimumZoomScale, animated: false)
+        scrollView.restoreOneXGeometry()
+        // 夹具驱动：直接调用缩放结束的委托实现与捏合结算入口。
+        page.scrollViewDidEndZooming(
+            scrollView,
+            with: scrollView.zoomContentView,
+            atScale: scrollView.zoomScale
+        )
+        controller.finishNativePinch(
+            on: page,
+            scale: scrollView.zoomScale,
+            displacement: 0.5,
+            peakVelocity: 3,
+            duration: 0.2
+        )
+        diagnostics.recordImageReplacement(replacement)
+        // 与 captureFrame 同一 runloop 回合读取，避免呈现层随时间变化造成比较不稳。
+        let expectedPresentationZoomScale =
+            scrollView.diagnosticPresentationZoomScale
+        diagnostics.captureFrame()
+        diagnostics.stop()
+        diagnostics.export()
+
+        let text = diagnostics.reportText
+        XCTAssertTrue(text.contains("场景=C 捏合起始"))
+        // 头部字段声明行：既有 22 项原序不变，五个新字段追加在末尾。
+        XCTAssertTrue(text.contains(
+            "逐帧字段=time,animationKeys,modelFrame,presentationFrame," +
+                "transform,zoomScale,contentOffset,contentSize," +
+                "contentInset,adjustedContentInset,V,s," +
+                "pagingContentOffsetX,pagingIsDragging,pagingIsDecelerating," +
+                "currentIndex,settledIndex,pageIndicesPresent,pageLoadStates," +
+                "nxDistanceToPreviousBoundary,nxDistanceToNextBoundary," +
+                "nxOverflowDistance," +
+                "presentationZoomScale,isZoomBouncing,isDecelerating," +
+                "imageRequestResult,lastImageReplacement"
+        ))
+        XCTAssertTrue(text.contains("\tpresentationZoomScale="))
+        XCTAssertTrue(text.contains("\tisZoomBouncing=false"))
+        XCTAssertTrue(text.contains("\tisDecelerating=false"))
+        XCTAssertTrue(text.contains("\timageRequestResult=finalImage"))
+        XCTAssertTrue(text.contains(
+            "\tlastImageReplacement=(asset=asset-2,result=finalImage," +
+                "w=1206.000000,h=2622.000000,t=1234.500000)"
+        ))
+
+        // 逐帧样本取自真实滚动视图，不是常量。
+        let frames = diagnostics.recordedEntries.compactMap {
+            record -> S2OnDeviceTransitionFrameSample? in
+            if case let .frame(sample) = record.payload {
+                return sample
+            }
+            return nil
+        }
+        let last = tryUnwrap(frames.last)
+        XCTAssertEqual(last.isZoomBouncing, scrollView.isZoomBouncing)
+        XCTAssertEqual(last.isDecelerating, scrollView.isDecelerating)
+        XCTAssertEqual(last.imageRequestResult, "finalImage")
+        XCTAssertEqual(last.lastImageReplacement, replacement)
+        XCTAssertEqual(last.presentationZoomScale, expectedPresentationZoomScale)
+
+        func events(named name: String) -> [(source: String, details: String)] {
+            diagnostics.recordedEntries.compactMap {
+                entry -> (source: String, details: String)? in
+                if case let .event(eventName, source, details) = entry.payload,
+                   eventName == name {
+                    return (source: source, details: details)
+                }
+                return nil
+            }
+        }
+        func event(named name: String) -> (source: String, details: String)? {
+            events(named: name).first
+        }
+        let endZooming = tryUnwrap(event(named: "scrollViewDidEndZooming"))
+        XCTAssertEqual(
+            endZooming.source,
+            "S2NativeZoomPageController.scrollViewDidEndZooming"
+        )
+        XCTAssertTrue(endZooming.details.contains("endedAtMinimum=true"))
+        XCTAssertTrue(endZooming.details.contains("pinchWasActive=false"))
+
+        let finishPinch = tryUnwrap(event(named: "finishNativePinch"))
+        XCTAssertEqual(
+            finishPinch.source,
+            "S2NativePagerViewController.finishNativePinch"
+        )
+        XCTAssertTrue(finishPinch.details.contains("displacement=0.500000"))
+        XCTAssertTrue(finishPinch.details.contains("peakVelocity=3.000000"))
+        XCTAssertTrue(finishPinch.details.contains("path="))
+
+        let setZoomEvents = events(named: "setZoomScale")
+        XCTAssertFalse(setZoomEvents.isEmpty)
+        for setZoom in setZoomEvents {
+            XCTAssertEqual(setZoom.source, "S2NativeZoomScrollView.setZoomScale")
+            XCTAssertTrue(setZoom.details.contains("scale="))
+            XCTAssertTrue(setZoom.details.contains("from="))
+        }
+        XCTAssertTrue(setZoomEvents.contains {
+            $0.details.contains("animated=false")
+        })
+
+        let snapBackEvents = events(named: "吸附归位写入")
+        XCTAssertFalse(snapBackEvents.isEmpty)
+        for snapBack in snapBackEvents {
+            XCTAssertTrue(
+                [
+                    "S2NativeZoomScrollView.restoreOneXGeometry",
+                    "S2NativeZoomScrollView.enforceOneXContentGeometry"
+                ].contains(snapBack.source),
+                snapBack.source
+            )
+            for key in [
+                "contentInset=", "contentSize=", "contentOffset=", "照片几何="
+            ] {
+                XCTAssertTrue(snapBack.details.contains(key), key)
+            }
+        }
+        XCTAssertTrue(snapBackEvents.contains {
+            $0.source == "S2NativeZoomScrollView.restoreOneXGeometry"
+        })
+
+        let replacementEvent = tryUnwrap(event(named: "图片替换"))
+        XCTAssertEqual(
+            replacementEvent.source,
+            "S2TemporaryPhotoImageView.requestImage"
+        )
+        XCTAssertTrue(replacementEvent.details.contains("asset=asset-2"))
+        XCTAssertTrue(replacementEvent.details.contains("result=finalImage"))
+        XCTAssertTrue(
+            replacementEvent.details.contains("pixel=(w=1206.000000,h=2622.000000)")
+        )
+
+        // 关闭录制后同样的调用零副作用：记录条数不变。
+        let recordedCount = diagnostics.recordedEntries.count
+        scrollView.setZoomScale(scrollView.minimumZoomScale, animated: false)
+        scrollView.restoreOneXGeometry()
+        page.scrollViewDidEndZooming(
+            scrollView,
+            with: scrollView.zoomContentView,
+            atScale: scrollView.zoomScale
+        )
+        controller.finishNativePinch(
+            on: page,
+            scale: scrollView.zoomScale,
+            displacement: 0.5,
+            peakVelocity: 3,
+            duration: 0.2
+        )
+        diagnostics.recordImageReplacement(replacement)
+        diagnostics.captureFrame()
+        XCTAssertEqual(diagnostics.recordedEntries.count, recordedCount)
+        diagnostics.detach(controller)
+    }
+
+    // IC-090 G182：请求结果与图片替换的登记入口——`S2ImageRequestResult` 五个分支
+    // 逐一映射为诊断名；替换记录按最近一次覆盖；未登记的资产读出 nil。
+    func testIC090G182ImageRequestResultRegistryTracksLatestResultAndReplacement() {
+        let registry = S2ImageLoadStateRegistry()
+        XCTAssertNil(registry.requestResult(for: "asset-1"))
+        XCTAssertNil(registry.lastImageReplacement)
+
+        let image = UIImage()
+        let expected: [(S2ImageRequestResult, String)] = [
+            (.degradedPreview(image), "degradedPreview"),
+            (.finalImage(image), "finalImage"),
+            (.failure, "failure"),
+            (.cancelled, "cancelled"),
+            (.assetUnavailable, "assetUnavailable")
+        ]
+        for (result, name) in expected {
+            XCTAssertEqual(result.diagnosticName, name)
+            registry.updateRequestResult(result, for: "asset-1")
+            XCTAssertEqual(registry.requestResult(for: "asset-1"), name)
+        }
+        XCTAssertNil(registry.requestResult(for: "asset-2"))
+
+        let first = S2ImageReplacementRecord(
+            assetID: "asset-1",
+            resultName: "degradedPreview",
+            pixelSize: CGSize(width: 10, height: 20),
+            timestamp: 1
+        )
+        let second = S2ImageReplacementRecord(
+            assetID: "asset-1",
+            resultName: "finalImage",
+            pixelSize: CGSize(width: 100, height: 200),
+            timestamp: 2
+        )
+        registry.recordImageReplacement(first)
+        XCTAssertEqual(registry.lastImageReplacement, first)
+        registry.recordImageReplacement(second)
+        XCTAssertEqual(registry.lastImageReplacement, second)
+
+        XCTAssertEqual(
+            S2OnDeviceTransitionText.imageReplacement(nil),
+            "nil"
+        )
+        XCTAssertEqual(
+            S2OnDeviceTransitionText.imageReplacement(second),
+            "(asset=asset-1,result=finalImage," +
+                "w=100.000000,h=200.000000,t=2.000000)"
+        )
+    }
+
     // IC-070 G79：逐帧字段含 contentInset 与 adjustedContentInset，且采自真实滚动视图。
     func testIC070G79FrameSamplesExportContentInsetFields() {
         let hosted = makeIC065HostedPage(
@@ -7596,6 +7851,13 @@ enum S2BottomStripSystemReference {
     static let expandDurationMilliseconds: CGFloat = 600
     /// 60 fps 帧 27–32：约 6 帧 = 100 ms。
     static let collapseDurationMilliseconds: CGFloat = 100
+    /// IC-090 R1：8.08 px（≈ 2.69 pt）。30 fps 帧 97–136 / 218–236 / 325–341 静止段，
+    /// 901 个邻居项目实例 × 4 角以「多样本逐像素最大值 → alpha 图 → 缺口面积
+    /// A = r²(1 − π/4)」求得（四角 7.96～8.17 px）；当前张两个内容饱和角 8.15 / 8.24 px，
+    /// 与邻居同值。技术负责人独立复核 759 个邻居实例得四角 8.22～8.37 px。
+    /// IC-090 R3（v2，④ Lynn 2026-08-23）：两家测量均落在 8.1～8.4 px，取最接近的
+    /// @3x 整像素值 8 px = 8/3 pt（阶段一「四舍五入到 0.5 pt」的 2.5 pt = 7.5 px 系统性偏小）。
+    static let cornerRadius: CGFloat = 8.0 / 3.0
 
     /// run1（60 fps 帧 53–159）初速 42.3 px/帧 = 845.3 pt/s。
     static let decelerationInitialVelocity: CGFloat = 845.3
@@ -7646,7 +7908,8 @@ extension S2CalibrationHarnessTests {
         decelerationRate: S2BottomStripSystemReference.decelerationRate,
         expandDurationMilliseconds: S2BottomStripSystemReference.expandDurationMilliseconds,
         collapseDurationMilliseconds: S2BottomStripSystemReference.collapseDurationMilliseconds,
-        flickVelocityThreshold: 300
+        flickVelocityThreshold: 300,
+        cornerRadius: S2BottomStripSystemReference.cornerRadius
     )
 
     private static let stripViewportSize = CGSize(width: 402, height: 30)
@@ -7730,12 +7993,13 @@ extension S2CalibrationHarnessTests {
         XCTAssertTrue(exported.contains("bottomStripDecelerationRate=0.998000"))
         XCTAssertTrue(exported.contains("bottomStripLeadingInset=20.300000"))
         XCTAssertTrue(exported.contains("bottomStripEdgeFadeWidth=18.700000"))
+        // IC-090 R1：横栏 decided + effective 由 12 增至 13（新增 bottomStripCornerRadius）。
         XCTAssertEqual(
             S2CalibrationConfiguration.parameterConnections
                 .filter { $0.name.hasPrefix("bottomStrip") }
                 .filter { $0.specStatus == .decided && $0.wiringStatus == .effective }
                 .count,
-            12
+            13
         )
     }
 
@@ -7850,7 +8114,8 @@ extension S2CalibrationHarnessTests {
             decelerationRate: base.decelerationRate,
             expandDurationMilliseconds: base.expandDurationMilliseconds,
             collapseDurationMilliseconds: base.collapseDurationMilliseconds,
-            flickVelocityThreshold: 0
+            flickVelocityThreshold: 0,
+            cornerRadius: base.cornerRadius
         )
         zero.motion.layout = S2BottomStripLayout(metrics: metrics)
         XCTAssertTrue(zero.motion.beginDrag())
@@ -8006,17 +8271,33 @@ extension S2CalibrationHarnessTests {
         XCTAssertEqual(frames[3], CGRect(x: 252, y: 0, width: 20, height: 30))
         XCTAssertEqual(frames[4], CGRect(x: 275, y: 0, width: 20, height: 30))
 
-        // 每个项目帧内无背景像素。
+        // 每个项目帧内无背景像素——IC-090 R1 起四角按 bottomStripCornerRadius 裁圆，
+        // 因此四角各 ceil(r) × ceil(r) 的方块排除在外；圆角本身由 G181 在 scale=3
+        // 位图上按 45° 对角线与首行／末行扫描逐像素判定。
+        let cornerMargin = Int(
+            CGFloat(
+                S2CalibrationConfiguration.factoryPlaceholder
+                    .bottomStripCornerRadius
+            ).rounded(.up)
+        )
+        func isInCornerBlock(x: Int, y: Int, frame: CGRect) -> Bool {
+            let dx = min(x - Int(frame.minX), Int(frame.maxX) - 1 - x)
+            let dy = min(y - Int(frame.minY), Int(frame.maxY) - 1 - y)
+            return dx < cornerMargin && dy < cornerMargin
+        }
         for (index, frame) in frames.enumerated() {
             var background = 0
             for y in Int(frame.minY)..<Int(frame.maxY) {
-                for x in Int(frame.minX)..<Int(frame.maxX) where bitmap.isBackground(x: x, y: y) {
+                for x in Int(frame.minX)..<Int(frame.maxX)
+                where !isInCornerBlock(x: x, y: y, frame: frame) &&
+                    bitmap.isBackground(x: x, y: y) {
                     background += 1
                 }
             }
             XCTAssertEqual(background, 0, "index=\(index) frame=\(frame)")
         }
-        // 当前张四角非背景、正方形。
+        // 当前张为正方形；IC-090 R1 起四角最外一像素被圆角切掉（背景），
+        // 沿对角线内移 cornerMargin 后为内容。
         let current = frames[1]
         XCTAssertEqual(current.width, current.height)
         for (x, y) in [
@@ -8025,7 +8306,15 @@ extension S2CalibrationHarnessTests {
             (Int(current.minX), Int(current.maxY) - 1),
             (Int(current.maxX) - 1, Int(current.maxY) - 1)
         ] {
-            XCTAssertFalse(bitmap.isBackground(x: x, y: y), "corner=(\(x),\(y))")
+            XCTAssertTrue(bitmap.isBackground(x: x, y: y), "corner=(\(x),\(y))")
+        }
+        for (x, y) in [
+            (Int(current.minX) + cornerMargin, Int(current.minY) + cornerMargin),
+            (Int(current.maxX) - 1 - cornerMargin, Int(current.minY) + cornerMargin),
+            (Int(current.minX) + cornerMargin, Int(current.maxY) - 1 - cornerMargin),
+            (Int(current.maxX) - 1 - cornerMargin, Int(current.maxY) - 1 - cornerMargin)
+        ] {
+            XCTAssertFalse(bitmap.isBackground(x: x, y: y), "inset corner=(\(x),\(y))")
         }
         // 间隙像素为背景：当前张两侧各 13、邻居间 3，按中线逐像素计数。
         let row = Int(viewport.height / 2)
@@ -8048,6 +8337,328 @@ extension S2CalibrationHarnessTests {
         XCTAssertTrue(bitmap.isBackground(x: Int(frames[0].maxX), y: row))
         XCTAssertFalse(bitmap.isBackground(x: Int(frames[0].minX), y: row))
         XCTAssertFalse(bitmap.isBackground(x: Int(frames[0].maxX) - 1, y: row))
+    }
+
+
+    /// IC-090 R1 圆角像素门禁夹具：以 scale = 3 渲染横栏（1 pt = 3 px，与真机 @3x 一致），
+    /// 项目内容为纯色块，故同尺寸的两个项目除标记外逐像素相同。
+    private static let stripAssetIDs = (1...5).map { "asset-\($0)" }
+    private static let stripRenderScale = 3
+
+    private struct StripRender {
+        let bitmap: S2StripBitmap
+        let frames: [CGRect]
+    }
+
+    @MainActor
+    private func renderStrip(
+        markedAssetIDs: Set<String>,
+        markSize: CGFloat,
+        // 标记以系统前景色（浅色环境下接近纯黑）渲染，故要观察标记就不能用纯黑内容；
+        // 圆角几何门禁仍用纯黑（0 / 1 覆盖的像素不受内容明度影响）。
+        contentWhite: Double = 0
+    ) throws -> StripRender {
+        let assetIDs = Self.stripAssetIDs
+        let machine = makeMachine(
+            orderedAssetIDs: assetIDs,
+            currentIndex: 1,
+            pendingDeletionAssetIDs: markedAssetIDs
+        )
+        let metrics = tryUnwrap(
+            S2CalibrationConfiguration.factoryPlaceholder.resolvedParameters
+        ).bottomStripMetrics
+        let viewport = Self.stripViewportSize
+        let strip = S2BottomStripView(
+            machine: machine,
+            metrics: metrics,
+            markSize: markSize,
+            itemContent: { _ in AnyView(Color(white: contentWhite)) },
+            assetAspectRatio: { _ in 1 },
+            onPhotoSwitch: {}
+        )
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.white
+                strip
+            }
+            .frame(width: viewport.width, height: viewport.height)
+        )
+        renderer.scale = CGFloat(Self.stripRenderScale)
+        renderer.proposedSize = ProposedViewSize(viewport)
+        let cgImage = try XCTUnwrap(renderer.cgImage)
+        let layout = S2BottomStripLayout(metrics: metrics)
+        let contentX = layout.contentCenterX(of: 1)
+        let frames = assetIDs.indices.map { index in
+            layout.frame(
+                at: index,
+                currentIndex: 1,
+                expansion: 1,
+                contentX: contentX,
+                viewportSize: viewport
+            )
+        }
+        let bitmap = try S2StripBitmap(cgImage: cgImage)
+        return StripRender(bitmap: bitmap, frames: frames)
+    }
+
+    // IC-090 G180 / G190（v2）：圆角半径出厂值 = 系统录屏测量值对齐到 @3x 像素栅格
+    // （参考表 `S2BottomStripSystemReference.cornerRadius` = 8/3 pt = 8 px），
+    // `schemaVersion == 4`（v2 保持不变，schema 4 从未随可安装包发出）；
+    // 参数进导出文本与登记表（decided / effective）；
+    // 邻居与当前张同半径，故只有一个参数、不存在 `bottomStripCurrentCornerRadius`。
+    func testIC090G180FactoryCornerRadiusMatchesSystemReference() throws {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        XCTAssertEqual(
+            configuration.bottomStripCornerRadius,
+            8.0 / 3.0,
+            accuracy: 0.000_000_001
+        )
+        XCTAssertEqual(
+            configuration.bottomStripCornerRadius,
+            Double(S2BottomStripSystemReference.cornerRadius),
+            accuracy: 0.000_000_001
+        )
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 4)
+
+        let metrics = tryUnwrap(configuration.resolvedParameters).bottomStripMetrics
+        XCTAssertEqual(
+            metrics.cornerRadius,
+            S2BottomStripSystemReference.cornerRadius,
+            accuracy: 0.000_000_001
+        )
+        // @3x 下正好是 8 个设备像素。
+        XCTAssertEqual(metrics.cornerRadius * 3, 8, accuracy: 0.000_000_001)
+
+        let lines = configuration.exportText()
+            .split(separator: "\n")
+            .map(String.init)
+        XCTAssertTrue(lines.contains("bottomStripCornerRadius=2.666667"))
+        let hasCurrentCornerRadius = lines.contains(where: {
+            $0.hasPrefix("bottomStripCurrentCornerRadius=")
+        })
+        XCTAssertFalse(hasCurrentCornerRadius)
+
+        let connections = Dictionary(
+            uniqueKeysWithValues: S2CalibrationConfiguration.parameterConnections
+                .map { ($0.name, $0) }
+        )
+        XCTAssertEqual(
+            connections["bottomStripCornerRadius"]?.specStatus,
+            .decided
+        )
+        XCTAssertEqual(
+            connections["bottomStripCornerRadius"]?.wiringStatus,
+            .effective
+        )
+        XCTAssertNil(connections["bottomStripCurrentCornerRadius"])
+
+        // 负值不合法；旧持久化缺该键按出厂值补齐，含该键时往返一致。
+        var invalid = configuration
+        invalid.bottomStripCornerRadius = -1
+        XCTAssertFalse(invalid.isValid)
+
+        let encoded = try JSONEncoder().encode(configuration)
+        let decoded = try JSONDecoder().decode(
+            S2CalibrationConfiguration.self,
+            from: encoded
+        )
+        XCTAssertEqual(decoded, configuration)
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        XCTAssertEqual(json["schemaVersion"] as? Int, 4)
+        json.removeValue(forKey: "bottomStripCornerRadius")
+        let legacy = try JSONSerialization.data(withJSONObject: json)
+        let migrated = try JSONDecoder().decode(
+            S2CalibrationConfiguration.self,
+            from: legacy
+        )
+        XCTAssertEqual(migrated, configuration)
+    }
+
+    // IC-090 G181 / G191（v2）像素门禁（scale = 3，1 pt = 3 px，出厂 8/3 pt = 8 px）：
+    // 每个项目帧四角沿 45° 对角线由角点向内扫描（同 IC-070 G77 方法），半径内为背景、
+    // 半径外为内容；首行／末行与首列／末列的直线扫描给出另一个方向的夹逼。
+    // 各阈值按 r = 8 px 逐像素覆盖率重算（圆心 (r,r)、半径 r 的解析覆盖率）：
+    //   对角偏移 0/1 覆盖率 0.000、2 为 0.760、3…7 为 1.000；
+    //   直线偏移 0…3 覆盖率 0.000、4 为 0.191、5 为 0.593、8…9 为 1.000。
+    // 故：对角偏移 0/1 断言背景（⇒ r > 6.83 px），偏移 3…7 断言内容（⇒ r ≤ 10.24 px）；
+    // 直线偏移 0…3 断言背景（⇒ r ≥ 7.83 px，较 v1 的 0…2 收紧），偏移 8 断言内容
+    // （⇒ r ≤ 8.00 px）。合计夹逼 7.83 px ≤ r ≤ 8.00 px。
+    // 注：scale = 3 的二值判据无法把 7.5 px 与 8.0 px 分开（差异全在部分覆盖像素上），
+    // 出厂值本身由 G190 以 accuracy 1e-9 钉死。
+    @MainActor
+    func testIC090G181RenderedStripCornersAreClippedByCornerRadius() throws {
+        let render = try renderStrip(markedAssetIDs: [], markSize: 0)
+        let bitmap = render.bitmap
+        let scale = Self.stripRenderScale
+        XCTAssertEqual(bitmap.width, Int(Self.stripViewportSize.width) * scale)
+        XCTAssertEqual(bitmap.height, Int(Self.stripViewportSize.height) * scale)
+
+        for (index, frame) in render.frames.enumerated() {
+            let minX = Int(frame.minX) * scale
+            let maxX = Int(frame.maxX) * scale - 1
+            let minY = Int(frame.minY) * scale
+            let maxY = Int(frame.maxY) * scale - 1
+            let corners: [(String, Int, Int, Int, Int)] = [
+                ("TL", minX, minY, 1, 1),
+                ("TR", maxX, minY, -1, 1),
+                ("BL", minX, maxY, 1, -1),
+                ("BR", maxX, maxY, -1, -1)
+            ]
+            for (name, cx, cy, sx, sy) in corners {
+                let label = "index=\(index) corner=\(name)"
+                // 半径内（对角偏移 0、1）为背景。
+                for offset in 0...1 {
+                    XCTAssertTrue(
+                        bitmap.isBackground(
+                            x: cx + sx * offset,
+                            y: cy + sy * offset
+                        ),
+                        "\(label) diag=\(offset) 应为背景"
+                    )
+                }
+                // 半径外（对角偏移 3…7）为内容。
+                for offset in 3...7 {
+                    XCTAssertFalse(
+                        bitmap.isBackground(
+                            x: cx + sx * offset,
+                            y: cy + sy * offset
+                        ),
+                        "\(label) diag=\(offset) 应为内容"
+                    )
+                }
+                // 沿该角所在的水平边扫描：偏移 0…3 背景、偏移 8 内容。
+                for offset in 0...3 {
+                    XCTAssertTrue(
+                        bitmap.isBackground(x: cx + sx * offset, y: cy),
+                        "\(label) edge=\(offset) 应为背景"
+                    )
+                }
+                XCTAssertFalse(
+                    bitmap.isBackground(x: cx + sx * 8, y: cy),
+                    "\(label) edge=8 应为内容"
+                )
+                // 沿该角所在的竖直边同样。
+                for offset in 0...3 {
+                    XCTAssertTrue(
+                        bitmap.isBackground(x: cx, y: cy + sy * offset),
+                        "\(label) vedge=\(offset) 应为背景"
+                    )
+                }
+                XCTAssertFalse(
+                    bitmap.isBackground(x: cx, y: cy + sy * 8),
+                    "\(label) vedge=8 应为内容"
+                )
+            }
+        }
+    }
+
+    // IC-090 G181 / G191（v2 R4）：待删标记叠层与项目内容受同一圆角裁切，且标记确实渲染。
+    // 取证只在已标记项目的右上 `markSize × markSize` 框内进行（v1 用整帧逐像素比较，
+    // 其「两项目除标记外逐像素相同」的前提在渲染位图里不成立，见 v2 报告第五节）：
+    //   (a) 该角沿 45° 对角线偏移 0/1 的像素为背景 —— 标记所在角同样被圆角裁掉；
+    //   (b) 框内存在明显暗于项目内容色的像素 —— 标记确实渲染了；
+    //   (c) 框外不做逐像素比较。
+    // 内容色取非黑（`Color(white: 0.1)`），否则系统前景色渲染的标记与纯黑内容逐像素相同。
+    // (b) 取「暗于内容」而不是「不等于内容」：圆角裁切与抗锯齿只会把像素**混向背景白**
+    // （更亮），只有标记字形能比平坦内容更暗，故该判据不会被圆角自身或 ±1 级噪声满足。
+    // 「标记不被圆角裁掉」的最终判定是 H36，留给 Lynn 真机并排观感确认。
+    @MainActor
+    func testIC090G181StripMarkOverlayIsClippedByTheSameCornerRadius() throws {
+        let assetIDs = Self.stripAssetIDs
+        let scale = Self.stripRenderScale
+        let markSize = 14
+        // 只标记索引 0 的邻居项目；其余项目保持未标记。
+        let render = try renderStrip(
+            markedAssetIDs: [assetIDs[0]],
+            markSize: CGFloat(markSize),
+            contentWhite: 0.1
+        )
+        let frame = render.frames[0]
+        let minX = Int(frame.minX) * scale
+        let maxX = Int(frame.maxX) * scale - 1
+        let minY = Int(frame.minY) * scale
+        let width = Int(frame.width) * scale
+        let height = Int(frame.height) * scale
+        let boxSide = markSize * scale
+        XCTAssertLessThanOrEqual(boxSide, width)
+        XCTAssertLessThanOrEqual(boxSide, height)
+
+        // 内容色参照点：同一项目内、标记框之外的下半部中心（不属于框内取证）。
+        let referenceX = minX + width / 2
+        let referenceY = minY + height - boxSide / 2
+        let contentLuminance = render.bitmap.luminance(x: referenceX, y: referenceY)
+        XCTAssertFalse(
+            render.bitmap.isBackground(x: referenceX, y: referenceY),
+            "内容参照点应为内容像素"
+        )
+
+        // (a) 标记所在的右上角沿 45° 对角线偏移 0/1 仍为背景：该角被圆角裁掉，
+        //     标记叠层没有把它填上。
+        for offset in 0...1 {
+            XCTAssertTrue(
+                render.bitmap.isBackground(x: maxX - offset, y: minY + offset),
+                "标记角 diag=\(offset) 应为背景"
+            )
+        }
+
+        // (b) 右上 markSize × markSize 框内存在明显暗于内容色的像素 —— 标记渲染了。
+        var markPixelCount = 0
+        var minimumLuminance = 255
+        var maximumLuminance = 0
+        var firstMarkPixel: (x: Int, y: Int)?
+        for dy in 0..<boxSide {
+            for dx in (width - boxSide)..<width {
+                let luminance = render.bitmap.luminance(
+                    x: minX + dx,
+                    y: minY + dy
+                )
+                minimumLuminance = min(minimumLuminance, luminance)
+                maximumLuminance = max(maximumLuminance, luminance)
+                if luminance + 8 < contentLuminance {
+                    markPixelCount += 1
+                    if firstMarkPixel == nil {
+                        firstMarkPixel = (x: minX + dx, y: minY + dy)
+                    }
+                }
+            }
+        }
+        // 失败时把判据所需的全部读数带进消息，并按 IC-090 阶段二闸门 C 导出框内位图
+        // （每 3 px 取一个样，'#' 暗于内容、'.' 等于内容、' ' 亮于内容/背景）。
+        if markPixelCount == 0 {
+            print("IC090_G181_MARKBOX frame=\(frame) box=" +
+                "x[\(minX + width - boxSide)…\(minX + width - 1)] " +
+                "y[\(minY)…\(minY + boxSide - 1)] " +
+                "content=\(contentLuminance) min=\(minimumLuminance) " +
+                "max=\(maximumLuminance)")
+            for dy in stride(from: 0, to: boxSide, by: 3) {
+                var row = ""
+                for dx in stride(from: width - boxSide, to: width, by: 3) {
+                    let luminance = render.bitmap.luminance(
+                        x: minX + dx,
+                        y: minY + dy
+                    )
+                    if luminance + 8 < contentLuminance {
+                        row += "#"
+                    } else if luminance == contentLuminance {
+                        row += "."
+                    } else {
+                        row += " "
+                    }
+                }
+                print("IC090_G181_MARKBOX row dy=\(dy) |\(row)|")
+            }
+        }
+        XCTAssertGreaterThan(
+            markPixelCount,
+            0,
+            "出厂尺寸下标记未渲染：框内内容色=\(contentLuminance)、" +
+                "最暗=\(minimumLuminance)、最亮=\(maximumLuminance)"
+        )
+        XCTAssertNotNil(firstMarkPixel)
+
+        // (c) 框外不做逐像素比较。
     }
 
     // IC-085 G162：旧版持久化数据缺新键时按出厂值补齐；含新键时往返一致。
@@ -8479,13 +9090,24 @@ struct S2StripBitmap {
         pixels = buffer
     }
 
-    /// `y` 自上而下（CGContext 原点在左下，读取时翻转）。
+    /// `y` 自上而下。
     func isBackground(x: Int, y: Int) -> Bool {
+        luminance(x: x, y: y) > 128
+    }
+
+    /// IC-090 R1：原始亮度，供标记叠层与内容的区分判定。越界返回背景亮度 255。
+    ///
+    /// IC-090 R4（v2）修正：`CGBitmapContext` 的**内存首行即图像顶行**（用户空间 y 向上，
+    /// 但缓冲区按行自顶向下存储），故按 `y` 直接索引；此前的 `(height - 1 - y)` 反而把
+    /// `y` 变成了自下而上。该错误此前不可见：IC-085 与 IC-090 的既有断言要么取四角
+    /// （上下对称）、要么取满高循环、要么取中线，都对垂直方向不敏感。第一个把它暴露
+    /// 出来的是右上角标记断言——按旧式读法，`.topTrailing` 的标记落在读坐标的底部
+    /// （实测：读 y=69 得亮度 8 的标记像素，而读 y∈[0,41] 只有内容 25 与背景 255）。
+    func luminance(x: Int, y: Int) -> Int {
         guard x >= 0, x < width, y >= 0, y < height else {
-            return true
+            return 255
         }
-        let offset = ((height - 1 - y) * width + x) * 4
-        let luminance = (Int(pixels[offset]) + Int(pixels[offset + 1]) + Int(pixels[offset + 2])) / 3
-        return luminance > 128
+        let offset = (y * width + x) * 4
+        return (Int(pixels[offset]) + Int(pixels[offset + 1]) + Int(pixels[offset + 2])) / 3
     }
 }
