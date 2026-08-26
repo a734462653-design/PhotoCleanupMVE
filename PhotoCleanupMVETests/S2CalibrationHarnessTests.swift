@@ -5589,7 +5589,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
             $0.transform = targetTransform
         }
         diagnostics.recordInnerLayoutSubviews()
-        diagnostics.recordUpdateUIView(wrotePhotoGeometry: true)
+        diagnostics.recordUpdateUIView(
+            wrotePhotoGeometry: true,
+            wroteAnyGeometry: true
+        )
         diagnostics.export()
 
         XCTAssertEqual(contentView.transform, targetTransform)
@@ -6772,7 +6775,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let controller = makeNativePagerController(machine: machine)
         diagnostics.attach(controller)
         diagnostics.start()
-        diagnostics.recordUpdateUIView(wrotePhotoGeometry: false)
+        diagnostics.recordUpdateUIView(
+            wrotePhotoGeometry: false,
+            wroteAnyGeometry: false
+        )
         diagnostics.recordInnerLayoutSubviews()
         diagnostics.recordOuterViewDidLayoutSubviews()
         diagnostics.stop()
@@ -7072,6 +7078,390 @@ final class S2CalibrationHarnessTests: XCTestCase {
             )
         }
         XCTAssertEqual(recordedNames, requiredNames)
+    }
+
+    // MARK: - IC-095 G207：apply 及其下游写入的条件化与幂等
+
+    /// IC-095 G207 F1（夹具驱动，真机未覆盖，由 H41 场景三兜底）：
+    /// 静止态（无手势、无减速、无动画、无翻页，页集合与视口未变）连调 `apply` 十次，
+    /// 录制窗口内几何写入总数、外层 `setContentOffset` 次数、照片几何写入次数均为 0，
+    /// 外层偏移与逐页几何一个字节不变。`wroteAnyGeometry` 即由几何写入总数的差值得出，
+    /// 故总数增量为 0 等价于这十次的 `写入任意几何` 全为 `false`。
+    func testIC095G207F1IdleApplyWritesNoGeometry() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        struct PageGeometry: Equatable {
+            let index: Int
+            let pageFrame: CGRect
+            let zoomScale: CGFloat
+            let contentOffset: CGPoint
+            let contentSize: CGSize
+            let contentInset: UIEdgeInsets
+            let photoFrame: CGRect
+        }
+        func snapshot() -> [PageGeometry] {
+            controller.pageControllers.keys.sorted().compactMap { index in
+                guard let page = controller.pageControllers[index] else {
+                    return nil
+                }
+                return PageGeometry(
+                    index: index,
+                    pageFrame: page.view.frame,
+                    zoomScale: page.zoomScrollView.zoomScale,
+                    contentOffset: page.zoomScrollView.contentOffset,
+                    contentSize: page.zoomScrollView.contentSize,
+                    contentInset: page.zoomScrollView.contentInset,
+                    photoFrame: page.zoomScrollView
+                        .presentationContentView?.frame ?? .null
+                )
+            }
+        }
+
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.start()
+        let geometryBefore = snapshot()
+        let pagingOffsetBefore = controller.pagingScrollView.contentOffset
+        XCTAssertFalse(geometryBefore.isEmpty)
+
+        for _ in 0..<10 {
+            applyNativePagerController(
+                controller,
+                machine: machine,
+                configuration: configuration
+            )
+        }
+        diagnostics.stop()
+
+        XCTAssertEqual(diagnostics.geometryWriteCount, 0)
+        XCTAssertEqual(diagnostics.pagingContentOffsetWriteCount, 0)
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
+        XCTAssertEqual(snapshot(), geometryBefore)
+        XCTAssertEqual(
+            controller.pagingScrollView.contentOffset,
+            pagingOffsetBefore
+        )
+        let writeEventNames = Set([
+            "外层setContentOffset",
+            "页frame写入",
+            "内层setContentOffset",
+            "照片几何写入",
+            "setZoomScale"
+        ])
+        for record in diagnostics.recordedEntries {
+            guard case let .event(name, _, details) = record.payload else {
+                continue
+            }
+            XCTAssertFalse(writeEventNames.contains(name), name)
+            if name == "吸附归位写入" {
+                XCTAssertFalse(details.contains("=true"), details)
+            }
+        }
+    }
+
+    /// IC-095 G207 F1b（夹具驱动，真机未覆盖）：宿主 S2View 下由非几何状态发布
+    /// 触发的 SwiftUI 重进，导出中每一条 `updateUIView` 的 `写入任意几何` 都是 `false`，
+    /// 且录制窗口内几何写入总数为 0。
+    func testIC095G207F1HostedUpdateUIViewReportsNoGeometryWrite() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(
+            configuration: configuration,
+            pendingDeletionAssetIDs: ["asset-2"]
+        )
+        XCTAssertTrue(machine.currentIsMarked)
+        let calibration = S2CalibrationModel(
+            persistence: S2DiscardingCalibrationPersistence()
+        )
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        let view = S2View(
+            machine: machine,
+            calibration: calibration,
+            assetAspectRatio: { _ in self.screenAspectRatio },
+            assetIsScreenshot: { _ in true },
+            photoContent: { _ in AnyView(Color.clear) },
+            stripItemContent: { _ in AnyView(Color.clear) },
+            albumPickerContent: { _, _ in AnyView(EmptyView()) },
+            transitionDiagnostics: diagnostics
+        )
+        let host = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+
+        XCTAssertTrue(diagnostics.canStart)
+        diagnostics.start()
+        // 已标记资产再上滑：只发布语义提示，不改变任何几何输入。
+        XCTAssertFalse(machine.handleSwipeUp())
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+        diagnostics.stop()
+
+        var updateEventCount = 0
+        for record in diagnostics.recordedEntries {
+            guard case let .event(name, source, details) = record.payload,
+                  name == "updateUIView" else {
+                continue
+            }
+            updateEventCount += 1
+            XCTAssertEqual(
+                source,
+                "S2NativePhotoPager.updateUIViewController"
+            )
+            XCTAssertTrue(details.contains("写入照片几何=false"), details)
+            XCTAssertTrue(details.contains("写入任意几何=false"), details)
+        }
+        XCTAssertGreaterThan(updateEventCount, 0)
+        XCTAssertEqual(diagnostics.geometryWriteCount, 0)
+        XCTAssertEqual(diagnostics.photoGeometryWriteCount, 0)
+    }
+
+    /// IC-095 G207 F2（夹具驱动，真机未覆盖，由 H41 场景一兜底）：
+    /// Nx 下内层视口偏移逐帧变化并连调 `apply`，外层 `setContentOffset` 增量为 0，
+    /// 外层偏移始终停在静止偏移上。
+    func testIC095G207F2NxViewportPanKeepsPagingOffsetWritesAtZero() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(scale: 2, configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertGreaterThan(machine.scale, 1)
+
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.start()
+        let pagingOffsetBefore = controller.pagingScrollView.contentOffset
+
+        for step in 1...20 {
+            machine.reportNativeViewport(
+                scale: 2,
+                viewportOffset: CGSize(width: CGFloat(step), height: 0)
+            )
+            applyNativePagerController(
+                controller,
+                machine: machine,
+                configuration: configuration
+            )
+        }
+        diagnostics.stop()
+
+        XCTAssertEqual(diagnostics.pagingContentOffsetWriteCount, 0)
+        XCTAssertEqual(
+            controller.pagingScrollView.contentOffset,
+            pagingOffsetBefore
+        )
+        XCTAssertEqual(
+            controller.pagingScrollView.contentOffset,
+            controller.pagingScrollView.contentOffsetForPage(
+                at: controller.settledIndex
+            )
+        )
+        for record in diagnostics.recordedEntries {
+            guard case let .event(name, source, _) = record.payload,
+                  name == "外层setContentOffset" else {
+                continue
+            }
+            XCTFail("Nx 平移期间不应出现外层写入：\(source)")
+        }
+    }
+
+    /// IC-095 G207 F3（夹具驱动，真机未覆盖）：外层被程序性带偏 5 pt。
+    /// 无手势、无动画在途时下一次 `apply` 恰写一次归位；有双击过渡在途时一次不写。
+    func testIC095G207F3DeviatedPagingOffsetIsRealignedExactlyOnce() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        let settledOffset = controller.pagingScrollView.contentOffsetForPage(
+            at: controller.settledIndex
+        )
+        XCTAssertEqual(controller.pagingScrollView.contentOffset, settledOffset)
+
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.start()
+        controller.pagingScrollView.contentOffset = CGPoint(
+            x: settledOffset.x + 5,
+            y: settledOffset.y
+        )
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        XCTAssertEqual(diagnostics.pagingContentOffsetWriteCount, 1)
+        XCTAssertEqual(controller.pagingScrollView.contentOffset, settledOffset)
+
+        // 再连调 apply：已归位，一次都不再写。
+        for _ in 0..<5 {
+            applyNativePagerController(
+                controller,
+                machine: machine,
+                configuration: configuration
+            )
+        }
+        XCTAssertEqual(diagnostics.pagingContentOffsetWriteCount, 1)
+        diagnostics.stop()
+
+        // 有动画在途：双击过渡期间外层被带偏也不写回。
+        let transitionMachine = makeMachine(configuration: configuration)
+        let transitionController = makeNativePagerController(
+            machine: transitionMachine,
+            configuration: configuration
+        )
+        let transitionWindow = UIWindow(
+            frame: CGRect(origin: .zero, size: physicalSize)
+        )
+        transitionWindow.rootViewController = transitionController
+        transitionWindow.isHidden = false
+        defer { transitionWindow.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        let page = tryUnwrap(
+            transitionController.pageControllers[transitionMachine.currentIndex]
+        )
+        XCTAssertTrue(page.applyRecognizedDoubleTap(
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2)
+        ))
+        XCTAssertTrue(page.isDoubleTapTransitionActive)
+
+        let transitionDiagnostics =
+            S2OnDeviceTransitionDiagnosticsCoordinator()
+        transitionDiagnostics.attach(transitionController)
+        transitionDiagnostics.start()
+        let transitionSettledOffset = transitionController.pagingScrollView
+            .contentOffsetForPage(at: transitionController.settledIndex)
+        let deviatedOffset = CGPoint(
+            x: transitionSettledOffset.x + 5,
+            y: transitionSettledOffset.y
+        )
+        transitionController.pagingScrollView.contentOffset = deviatedOffset
+        applyNativePagerController(
+            transitionController,
+            machine: transitionMachine,
+            configuration: configuration
+        )
+        transitionDiagnostics.stop()
+        XCTAssertEqual(
+            transitionDiagnostics.pagingContentOffsetWriteCount,
+            0
+        )
+        XCTAssertEqual(
+            transitionController.pagingScrollView.contentOffset,
+            deviatedOffset
+        )
+    }
+
+    /// IC-095 G207 F4（夹具驱动，真机未覆盖）：页集合变化与视口尺寸变化时
+    /// `layoutNativePages` 照常重排——页 frame、外层 contentSize 与静止偏移全部跟随。
+    func testIC095G207F4PageSetAndViewportChangesStillRelayout() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        func assertPageFramesMatchLayout(_ line: UInt = #line) {
+            for (index, page) in controller.pageControllers {
+                XCTAssertEqual(
+                    page.view.frame,
+                    controller.pagingScrollView.frameForPage(at: index),
+                    "页 \(index) 的 frame 与布局不符",
+                    line: line
+                )
+            }
+        }
+        assertPageFramesMatchLayout()
+        let initialStride = controller.pagingScrollView.pageStride
+        XCTAssertGreaterThan(initialStride, 0)
+        XCTAssertEqual(
+            controller.pagingScrollView.contentSize,
+            CGSize(
+                width: CGFloat(machine.orderedAssetIDs.count) * initialStride,
+                height: physicalSize.height
+            )
+        )
+
+        // 视口尺寸变化：重排照常发生。
+        let nextViewportSize = CGSize(
+            width: physicalSize.width + 40,
+            height: physicalSize.height + 20
+        )
+        window.frame = CGRect(origin: .zero, size: nextViewportSize)
+        controller.view.frame = CGRect(origin: .zero, size: nextViewportSize)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            viewportSize: nextViewportSize
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        let nextStride = controller.pagingScrollView.pageStride
+        XCTAssertEqual(
+            nextStride,
+            nextViewportSize.width + CGFloat(configuration.pageSpacing),
+            accuracy: 0.000_001
+        )
+        assertPageFramesMatchLayout()
+        XCTAssertEqual(
+            controller.pagingScrollView.contentSize,
+            CGSize(
+                width: CGFloat(machine.orderedAssetIDs.count) * nextStride,
+                height: nextViewportSize.height
+            )
+        )
+        XCTAssertEqual(
+            controller.pagingScrollView.contentOffset,
+            controller.pagingScrollView.contentOffsetForPage(
+                at: controller.settledIndex
+            )
+        )
+
+        // 页集合变化：翻页后新页存在、frame 正确、外层偏移落到新页。
+        XCTAssertTrue(machine.handleNativePageChange(to: 2))
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            viewportSize: nextViewportSize
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertEqual(controller.settledIndex, 2)
+        assertPageFramesMatchLayout()
+        XCTAssertNotNil(controller.pageControllers[2])
+        XCTAssertEqual(
+            controller.pagingScrollView.contentOffset,
+            controller.pagingScrollView.contentOffsetForPage(at: 2)
+        )
     }
 
     private let physicalSize = CGSize(width: 300, height: 600)

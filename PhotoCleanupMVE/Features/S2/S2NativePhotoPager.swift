@@ -108,8 +108,11 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
         diagnosticsCoordinator.attach(controller)
         transitionDiagnosticsCoordinator.attach(controller)
         controller.imageLoadStateRegistry = imageLoadStateRegistry
-        let geometryWriteCount = transitionDiagnosticsCoordinator
+        let photoWriteCountBefore = transitionDiagnosticsCoordinator
             .photoGeometryWriteCount
+        // IC-095 R1：本次重进是否落笔任何几何，取录制窗口内几何写入总数的差值。
+        let geometryWriteCountBefore = transitionDiagnosticsCoordinator
+            .geometryWriteCount
         controller.apply(
             machine: machine,
             configuration: configuration,
@@ -120,7 +123,9 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
         )
         transitionDiagnosticsCoordinator.recordUpdateUIView(
             wrotePhotoGeometry: transitionDiagnosticsCoordinator
-                .photoGeometryWriteCount > geometryWriteCount
+                .photoGeometryWriteCount > photoWriteCountBefore,
+            wroteAnyGeometry: transitionDiagnosticsCoordinator
+                .geometryWriteCount > geometryWriteCountBefore
         )
     }
 
@@ -379,6 +384,16 @@ final class S2NativeZoomScrollView: UIScrollView {
             contentOffset = nextOffset
             changed = true
         }
+        // IC-095 R1 补：联合居中是布局回调里唯一的几何写入点，此前无埋点。
+        // 只在确有落笔时记录，静止态不产生任何记录。
+        if changed {
+            transitionDiagnostics?.recordJointCenteringWrite(
+                inset: nextInset,
+                offset: nextOffset,
+                pageIndex: diagnosticPageIndex,
+                assetLocalIdentifier: diagnosticAssetLocalIdentifier
+            )
+        }
         return changed
     }
 
@@ -444,18 +459,31 @@ final class S2NativeZoomScrollView: UIScrollView {
         }
         let nextScale = min(maximumZoomScale, max(minimumZoomScale, scale))
         isApplyingNativeState = true
+        // IC-095 R3：只有本次确有几何落笔才标脏并强制一次布局。无写入时保留
+        // `layoutIfNeeded()`——它只冲刷别处已标脏的待布局，干净时不触发 layoutSubviews。
+        var wroteGeometry = false
         if nextScale > minimumZoomScale + 0.000_001 {
-            prepareNativeZoomGeometry()
+            let wasAtMinimumZoomScale =
+                abs(zoomScale - minimumZoomScale) <= 0.000_001
+            if prepareNativeZoomGeometry(), wasAtMinimumZoomScale {
+                wroteGeometry = true
+            }
             if abs(zoomScale - nextScale) > 0.000_001 {
                 setZoomScale(nextScale, animated: false)
+                wroteGeometry = true
             }
         } else {
             if abs(zoomScale - minimumZoomScale) > 0.000_001 {
                 setZoomScale(minimumZoomScale, animated: false)
+                wroteGeometry = true
             }
-            enforceOneXContentGeometry()
+            if enforceOneXContentGeometry() {
+                wroteGeometry = true
+            }
         }
-        setNeedsLayout()
+        if wroteGeometry {
+            setNeedsLayout()
+        }
         layoutIfNeeded()
         let nextOffset = nextScale > minimumZoomScale + 0.000_001
             ? CGPoint(
@@ -468,6 +496,12 @@ final class S2NativeZoomScrollView: UIScrollView {
         if abs(contentOffset.x - nextOffset.x) > 0.000_001 ||
             abs(contentOffset.y - nextOffset.y) > 0.000_001 {
             independentContentOffsetWriteCount += 1
+            transitionDiagnostics?.recordInnerContentOffsetWrite(
+                offset: nextOffset,
+                source: "S2NativeZoomScrollView.applyNativeState",
+                pageIndex: diagnosticPageIndex,
+                assetLocalIdentifier: diagnosticAssetLocalIdentifier
+            )
             setContentOffset(nextOffset, animated: false)
         }
         isApplyingNativeState = false
@@ -721,15 +755,18 @@ final class S2NativeZoomScrollView: UIScrollView {
         )
     }
 
+    /// IC-095 R3：返回本次是否确有几何落笔。既有的逐项 `!=` 守卫与诊断事件不变，
+    /// 调用方据此决定是否还需要强制一次布局。
+    @discardableResult
     private func enforceOneXContentGeometry(
         diagnosticSource: String = "S2NativeZoomScrollView.enforceOneXContentGeometry"
-    ) {
+    ) -> Bool {
         guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
-            return
+            return false
         }
         guard let zoomContentView,
               let presentationContentView else {
-            return
+            return false
         }
         var geometryChanged = false
         // IC-090 R2：仅用于事件 details，不参与任何判定。
@@ -802,6 +839,7 @@ final class S2NativeZoomScrollView: UIScrollView {
             pageIndex: diagnosticPageIndex,
             assetLocalIdentifier: diagnosticAssetLocalIdentifier
         )
+        return geometryChanged
     }
 
     @discardableResult
@@ -1029,9 +1067,25 @@ final class S2NativeZoomPageController: UIViewController,
         configuration: .factoryPlaceholder
     )
     private(set) var nativeScrollPriorityIsConfigured = false
+    /// IC-095 R3：首次内容装配（`applyPageImmediately`）是否已完成。`viewDidLoad` 里的
+    /// `configure` 用的是零视口与倍率 1，未经过一次装配之前不得判定「输入未变」。
+    private var hasAppliedPageImmediately = false
 
     var hasDeferredPresentation: Bool {
         pendingPresentationPage != nil && !isPresentationTransitionActive
+    }
+
+    /// IC-095 R2：本页是否有手势、缩放、减速或双击 / 呈现过渡动画在途。
+    /// 外层静止偏移的写回判定用它排除「任何手势或动画在途」的时刻——
+    /// 内层被拖动时外层即便被 UIKit 带偏也不写回，交回 UIKit 自己结算。
+    var isInteractionOrTransitionActive: Bool {
+        pinchIsActive ||
+            isDoubleTapTransitionActive ||
+            isPresentationTransitionActive ||
+            zoomScrollView.isTracking ||
+            zoomScrollView.isDragging ||
+            zoomScrollView.isDecelerating ||
+            zoomScrollView.isZooming
     }
 
     var diagnosticInterfaceVisibility: S2InterfaceVisibility {
@@ -1177,6 +1231,10 @@ final class S2NativeZoomPageController: UIViewController,
     ) {
         loadViewIfNeeded()
         latestConfiguration = configuration
+        // IC-095 R3：`applyPageImmediately` 的 `configure(...)` 用的就是这两个量，
+        // 判定「本页输入是否真的变了」时必须把它们的前值一并比对。
+        let previousViewportSize = latestViewportSize
+        let previousMaximumZoomScale = latestMaximumZoomScale
         latestViewportSize = viewportSize
         latestMaximumZoomScale = max(1, maximumZoomScale)
         doubleTapTargetScale = page.doubleTapTargetScale
@@ -1265,12 +1323,32 @@ final class S2NativeZoomPageController: UIViewController,
             return
         }
 
-        pendingPresentationPage = nil
-        applyPageImmediately(
-            page,
-            configuration: configuration,
-            countsAsPresentationCommit: false
-        )
+        // IC-095 R3：资产、呈现输入、内容版本、视口尺寸与本页 pinchMaxScale 全部未变，
+        // 且首次内容装配已完成时，本次不重建也不重配——`applyPageImmediately` 的每一步
+        // （代次自增、动画清除、rootView 重挂、`configure`、`layoutIfNeeded`）在无变化时
+        // 都是空转，而 rootView 重挂与 `layoutIfNeeded` 正是静止态几何写入的来源。
+        // 原生状态与圆角遮罩仍照常下发，两者自身都是逐项 `!=` 守卫的幂等写入。
+        let pageInputsAreUnchanged = hasAppliedPageImmediately &&
+            sameAsset &&
+            pendingPresentationPage == nil &&
+            !isPresentationTransitionActive &&
+            interfaceVisibility == page.interfaceVisibility &&
+            isFramedPhoto == page.isFramedPhoto &&
+            fittedSize == page.fittedSize &&
+            nativeZoomBaseSize == page.nativeZoomBaseSize &&
+            cornerRadius == page.cornerRadius &&
+            assetPixelSize == page.assetPixelSize &&
+            contentVersion == page.contentVersion &&
+            previousViewportSize == latestViewportSize &&
+            previousMaximumZoomScale == latestMaximumZoomScale
+        if !pageInputsAreUnchanged {
+            pendingPresentationPage = nil
+            applyPageImmediately(
+                page,
+                configuration: configuration,
+                countsAsPresentationCommit: false
+            )
+        }
         let interactionIsActive = pinchIsActive ||
             zoomScrollView.isTracking ||
             zoomScrollView.isDragging ||
@@ -1874,6 +1952,7 @@ final class S2NativeZoomPageController: UIViewController,
         )
         applyCornerMask()
         zoomScrollView.layoutIfNeeded()
+        hasAppliedPageImmediately = true
         if countsAsPresentationCommit {
             presentationGeometryCommitCount += 1
         }
@@ -2362,11 +2441,12 @@ final class S2NativePagerViewController: UIViewController,
 
         settledIndex = machine.currentIndex
         layoutNativePages()
-        if !pagingScrollView.isTracking &&
-            !pagingScrollView.isDragging &&
-            !pagingScrollView.isDecelerating {
+        // IC-095 R2：外层静止偏移只在确已偏离且无任何手势 / 动画在途时写一次。
+        // `layoutNativePages` 已按同一判定写过时这里返回 nil，本次总计仍是一次写入；
+        // 该重排可能改变 `contentSize` 并被 UIKit 反钳偏移，故此处再判一次。
+        if let settledOffset = pendingSettledPagingOffset() {
             writePagingContentOffset(
-                pagingScrollView.contentOffsetForPage(at: settledIndex),
+                settledOffset,
                 animated: false,
                 source: "S2NativePagerViewController.apply"
             )
@@ -2912,9 +2992,99 @@ final class S2NativePagerViewController: UIViewController,
         onLongPress?()
     }
 
+    /// IC-095 R2：`layoutNativePages` 的重排输入。这些量全部相等时，重排的每一步
+    /// 都只会写回与现值相同的几何，因此本次调用整段跳过。
+    private struct S2NativePagerLayoutInputs: Equatable {
+        struct Page: Equatable {
+            let index: Int
+            let assetID: String
+            let fittedSize: CGSize
+            let nativeZoomBaseSize: CGSize
+        }
+
+        let viewportSize: CGSize
+        let itemCount: Int
+        let pageSpacing: CGFloat
+        let currentIndex: Int
+        let scale: CGFloat
+        let viewportOffset: CGSize
+        let pages: [Page]
+    }
+
+    private var lastLayoutInputs: S2NativePagerLayoutInputs?
+
+    private func currentLayoutInputs() -> S2NativePagerLayoutInputs {
+        S2NativePagerLayoutInputs(
+            viewportSize: viewportSize,
+            itemCount: machine?.orderedAssetIDs.count ?? 0,
+            pageSpacing: CGFloat(configuration.pageSpacing),
+            currentIndex: machine?.currentIndex ?? 0,
+            scale: machine?.scale ?? 1,
+            viewportOffset: machine?.viewportOffset ?? .zero,
+            pages: pageControllers.keys.sorted().compactMap { index in
+                guard let controller = pageControllers[index] else {
+                    return nil
+                }
+                return S2NativePagerLayoutInputs.Page(
+                    index: index,
+                    assetID: controller.diagnosticAssetLocalIdentifier,
+                    fittedSize: controller.fittedSize,
+                    nativeZoomBaseSize: controller.nativeZoomBaseSize
+                )
+            }
+        )
+    }
+
+    /// IC-095 R2：外层静止偏移写回的唯一判定入口。返回非 nil 表示「应当写一次」。
+    /// 三个条件同时成立才写，任一不成立就一个字节都不写：
+    /// 1. 外层自身无手势、无减速——`isTracking` / `isDragging` / `isDecelerating` 均为假；
+    /// 2. 没有任何页的内层手势、缩放、减速或双击 / 呈现过渡在途；
+    /// 3. 外层当前偏移确已偏离 `settledIndex` 的静止偏移，差值超过 ε = 0.000001。
+    private func pendingSettledPagingOffset() -> CGPoint? {
+        guard !pagingScrollView.isTracking,
+              !pagingScrollView.isDragging,
+              !pagingScrollView.isDecelerating,
+              !pageControllers.values.contains(
+                  where: \.isInteractionOrTransitionActive
+              ) else {
+            return nil
+        }
+        let settledOffset = pagingScrollView.contentOffsetForPage(
+            at: settledIndex
+        )
+        guard abs(pagingScrollView.contentOffset.x - settledOffset.x) >
+            0.000_001 ||
+            abs(pagingScrollView.contentOffset.y - settledOffset.y) >
+            0.000_001 else {
+            return nil
+        }
+        return settledOffset
+    }
+
     private func layoutNativePages() {
         let previousApplyingState = isApplyingSnapshot
         isApplyingSnapshot = true
+        let inputs = currentLayoutInputs()
+        // IC-095 R2：页集合、视口尺寸、页间距、逐页几何输入与状态机视口状态全部未变时
+        // 不重排——重排的每一步都是几何写入的来源。等待呈现结算的单击页例外：
+        // 该页的布局回调计数与抑制计数必须逐次落实（IC-067 / IC-076 门禁）。
+        if inputs != lastLayoutInputs || pendingPresentationTapPageIndex != nil {
+            layoutNativePagesUnconditionally()
+            lastLayoutInputs = inputs
+        }
+        // 外层静止偏移的偏离判定不在跳过之列：外层可能被 UIKit 带偏而重排输入未变。
+        if let settledOffset = pendingSettledPagingOffset() {
+            transitionDiagnostics?.recordPagingContentOffsetWrite(
+                offsetX: settledOffset.x,
+                animated: false,
+                source: "S2NativePagerViewController.layoutNativePages"
+            )
+            pagingScrollView.contentOffset = settledOffset
+        }
+        isApplyingSnapshot = previousApplyingState
+    }
+
+    private func layoutNativePagesUnconditionally() {
         pagingScrollView.configure(
             viewportSize: viewportSize,
             itemCount: machine?.orderedAssetIDs.count ?? 0,
@@ -2924,6 +3094,12 @@ final class S2NativePagerViewController: UIViewController,
             let pageFrame = pagingScrollView.frameForPage(at: index)
             if controller.view.frame != pageFrame {
                 controller.view.frame = pageFrame
+                transitionDiagnostics?.recordPageFrameWrite(
+                    pageIndex: index,
+                    frame: pageFrame,
+                    assetLocalIdentifier:
+                        controller.diagnosticAssetLocalIdentifier
+                )
             }
             let canApplyNativeState =
                 !controller.isDoubleTapTransitionActive &&
@@ -2958,22 +3134,6 @@ final class S2NativePagerViewController: UIViewController,
                 )
             }
         }
-        if !pagingScrollView.isTracking &&
-            !pagingScrollView.isDragging &&
-            !pagingScrollView.isDecelerating {
-            let settledOffset = pagingScrollView.contentOffsetForPage(
-                at: settledIndex
-            )
-            if pagingScrollView.contentOffset != settledOffset {
-                transitionDiagnostics?.recordPagingContentOffsetWrite(
-                    offsetX: settledOffset.x,
-                    animated: false,
-                    source: "S2NativePagerViewController.layoutNativePages"
-                )
-                pagingScrollView.contentOffset = settledOffset
-            }
-        }
-        isApplyingSnapshot = previousApplyingState
     }
 
     private func captureOuterGestureReading() {
@@ -3856,6 +4016,13 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
 
     private(set) var recordedEntries: [S2OnDeviceTransitionRecord] = []
     private(set) var photoGeometryWriteCount = 0
+    /// IC-095 R1：录制窗口内**实际发生**的几何写入总数。计入六类埋点：
+    /// 外层 `setContentOffset`、页 frame 写入、内层 `setContentOffset`、
+    /// `setZoomScale`、吸附归位写入（四个布尔任一为真时）、照片几何写入。
+    /// 未真正落笔的调用一律不计。`updateUIView` 事件的 `写入任意几何` 由本计数差值得出。
+    private(set) var geometryWriteCount = 0
+    /// IC-095 R1：录制窗口内外层分页容器 `setContentOffset` 的实际写入次数。
+    private(set) var pagingContentOffsetWriteCount = 0
     private weak var controller: S2NativePagerViewController?
     private let clock: () -> CFTimeInterval
     private var recordedScenario: S2OnDeviceTransitionScenario?
@@ -3909,6 +4076,8 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         timeoutWorkItem?.cancel()
         recordedEntries = []
         photoGeometryWriteCount = 0
+        geometryWriteCount = 0
+        pagingContentOffsetWriteCount = 0
         reportText = ""
         recordedScenario = selectedScenario
         let startedAt = clock()
@@ -4060,10 +4229,84 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         animated: Bool,
         source: String
     ) {
+        guard isRecording else {
+            return
+        }
+        geometryWriteCount += 1
+        pagingContentOffsetWriteCount += 1
         recordEvent(
             name: "外层setContentOffset",
             source: source,
             details: "x=\(String(format: "%.6f", Double(offsetX)))；animated=\(animated)"
+        )
+    }
+
+    /// IC-095 R1：外层页容器子视图 frame 的实际写入（`layoutNativePages` 唯一写入点）。
+    func recordPageFrameWrite(
+        pageIndex: Int,
+        frame: CGRect,
+        assetLocalIdentifier: String?
+    ) {
+        guard isRecording else {
+            return
+        }
+        geometryWriteCount += 1
+        recordEvent(
+            name: "页frame写入",
+            source: "S2NativePagerViewController.layoutNativePages",
+            details: "frame=\(S2OnDeviceTransitionText.rect(frame))；" +
+                diagnosticContext(
+                    pageIndex: pageIndex,
+                    assetLocalIdentifier: assetLocalIdentifier
+                )
+        )
+    }
+
+    /// IC-095 R1 补：布局回调里的联合居中写入（`contentInset` 与 `contentOffset` 同帧写入）。
+    func recordJointCenteringWrite(
+        inset: UIEdgeInsets,
+        offset: CGPoint,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        guard isRecording else {
+            return
+        }
+        geometryWriteCount += 1
+        recordEvent(
+            name: "联合居中写入",
+            source: "S2NativeZoomScrollView.applyJointCentering",
+            details: "contentInset=(top=\(S2OnDeviceTransitionText.number(inset.top))," +
+                "left=\(S2OnDeviceTransitionText.number(inset.left))," +
+                "bottom=\(S2OnDeviceTransitionText.number(inset.bottom))," +
+                "right=\(S2OnDeviceTransitionText.number(inset.right)))；" +
+                "contentOffset=\(S2OnDeviceTransitionText.point(offset))；" +
+                diagnosticContext(
+                    pageIndex: pageIndex,
+                    assetLocalIdentifier: assetLocalIdentifier
+                )
+        )
+    }
+
+    /// IC-095 R1：内层缩放容器 `setContentOffset` 的实际写入（`applyNativeState` 的独立写入点）。
+    func recordInnerContentOffsetWrite(
+        offset: CGPoint,
+        source: String,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        guard isRecording else {
+            return
+        }
+        geometryWriteCount += 1
+        recordEvent(
+            name: "内层setContentOffset",
+            source: source,
+            details: "offset=\(S2OnDeviceTransitionText.point(offset))；" +
+                diagnosticContext(
+                    pageIndex: pageIndex,
+                    assetLocalIdentifier: assetLocalIdentifier
+                )
         )
     }
 
@@ -4136,6 +4379,10 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         previousScale: CGFloat,
         source: String
     ) {
+        guard isRecording else {
+            return
+        }
+        geometryWriteCount += 1
         let scaleText = S2OnDeviceTransitionText.number(scale)
         let fromText = S2OnDeviceTransitionText.number(previousScale)
         recordEvent(
@@ -4156,6 +4403,14 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         pageIndex: Int?,
         assetLocalIdentifier: String?
     ) {
+        guard isRecording else {
+            return
+        }
+        // IC-095 R1：本次归位确有落笔时才计入几何写入；四项全假的空转不计。
+        if wroteContentInset || wroteContentSize ||
+            wroteContentOffset || wrotePhotoGeometry {
+            geometryWriteCount += 1
+        }
         let writes = "contentInset=\(wroteContentInset)；" +
             "contentSize=\(wroteContentSize)；" +
             "contentOffset=\(wroteContentOffset)；" +
@@ -4220,11 +4475,15 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         )
     }
 
-    func recordUpdateUIView(wrotePhotoGeometry: Bool) {
+    func recordUpdateUIView(
+        wrotePhotoGeometry: Bool,
+        wroteAnyGeometry: Bool
+    ) {
         recordEvent(
             name: "updateUIView",
             source: "S2NativePhotoPager.updateUIViewController",
-            details: "写入照片几何=\(wrotePhotoGeometry)"
+            details: "写入照片几何=\(wrotePhotoGeometry)；" +
+                "写入任意几何=\(wroteAnyGeometry)"
         )
     }
 
@@ -4267,6 +4526,7 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             return
         }
         photoGeometryWriteCount += 1
+        geometryWriteCount += 1
         append(payload: .event(
             name: "照片几何写入",
             source: reason.rawValue,
@@ -4490,6 +4750,11 @@ enum S2OnDeviceTransitionText {
 
     static func visibility(_ value: S2InterfaceVisibility) -> String {
         value == .visible ? "显示" : "隐藏"
+    }
+
+    /// IC-095 R1：事件 details 复用与逐帧记录相同的点格式。
+    static func point(_ value: CGPoint) -> String {
+        "(x=\(number(value.x)),y=\(number(value.y)))"
     }
 
     static func rect(_ value: CGRect) -> String {
