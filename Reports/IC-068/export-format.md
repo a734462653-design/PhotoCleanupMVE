@@ -112,3 +112,28 @@
   - **资产切换不受限**：请求资产与当前显示资产不同（含首次显示）时判定不介入，降质预览照常先上屏（决策 28 行为不变），因此这种情形只会产生 `图片替换`。
   - 场景 C（捏合起始）的判读因此变为：松手后若导出里出现 `图片替换被抑制`（`candidate` 明显小于 `displayed`）而**没有**对应的降质 `图片替换`，即 IC-090 阶段三定位的闪替已被消除。
 - 关闭录制时该埋点零副作用（仅在 `isRecording` 为真时追加记录）。头部「格式版本=1」未递增。
+
+### 自 IC-095 起的字段与事件追加（格式版本仍为 1）
+
+本节只追加，不修改上文任何既有约定。**逐帧字段一个不加。**
+
+- 既有事件 `event=updateUIView`（来源 `S2NativePhotoPager.updateUIViewController`）的 `details` 追加一个字段，格式变为
+  `写入照片几何=true|false；写入任意几何=true|false`。前一个字段的语义与取值口径不变。
+  - `写入任意几何`：本次 `updateUIViewController` → `apply(...)` 期间录制窗口内**实际发生**的几何写入总数是否增加。
+  - 计入「几何写入」的六类埋点（均以**确有落笔**为准，空转不计）：
+    `外层setContentOffset`、`页frame写入`、`内层setContentOffset`、`setZoomScale`、
+    `吸附归位写入`（`contentInset` / `contentSize` / `contentOffset` / `照片几何` 四个布尔任一为真时）、`照片几何写入`。
+  - 因此 `写入照片几何=true` 必然伴随 `写入任意几何=true`；反之不然。
+- 离散事件新增两类：
+  - `event=页frame写入`，来源 `S2NativePagerViewController.layoutNativePages`，
+    `details=frame=(x=…,y=…,w=…,h=…)；pageIndex=…；assetLocalIdentifier=…`。
+    只在页控制器 `view.frame` 与目标 frame 不等、确实赋值的那一次记录。
+  - `event=内层setContentOffset`，来源 `S2NativeZoomScrollView.applyNativeState`，
+    `details=offset=(x=…,y=…)；pageIndex=…；assetLocalIdentifier=…`。
+    只在 `applyNativeState` 求得的目标偏移与当前偏移之差超过 `0.000001`、确实写入的那一次记录。
+    该写入既有的 `independentContentOffsetWriteCount` 计数口径不变。
+- IC-095 R2/R3 把 `apply` / `layoutNativePages` / `applyPage` 下游的几何写入改为条件化后，
+  静止态的导出中 `外层setContentOffset`、`页frame写入`、`内层setContentOffset`、`照片几何写入`
+  均应为 0 条，`吸附归位写入` 四个布尔应全为 `false`，`updateUIView` 的 `写入任意几何` 应为 `false`。
+  事件族本身一类不删——没有写入就没有对应记录，不是埋点缺失。
+- 关闭录制时以上埋点零副作用（仅在 `isRecording` 为真时追加记录与计数）。头部「格式版本=1」未递增。

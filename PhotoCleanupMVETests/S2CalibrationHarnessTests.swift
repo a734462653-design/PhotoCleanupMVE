@@ -5589,7 +5589,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
             $0.transform = targetTransform
         }
         diagnostics.recordInnerLayoutSubviews()
-        diagnostics.recordUpdateUIView(wrotePhotoGeometry: true)
+        diagnostics.recordUpdateUIView(
+            wrotePhotoGeometry: true,
+            wroteAnyGeometry: true
+        )
         diagnostics.export()
 
         XCTAssertEqual(contentView.transform, targetTransform)
@@ -6772,7 +6775,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let controller = makeNativePagerController(machine: machine)
         diagnostics.attach(controller)
         diagnostics.start()
-        diagnostics.recordUpdateUIView(wrotePhotoGeometry: false)
+        diagnostics.recordUpdateUIView(
+            wrotePhotoGeometry: false,
+            wroteAnyGeometry: false
+        )
         diagnostics.recordInnerLayoutSubviews()
         diagnostics.recordOuterViewDidLayoutSubviews()
         diagnostics.stop()

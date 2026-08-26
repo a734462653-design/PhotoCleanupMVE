@@ -108,8 +108,11 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
         diagnosticsCoordinator.attach(controller)
         transitionDiagnosticsCoordinator.attach(controller)
         controller.imageLoadStateRegistry = imageLoadStateRegistry
-        let geometryWriteCount = transitionDiagnosticsCoordinator
+        let photoWriteCountBefore = transitionDiagnosticsCoordinator
             .photoGeometryWriteCount
+        // IC-095 R1：本次重进是否落笔任何几何，取录制窗口内几何写入总数的差值。
+        let geometryWriteCountBefore = transitionDiagnosticsCoordinator
+            .geometryWriteCount
         controller.apply(
             machine: machine,
             configuration: configuration,
@@ -120,7 +123,9 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
         )
         transitionDiagnosticsCoordinator.recordUpdateUIView(
             wrotePhotoGeometry: transitionDiagnosticsCoordinator
-                .photoGeometryWriteCount > geometryWriteCount
+                .photoGeometryWriteCount > photoWriteCountBefore,
+            wroteAnyGeometry: transitionDiagnosticsCoordinator
+                .geometryWriteCount > geometryWriteCountBefore
         )
     }
 
@@ -3856,6 +3861,13 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
 
     private(set) var recordedEntries: [S2OnDeviceTransitionRecord] = []
     private(set) var photoGeometryWriteCount = 0
+    /// IC-095 R1：录制窗口内**实际发生**的几何写入总数。计入六类埋点：
+    /// 外层 `setContentOffset`、页 frame 写入、内层 `setContentOffset`、
+    /// `setZoomScale`、吸附归位写入（四个布尔任一为真时）、照片几何写入。
+    /// 未真正落笔的调用一律不计。`updateUIView` 事件的 `写入任意几何` 由本计数差值得出。
+    private(set) var geometryWriteCount = 0
+    /// IC-095 R1：录制窗口内外层分页容器 `setContentOffset` 的实际写入次数。
+    private(set) var pagingContentOffsetWriteCount = 0
     private weak var controller: S2NativePagerViewController?
     private let clock: () -> CFTimeInterval
     private var recordedScenario: S2OnDeviceTransitionScenario?
@@ -3909,6 +3921,8 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         timeoutWorkItem?.cancel()
         recordedEntries = []
         photoGeometryWriteCount = 0
+        geometryWriteCount = 0
+        pagingContentOffsetWriteCount = 0
         reportText = ""
         recordedScenario = selectedScenario
         let startedAt = clock()
@@ -4060,10 +4074,58 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         animated: Bool,
         source: String
     ) {
+        guard isRecording else {
+            return
+        }
+        geometryWriteCount += 1
+        pagingContentOffsetWriteCount += 1
         recordEvent(
             name: "外层setContentOffset",
             source: source,
             details: "x=\(String(format: "%.6f", Double(offsetX)))；animated=\(animated)"
+        )
+    }
+
+    /// IC-095 R1：外层页容器子视图 frame 的实际写入（`layoutNativePages` 唯一写入点）。
+    func recordPageFrameWrite(
+        pageIndex: Int,
+        frame: CGRect,
+        assetLocalIdentifier: String?
+    ) {
+        guard isRecording else {
+            return
+        }
+        geometryWriteCount += 1
+        recordEvent(
+            name: "页frame写入",
+            source: "S2NativePagerViewController.layoutNativePages",
+            details: "frame=\(S2OnDeviceTransitionText.rect(frame))；" +
+                diagnosticContext(
+                    pageIndex: pageIndex,
+                    assetLocalIdentifier: assetLocalIdentifier
+                )
+        )
+    }
+
+    /// IC-095 R1：内层缩放容器 `setContentOffset` 的实际写入（`applyNativeState` 的独立写入点）。
+    func recordInnerContentOffsetWrite(
+        offset: CGPoint,
+        source: String,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        guard isRecording else {
+            return
+        }
+        geometryWriteCount += 1
+        recordEvent(
+            name: "内层setContentOffset",
+            source: source,
+            details: "offset=\(S2OnDeviceTransitionText.point(offset))；" +
+                diagnosticContext(
+                    pageIndex: pageIndex,
+                    assetLocalIdentifier: assetLocalIdentifier
+                )
         )
     }
 
@@ -4136,6 +4198,10 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         previousScale: CGFloat,
         source: String
     ) {
+        guard isRecording else {
+            return
+        }
+        geometryWriteCount += 1
         let scaleText = S2OnDeviceTransitionText.number(scale)
         let fromText = S2OnDeviceTransitionText.number(previousScale)
         recordEvent(
@@ -4156,6 +4222,14 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         pageIndex: Int?,
         assetLocalIdentifier: String?
     ) {
+        guard isRecording else {
+            return
+        }
+        // IC-095 R1：本次归位确有落笔时才计入几何写入；四项全假的空转不计。
+        if wroteContentInset || wroteContentSize ||
+            wroteContentOffset || wrotePhotoGeometry {
+            geometryWriteCount += 1
+        }
         let writes = "contentInset=\(wroteContentInset)；" +
             "contentSize=\(wroteContentSize)；" +
             "contentOffset=\(wroteContentOffset)；" +
@@ -4220,11 +4294,15 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         )
     }
 
-    func recordUpdateUIView(wrotePhotoGeometry: Bool) {
+    func recordUpdateUIView(
+        wrotePhotoGeometry: Bool,
+        wroteAnyGeometry: Bool
+    ) {
         recordEvent(
             name: "updateUIView",
             source: "S2NativePhotoPager.updateUIViewController",
-            details: "写入照片几何=\(wrotePhotoGeometry)"
+            details: "写入照片几何=\(wrotePhotoGeometry)；" +
+                "写入任意几何=\(wroteAnyGeometry)"
         )
     }
 
@@ -4267,6 +4345,7 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             return
         }
         photoGeometryWriteCount += 1
+        geometryWriteCount += 1
         append(payload: .event(
             name: "照片几何写入",
             source: reason.rawValue,
@@ -4490,6 +4569,11 @@ enum S2OnDeviceTransitionText {
 
     static func visibility(_ value: S2InterfaceVisibility) -> String {
         value == .visible ? "显示" : "隐藏"
+    }
+
+    /// IC-095 R1：事件 details 复用与逐帧记录相同的点格式。
+    static func point(_ value: CGPoint) -> String {
+        "(x=\(number(value.x)),y=\(number(value.y)))"
     }
 
     static func rect(_ value: CGRect) -> String {
