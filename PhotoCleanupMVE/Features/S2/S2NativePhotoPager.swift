@@ -449,18 +449,31 @@ final class S2NativeZoomScrollView: UIScrollView {
         }
         let nextScale = min(maximumZoomScale, max(minimumZoomScale, scale))
         isApplyingNativeState = true
+        // IC-095 R3：只有本次确有几何落笔才标脏并强制一次布局。无写入时保留
+        // `layoutIfNeeded()`——它只冲刷别处已标脏的待布局，干净时不触发 layoutSubviews。
+        var wroteGeometry = false
         if nextScale > minimumZoomScale + 0.000_001 {
-            prepareNativeZoomGeometry()
+            let wasAtMinimumZoomScale =
+                abs(zoomScale - minimumZoomScale) <= 0.000_001
+            if prepareNativeZoomGeometry(), wasAtMinimumZoomScale {
+                wroteGeometry = true
+            }
             if abs(zoomScale - nextScale) > 0.000_001 {
                 setZoomScale(nextScale, animated: false)
+                wroteGeometry = true
             }
         } else {
             if abs(zoomScale - minimumZoomScale) > 0.000_001 {
                 setZoomScale(minimumZoomScale, animated: false)
+                wroteGeometry = true
             }
-            enforceOneXContentGeometry()
+            if enforceOneXContentGeometry() {
+                wroteGeometry = true
+            }
         }
-        setNeedsLayout()
+        if wroteGeometry {
+            setNeedsLayout()
+        }
         layoutIfNeeded()
         let nextOffset = nextScale > minimumZoomScale + 0.000_001
             ? CGPoint(
@@ -473,6 +486,12 @@ final class S2NativeZoomScrollView: UIScrollView {
         if abs(contentOffset.x - nextOffset.x) > 0.000_001 ||
             abs(contentOffset.y - nextOffset.y) > 0.000_001 {
             independentContentOffsetWriteCount += 1
+            transitionDiagnostics?.recordInnerContentOffsetWrite(
+                offset: nextOffset,
+                source: "S2NativeZoomScrollView.applyNativeState",
+                pageIndex: diagnosticPageIndex,
+                assetLocalIdentifier: diagnosticAssetLocalIdentifier
+            )
             setContentOffset(nextOffset, animated: false)
         }
         isApplyingNativeState = false
@@ -726,15 +745,18 @@ final class S2NativeZoomScrollView: UIScrollView {
         )
     }
 
+    /// IC-095 R3：返回本次是否确有几何落笔。既有的逐项 `!=` 守卫与诊断事件不变，
+    /// 调用方据此决定是否还需要强制一次布局。
+    @discardableResult
     private func enforceOneXContentGeometry(
         diagnosticSource: String = "S2NativeZoomScrollView.enforceOneXContentGeometry"
-    ) {
+    ) -> Bool {
         guard abs(zoomScale - minimumZoomScale) <= 0.000_001 else {
-            return
+            return false
         }
         guard let zoomContentView,
               let presentationContentView else {
-            return
+            return false
         }
         var geometryChanged = false
         // IC-090 R2：仅用于事件 details，不参与任何判定。
@@ -807,6 +829,7 @@ final class S2NativeZoomScrollView: UIScrollView {
             pageIndex: diagnosticPageIndex,
             assetLocalIdentifier: diagnosticAssetLocalIdentifier
         )
+        return geometryChanged
     }
 
     @discardableResult
@@ -1034,6 +1057,9 @@ final class S2NativeZoomPageController: UIViewController,
         configuration: .factoryPlaceholder
     )
     private(set) var nativeScrollPriorityIsConfigured = false
+    /// IC-095 R3：首次内容装配（`applyPageImmediately`）是否已完成。`viewDidLoad` 里的
+    /// `configure` 用的是零视口与倍率 1，未经过一次装配之前不得判定「输入未变」。
+    private var hasAppliedPageImmediately = false
 
     var hasDeferredPresentation: Bool {
         pendingPresentationPage != nil && !isPresentationTransitionActive
@@ -1195,6 +1221,10 @@ final class S2NativeZoomPageController: UIViewController,
     ) {
         loadViewIfNeeded()
         latestConfiguration = configuration
+        // IC-095 R3：`applyPageImmediately` 的 `configure(...)` 用的就是这两个量，
+        // 判定「本页输入是否真的变了」时必须把它们的前值一并比对。
+        let previousViewportSize = latestViewportSize
+        let previousMaximumZoomScale = latestMaximumZoomScale
         latestViewportSize = viewportSize
         latestMaximumZoomScale = max(1, maximumZoomScale)
         doubleTapTargetScale = page.doubleTapTargetScale
@@ -1283,12 +1313,32 @@ final class S2NativeZoomPageController: UIViewController,
             return
         }
 
-        pendingPresentationPage = nil
-        applyPageImmediately(
-            page,
-            configuration: configuration,
-            countsAsPresentationCommit: false
-        )
+        // IC-095 R3：资产、呈现输入、内容版本、视口尺寸与本页 pinchMaxScale 全部未变，
+        // 且首次内容装配已完成时，本次不重建也不重配——`applyPageImmediately` 的每一步
+        // （代次自增、动画清除、rootView 重挂、`configure`、`layoutIfNeeded`）在无变化时
+        // 都是空转，而 rootView 重挂与 `layoutIfNeeded` 正是静止态几何写入的来源。
+        // 原生状态与圆角遮罩仍照常下发，两者自身都是逐项 `!=` 守卫的幂等写入。
+        let pageInputsAreUnchanged = hasAppliedPageImmediately &&
+            sameAsset &&
+            pendingPresentationPage == nil &&
+            !isPresentationTransitionActive &&
+            interfaceVisibility == page.interfaceVisibility &&
+            isFramedPhoto == page.isFramedPhoto &&
+            fittedSize == page.fittedSize &&
+            nativeZoomBaseSize == page.nativeZoomBaseSize &&
+            cornerRadius == page.cornerRadius &&
+            assetPixelSize == page.assetPixelSize &&
+            contentVersion == page.contentVersion &&
+            previousViewportSize == latestViewportSize &&
+            previousMaximumZoomScale == latestMaximumZoomScale
+        if !pageInputsAreUnchanged {
+            pendingPresentationPage = nil
+            applyPageImmediately(
+                page,
+                configuration: configuration,
+                countsAsPresentationCommit: false
+            )
+        }
         let interactionIsActive = pinchIsActive ||
             zoomScrollView.isTracking ||
             zoomScrollView.isDragging ||
@@ -1892,6 +1942,7 @@ final class S2NativeZoomPageController: UIViewController,
         )
         applyCornerMask()
         zoomScrollView.layoutIfNeeded()
+        hasAppliedPageImmediately = true
         if countsAsPresentationCommit {
             presentationGeometryCommitCount += 1
         }
