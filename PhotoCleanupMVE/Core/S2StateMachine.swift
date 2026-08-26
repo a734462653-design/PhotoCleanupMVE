@@ -1158,8 +1158,18 @@ final class S2StateMachine: ObservableObject {
               viewportOffset.height.isFinite else {
             return
         }
-        self.scale = min(pinchMaxScale(for: currentAssetID), max(1, scale))
-        self.viewportOffset = self.scale == 1 ? .zero : viewportOffset
+        // IC-095 R4：等值不发布。钳制后的取值与既有实现逐字相同，只是相同的值不再
+        // 重新赋值一次 @Published——发布出去的值序列与时序不变，非几何订阅者
+        // （徽标、横栏、工作表）读到的状态完全一致；断掉的只是「内层每帧回报同一
+        //  视口 → SwiftUI 重进 → apply → 几何写入 → 布局回调 → 再次回报」的自激环。
+        let nextScale = min(pinchMaxScale(for: currentAssetID), max(1, scale))
+        let nextViewportOffset = nextScale == 1 ? .zero : viewportOffset
+        if self.scale != nextScale {
+            self.scale = nextScale
+        }
+        if self.viewportOffset != nextViewportOffset {
+            self.viewportOffset = nextViewportOffset
+        }
     }
 
     @discardableResult
