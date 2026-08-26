@@ -60,7 +60,10 @@ struct PhotoCleanupMVEApp: App {
                                         onRequestResult:
                                             context.onRequestResult,
                                         onImageReplaced:
-                                            context.onImageReplaced
+                                            context.onImageReplaced,
+                                        onImageReplacementSuppressed:
+                                            context
+                                            .onImageReplacementSuppressed
                                     )
                                 )
                             },

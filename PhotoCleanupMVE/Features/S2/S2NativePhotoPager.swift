@@ -4170,6 +4170,32 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
         )
     }
 
+    /// IC-093 R1：一次被抑制的图片替换（同资产、像素更少，未上屏）。
+    /// 与 `图片替换` 互斥：同一次返回结果只会产生其中一条。
+    func recordImageReplacementSuppressed(
+        assetID: String,
+        resultName: String,
+        displayedPixelSize: CGSize,
+        candidatePixelSize: CGSize
+    ) {
+        let displayed = "displayed=(w=" +
+            S2OnDeviceTransitionText.number(displayedPixelSize.width) +
+            ",h=" +
+            S2OnDeviceTransitionText.number(displayedPixelSize.height) +
+            ")；"
+        let candidate = "candidate=(w=" +
+            S2OnDeviceTransitionText.number(candidatePixelSize.width) +
+            ",h=" +
+            S2OnDeviceTransitionText.number(candidatePixelSize.height) +
+            ")"
+        recordEvent(
+            name: "图片替换被抑制",
+            source: "S2TemporaryPhotoImageView.requestImage",
+            details: "asset=\(assetID)；result=\(resultName)；" +
+                displayed + candidate
+        )
+    }
+
     func recordImageReplacement(_ record: S2ImageReplacementRecord) {
         let widthText = S2OnDeviceTransitionText.number(record.pixelSize.width)
         let heightText = S2OnDeviceTransitionText.number(record.pixelSize.height)

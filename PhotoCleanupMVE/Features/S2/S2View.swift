@@ -56,6 +56,9 @@ struct S2ImageContentContext {
     /// IC-090 R2：请求返回结果与图片替换回调，仅供诊断埋点记录。
     var onRequestResult: (S2ImageRequestResult) -> Void = { _ in }
     var onImageReplaced: (S2ImageRequestResult) -> Void = { _ in }
+    /// IC-093 R1：被抑制的替换回调，仅供诊断埋点记录。
+    var onImageReplacementSuppressed:
+        (S2ImageReplacementSuppressionReading) -> Void = { _ in }
 }
 
 struct S2BottomStripItemPresentation {
@@ -95,6 +98,34 @@ struct S2ConfirmationEntryPresentation: Equatable {
             "s2.confirm.disabled.accessibility",
             replacing: replacements
         )
+    }
+}
+
+/// IC-093 R2（④ Lynn 2026-08-24 选 A）：主图与横栏两处待删标记的**统一渲染**。
+/// `trash.circle.fill` 以 palette 双色渲染——符号白、圆底黑 `circleOpacity`；
+/// **固定色值，不随明暗模式变化**（两模式逐像素相同）。
+///
+/// 规格口径：标记叠在照片内容上，锚定的是内容可读性而不是界面主题，故 v15 回写决策 24
+/// 「全部颜色走语义色」在这两处记例外，随 v16 修订记录。圆底不透明度是④技术负责人取定，
+/// Lynn 真机可修订（H40）；它不是标定参数，不进配置也不进面板。
+///
+/// 本视图只管颜色与符号：尺寸由调用点传入，位置、显示条件、脉冲动画与圆角裁切关系
+/// 全部留在各自调用点，本卡一行未改。
+struct S2PendingDeletionMark: View {
+    static let symbolName = "trash.circle.fill"
+    static let symbolColor = Color.white
+    static let circleOpacity = 0.55
+    static let circleColor = Color.black.opacity(circleOpacity)
+
+    let size: CGFloat
+
+    var body: some View {
+        Image(systemName: Self.symbolName)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(Self.symbolColor, Self.circleColor)
     }
 }
 
@@ -623,6 +654,16 @@ struct S2View: View {
                     )
                     imageLoadStateRegistry.recordImageReplacement(record)
                     transitionDiagnostics.recordImageReplacement(record)
+                },
+                // IC-093 R1：像素更少而未上屏的返回结果只记事件，不改任何登记状态。
+                onImageReplacementSuppressed: {
+                    [transitionDiagnostics] reading in
+                    transitionDiagnostics.recordImageReplacementSuppressed(
+                        assetID: assetID,
+                        resultName: reading.result.diagnosticName,
+                        displayedPixelSize: reading.displayedPixelSize,
+                        candidatePixelSize: reading.candidatePixelSize
+                    )
                 }
             ))
             return S2NativePageContent(
@@ -714,10 +755,8 @@ struct S2View: View {
                 0.000_001,
                 calibration.configuration.markPulseDurationMilliseconds / 2_000
             )
-            Image(systemName: S2PrimaryMarkPresenter.symbolName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: size, height: size)
+            // IC-093 R2：渲染收敛到 `S2PendingDeletionMark`；脉冲、位置、显示条件不变。
+            S2PendingDeletionMark(size: size)
                 .keyframeAnimator(
                     initialValue: CGFloat(1),
                     trigger: primaryMark.pulseID
@@ -2280,10 +2319,9 @@ struct S2BottomStripView: View {
     private func stripMark(for assetID: String) -> some View {
         let mark = markPresentation(for: assetID)
         if mark.isShown {
-            Image(systemName: S2BottomStripMarkPresentation.symbolName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: mark.size, height: mark.size)
+            // IC-093 R2：渲染收敛到 `S2PendingDeletionMark`（白符号 + 半透黑圆底）；
+            // 尺寸、位置、显示条件与圆角裁切关系不变。
+            S2PendingDeletionMark(size: mark.size)
                 .accessibilityHidden(true)
         }
     }

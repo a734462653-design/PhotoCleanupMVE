@@ -8354,9 +8354,12 @@ extension S2CalibrationHarnessTests {
     private func renderStrip(
         markedAssetIDs: Set<String>,
         markSize: CGFloat,
-        // 标记以系统前景色（浅色环境下接近纯黑）渲染，故要观察标记就不能用纯黑内容；
-        // 圆角几何门禁仍用纯黑（0 / 1 覆盖的像素不受内容明度影响）。
-        contentWhite: Double = 0
+        // IC-090：要观察标记就不能用纯黑内容；圆角几何门禁仍用纯黑
+        // （0 / 1 覆盖的像素不受内容明度影响）。
+        // IC-093 R2 起标记为固定双色（白符号 + 半透黑圆底），与环境前景色无关。
+        contentWhite: Double = 0,
+        // IC-093 D1：两个明暗模式下渲染同一份内容，用于逐像素比对。
+        colorScheme: ColorScheme = .light
     ) throws -> StripRender {
         let assetIDs = Self.stripAssetIDs
         let machine = makeMachine(
@@ -8382,6 +8385,7 @@ extension S2CalibrationHarnessTests {
                 strip
             }
             .frame(width: viewport.width, height: viewport.height)
+            .environment(\.colorScheme, colorScheme)
         )
         renderer.scale = CGFloat(Self.stripRenderScale)
         renderer.proposedSize = ProposedViewSize(viewport)
@@ -8659,6 +8663,247 @@ extension S2CalibrationHarnessTests {
         XCTAssertNotNil(firstMarkPixel)
 
         // (c) 框外不做逐像素比较。
+    }
+
+    // IC-093 D1（夹具驱动，真机未覆盖）：横栏待删标记的双色渲染。
+    // 取证只在已标记项目右上 markSize × markSize 框内，且只看「标记前后有差异」的像素——
+    // 框角的背景像素在两次渲染里相同，因此不会被误当成符号或圆底。
+    //   (a) 差异像素里存在亮度 > 200 的 —— 白色符号；
+    //   (b) 差异像素里存在「明显暗于内容但远离纯黑」的 —— 半透明黑圆底（0.55 over 内容）；
+    //   (c) 浅色与深色两个 colorScheme 下，标记框位图逐像素相同 —— 固定色值。
+    // 观感是否合适由 H40 判定。
+    @MainActor
+    func testIC093D1StripMarkIsFixedTwoToneAcrossColorSchemes() throws {
+        let markSize = 14
+        let unmarked = try ic093StripMarkBox(
+            markedAssetIDs: [],
+            markSize: markSize
+        )
+        let light = try ic093StripMarkBox(
+            markedAssetIDs: [Self.stripAssetIDs[0]],
+            markSize: markSize
+        )
+        let dark = try ic093StripMarkBox(
+            markedAssetIDs: [Self.stripAssetIDs[0]],
+            markSize: markSize,
+            colorScheme: .dark
+        )
+        XCTAssertEqual(light.luminances.count, unmarked.luminances.count)
+        XCTAssertGreaterThan(light.contentLuminance, 80)
+        XCTAssertLessThan(light.contentLuminance, 180)
+
+        let differing = zip(light.luminances, unmarked.luminances)
+            .filter { $0.0 != $0.1 }
+            .map(\.0)
+        XCTAssertFalse(differing.isEmpty, "标记框内应有像素因标记而改变")
+        XCTAssertTrue(
+            differing.contains { $0 > 200 },
+            "应有白色符号像素：差异像素最亮=\(differing.max() ?? -1)"
+        )
+        XCTAssertTrue(
+            differing.contains {
+                $0 > 20 && $0 < light.contentLuminance - 20
+            },
+            "应有半透明暗色圆底像素：内容=\(light.contentLuminance)、" +
+                "差异像素最暗=\(differing.min() ?? -1)"
+        )
+        XCTAssertEqual(
+            light.luminances,
+            dark.luminances,
+            "标记框在浅色与深色下逐像素相同"
+        )
+
+        // D3：标记所在的右上角仍被圆角裁掉（与 IC-090 G181(a) 同判据，换新颜色后仍成立）。
+        for offset in 0...1 {
+            XCTAssertTrue(
+                light.isBackgroundAtTopTrailingDiagonal(offset: offset),
+                "标记角 diag=\(offset) 应为背景"
+            )
+        }
+    }
+
+    // IC-093 D2（夹具驱动，真机未覆盖）：主图标记与横栏标记是同一个渲染视图，
+    // 判据与 D1 相同。主图标记在 `S2View` 的浮层里，位置 / 脉冲 / 显示条件不在本断言内
+    // （既有断言覆盖），此处渲染两处共用的 `S2PendingDeletionMark` 本身。
+    @MainActor
+    func testIC093D2PrimaryMarkIsFixedTwoToneAcrossColorSchemes() throws {
+        // 两处调用点用的是同一个符号常量与同一个渲染视图。
+        XCTAssertEqual(
+            S2PrimaryMarkPresenter.symbolName,
+            S2PendingDeletionMark.symbolName
+        )
+        XCTAssertEqual(
+            S2BottomStripMarkPresentation.symbolName,
+            S2PendingDeletionMark.symbolName
+        )
+        XCTAssertEqual(S2PendingDeletionMark.circleOpacity, 0.55, accuracy: 0.000_001)
+
+        let size = S2PrimaryMarkPresenter.markSize(
+            bottomStripMarkSize: S2CalibrationConfiguration
+                .factoryPlaceholder.bottomStripMarkSize
+        )
+        let light = try ic093PrimaryMarkLuminances(size: size)
+        let dark = try ic093PrimaryMarkLuminances(
+            size: size,
+            colorScheme: .dark
+        )
+        let contentLuminance = 128
+
+        XCTAssertTrue(
+            light.contains { $0 > 200 },
+            "应有白色符号像素：最亮=\(light.max() ?? -1)"
+        )
+        XCTAssertTrue(
+            light.contains { $0 > 20 && $0 < contentLuminance - 20 },
+            "应有半透明暗色圆底像素：最暗=\(light.min() ?? -1)"
+        )
+        XCTAssertEqual(light, dark, "主图标记在浅色与深色下逐像素相同")
+    }
+
+    // IC-093 R1：`图片替换被抑制` 事件的 details 原文；关闭录制时零副作用。
+    func testIC093SuppressedReplacementEventDetails() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.selectedScenario = .pinchStart
+        diagnostics.start()
+        diagnostics.recordImageReplacementSuppressed(
+            assetID: "asset-2",
+            resultName: "degradedPreview",
+            displayedPixelSize: CGSize(width: 3_060, height: 4_080),
+            candidatePixelSize: CGSize(width: 90, height: 120)
+        )
+        diagnostics.stop()
+        diagnostics.export()
+
+        XCTAssertTrue(diagnostics.reportText.contains(
+            "event=图片替换被抑制" +
+                "\tsource=S2TemporaryPhotoImageView.requestImage" +
+                "\tdetails=asset=asset-2；result=degradedPreview；" +
+                "displayed=(w=3060.000000,h=4080.000000)；" +
+                "candidate=(w=90.000000,h=120.000000)"
+        ))
+
+        let countAfterStop = diagnostics.recordedEntries.count
+        diagnostics.recordImageReplacementSuppressed(
+            assetID: "x",
+            resultName: "y",
+            displayedPixelSize: .zero,
+            candidatePixelSize: .zero
+        )
+        XCTAssertEqual(diagnostics.recordedEntries.count, countAfterStop)
+    }
+
+    // MARK: - IC-093 标记位图夹具
+
+    private struct IC093MarkBox {
+        let luminances: [Int]
+        let side: Int
+        let contentLuminance: Int
+        private let cornerIsBackground: [Bool]
+
+        init(
+            luminances: [Int],
+            side: Int,
+            contentLuminance: Int,
+            cornerIsBackground: [Bool]
+        ) {
+            self.luminances = luminances
+            self.side = side
+            self.contentLuminance = contentLuminance
+            self.cornerIsBackground = cornerIsBackground
+        }
+
+        func isBackgroundAtTopTrailingDiagonal(offset: Int) -> Bool {
+            guard cornerIsBackground.indices.contains(offset) else {
+                return false
+            }
+            return cornerIsBackground[offset]
+        }
+    }
+
+    /// IC-093 D1：取索引 0 项目右上 `markSize × markSize` 框的亮度阵列（行优先）。
+    /// 内容用中灰（`Color(white: 0.5)`），这样白符号、半透黑圆底、内容三者互相区分得开。
+    @MainActor
+    private func ic093StripMarkBox(
+        markedAssetIDs: Set<String>,
+        markSize: Int,
+        colorScheme: ColorScheme = .light
+    ) throws -> IC093MarkBox {
+        let scale = Self.stripRenderScale
+        let render = try renderStrip(
+            markedAssetIDs: markedAssetIDs,
+            markSize: CGFloat(markSize),
+            contentWhite: 0.5,
+            colorScheme: colorScheme
+        )
+        let frame = render.frames[0]
+        let minX = Int(frame.minX) * scale
+        let maxX = Int(frame.maxX) * scale - 1
+        let minY = Int(frame.minY) * scale
+        let width = Int(frame.width) * scale
+        let height = Int(frame.height) * scale
+        let side = markSize * scale
+        XCTAssertLessThanOrEqual(side, width)
+        XCTAssertLessThanOrEqual(side, height)
+
+        var luminances: [Int] = []
+        luminances.reserveCapacity(side * side)
+        for dy in 0..<side {
+            for dx in (width - side)..<width {
+                luminances.append(
+                    render.bitmap.luminance(x: minX + dx, y: minY + dy)
+                )
+            }
+        }
+        let contentLuminance = render.bitmap.luminance(
+            x: minX + width / 2,
+            y: minY + height - side / 2
+        )
+        let corners = (0...1).map { offset in
+            render.bitmap.isBackground(x: maxX - offset, y: minY + offset)
+        }
+        return IC093MarkBox(
+            luminances: luminances,
+            side: side,
+            contentLuminance: contentLuminance,
+            cornerIsBackground: corners
+        )
+    }
+
+    /// IC-093 D2：把两处共用的 `S2PendingDeletionMark` 单独渲染在中灰底上。
+    @MainActor
+    private func ic093PrimaryMarkLuminances(
+        size: CGFloat,
+        colorScheme: ColorScheme = .light
+    ) throws -> [Int] {
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color(white: 0.5)
+                S2PendingDeletionMark(size: size)
+            }
+            .frame(width: size, height: size)
+            .environment(\.colorScheme, colorScheme)
+        )
+        renderer.scale = CGFloat(Self.stripRenderScale)
+        renderer.proposedSize = ProposedViewSize(
+            CGSize(width: size, height: size)
+        )
+        let cgImage = try XCTUnwrap(renderer.cgImage)
+        let bitmap = try S2StripBitmap(cgImage: cgImage)
+        var luminances: [Int] = []
+        luminances.reserveCapacity(bitmap.width * bitmap.height)
+        for y in 0..<bitmap.height {
+            for x in 0..<bitmap.width {
+                luminances.append(bitmap.luminance(x: x, y: y))
+            }
+        }
+        return luminances
     }
 
     // IC-085 G162：旧版持久化数据缺新键时按出厂值补齐；含新键时往返一致。

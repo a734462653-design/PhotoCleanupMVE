@@ -29,6 +29,45 @@ enum S2ImageRequestResult: Equatable {
 
 }
 
+/// IC-093 R1（④ Lynn 2026-08-24 选 C；v16 对决策 28 的补句）：**同一资产**已有已显示
+/// 图像时，像素更少的返回结果不上屏——消除捏合松手 / 双击后「清晰 → 糊 → 清晰」的闪替
+/// （`Reports/IC-090/phase3-pinch-end-analysis.md`：`degradedPreview 90×120` @+10.71 ms
+/// 顶掉了已显示的 `finalImage 3060×4080`，几何逐帧差分全零，抖动来自图像本身）。
+///
+/// **资产切换不受限**：请求资产与当前显示资产不同（含首次显示）时不介入，决策 28 的
+/// 首次加载行为一字不动。本规则只判「返回结果是否上屏」，不碰请求尺寸、发起时机与节流。
+enum S2ImageUpgradeDecision {
+    /// 像素尺寸 = 点尺寸 × `scale`。PhotoKit 返回的图 `scale` 恒为 1，两者数值相同；
+    /// 夹具用 `scale ≠ 1` 的图时以本式为准。
+    static func pixelSize(of image: UIImage) -> CGSize {
+        CGSize(
+            width: image.size.width * image.scale,
+            height: image.size.height * image.scale
+        )
+    }
+
+    /// `displayedPixelSize` 为 nil 表示当前没有同资产的已显示图像（首次显示或资产切换），
+    /// 此时一律放行。否则按像素面积（宽 × 高）比较，候选不低于在显示的才放行。
+    static func shouldReplaceDisplayedImage(
+        displayedPixelSize: CGSize?,
+        candidatePixelSize: CGSize
+    ) -> Bool {
+        guard let displayedPixelSize else {
+            return true
+        }
+        let displayedArea = displayedPixelSize.width * displayedPixelSize.height
+        let candidateArea = candidatePixelSize.width * candidatePixelSize.height
+        return candidateArea + 0.000_001 >= displayedArea
+    }
+}
+
+/// IC-093 R1：一次被抑制的图片替换的度量，仅供诊断埋点；`assetID` 由上层补。
+struct S2ImageReplacementSuppressionReading: Equatable {
+    let result: S2ImageRequestResult
+    let displayedPixelSize: CGSize
+    let candidatePixelSize: CGSize
+}
+
 protocol S2PhotoImageRequesting: AnyObject {
     @discardableResult
     func requestImage(
@@ -141,6 +180,9 @@ struct S2TemporaryPhotoImageView: View {
     var onRequestResult: (S2ImageRequestResult) -> Void = { _ in }
     /// IC-090 R2：真正发生图片替换时回调（`shouldDisplay` 通过且有图），仅供诊断埋点。
     var onImageReplaced: (S2ImageRequestResult) -> Void = { _ in }
+    /// IC-093 R1：因像素更少而未上屏时回调，仅供诊断埋点。
+    var onImageReplacementSuppressed:
+        (S2ImageReplacementSuppressionReading) -> Void = { _ in }
 
     @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
@@ -303,6 +345,33 @@ struct S2TemporaryPhotoImageView: View {
                     strategy: activeStrategy
                 ) else {
                     return
+                }
+                // IC-093 R1：同一资产已有已显示图像时，像素更少的结果不上屏——
+                // 不改 `image`、不改加载态（此刻已是 `.displayed`）、不发替换回调。
+                // 资产不同（含首次显示）时 `displayedImage` 为 nil，判定不介入。
+                let candidatePixelSize = S2ImageUpgradeDecision.pixelSize(
+                    of: nextImage
+                )
+                let displayedImage = displayedAssetID == requestedAssetID
+                    ? image
+                    : nil
+                if let displayedImage {
+                    let displayedPixelSize = S2ImageUpgradeDecision.pixelSize(
+                        of: displayedImage
+                    )
+                    guard S2ImageUpgradeDecision.shouldReplaceDisplayedImage(
+                        displayedPixelSize: displayedPixelSize,
+                        candidatePixelSize: candidatePixelSize
+                    ) else {
+                        onImageReplacementSuppressed(
+                            S2ImageReplacementSuppressionReading(
+                                result: result,
+                                displayedPixelSize: displayedPixelSize,
+                                candidatePixelSize: candidatePixelSize
+                            )
+                        )
+                        return
+                    }
                 }
                 image = nextImage
                 displayedAssetID = requestedAssetID
