@@ -384,6 +384,16 @@ final class S2NativeZoomScrollView: UIScrollView {
             contentOffset = nextOffset
             changed = true
         }
+        // IC-095 R1 补：联合居中是布局回调里唯一的几何写入点，此前无埋点。
+        // 只在确有落笔时记录，静止态不产生任何记录。
+        if changed {
+            transitionDiagnostics?.recordJointCenteringWrite(
+                inset: nextInset,
+                offset: nextOffset,
+                pageIndex: diagnosticPageIndex,
+                assetLocalIdentifier: diagnosticAssetLocalIdentifier
+            )
+        }
         return changed
     }
 
@@ -4245,6 +4255,32 @@ final class S2OnDeviceTransitionDiagnosticsCoordinator: NSObject,
             name: "页frame写入",
             source: "S2NativePagerViewController.layoutNativePages",
             details: "frame=\(S2OnDeviceTransitionText.rect(frame))；" +
+                diagnosticContext(
+                    pageIndex: pageIndex,
+                    assetLocalIdentifier: assetLocalIdentifier
+                )
+        )
+    }
+
+    /// IC-095 R1 补：布局回调里的联合居中写入（`contentInset` 与 `contentOffset` 同帧写入）。
+    func recordJointCenteringWrite(
+        inset: UIEdgeInsets,
+        offset: CGPoint,
+        pageIndex: Int?,
+        assetLocalIdentifier: String?
+    ) {
+        guard isRecording else {
+            return
+        }
+        geometryWriteCount += 1
+        recordEvent(
+            name: "联合居中写入",
+            source: "S2NativeZoomScrollView.applyJointCentering",
+            details: "contentInset=(top=\(S2OnDeviceTransitionText.number(inset.top))," +
+                "left=\(S2OnDeviceTransitionText.number(inset.left))," +
+                "bottom=\(S2OnDeviceTransitionText.number(inset.bottom))," +
+                "right=\(S2OnDeviceTransitionText.number(inset.right)))；" +
+                "contentOffset=\(S2OnDeviceTransitionText.point(offset))；" +
                 diagnosticContext(
                     pageIndex: pageIndex,
                     assetLocalIdentifier: assetLocalIdentifier
