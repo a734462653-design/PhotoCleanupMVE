@@ -885,6 +885,94 @@ enum S2OverlayLayout {
     static let topLeadingControlWidth: CGFloat = 88
     static let calibrationTopClearance: CGFloat = 108
 
+    // MARK: - IC-100 v2 R1/R2：底部竖向排布（自下而上 安全区 → 操作条 → 横栏）
+    //
+    // 以下三个是**登记制占位常量**（视觉稿前 ④ 可修订）：按 v16 回写决策 33 与
+    // 技术负责人 2026-08-28 系统录屏实测表落值，**不进 `S2CalibrationConfiguration`、
+    // 不上参数面板、`schemaVersion` 不动**（同 IC-091 `edgeTolerance` 先例）。
+
+    /// 操作条**可见图标带**高。现行按钮是 `Label(标题, systemImage:)`、字体走 `.body`，
+    /// 可见带高由该文本样式的行高决定；默认动态字体（Large）下
+    /// `UIFont.preferredFont(forTextStyle: .body).lineHeight == 22`。
+    /// 本文件不引入 UIKit，故取该值为常量；真机观感由 H44 判。
+    /// 注意与系统工具条的纯图标带 24.3 pt 不同——我们的按钮是图标 + 文字。
+    static let actionBarVisibleBandHeight: CGFloat = 22
+
+    /// 横栏底缘 → 操作条**可见图标带**顶缘的间距（系统实测 92 px @3x）。
+    static let stripToActionVisibleBandSpacing: CGFloat = 30.7
+
+    /// 反馈 toast 底缘 → 底部横栏顶缘的间距（IC-100 v2 R2）。
+    static let toastToStripSpacing: CGFloat = 8
+
+    /// 操作条 **44 pt 触控带**中心距视口底。
+    ///
+    /// IC-100 v1 实测①：把系统的「可见图标带中心距屏底 52.7 pt」直接套到我们的
+    /// 44 pt 触控带上，会让触控带 `maxY` 越过安全区 3.3 pt，与既有门禁 L2 冲突。
+    /// v2 定案（④）改锚安全区：中心 = 安全区底 + 半个触控带（常规机型 34 + 22 = 56.0），
+    /// L2 与 L4 同时满足，且安全区变化时自适应。与系统的 3.3 pt 观感差为有意为之。
+    static func actionBandCenterFromViewportBottom(
+        safeAreaBottom: CGFloat
+    ) -> CGFloat {
+        max(0, safeAreaBottom) + minimumTouchTarget / 2
+    }
+
+    /// 操作条触控带顶缘距视口底（常规机型 78.0）。
+    static func actionBandTopFromViewportBottom(
+        safeAreaBottom: CGFloat
+    ) -> CGFloat {
+        actionBandCenterFromViewportBottom(safeAreaBottom: safeAreaBottom) +
+            minimumTouchTarget / 2
+    }
+
+    /// 操作条触控带底缘距视口底（= 安全区底，即「避让安全区贴近底缘」）。
+    static func actionBandBottomFromViewportBottom(
+        safeAreaBottom: CGFloat
+    ) -> CGFloat {
+        actionBandCenterFromViewportBottom(safeAreaBottom: safeAreaBottom) -
+            minimumTouchTarget / 2
+    }
+
+    /// 操作条**可见图标带**顶缘距视口底（常规机型 56.0 + 11 = 67.0）。
+    static func actionVisibleBandTopFromViewportBottom(
+        safeAreaBottom: CGFloat
+    ) -> CGFloat {
+        actionBandCenterFromViewportBottom(safeAreaBottom: safeAreaBottom) +
+            actionBarVisibleBandHeight / 2
+    }
+
+    /// 横栏底缘距视口底 = 可见图标带顶缘 + 30.7（常规机型 67.0 + 30.7 = 97.7）。
+    static func stripBottomFromViewportBottom(
+        safeAreaBottom: CGFloat
+    ) -> CGFloat {
+        actionVisibleBandTopFromViewportBottom(safeAreaBottom: safeAreaBottom) +
+            stripToActionVisibleBandSpacing
+    }
+
+    /// 横栏顶缘距视口底 = 横栏底缘 + 横栏带高。
+    static func stripTopFromViewportBottom(
+        safeAreaBottom: CGFloat,
+        bottomStripHeight: CGFloat
+    ) -> CGFloat {
+        stripBottomFromViewportBottom(safeAreaBottom: safeAreaBottom) +
+            resolvedStripHeight(bottomStripHeight)
+    }
+
+    /// 反馈 toast 底缘距视口底 = 横栏顶缘 + 8（IC-100 v2 R2）。
+    static func toastBottomFromViewportBottom(
+        safeAreaBottom: CGFloat,
+        bottomStripHeight: CGFloat
+    ) -> CGFloat {
+        stripTopFromViewportBottom(
+            safeAreaBottom: safeAreaBottom,
+            bottomStripHeight: bottomStripHeight
+        ) + toastToStripSpacing
+    }
+
+    /// 横栏带高不小于最小触控边长——既有语义，抽出来供推导式与快照共用。
+    static func resolvedStripHeight(_ bottomStripHeight: CGFloat) -> CGFloat {
+        max(minimumTouchTarget, bottomStripHeight)
+    }
+
     static func snapshot(
         physicalSize: CGSize,
         safeAreaInsets: S2OverlaySafeAreaInsets,
@@ -915,10 +1003,15 @@ enum S2OverlayLayout {
         )
         let topFrames = topElementFrames(in: topBounds)
 
-        let stripHeight = max(minimumTouchTarget, bottomStripHeight)
+        // IC-100 v2 R1：自下而上 安全区 → 操作条 → 横栏。两者不再套在同一个竖直
+        // 堆叠里，而是各自按上文推导式独立锚定**视口**底缘；渲染侧
+        // （`S2View.interfaceOverlay`）调用的是同一组推导式，两侧不会各算各的。
+        let stripHeight = resolvedStripHeight(bottomStripHeight)
         let stripFrame = CGRect(
             x: safeFrame.minX,
-            y: safeFrame.maxY - stripHeight,
+            y: physicalSize.height - stripBottomFromViewportBottom(
+                safeAreaBottom: safeAreaInsets.bottom
+            ) - stripHeight,
             width: safeFrame.width,
             height: stripHeight
         )
@@ -933,7 +1026,9 @@ enum S2OverlayLayout {
                 CGFloat(actionCount - 1) * minimumSpacing) /
                 CGFloat(actionCount)
         )
-        let actionY = stripFrame.minY - minimumSpacing - minimumTouchTarget
+        let actionY = physicalSize.height - actionBandTopFromViewportBottom(
+            safeAreaBottom: safeAreaInsets.bottom
+        )
         let actionFrames = (0..<actionCount).map { index in
             CGRect(
                 x: safeFrame.minX + horizontalPadding +

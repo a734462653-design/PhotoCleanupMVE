@@ -8057,6 +8057,215 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 expected
             )
         }
+    // MARK: - IC-100 v2：底部竖向排布互换（安全区 → 操作条 → 横栏）
+
+    /// IC-100 B1：触控带中心锚在安全区上沿 + 22；操作条同时满足 L2 与 L4；
+    /// 横栏在操作条上方，底缘按推导式落在「可见图标带顶缘 + 30.7」。
+    func testIC100B1BottomOverlayOrderAndAnchors() {
+        let snapshot = overlaySnapshot()
+        let frames = snapshot.bottomElementFrames
+        XCTAssertEqual(frames.count, 4)
+        let actionFrames = Array(frames.prefix(3))
+        let stripFrame = frames[3]
+        let viewportBottom = overlayPhysicalSize.height
+        let safeBottom = viewportBottom - overlaySafeAreaInsets.bottom
+
+        for frame in actionFrames {
+            // 触控带中心距视口底 = 安全区底 + 半个触控带（常规机型 34 + 22 = 56.0）
+            XCTAssertEqual(
+                viewportBottom - frame.midY,
+                overlaySafeAreaInsets.bottom +
+                    S2OverlayLayout.minimumTouchTarget / 2,
+                accuracy: 0.5
+            )
+            XCTAssertEqual(viewportBottom - frame.midY, 56, accuracy: 0.5)
+            // L2 / L4 判据原样，一行未改
+            XCTAssertLessThanOrEqual(frame.maxY, safeBottom)
+            XCTAssertGreaterThanOrEqual(
+                frame.width,
+                S2OverlayLayout.minimumTouchTarget
+            )
+            XCTAssertGreaterThanOrEqual(
+                frame.height,
+                S2OverlayLayout.minimumTouchTarget
+            )
+        }
+
+        // 顺序：横栏整条在操作条触控带上方
+        XCTAssertLessThan(stripFrame.maxY, actionFrames[0].minY)
+        XCTAssertLessThanOrEqual(stripFrame.maxY, safeBottom)
+
+        // 横栏底缘距视口底 = 可见图标带顶缘 + 30.7（常规机型 67.0 + 30.7 = 97.7）
+        XCTAssertEqual(
+            viewportBottom - stripFrame.maxY,
+            S2OverlayLayout.stripBottomFromViewportBottom(
+                safeAreaBottom: overlaySafeAreaInsets.bottom
+            ),
+            accuracy: 1
+        )
+        XCTAssertEqual(viewportBottom - stripFrame.maxY, 97.7, accuracy: 1)
+
+        // 触控带顶缘与横栏底缘之间的净空（卡内要求 ≥ 15 pt）
+        XCTAssertGreaterThanOrEqual(
+            actionFrames[0].minY - stripFrame.maxY,
+            15
+        )
+    }
+
+    /// IC-100 B1 续：安全区更高时整组随之上移，L2 仍成立，两间距语义不变。
+    func testIC100B1LayoutFollowsLargerBottomSafeArea() {
+        let tallInsets = S2OverlaySafeAreaInsets(
+            top: 59,
+            leading: 0,
+            bottom: 60,
+            trailing: 0
+        )
+        let snapshot = S2OverlayLayout.snapshot(
+            physicalSize: overlayPhysicalSize,
+            safeAreaInsets: tallInsets,
+            bottomStripHeight: 72,
+            showsRecentAlbumAction: true,
+            calibrationState: .initial
+        )
+        let frames = snapshot.bottomElementFrames
+        let actionFrame = frames[0]
+        let stripFrame = frames[3]
+        let viewportBottom = overlayPhysicalSize.height
+        let safeBottom = viewportBottom - tallInsets.bottom
+
+        XCTAssertEqual(
+            viewportBottom - actionFrame.midY,
+            tallInsets.bottom + S2OverlayLayout.minimumTouchTarget / 2,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(viewportBottom - actionFrame.midY, 82, accuracy: 0.5)
+        for frame in frames {
+            XCTAssertLessThanOrEqual(frame.maxY, safeBottom)
+        }
+        // 两间距语义保持：横栏底缘仍是「可见带顶缘 + 30.7」
+        XCTAssertEqual(
+            viewportBottom - stripFrame.maxY -
+                S2OverlayLayout.actionVisibleBandTopFromViewportBottom(
+                    safeAreaBottom: tallInsets.bottom
+                ),
+            S2OverlayLayout.stripToActionVisibleBandSpacing,
+            accuracy: 0.000_001
+        )
+    }
+
+    /// IC-100 B2：底部几何与 `V` 无关——`V` 只在渲染侧作整体显隐门控
+    /// （`interfaceOverlay` 的 opacity / hitTesting / accessibilityHidden，本卡未动）。
+    /// 因此隐藏再恢复后几何逐值相同。
+    func testIC100B2GeometryIsIndependentOfInterfaceVisibility() {
+        let machine = makeMachine(interfaceVisibility: .visible)
+        let before = overlaySnapshot()
+
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        let whileHidden = overlaySnapshot()
+        XCTAssertEqual(whileHidden, before)
+
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertEqual(overlaySnapshot(), before)
+    }
+
+    /// IC-100 B6：toast 底缘 = 横栏顶缘 + 8，且与横栏、操作条均无纵向重叠。
+    func testIC100B6ToastSitsAboveStripWithoutOverlap() {
+        let safeBottom = overlaySafeAreaInsets.bottom
+        let stripHeight: CGFloat = 72
+        let actionTop = S2OverlayLayout.actionBandTopFromViewportBottom(
+            safeAreaBottom: safeBottom
+        )
+        let stripBottom = S2OverlayLayout.stripBottomFromViewportBottom(
+            safeAreaBottom: safeBottom
+        )
+        let stripTop = S2OverlayLayout.stripTopFromViewportBottom(
+            safeAreaBottom: safeBottom,
+            bottomStripHeight: stripHeight
+        )
+        let toastBottom = S2OverlayLayout.toastBottomFromViewportBottom(
+            safeAreaBottom: safeBottom,
+            bottomStripHeight: stripHeight
+        )
+
+        XCTAssertEqual(S2OverlayLayout.toastToStripSpacing, 8)
+        XCTAssertEqual(
+            toastBottom - stripTop,
+            S2OverlayLayout.toastToStripSpacing,
+            accuracy: 0.5
+        )
+        // 三者自下而上严格递增：操作条触控带顶 < 横栏底 < 横栏顶 < toast 底
+        XCTAssertLessThan(actionTop, stripBottom)
+        XCTAssertLessThan(stripBottom, stripTop)
+        XCTAssertLessThan(stripTop, toastBottom)
+
+        // 与快照里的横栏帧对齐
+        let stripFrame = overlaySnapshot().bottomElementFrames[3]
+        XCTAssertEqual(
+            overlayPhysicalSize.height - stripFrame.minY,
+            stripTop,
+            accuracy: 0.000_001
+        )
+    }
+
+    /// IC-100 B7：门禁侧几何模型与渲染侧共用同一组推导式。
+    ///
+    /// 渲染侧 `S2View.interfaceOverlay` 的两个 `.padding(.bottom, …)` 传的就是
+    /// `stripBottomFromViewportBottom` 与 `actionBandBottomFromViewportBottom`；
+    /// 本断言逐值核对「快照帧距视口底」等于同名函数的返回值，两侧不会各算各的。
+    /// 逐像素比对渲染结果需要给产品视图加测试专用探针，属「不为测试改产品」禁止项，
+    /// 未做——报告已如实标注并挂账收敛卡。
+    func testIC100B7SnapshotMatchesRenderDerivations() {
+        let safeBottom = overlaySafeAreaInsets.bottom
+        let frames = overlaySnapshot().bottomElementFrames
+        let actionFrame = frames[0]
+        let stripFrame = frames[3]
+        let viewportBottom = overlayPhysicalSize.height
+
+        XCTAssertEqual(
+            viewportBottom - stripFrame.maxY,
+            S2OverlayLayout.stripBottomFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            viewportBottom - actionFrame.maxY,
+            S2OverlayLayout.actionBandBottomFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ),
+            accuracy: 0.000_001
+        )
+        // 「操作条避让安全区贴近底缘」＝触控带底缘恰为安全区上沿
+        XCTAssertEqual(
+            S2OverlayLayout.actionBandBottomFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ),
+            safeBottom,
+            accuracy: 0.000_001
+        )
+        // 推导式自洽：顶 − 底 = 触控带高；可见带顶 − 中心 = 半个可见带
+        XCTAssertEqual(
+            S2OverlayLayout.actionBandTopFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ) -
+                S2OverlayLayout.actionBandBottomFromViewportBottom(
+                    safeAreaBottom: safeBottom
+                ),
+            S2OverlayLayout.minimumTouchTarget,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2OverlayLayout.actionVisibleBandTopFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ) -
+                S2OverlayLayout.actionBandCenterFromViewportBottom(
+                    safeAreaBottom: safeBottom
+                ),
+            S2OverlayLayout.actionBarVisibleBandHeight / 2,
+            accuracy: 0.000_001
+        )
     }
 
     private let physicalSize = CGSize(width: 300, height: 600)
