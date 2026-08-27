@@ -240,6 +240,16 @@ final class CleanupCoordinator: ObservableObject {
         loadedAssets[assetID]?.mediaSubtypes.contains(.photoScreenshot) == true
     }
 
+    /// IC-099 阶段二 R1：当前资产的拍摄日期（顶部信息区主行）。
+    func s2AssetCreationDate(for assetID: String) -> Date? {
+        loadedAssets[assetID]?.creationDate
+    }
+
+    /// IC-099 阶段二 R4：占用空间取数实现。构造时快照一份 `loadedAssets`。
+    func makeS2AssetVolumeProvider() -> S2AssetVolumeProviding {
+        AssetVolumeService(assets: loadedAssets)
+    }
+
     /// IC-099b R2：字节数探针的取数实现。按下按钮时才现造，
     /// 构造时快照一份 `loadedAssets`，取数期间不再回到主线程读协调器状态。
     func makeS2AssetSizeProber() -> S2AssetSizeProbing {

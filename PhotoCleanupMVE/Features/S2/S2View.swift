@@ -375,6 +375,10 @@ struct S2View: View {
         S2AlbumReference
     ) -> Void
     private let photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback
+    /// IC-099 阶段二 R1：当前资产的拍摄日期。未接线时主行不显示。
+    private let assetCreationDate: (String) -> Date?
+    /// IC-099 阶段二 R4：占用空间取数实现。未接线时副行只显示序号。
+    private let assetVolumeProvider: S2AssetVolumeProviding?
     /// IC-099b R2：字节数探针的取数实现。未接线（nil）时探针按钮禁用。
     /// 用现成对象而不是工厂闭包：闭包体是非隔离的，在里面调 `@MainActor` 的
     /// 协调器方法会触发隔离检查；由 App 层在自身的主线程上下文里造好传进来。
@@ -391,6 +395,8 @@ struct S2View: View {
     @StateObject private var primaryMark: S2PrimaryMarkPresenter
     /// IC-099b R2：字节数探针。**只在面板按钮触发时才取数**；未接线时按钮不可用。
     @StateObject private var assetSizeProbe = S2AssetSizeProbeCoordinator()
+    /// IC-099 阶段二 R4：占用空间的会话级缓存与异步取数管线。随本视图释放。
+    @StateObject private var assetVolumeStore = S2AssetVolumeStore()
     @StateObject private var feedbackToast: S2FeedbackToastPresenter
 
     init(
@@ -399,6 +405,8 @@ struct S2View: View {
         assetAspectRatio: @escaping (String) -> CGFloat,
         assetIsScreenshot: @escaping (String) -> Bool = { _ in false },
         assetPixelSize: @escaping (String) -> CGSize = { _ in .zero },
+        assetCreationDate: @escaping (String) -> Date? = { _ in nil },
+        assetVolumeProvider: S2AssetVolumeProviding? = nil,
         assetSizeProber: S2AssetSizeProbing? = nil,
         photoContent: @escaping PhotoContent,
         stripItemContent: @escaping StripItemContent,
@@ -434,6 +442,8 @@ struct S2View: View {
         self.onRecentAlbumRequest = onRecentAlbumRequest
         self.onAlbumPickerSelection = onAlbumPickerSelection
         self.photoSwitchHapticFeedback = photoSwitchHapticFeedback
+        self.assetCreationDate = assetCreationDate
+        self.assetVolumeProvider = assetVolumeProvider
         self.assetSizeProber = assetSizeProber
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
@@ -815,15 +825,8 @@ struct S2View: View {
             )
             .contentShape(Rectangle())
 
-            Text(L10n.text(
-                "s2.top.position",
-                replacing: [
-                    "current": String(machine.currentIndex + 1),
-                    "total": String(machine.orderedAssetIDs.count)
-                ]
-            ))
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            topInfoArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Button {
                 guard let payload = machine.makeExitPayload() else {
@@ -847,6 +850,46 @@ struct S2View: View {
             .contentShape(Rectangle())
         }
         .disabled(machine.touchSequenceOwner != .none)
+    }
+
+    /// IC-099 阶段二 R2（v16 回写决策 35）：顶部中部信息区两行——
+    /// 主行为当前资产拍摄日期（无拍摄日期时整行不显示，④ 卡内取定），
+    /// 副行为「{当前序号}/{总数} · {占用空间}」；占用空间未就绪或取数失败时
+    /// 副行退化为「{当前序号}/{总数}」，不显示占位符。
+    ///
+    /// 字体 / 字号 / 颜色是**视觉稿前占位样式**（系统 `.caption` / `.caption2` +
+    /// 语义色），不进标定参数、不进规格，见报告「占位值登记」。
+    private var topInfoArea: some View {
+        VStack(spacing: 0) {
+            if let dateText = S2TopBarInfoPresentation.dateText(
+                creationDate: assetCreationDate(machine.currentAssetID),
+                now: Date()
+            ) {
+                Text(verbatim: dateText)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+            Text(verbatim: S2TopBarInfoPresentation.subtitleText(
+                currentIndex: machine.currentIndex,
+                totalCount: machine.orderedAssetIDs.count,
+                byteCount: assetVolumeStore.byteCount(
+                    for: machine.currentAssetID
+                )
+            ))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+        .task(id: machine.currentAssetID) {
+            guard let assetVolumeProvider else {
+                return
+            }
+            assetVolumeStore.requestIfNeeded(
+                assetID: machine.currentAssetID,
+                using: assetVolumeProvider
+            )
+        }
     }
 
     private var confirmationEntry: S2ConfirmationEntryPresentation {
