@@ -8057,6 +8057,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 expected
             )
         }
+    }
     // MARK: - IC-100 v2：底部竖向排布互换（安全区 → 操作条 → 横栏）
 
     /// IC-100 B1：触控带中心锚在安全区上沿 + 22；操作条同时满足 L2 与 L4；
