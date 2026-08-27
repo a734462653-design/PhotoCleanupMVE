@@ -472,7 +472,14 @@ struct S2View: View {
                     safeAreaInsets: safeAreaInsets
                 )
 
-                feedbackToastOverlay(safeAreaInsets: safeAreaInsets)
+                feedbackToastOverlay(
+                    bottomInset: S2OverlayLayout
+                        .toastBottomFromViewportBottom(
+                            safeAreaBottom: safeAreaInsets.bottom,
+                            bottomStripHeight: viewportMetrics
+                                .bottomStripHeight
+                        )
+                )
 
                 S2SafeAreaInsetsReader(insets: $safeAreaInsets)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -523,7 +530,9 @@ struct S2View: View {
             albumSheet
                 .disabled(machine.isActionInFlight(.albumPicker))
                 .overlay(alignment: .bottom) {
-                    feedbackToastOverlay(safeAreaInsets: .zero)
+                    feedbackToastOverlay(
+                        bottomInset: S2OverlayLayout.minimumSpacing
+                    )
                 }
                 .interactiveDismissDisabled(
                     !calibration.configuration.animationsEnabled ||
@@ -534,9 +543,13 @@ struct S2View: View {
 
     /// 底部短 toast：不接收点击、不遮挡手势；`P=呈现` 时同一呈现器也叠加在 sheet 底部，
     /// 使 sheet 内的写入失败反馈可见。
+    /// IC-100 v2 R2：落位改由调用方给出「底缘距容器底」的量。
+    /// 主屏幕传 `S2OverlayLayout.toastBottomFromViewportBottom(...)`（横栏顶缘 + 8），
+    /// 与操作条、横栏均无纵向重叠；sheet 内仍是紧贴底缘的 `minimumSpacing`，
+    /// 与 IC-100 前逐字相同（改前该处传 `.zero` 安全区，落值同为 8）。
     @ViewBuilder
     private func feedbackToastOverlay(
-        safeAreaInsets: S2OverlaySafeAreaInsets
+        bottomInset: CGFloat
     ) -> some View {
         if let event = feedbackToast.activeEvent {
             Text(S2FeedbackToastPresenter.text(for: event.kind))
@@ -544,10 +557,7 @@ struct S2View: View {
                 .padding(.horizontal, S2OverlayLayout.minimumSpacing * 2)
                 .padding(.vertical, S2OverlayLayout.minimumSpacing)
                 .background(.regularMaterial, in: Capsule())
-                .padding(
-                    .bottom,
-                    safeAreaInsets.bottom + S2OverlayLayout.minimumSpacing
-                )
+                .padding(.bottom, bottomInset)
                 .frame(
                     maxWidth: .infinity,
                     maxHeight: .infinity,
@@ -697,44 +707,65 @@ struct S2View: View {
         bottomStripHeight: CGFloat,
         safeAreaInsets: S2OverlaySafeAreaInsets
     ) -> some View {
-        VStack(spacing: 0) {
-            topBar
-                .frame(height: S2OverlayLayout.topBarHeight)
-                .background(.regularMaterial)
-
-            Spacer(minLength: S2OverlayLayout.minimumSpacing)
-
-            VStack(spacing: S2OverlayLayout.minimumSpacing) {
-                actionBar
-                    .padding(
-                        .horizontal,
-                        S2OverlayLayout.horizontalPadding
-                    )
+        // IC-100 v2 R1：底部竖向顺序自下而上改为 系统安全区 → 常驻操作条 → 底部横栏。
+        // 两个底部浮层不再套在同一个竖直堆叠里，而是各自按
+        // `S2OverlayLayout` 的推导式独立锚定**视口**底缘；
+        // `S2OverlayLayout.snapshot`（门禁侧几何模型）调用的是同一组函数，
+        // 两侧不会各算各的（R3 双真相同步）。
+        ZStack(alignment: .bottom) {
+            // 顶部信息区：几何与 IC-100 前逐字相同（只受顶部安全区约束）。
+            VStack(spacing: 0) {
+                topBar
+                    .frame(height: S2OverlayLayout.topBarHeight)
                     .background(.regularMaterial)
 
-                S2BottomStripView(
-                    machine: machine,
-                    metrics: machine.parameters.bottomStripMetrics,
-                    markSize: CGFloat(
-                        calibration.configuration.bottomStripMarkSize
-                    ),
-                    itemContent: stripItemContent,
-                    assetAspectRatio: assetAspectRatio,
-                    onPhotoSwitch: {
-                        photoSwitchHapticFeedback.notify(
-                            isEnabled: calibration.configuration
-                                .hapticOnPhotoSwitch,
-                            source: .bottomStripDrag
-                        )
-                    }
-                )
-                .frame(height: bottomStripHeight)
-                .background(.regularMaterial)
+                Spacer(minLength: S2OverlayLayout.minimumSpacing)
             }
+            .padding(.top, safeAreaInsets.top)
+
+            S2BottomStripView(
+                machine: machine,
+                metrics: machine.parameters.bottomStripMetrics,
+                markSize: CGFloat(
+                    calibration.configuration.bottomStripMarkSize
+                ),
+                itemContent: stripItemContent,
+                assetAspectRatio: assetAspectRatio,
+                onPhotoSwitch: {
+                    photoSwitchHapticFeedback.notify(
+                        isEnabled: calibration.configuration
+                            .hapticOnPhotoSwitch,
+                        source: .bottomStripDrag
+                    )
+                }
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: bottomStripHeight)
+            .background(.regularMaterial)
+            .padding(
+                .bottom,
+                S2OverlayLayout.stripBottomFromViewportBottom(
+                    safeAreaBottom: safeAreaInsets.bottom
+                )
+            )
+
+            // 触控带底缘恰为安全区上沿——「避让安全区贴近底缘」，
+            // 且满足既有门禁 L2（底部元素不进入主屏幕指示条区域）。
+            actionBar
+                .padding(
+                    .horizontal,
+                    S2OverlayLayout.horizontalPadding
+                )
+                .frame(maxWidth: .infinity)
+                .background(.regularMaterial)
+                .padding(
+                    .bottom,
+                    S2OverlayLayout.actionBandBottomFromViewportBottom(
+                        safeAreaBottom: safeAreaInsets.bottom
+                    )
+                )
         }
-        .padding(.top, safeAreaInsets.top)
         .padding(.leading, safeAreaInsets.leading)
-        .padding(.bottom, safeAreaInsets.bottom)
         .padding(.trailing, safeAreaInsets.trailing)
     }
 
