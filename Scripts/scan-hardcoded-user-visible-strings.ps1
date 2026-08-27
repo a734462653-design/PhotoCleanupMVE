@@ -155,12 +155,22 @@ foreach ($file in $swiftFiles) {
             }
             $isLockedVolumeFormat = $relativePath -eq "PhotoCleanupMVE/Core/S3StateMachine.swift" -and
                 ($value.EndsWith(" GB") -or $value.EndsWith(" MB"))
+            $isLockedAssetVolumeFormat = $relativePath -eq "PhotoCleanupMVE/Features/S2/S2AssetVolumeFormatter.swift" -and
+                ($value.EndsWith(" KB") -or $value.EndsWith(" MB") -or $value.EndsWith(" GB"))
             if ($isLockedVolumeFormat) {
                 $specExemptions.Add([PSCustomObject]@{
                     Path = $relativePath
                     LineNumber = $lineNumber
                     Value = $value
                     Reason = "十进制 MB/GB 向下截断由规格锁定，本卡禁止本地化改造"
+                })
+            }
+            elseif ($isLockedAssetVolumeFormat) {
+                $specExemptions.Add([PSCustomObject]@{
+                    Path = $relativePath
+                    LineNumber = $lineNumber
+                    Value = $value
+                    Reason = "S2 单张 KB/MB/GB 向下截断由规格锁定，禁止本地化改造"
                 })
             }
             elseif ($catalogKeys -notcontains $value) {
