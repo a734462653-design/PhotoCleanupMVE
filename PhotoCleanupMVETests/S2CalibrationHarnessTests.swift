@@ -7536,6 +7536,273 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
+    // MARK: - IC-099b P2 / P3：字节数探针（纯函数与零副作用）
+
+    private func makeProbeMeasurement(
+        assetID: String = "ABCDEFGH-1234-5678",
+        mediaKind: S2AssetSizeProbeMediaKind = .photo,
+        isEdited: Bool = false,
+        urlByteCount: Int64? = 2_466_000,
+        urlFailure: S2AssetSizeProbeFailure? = nil,
+        urlElapsedMilliseconds: Double = 3.214,
+        dataByteCount: Int64? = 2_400_000,
+        dataFailure: S2AssetSizeProbeFailure? = nil,
+        dataElapsedMilliseconds: Double = 14.081
+    ) -> S2AssetSizeProbeMeasurement {
+        S2AssetSizeProbeMeasurement(
+            assetID: assetID,
+            mediaKind: mediaKind,
+            isEdited: isEdited,
+            urlByteCount: urlByteCount,
+            urlFailure: urlFailure,
+            urlElapsedMilliseconds: urlElapsedMilliseconds,
+            dataByteCount: dataByteCount,
+            dataFailure: dataFailure,
+            dataElapsedMilliseconds: dataElapsedMilliseconds
+        )
+    }
+
+    /// IC-099b P2：行格式化按卡内九列原样拼装，两途径都成功时差值为实测差。
+    func testIC099bP2ProbeRowRendersNineColumnsInOrder() {
+        let measurement = makeProbeMeasurement(isEdited: true)
+        XCTAssertEqual(measurement.byteDelta, 66_000)
+        XCTAssertEqual(
+            S2AssetSizeProbeText.row(measurement),
+            "ABCDEFGH｜照片｜已编辑=是｜URL字节=2466000｜数据字节=2400000｜" +
+                "差值=66000｜URL耗时=3.21ms｜数据耗时=14.08ms｜失败原因=无"
+        )
+        XCTAssertEqual(
+            S2AssetSizeProbeText.row(measurement)
+                .components(separatedBy: "｜").count,
+            9
+        )
+    }
+
+    /// IC-099b P2：任一途径失败时该列与差值都是 `nil`，失败原因逐条列出。
+    func testIC099bP2ProbeRowRendersFailuresAndNilColumns() {
+        let urlFailed = makeProbeMeasurement(
+            assetID: "IJKLMNOPQR",
+            mediaKind: .video,
+            urlByteCount: nil,
+            urlFailure: .notLocal,
+            urlElapsedMilliseconds: 120.5,
+            dataByteCount: 13_612_393,
+            dataElapsedMilliseconds: 18.03
+        )
+        XCTAssertNil(urlFailed.byteDelta)
+        XCTAssertEqual(
+            S2AssetSizeProbeText.row(urlFailed),
+            "IJKLMNOP｜视频｜已编辑=否｜URL字节=nil｜数据字节=13612393｜" +
+                "差值=nil｜URL耗时=120.50ms｜数据耗时=18.03ms｜" +
+                "失败原因=URL:资源不在本地"
+        )
+
+        let bothFailed = makeProbeMeasurement(
+            assetID: "STUVWXYZ00",
+            mediaKind: .livePhoto,
+            urlByteCount: nil,
+            urlFailure: .noURL,
+            urlElapsedMilliseconds: 0,
+            dataByteCount: nil,
+            dataFailure: .requestFailed,
+            dataElapsedMilliseconds: 0
+        )
+        XCTAssertEqual(
+            S2AssetSizeProbeText.row(bothFailed),
+            "STUVWXYZ｜LivePhoto｜已编辑=否｜URL字节=nil｜数据字节=nil｜" +
+                "差值=nil｜URL耗时=0.00ms｜数据耗时=0.00ms｜" +
+                "失败原因=URL:无可用URL，数据:请求失败"
+        )
+    }
+
+    /// IC-099b P2：失败原因枚举齐全——七个分支各有互不相同的非空文案，
+    /// 且每一个都能在行文本里原样出现。
+    func testIC099bP2ProbeFailureReasonsAreCompleteAndDistinct() {
+        XCTAssertEqual(S2AssetSizeProbeFailure.allCases.count, 7)
+        XCTAssertEqual(S2AssetSizeProbeMediaKind.allCases.count, 3)
+
+        var names = Set<String>()
+        for failure in S2AssetSizeProbeFailure.allCases {
+            XCTAssertFalse(failure.displayName.isEmpty, failure.rawValue)
+            names.insert(failure.displayName)
+            let row = S2AssetSizeProbeText.row(makeProbeMeasurement(
+                urlByteCount: nil,
+                urlFailure: failure
+            ))
+            XCTAssertTrue(
+                row.contains("失败原因=URL:" + failure.displayName),
+                row
+            )
+        }
+        XCTAssertEqual(names.count, S2AssetSizeProbeFailure.allCases.count)
+
+        var kindNames = Set<String>()
+        for kind in S2AssetSizeProbeMediaKind.allCases {
+            XCTAssertFalse(kind.displayName.isEmpty, kind.rawValue)
+            kindNames.insert(kind.displayName)
+        }
+        XCTAssertEqual(
+            kindNames.count,
+            S2AssetSizeProbeMediaKind.allCases.count
+        )
+    }
+
+    /// IC-099b P2：汇总行给出两途径成功率、逐类样本数、已编辑数与差值非零行数。
+    func testIC099bP2ProbeSummaryCountsSuccessKindsAndDeltas() {
+        let measurements = [
+            makeProbeMeasurement(assetID: "AAAAAAAA"),
+            makeProbeMeasurement(
+                assetID: "BBBBBBBB",
+                mediaKind: .video,
+                isEdited: true,
+                urlByteCount: nil,
+                urlFailure: .notLocal
+            ),
+            makeProbeMeasurement(
+                assetID: "CCCCCCCC",
+                mediaKind: .livePhoto,
+                urlByteCount: 1_000,
+                dataByteCount: 1_000
+            )
+        ]
+        let summary = S2AssetSizeProbeText.summary(measurements)
+        XCTAssertTrue(
+            summary.contains("URL途径成功=2/3（66.7%）"),
+            summary
+        )
+        XCTAssertTrue(
+            summary.contains("数据途径成功=3/3（100.0%）"),
+            summary
+        )
+        XCTAssertTrue(
+            summary.contains("照片=1｜LivePhoto=1｜视频=1"),
+            summary
+        )
+        XCTAssertTrue(summary.contains("已编辑样本=1"), summary)
+        // 第一条差值 66000 非零；第二条 URL 失败不计；第三条差值 0 不计。
+        XCTAssertTrue(
+            summary.contains("两途径均成功且差值非零=1"),
+            summary
+        )
+        XCTAssertTrue(
+            summary.contains("失败原因分布：URL:资源不在本地=1"),
+            summary
+        )
+    }
+
+    /// IC-099b P2：头部声明列清单与样本／上限，超出上限时注明只取前 N 个。
+    func testIC099bP2ProbeHeaderDeclaresColumnsAndLimitNote() {
+        let within = S2AssetSizeProbeText.header(
+            sampleCount: 12,
+            totalCount: 12,
+            limit: 60
+        )
+        XCTAssertTrue(within.contains("格式版本=1"), within)
+        XCTAssertTrue(
+            within.contains("列=" + S2AssetSizeProbeText.columns),
+            within
+        )
+        XCTAssertTrue(
+            within.contains("样本数=12；范围内资产总数=12；上限=60"),
+            within
+        )
+        XCTAssertFalse(within.contains("只取前"), within)
+
+        let truncated = S2AssetSizeProbeText.header(
+            sampleCount: 60,
+            totalCount: 128,
+            limit: 60
+        )
+        XCTAssertTrue(truncated.contains("只取前 60 个"), truncated)
+    }
+
+    /// IC-099b P3：探针未被触发时零副作用——不取数、不出报告、不进运行态。
+    func testIC099bP3ProbeIsInertUntilExplicitlyRun() {
+        let prober = CountingAssetSizeProber()
+        let coordinator = S2AssetSizeProbeCoordinator()
+
+        XCTAssertFalse(coordinator.isRunning)
+        XCTAssertTrue(coordinator.reportText.isEmpty)
+        XCTAssertTrue(coordinator.progressText.isEmpty)
+        XCTAssertTrue(coordinator.measurements.isEmpty)
+        XCTAssertFalse(coordinator.canExport)
+        XCTAssertEqual(prober.measureCount, 0)
+
+        // 空范围同样不启动：不置运行态、不发起任何取数。
+        coordinator.run(assetIDs: [], using: prober)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertFalse(coordinator.isRunning)
+        XCTAssertTrue(coordinator.reportText.isEmpty)
+        XCTAssertEqual(prober.measureCount, 0)
+    }
+
+    /// IC-099b P3：显式运行后逐资产串行取数一次，报告含头部、每行与汇总。
+    func testIC099bP3ProbeRunMeasuresEachAssetOnceAndBuildsReport() {
+        let prober = CountingAssetSizeProber()
+        let coordinator = S2AssetSizeProbeCoordinator()
+        let assetIDs = ["asset-1", "asset-2", "asset-3"]
+
+        coordinator.run(assetIDs: assetIDs, using: prober)
+        let deadline = Date(timeIntervalSinceNow: 2)
+        while coordinator.isRunning, Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+
+        XCTAssertFalse(coordinator.isRunning)
+        XCTAssertEqual(prober.measureCount, assetIDs.count)
+        XCTAssertEqual(prober.requestedAssetIDs, assetIDs)
+        XCTAssertEqual(coordinator.measurements.count, assetIDs.count)
+        XCTAssertTrue(coordinator.canExport)
+        XCTAssertEqual(
+            coordinator.progressText,
+            S2AssetSizeProbeText.progress(finished: 3, total: 3)
+        )
+        for assetID in assetIDs {
+            XCTAssertTrue(
+                coordinator.reportText.contains(
+                    S2AssetSizeProbeText.identifierPrefix(assetID)
+                ),
+                assetID
+            )
+        }
+        XCTAssertTrue(
+            coordinator.reportText.contains("格式版本=1"),
+            coordinator.reportText
+        )
+        XCTAssertTrue(
+            coordinator.reportText.contains("汇总｜逐类样本数："),
+            coordinator.reportText
+        )
+    }
+
+    /// IC-099b P3：范围超过上限时只取前 60 个，并在头部注明总数。
+    func testIC099bP3ProbeStopsAtAssetLimitAndNotesTotal() {
+        let prober = CountingAssetSizeProber()
+        let coordinator = S2AssetSizeProbeCoordinator()
+        let assetIDs = (1...70).map { "asset-\($0)" }
+
+        XCTAssertEqual(S2AssetSizeProbeCoordinator.assetLimit, 60)
+        coordinator.run(assetIDs: assetIDs, using: prober)
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while coordinator.isRunning, Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+
+        XCTAssertFalse(coordinator.isRunning)
+        XCTAssertEqual(prober.measureCount, 60)
+        XCTAssertEqual(coordinator.measurements.count, 60)
+        XCTAssertTrue(
+            coordinator.reportText.contains(
+                "样本数=60；范围内资产总数=70；上限=60"
+            ),
+            coordinator.reportText
+        )
+        XCTAssertTrue(
+            coordinator.reportText.contains("只取前 60 个"),
+            coordinator.reportText
+        )
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
     private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(
@@ -8238,6 +8505,30 @@ final class S2CalibrationHarnessTests: XCTestCase {
             fatalError("测试无法继续")
         }
         return value
+    }
+}
+
+/// IC-099b P3：计数用的假取数实现。只记录被问过哪些资产，不做任何 IO。
+private final class CountingAssetSizeProber: S2AssetSizeProbing {
+    private(set) var requestedAssetIDs: [String] = []
+
+    var measureCount: Int {
+        requestedAssetIDs.count
+    }
+
+    func measure(assetID: String) async -> S2AssetSizeProbeMeasurement {
+        requestedAssetIDs.append(assetID)
+        return S2AssetSizeProbeMeasurement(
+            assetID: assetID,
+            mediaKind: .photo,
+            isEdited: false,
+            urlByteCount: 1_000_000,
+            urlFailure: nil,
+            urlElapsedMilliseconds: 1,
+            dataByteCount: 1_000_000,
+            dataFailure: nil,
+            dataElapsedMilliseconds: 2
+        )
     }
 }
 

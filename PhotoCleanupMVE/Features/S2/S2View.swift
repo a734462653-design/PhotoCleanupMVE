@@ -375,6 +375,8 @@ struct S2View: View {
         S2AlbumReference
     ) -> Void
     private let photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback
+    /// IC-099b R2：调试面板按下时现造一个取数实现；未接线（nil）时探针按钮禁用。
+    private let makeAssetSizeProber: (() -> S2AssetSizeProbing)?
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
@@ -385,6 +387,8 @@ struct S2View: View {
     @StateObject private var transitionDiagnostics:
         S2OnDeviceTransitionDiagnosticsCoordinator
     @StateObject private var primaryMark: S2PrimaryMarkPresenter
+    /// IC-099b R2：字节数探针。**只在面板按钮触发时才取数**；未接线时按钮不可用。
+    @StateObject private var assetSizeProbe = S2AssetSizeProbeCoordinator()
     @StateObject private var feedbackToast: S2FeedbackToastPresenter
 
     init(
@@ -405,6 +409,7 @@ struct S2View: View {
             S2AlbumReference
         ) -> Void = { _, _ in },
         photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback = .live,
+        makeAssetSizeProber: (() -> S2AssetSizeProbing)? = nil,
         geometryDiagnostics: S2GeometryDiagnosticsCoordinator =
             S2GeometryDiagnosticsCoordinator(),
         transitionDiagnostics: S2OnDeviceTransitionDiagnosticsCoordinator =
@@ -427,6 +432,7 @@ struct S2View: View {
         self.onRecentAlbumRequest = onRecentAlbumRequest
         self.onAlbumPickerSelection = onAlbumPickerSelection
         self.photoSwitchHapticFeedback = photoSwitchHapticFeedback
+        self.makeAssetSizeProber = makeAssetSizeProber
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
             wrappedValue: transitionDiagnostics
@@ -1277,6 +1283,37 @@ struct S2View: View {
                     }
                     .s2MinimumTouchTarget()
                     Text(verbatim: transitionDiagnostics.reportText)
+                        .font(.system(.caption2, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+                // IC-099b R2：字节数探针。只量当前范围内资产的字节数并生成可复制文本，
+                // 不改任何产品行为、不写持久化、不碰图片请求策略。
+                Divider()
+                Text(L10n.text("s2.calibration.asset_size_probe.title"))
+                Button(L10n.text("s2.calibration.asset_size_probe.start")) {
+                    guard let makeAssetSizeProber else {
+                        return
+                    }
+                    assetSizeProbe.run(
+                        assetIDs: machine.orderedAssetIDs,
+                        using: makeAssetSizeProber()
+                    )
+                }
+                .disabled(
+                    makeAssetSizeProber == nil || assetSizeProbe.isRunning
+                )
+                .s2MinimumTouchTarget()
+                if assetSizeProbe.isRunning {
+                    ProgressView(assetSizeProbe.progressText)
+                }
+                if !assetSizeProbe.reportText.isEmpty {
+                    ShareLink(item: assetSizeProbe.reportText) {
+                        Text(L10n.text(
+                            "s2.calibration.asset_size_probe.share"
+                        ))
+                    }
+                    .s2MinimumTouchTarget()
+                    Text(verbatim: assetSizeProbe.reportText)
                         .font(.system(.caption2, design: .monospaced))
                         .textSelection(.enabled)
                 }

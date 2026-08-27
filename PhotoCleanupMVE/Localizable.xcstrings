@@ -606,6 +606,39 @@
         }
       }
     },
+    "s2.calibration.asset_size_probe.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\u5206\u4eab\u5b57\u8282\u6570\u63a2\u9488\u62a5\u544a"
+          }
+        }
+      }
+    },
+    "s2.calibration.asset_size_probe.start" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\u8fd0\u884c\u5b57\u8282\u6570\u63a2\u9488"
+          }
+        }
+      }
+    },
+    "s2.calibration.asset_size_probe.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\u5b57\u8282\u6570\u63a2\u9488\uff08IC-099b\uff09"
+          }
+        }
+      }
+    },
     "s2.calibration.core_gesture_hint" : {
       "extractionState" : "manual",
       "localizations" : {

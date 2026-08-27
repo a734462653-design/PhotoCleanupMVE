@@ -4948,3 +4948,296 @@ enum S2AssetVolumeFormatter {
         return "\(tenths / 10).\(tenths % 10) \(suffix)"
     }
 }
+
+// MARK: - IC-099b R2：字节数探针（仅诊断，零产品行为）
+
+/// 探针的资产类别。
+enum S2AssetSizeProbeMediaKind: String, CaseIterable, Sendable {
+    case photo
+    case livePhoto
+    case video
+
+    var displayName: String {
+        switch self {
+        case .photo:
+            return "照片"
+        case .livePhoto:
+            return "LivePhoto"
+        case .video:
+            return "视频"
+        }
+    }
+}
+
+/// 单条取数的失败原因。两条途径共用同一套枚举；P2 断言逐项覆盖。
+enum S2AssetSizeProbeFailure: String, CaseIterable, Sendable {
+    /// 本地没有登记这个资产（S2 范围与相册状态不一致）。
+    case assetUnavailable
+    /// 资产没有可用的主资源（`PHAssetResource.assetResources(for:)` 为空或类型不匹配）。
+    case resourceUnavailable
+    /// 请求返回错误。
+    case requestFailed
+    /// 请求被系统取消。
+    case cancelled
+    /// 资源只在 iCloud，禁网络时取不到。
+    case notLocal
+    /// 请求成功但没有可用的文件 URL（已编辑视频的合成资产没有单一 URL 即此类）。
+    case noURL
+    /// 拿到 URL 但读文件属性失败。
+    case fileAttributeUnavailable
+
+    var displayName: String {
+        switch self {
+        case .assetUnavailable:
+            return "资产不可用"
+        case .resourceUnavailable:
+            return "无主资源"
+        case .requestFailed:
+            return "请求失败"
+        case .cancelled:
+            return "请求被取消"
+        case .notLocal:
+            return "资源不在本地"
+        case .noURL:
+            return "无可用URL"
+        case .fileAttributeUnavailable:
+            return "文件属性不可读"
+        }
+    }
+}
+
+/// 一个资产上两条途径的取数结果。纯数据，不含任何 PhotoKit 类型。
+struct S2AssetSizeProbeMeasurement: Equatable, Sendable {
+    let assetID: String
+    let mediaKind: S2AssetSizeProbeMediaKind
+    let isEdited: Bool
+    /// URL 途径：照片 `fullSizeImageURL`、视频 `AVURLAsset.url` 的文件属性字节。
+    let urlByteCount: Int64?
+    let urlFailure: S2AssetSizeProbeFailure?
+    let urlElapsedMilliseconds: Double
+    /// 数据途径：主资源 `requestData` 流式累加字节（语义基准，仅探针内使用）。
+    let dataByteCount: Int64?
+    let dataFailure: S2AssetSizeProbeFailure?
+    let dataElapsedMilliseconds: Double
+
+    /// 两途径都成功时的差值（URL − 数据）。已编辑资产上非零即语义差的实测值。
+    var byteDelta: Int64? {
+        guard let urlByteCount, let dataByteCount else {
+            return nil
+        }
+        return urlByteCount - dataByteCount
+    }
+}
+
+/// 取数接口。产品侧只有调试面板按钮会调用它；PhotoKit 实现在 `Services/` 层。
+protocol S2AssetSizeProbing: AnyObject {
+    func measure(assetID: String) async -> S2AssetSizeProbeMeasurement
+}
+
+/// 探针报告的全部文本拼装。纯函数，P2 直接断言。
+enum S2AssetSizeProbeText {
+    static let formatVersion = 1
+    static let columns =
+        "assetID前8位｜类型｜是否已编辑｜URL字节｜数据字节｜差值｜" +
+        "URL耗时｜数据耗时｜失败原因"
+
+    static func identifierPrefix(_ assetID: String) -> String {
+        String(assetID.prefix(8))
+    }
+
+    static func row(_ measurement: S2AssetSizeProbeMeasurement) -> String {
+        [
+            identifierPrefix(measurement.assetID),
+            measurement.mediaKind.displayName,
+            "已编辑=" + boolText(measurement.isEdited),
+            "URL字节=" + optionalCount(measurement.urlByteCount),
+            "数据字节=" + optionalCount(measurement.dataByteCount),
+            "差值=" + optionalCount(measurement.byteDelta),
+            "URL耗时=" + milliseconds(measurement.urlElapsedMilliseconds),
+            "数据耗时=" + milliseconds(measurement.dataElapsedMilliseconds),
+            "失败原因=" + failureText(measurement)
+        ].joined(separator: "｜")
+    }
+
+    static func header(sampleCount: Int, totalCount: Int, limit: Int) -> String {
+        var lines = [
+            "IC-099b 字节数探针",
+            "格式版本=\(formatVersion)",
+            "列=" + columns,
+            "URL途径=照片 requestContentEditingInput→fullSizeImageURL 文件属性；" +
+                "视频 requestAVAsset→AVURLAsset.url 文件属性（均禁网络）",
+            "数据途径=主资源 requestData 流式累加（禁网络），仅探针内使用",
+            "样本数=\(sampleCount)；范围内资产总数=\(totalCount)；上限=\(limit)"
+        ]
+        if totalCount > sampleCount {
+            lines.append("注：范围内资产超过上限，只取前 \(sampleCount) 个")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    static func summary(
+        _ measurements: [S2AssetSizeProbeMeasurement]
+    ) -> String {
+        let total = measurements.count
+        let urlSuccess = measurements.filter { $0.urlByteCount != nil }.count
+        let dataSuccess = measurements.filter { $0.dataByteCount != nil }.count
+        let editedCount = measurements.filter(\.isEdited).count
+        let nonZeroDelta = measurements.filter {
+            ($0.byteDelta ?? 0) != 0
+        }.count
+        let kindCounts = S2AssetSizeProbeMediaKind.allCases.map { kind in
+            kind.displayName + "=" +
+                String(measurements.filter { $0.mediaKind == kind }.count)
+        }.joined(separator: "｜")
+
+        var lines = [
+            "汇总｜URL途径成功=\(urlSuccess)/\(total)（" +
+                percentage(urlSuccess, of: total) + "）｜" +
+                "数据途径成功=\(dataSuccess)/\(total)（" +
+                percentage(dataSuccess, of: total) + "）",
+            "汇总｜逐类样本数：" + kindCounts,
+            "汇总｜已编辑样本=\(editedCount)",
+            "汇总｜两途径均成功且差值非零=\(nonZeroDelta)"
+        ]
+        let failures = failureDistribution(measurements)
+        lines.append("汇总｜失败原因分布：" + (failures.isEmpty ? "无" : failures))
+        return lines.joined(separator: "\n")
+    }
+
+    static func report(
+        measurements: [S2AssetSizeProbeMeasurement],
+        totalCount: Int,
+        limit: Int
+    ) -> String {
+        (
+            [header(
+                sampleCount: measurements.count,
+                totalCount: totalCount,
+                limit: limit
+            )] +
+            measurements.map(row) +
+            [summary(measurements)]
+        ).joined(separator: "\n")
+    }
+
+    static func progress(finished: Int, total: Int) -> String {
+        "字节数探针 \(finished)/\(total)"
+    }
+
+    private static func failureDistribution(
+        _ measurements: [S2AssetSizeProbeMeasurement]
+    ) -> String {
+        var parts: [String] = []
+        for failure in S2AssetSizeProbeFailure.allCases {
+            let urlCount = measurements.filter { $0.urlFailure == failure }.count
+            if urlCount > 0 {
+                parts.append("URL:\(failure.displayName)=\(urlCount)")
+            }
+            let dataCount = measurements.filter {
+                $0.dataFailure == failure
+            }.count
+            if dataCount > 0 {
+                parts.append("数据:\(failure.displayName)=\(dataCount)")
+            }
+        }
+        return parts.joined(separator: "｜")
+    }
+
+    private static func failureText(
+        _ measurement: S2AssetSizeProbeMeasurement
+    ) -> String {
+        var parts: [String] = []
+        if let urlFailure = measurement.urlFailure {
+            parts.append("URL:" + urlFailure.displayName)
+        }
+        if let dataFailure = measurement.dataFailure {
+            parts.append("数据:" + dataFailure.displayName)
+        }
+        return parts.isEmpty ? "无" : parts.joined(separator: "，")
+    }
+
+    private static func boolText(_ value: Bool) -> String {
+        value ? "是" : "否"
+    }
+
+    private static func optionalCount(_ value: Int64?) -> String {
+        value.map { String($0) } ?? "nil"
+    }
+
+    private static func milliseconds(_ value: Double) -> String {
+        String(
+            format: "%.2fms",
+            locale: Locale(identifier: "en_US_POSIX"),
+            value
+        )
+    }
+
+    private static func percentage(_ value: Int, of total: Int) -> String {
+        guard total > 0 else {
+            return "0.0%"
+        }
+        return String(
+            format: "%.1f%%",
+            locale: Locale(identifier: "en_US_POSIX"),
+            Double(value) * 100 / Double(total)
+        )
+    }
+}
+
+/// 探针的运行协调器。**关闭状态零副作用**：不注册任何观察者、不持有取数实现、
+/// 不发起任何请求、不写持久化；只有面板按钮显式调用 `run` 才会开始串行取数。
+final class S2AssetSizeProbeCoordinator: ObservableObject {
+    /// 卡内上限：范围内资产超过该数时只取前 60 个，并在报告头部注明。
+    static let assetLimit = 60
+
+    @Published private(set) var isRunning = false
+    @Published private(set) var progressText = ""
+    @Published private(set) var reportText = ""
+
+    private(set) var measurements: [S2AssetSizeProbeMeasurement] = []
+    private var runTask: Task<Void, Never>?
+
+    var canExport: Bool {
+        !isRunning && !reportText.isEmpty
+    }
+
+    func run(assetIDs: [String], using prober: S2AssetSizeProbing) {
+        guard !isRunning, !assetIDs.isEmpty else {
+            return
+        }
+        let totalCount = assetIDs.count
+        let sample = Array(assetIDs.prefix(Self.assetLimit))
+        isRunning = true
+        measurements = []
+        reportText = ""
+        progressText = S2AssetSizeProbeText.progress(
+            finished: 0,
+            total: sample.count
+        )
+        runTask = Task { @MainActor [weak self] in
+            var collected: [S2AssetSizeProbeMeasurement] = []
+            for (index, assetID) in sample.enumerated() {
+                let measurement = await prober.measure(assetID: assetID)
+                collected.append(measurement)
+                guard let self else {
+                    return
+                }
+                self.measurements = collected
+                self.progressText = S2AssetSizeProbeText.progress(
+                    finished: index + 1,
+                    total: sample.count
+                )
+            }
+            guard let self else {
+                return
+            }
+            self.reportText = S2AssetSizeProbeText.report(
+                measurements: collected,
+                totalCount: totalCount,
+                limit: Self.assetLimit
+            )
+            self.isRunning = false
+            self.runTask = nil
+        }
+    }
+}
