@@ -7803,6 +7803,262 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
+    // MARK: - IC-099 阶段二：顶部信息区（日期主行 + 序号·占用空间副行）
+
+    private func zhCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "zh_Hans_CN")
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        return calendar
+    }
+
+    private func date(
+        _ year: Int,
+        _ month: Int,
+        _ day: Int,
+        calendar: Calendar
+    ) -> Date {
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = 12
+        return tryUnwrap(calendar.date(from: components))
+    }
+
+    /// IC-099 阶段二 C1：路线分派四行全覆盖（类型 × 是否已编辑）。
+    func testIC099v2C1VolumeRouteDispatchCoversAllFourRows() {
+        // 视频（含已编辑）一律走 requestAVAsset → URL
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .video, isEdited: false),
+            .videoAssetURL
+        )
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .video, isEdited: true),
+            .videoAssetURL
+        )
+        // 未编辑照片 / LivePhoto 走 contentEditingInput → fullSizeImageURL
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .photo, isEdited: false),
+            .contentEditingInputURL
+        )
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .livePhoto, isEdited: false),
+            .contentEditingInputURL
+        )
+        // 已编辑照片 / 已编辑 LivePhoto 走 .fullSizePhoto 资源（H43 病理反例的处置）
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .photo, isEdited: true),
+            .fullSizePhotoResource
+        )
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .livePhoto, isEdited: true),
+            .fullSizePhotoResource
+        )
+        // 三条路线各不相同，且枚举没有第四条
+        XCTAssertEqual(S2AssetVolumeRoute.allCases.count, 3)
+    }
+
+    /// IC-099 阶段二 C1 续：任一路失败 → 副行只显示序号，不显示大小、不显示占位符。
+    func testIC099v2C1FailureDegradesToPositionOnly() {
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 2,
+                totalCount: 128,
+                byteCount: nil
+            ),
+            "3/128"
+        )
+        // 负字节数同样按失败处理
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 0,
+                totalCount: 1,
+                byteCount: -1
+            ),
+            "1/1"
+        )
+    }
+
+    /// IC-099 阶段二 C2：会话级缓存命中不再发起第二次取数（含失败结论）。
+    func testIC099v2C2StoreFetchesEachAssetAtMostOnce() {
+        let provider = CountingAssetVolumeProvider(byteCounts: [
+            "asset-1": 2_466_000,
+            "asset-2": nil
+        ])
+        let store = S2AssetVolumeStore()
+
+        store.requestIfNeeded(assetID: "asset-1", using: provider)
+        store.requestIfNeeded(assetID: "asset-1", using: provider)
+        store.requestIfNeeded(assetID: "asset-2", using: provider)
+        let deadline = Date(timeIntervalSinceNow: 2)
+        while !(store.isResolved("asset-1") && store.isResolved("asset-2")),
+              Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+
+        XCTAssertEqual(store.byteCount(for: "asset-1"), 2_466_000)
+        XCTAssertNil(store.byteCount(for: "asset-2"))
+        XCTAssertTrue(store.isResolved("asset-2"))
+        XCTAssertEqual(provider.requestedAssetIDs, ["asset-1", "asset-2"])
+
+        // 已解析（成功与失败各一）后再请求，都不再发起
+        store.requestIfNeeded(assetID: "asset-1", using: provider)
+        store.requestIfNeeded(assetID: "asset-2", using: provider)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertEqual(provider.requestCount, 2)
+    }
+
+    /// IC-099 阶段二 C3：未就绪 / 失败 / 切资产三态的副行文本。
+    func testIC099v2C3SubtitleReflectsPendingFailureAndAssetSwitch() {
+        let provider = CountingAssetVolumeProvider(byteCounts: [
+            "asset-1": 2_466_000,
+            "asset-2": 324_846
+        ])
+        let store = S2AssetVolumeStore()
+
+        // 未就绪：只显示序号
+        XCTAssertNil(store.byteCount(for: "asset-1"))
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 0,
+                totalCount: 2,
+                byteCount: store.byteCount(for: "asset-1")
+            ),
+            "1/2"
+        )
+
+        store.requestIfNeeded(assetID: "asset-1", using: provider)
+        let deadline = Date(timeIntervalSinceNow: 2)
+        while !store.isResolved("asset-1"), Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 0,
+                totalCount: 2,
+                byteCount: store.byteCount(for: "asset-1")
+            ),
+            "1/2 · 2.4 MB"
+        )
+
+        // 切到还没取数的资产：读到的是 nil，**不会是上一张的值**
+        XCTAssertNil(store.byteCount(for: "asset-2"))
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 1,
+                totalCount: 2,
+                byteCount: store.byteCount(for: "asset-2")
+            ),
+            "2/2"
+        )
+
+        store.requestIfNeeded(assetID: "asset-2", using: provider)
+        let secondDeadline = Date(timeIntervalSinceNow: 2)
+        while !store.isResolved("asset-2"), Date() < secondDeadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 1,
+                totalCount: 2,
+                byteCount: store.byteCount(for: "asset-2")
+            ),
+            "2/2 · 324 KB"
+        )
+    }
+
+    /// IC-099 阶段二 C4：日期主行——当年 `M月d日`、非当年 `yyyy年M月d日`、
+    /// 元旦与跨年边界、`nil` 不显示主行。
+    func testIC099v2C4DateTextCoversYearBoundaryAndNil() {
+        let calendar = zhCalendar()
+        let now = date(2026, 8, 28, calendar: calendar)
+
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.dateText(
+                creationDate: date(2026, 8, 27, calendar: calendar),
+                now: now,
+                calendar: calendar
+            ),
+            "8月27日"
+        )
+        // 当年元旦：仍是当年格式，月与日都不补零
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.dateText(
+                creationDate: date(2026, 1, 1, calendar: calendar),
+                now: now,
+                calendar: calendar
+            ),
+            "1月1日"
+        )
+        // 跨年前一天：非当年格式
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.dateText(
+                creationDate: date(2025, 12, 31, calendar: calendar),
+                now: now,
+                calendar: calendar
+            ),
+            "2025年12月31日"
+        )
+        // 老照片
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.dateText(
+                creationDate: date(2011, 3, 5, calendar: calendar),
+                now: now,
+                calendar: calendar
+            ),
+            "2011年3月5日"
+        )
+        // 无拍摄日期：主行不显示
+        XCTAssertNil(
+            S2TopBarInfoPresentation.dateText(
+                creationDate: nil,
+                now: now,
+                calendar: calendar
+            )
+        )
+    }
+
+    /// IC-099 阶段二 C4 续：副行原文——半角斜杠无空格、分隔为「 · 」、
+    /// 口径沿用 IC-099b 已交付的 `S2AssetVolumeFormatter`（视频同规则）。
+    func testIC099v2C4SubtitleTextUsesSlashAndMiddleDot() {
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 2,
+                totalCount: 128,
+                byteCount: 2_466_000
+            ),
+            "3/128 · 2.4 MB"
+        )
+        // 分隔符是「空格 + U+00B7 + 空格」
+        let text = S2TopBarInfoPresentation.subtitleText(
+            currentIndex: 0,
+            totalCount: 9,
+            byteCount: 25_480_000_000
+        )
+        XCTAssertEqual(text, "1/9 \u{00B7} 25.4 GB")
+        XCTAssertFalse(text.contains(" / "))
+
+        // 三档口径与 IC-099b P1 同源，视频资产走同一函数、同一结果
+        for (byteCount, expected) in [
+            (Int64(0), "1/1 · 0 KB"),
+            (Int64(324_846), "1/1 · 324 KB"),
+            (Int64(999_999), "1/1 · 999 KB"),
+            (Int64(1_000_000), "1/1 · 1.0 MB"),
+            (Int64(999_949_999), "1/1 · 999.9 MB"),
+            (Int64(1_000_000_000), "1/1 · 1.0 GB")
+        ] {
+            XCTAssertEqual(
+                S2TopBarInfoPresentation.subtitleText(
+                    currentIndex: 0,
+                    totalCount: 1,
+                    byteCount: byteCount
+                ),
+                expected
+            )
+        }
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
     private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(
@@ -8509,6 +8765,28 @@ final class S2CalibrationHarnessTests: XCTestCase {
 }
 
 /// IC-099b P3：计数用的假取数实现。只记录被问过哪些资产，不做任何 IO。
+/// IC-099 阶段二 C2/C3：计数用的假取数实现。记录被问过哪些资产，不做任何 IO。
+private final class CountingAssetVolumeProvider: S2AssetVolumeProviding {
+    private let byteCounts: [String: Int64?]
+    private(set) var requestedAssetIDs: [String] = []
+
+    var requestCount: Int {
+        requestedAssetIDs.count
+    }
+
+    init(byteCounts: [String: Int64?]) {
+        self.byteCounts = byteCounts
+    }
+
+    func byteCount(assetID: String) async -> Int64? {
+        requestedAssetIDs.append(assetID)
+        guard let value = byteCounts[assetID] else {
+            return nil
+        }
+        return value
+    }
+}
+
 private final class CountingAssetSizeProber: S2AssetSizeProbing {
     private(set) var requestedAssetIDs: [String] = []
 
