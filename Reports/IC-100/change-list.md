@@ -1,71 +1,120 @@
-# IC-100 变更清单（闸门 B 触发，停在实装前）
+# IC-100 变更清单（v2：底部竖向排布互换 + toast 上移 + 双真相同步）
 
-## 交付物
-
-| 文件 | 动作 |
-|---|---|
-| `Reports/IC-100/self-check.md` | 新建（冲突的算术证明 + 两案裁定请求 + 已探明的实装方案） |
-| `Reports/IC-100/change-list.md` | 新建（本文件） |
-
-**产品代码零变更。** 互换未实装，两个占位常量未落地，断言 B1～B5 未新增。
+> v1 在实装前触发闸门 B、零代码变更；本清单覆盖 v1，记录 v2 的实际改动。
 
 ## 分支与提交
 
-| 项 | 值 |
+| 项 | 完整 SHA |
 |---|---|
-| 继承提交（`main`） | `ef9d46aaaf6c6f0e2bae29712e751d39994f59ff` |
-| 分支 | `feature/ic-100-bottom-layout-swap`（从 `ef9d46a` 创建，卡内显式授权） |
-| 产品代码提交 | **无** |
-| 报告提交 | 只含 `Reports/IC-100/`，命中 `ci.yml` 的 `paths-ignore`，**不触发 CI** |
-| CI 运行 | **无**（尝试次数消耗 0 / 3） |
+| 继承提交 | `fe5b891169814df896b749e32e80265b9bbb7ced`（v1 R0 报告，基于 `main` = `ef9d46a`） |
+| 分支 | `feature/ic-100-bottom-layout-swap`（未重切） |
+| 分支 tip（代码部分，CI #172 被测提交） | `6edc9c5ff2cf7c8ca753ca2d5200876636f67182` |
+| 报告提交 | 只含 `Reports/IC-100/`，命中 `paths-ignore`，**不触发 CI** |
+
+两个提交：
+
+| # | 完整 SHA | 提交信息首行 |
+|---|---|---|
+| 1 | `7b5e57d…` | `feat(s2): 底部竖向排布互换为 安全区 → 操作条 → 横栏，toast 随之上移（IC-100 v2 R1+R2+R3）` |
+| 2 | `6edc9c5ff2cf7c8ca753ca2d5200876636f67182` | `test(s2): IC-100 B1/B2/B6/B7 底部排布断言（IC-100 v2）` |
+
+**R1 与 R2 合并在提交 1**：只上移横栏而不动 toast 会让两者纵向重叠，正是 R2 要修的缺陷；拆开会留一个已知有缺陷的中间态提交。
+
+## 文件变化（`git diff --numstat fe5b891..HEAD`，报告提交前）
+
+| 文件 | 增 | 删 |
+|---|---|---|
+| `PhotoCleanupMVE/Features/S2/S2Calibration.swift` | 98 | 3 |
+| `PhotoCleanupMVE/Features/S2/S2View.swift` | 68 | 37 |
+| `PhotoCleanupMVETests/S2CalibrationHarnessTests.swift` | 211 | 0 |
+
+测试文件**零删除**——既有断言一行未改、未删。
+
+## 逐项改动
+
+### R1（提交 1）——`S2OverlayLayout`：三常量 + 七推导式 + `snapshot` 底部两帧
+
+新增三个登记制占位常量：`actionBarVisibleBandHeight = 22`、`stripToActionVisibleBandSpacing = 30.7`、`toastToStripSpacing = 8`。
+
+新增七个推导式（静态函数）：
+
+| 函数 | 语义 | 常规机型落值 |
+|---|---|---|
+| `actionBandCenterFromViewportBottom(safeAreaBottom:)` | 触控带中心距视口底 = 安全区底 + 22 | 56.0 |
+| `actionBandTopFromViewportBottom(safeAreaBottom:)` | 触控带顶缘距视口底 | 78.0 |
+| `actionBandBottomFromViewportBottom(safeAreaBottom:)` | 触控带底缘距视口底（= 安全区底） | 34.0 |
+| `actionVisibleBandTopFromViewportBottom(safeAreaBottom:)` | 可见图标带顶缘距视口底 | 67.0 |
+| `stripBottomFromViewportBottom(safeAreaBottom:)` | 横栏底缘距视口底 = 可见带顶缘 + 30.7 | 97.7 |
+| `stripTopFromViewportBottom(safeAreaBottom:bottomStripHeight:)` | 横栏顶缘距视口底 | 169.7 |
+| `toastBottomFromViewportBottom(safeAreaBottom:bottomStripHeight:)` | toast 底缘距视口底 = 横栏顶缘 + 8 | 177.7 |
+
+另把既有的 `max(minimumTouchTarget, bottomStripHeight)` 抽为 `resolvedStripHeight(_:)`，供推导式与 `snapshot` 共用（语义不变）。
+
+`snapshot(...)` 的底部两帧改为按推导式锚定**视口**底缘（改前是横栏贴安全区底、操作条在其上方 8 pt）：
+
+```
+stripFrame.y = physicalSize.height − stripBottomFromViewportBottom(...) − stripHeight
+actionY      = physicalSize.height − actionBandTopFromViewportBottom(...)
+```
+
+### R1 + R2（提交 1）——`S2View`
+
+- `interfaceOverlay` 由「一个 `VStack` 吃四边安全区、底部两件套在内层 `VStack`」改为 `ZStack(alignment: .bottom)` 的三层：顶部信息区（只吃 `.padding(.top, safeAreaInsets.top)`，几何与改前逐字相同）、底部横栏、常驻操作条，后两者各自按推导式 `.padding(.bottom, …)` 独立锚定。左右安全区仍由外层统一给。
+- `feedbackToastOverlay(safeAreaInsets:)` → `feedbackToastOverlay(bottomInset:)`。主屏幕传 `toastBottomFromViewportBottom(...)`（177.7）；sheet 内传 `S2OverlayLayout.minimumSpacing`（8，**与改前逐字相同**）。
+
+### R3（提交 1）——双真相同步
+
+渲染侧的两个 `.padding(.bottom, …)` 与门禁侧 `snapshot` 的两帧 y 坐标，改为调用同一组推导式。调用点对照表见 `self-check.md` R3 节。**局限**：逐像素比对渲染结果需给产品视图加测试专用探针（禁止项），未做，已挂账收敛卡。
+
+### 断言（提交 2）——新增 5 项
+
+| 测试函数 | 覆盖 |
+|---|---|
+| `testIC100B1BottomOverlayOrderAndAnchors` | B1 顺序、锚点、L2/L4 复核、间距推导式、净空 ≥ 15 |
+| `testIC100B1LayoutFollowsLargerBottomSafeArea` | B1 续：安全区 60 时整组上移、L2 仍成立、间距语义不变 |
+| `testIC100B2GeometryIsIndependentOfInterfaceVisibility` | B2 隐藏再恢复几何逐值相同 |
+| `testIC100B6ToastSitsAboveStripWithoutOverlap` | B6 toast 落位与三者纵向次序 |
+| `testIC100B7SnapshotMatchesRenderDerivations` | B7 模型帧 ↔ 渲染侧 padding 逐值相等、推导式自洽 |
+
+B3/B4/B5 由既有门禁背书（本卡未新增，也未改动）。
 
 ## 未改动清单
 
-本卡**没有修改任何已有文件**，只新增了报告目录。以下全部逐字节保持 `ef9d46a` 的状态：
-
 | 项 | 状态 |
 |---|---|
-| `PhotoCleanupMVE/Features/S2/S2Calibration.swift`（含 `S2OverlayLayout.snapshot`） | 未动 |
-| `PhotoCleanupMVE/Features/S2/S2View.swift`（含 `interfaceOverlay`、`actionBar`、toast 落位） | 未动 |
-| `S2BottomStripView` 与横栏全部几何 / 运动参数 | 未动 |
-| 顶部信息区、主图待删标记、手势、图片请求 | 未动 |
-| 全部测试文件 | 未动（B1～B5 一条未加） |
+| **L2 / L4 门禁判据** | **一行未改** |
+| 横栏几何 / 运动参数（`bottomStripMetrics`、项目尺寸、间距、圆角、惯性、吸附、跟随） | 未动 |
+| 操作条三按钮的显示 / 可用 / 禁用规则与 44×44 | 未动 |
+| `S2ViewportLayout.metrics`（主图视口与主图几何） | 未动 |
+| 顶部信息区、主图待删标记 | 未动（顶部信息区的 `.padding(.top, safeAreaInsets.top)` 语义与改前相同） |
+| toast 的语义、时长参数、随 `V` 规则、不接收点击 | 未动 |
+| 手势、图片请求策略、sheet 规则 | 未动 |
 | `<top>/SPEC-*.md`、`<top>/Decision_log.md`、`Scripts/`、`ci.yml` | 未动 |
 | `feature/ic-089/091/092` 冻结三链 | 未触碰 |
 
-未合并 `main`；未 rebase / amend / force push / 改写历史 / 删分支。
-
-## 只读取证（未产生任何写操作）
-
-| 来源 | 用途 |
-|---|---|
-| `PhotoCleanupMVE/Features/S2/S2Calibration.swift:880-978` | `S2OverlayLayout` 常量与 `snapshot` 的现行几何模型（横栏贴安全区底、操作条在其上方） |
-| `PhotoCleanupMVE/Features/S2/S2View.swift:696-739` | `interfaceOverlay` 的现行 `VStack` 子视图顺序 |
-| `PhotoCleanupMVE/Features/S2/S2View.swift:544-550` | 反馈 toast 的现行落位（`safeAreaInsets.bottom + minimumSpacing`） |
-| `PhotoCleanupMVETests/S2CalibrationHarnessTests.swift:701-710` | 门禁 L2 的判据与上限 |
-| `PhotoCleanupMVETests/S2CalibrationHarnessTests.swift:770-793` | 门禁 L4 的 44×44 判据与帧集合 |
-| `PhotoCleanupMVETests/S2CalibrationHarnessTests.swift:7468-7474, 7929-7939` | 测试视口 393×852、安全区底 34、横栏高 72 |
+未新增 XCUITest；未合并 `main`；未 rebase / amend / force push / 改写历史 / 删分支。
 
 ## 占位值登记
 
-**本卡未落地任何占位值。** 卡内两个登记制占位常量原样记录，待裁定后随实装登记：
+三个登记制占位常量，全部是 `S2OverlayLayout` 的代码常量，**不进 `S2CalibrationConfiguration`、不上参数面板**（同 IC-091 `edgeTolerance` 先例），视觉稿前 ④ 可修订：
 
-| 常量 | 卡内值 | 状态 |
+| 常量 | 值 | 出处 |
 |---|---|---|
-| 操作条按钮带中心 → 屏幕底 | 52.7 pt（158 px @3x） | **与门禁 L2 冲突 3.3 pt，待技术负责人在方案 A / B 之间裁定** |
-| 横栏底缘 → 操作条按钮带顶缘 | 30.7 pt（92 px @3x） | 无冲突，可原样落地 |
+| `actionBarVisibleBandHeight` | 22.0 pt | `.body` 行高（`UIFont.preferredFont(forTextStyle: .body).lineHeight`），推导写入 self-check |
+| `stripToActionVisibleBandSpacing` | 30.7 pt | 技术负责人 2026-08-28 系统录屏实测表（92 px @3x，三静止帧一致，①） |
+| `toastToStripSpacing` | 8 pt | IC-100 v2 卡内定案（④） |
 
-两者按卡内要求不进 `S2CalibrationConfiguration`、不上面板。`schemaVersion` 仍为 **4**，未加字段、未改出厂值（闸门 C 未触发）。
+触控带中心不是常量而是推导式 `safeAreaBottom + minimumTouchTarget / 2`（常规 56.0）；`minimumTouchTarget = 44` 是既有常量，未改。
 
-## 产品行为净变化
+**`S2CalibrationConfiguration.schemaVersion` 仍为 4**，未加字段、未改出厂值（闸门 C 未触发）。
 
-**零。** 未改动任何产品代码，用户可见行为与几何结果与 `ef9d46a` 完全一致。
+## 产品行为净变化（相对 `ef9d46a`）
 
-## 停工点与待裁定事项
+1. **底部竖向顺序互换**：自下而上由「安全区 → 横栏 → 操作条」改为「安全区 → 操作条 → 横栏」。
+2. **横栏离开屏幕底缘**：底缘由「贴安全区上沿」（距视口底 34 pt）上移到**距视口底 97.7 pt**，与系统底缘手势区拉开距离（本卡的产品动机）。
+3. **操作条贴近底缘**：触控带底缘恰在安全区上沿（距视口底 34 pt），中心距视口底 56.0 pt。
+4. **toast 上移**：主屏幕上 toast 底缘由距视口底 42 pt 改为 **177.7 pt**（横栏顶缘 + 8），与操作条、横栏均无纵向重叠。sheet 内的 toast 落位不变。
 
-停在**实装前**（互换的两处改法已探明，未落笔）。恢复开工需要技术负责人在两案之间裁定一项：
+主图视口、主图几何、顶部信息区、横栏自身的几何与运动、操作条按钮语义、手势与图片请求**零变化**。
 
-- **方案 A**：保 L2，把「操作条按钮带中心距屏幕底」由 52.7 改为 `safeAreaInsets.bottom + minimumTouchTarget / 2`（常规机型 = **56.0 pt**）。零门禁改动，本卡可直接续做，与系统观感差 3.3 pt（交 H44 判方向）。
-- **方案 B**：保 52.7，把 L2 的判据由「44 pt 触控带」改为「可见带」，并显式允许触控带越过安全区。与系统逐像素对齐，但要改既有门禁判据，须先发一张门禁改造卡。
-
-另有一项实装前需一并明确：**反馈 toast 的新落位**——现行落位（距视口底 42 pt）在互换后会与操作条按钮带纵向重叠，卡内未提及，执行端不自行决定。
+与系统 Photos 的已知偏差：可见带中心 56.0 vs 系统 52.7，**差 3.3 pt，④ 有意为之**（保 L2 门禁），H44 只报方向。
