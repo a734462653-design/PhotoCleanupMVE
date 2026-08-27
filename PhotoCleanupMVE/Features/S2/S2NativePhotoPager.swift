@@ -4901,3 +4901,50 @@ extension S2ImageLoadState {
         }
     }
 }
+
+/// IC-099b R1（④ Lynn 2026-08-28 定案 2）：S2 **单张资产**占用空间的显示口径。
+///
+/// 与 S3 的**合计**口径 `DecimalVolumeFormatter` 并存、互不调用、互不影响——
+/// S3 的格式与调用点本卡一字未动。差别在于 S2 是单张、会落到 1 MB 以下，
+/// 而 S3 是合计、永远落不到那一档。
+///
+/// 三档，全部**向下截断**，不做四舍五入：
+/// - `< 1_000_000` 字节：整数 KB（`byteCount / 1_000`），如 `324 KB`；
+/// - `< 1_000_000_000` 字节：一位小数 MB（截断到 0.1），如 `2.4 MB`；
+/// - 其余：一位小数 GB（截断到 0.1），如 `25.4 GB`。
+///
+/// **放置说明（本卡遗留项，见 `Reports/IC-099b/self-check.md`）**：
+/// 本类型本卡只被字节数探针消费，故与探针同置于本文件的诊断区。
+/// `Scripts/scan-hardcoded-user-visible-strings.ps1` 只对
+/// `Core/S3StateMachine.swift` 的 ` MB` / ` GB` 模板给了「规格锁定」豁免，
+/// 该脚本属本卡范围外、未改。**IC-099 阶段二把本口径接到顶部信息区之前**，
+/// 需由技术负责人在「给脚本加同类豁免」与「把格式移入 String Catalog」之间定一个，
+/// 并把本类型移到与 `DecimalVolumeFormatter` 对称的位置。
+enum S2AssetVolumeFormatter {
+    private static let bytesPerKilobyte: Int64 = 1_000
+    private static let bytesPerMegabyte: Int64 = 1_000_000
+    private static let bytesPerGigabyte: Int64 = 1_000_000_000
+
+    static func string(forByteCount byteCount: Int64) -> String {
+        precondition(byteCount >= 0)
+
+        if byteCount >= bytesPerGigabyte {
+            return truncatedTenths(byteCount, unit: bytesPerGigabyte, suffix: "GB")
+        }
+        if byteCount >= bytesPerMegabyte {
+            return truncatedTenths(byteCount, unit: bytesPerMegabyte, suffix: "MB")
+        }
+        return "\(byteCount / bytesPerKilobyte) KB"
+    }
+
+    /// 整数运算求「截断到 0.1」的一位小数，避免浮点在 `999_949_999` 这类
+    /// 临界值上向上进位（该值必须显示 `999.9 MB` 而不是 `1000.0 MB`）。
+    private static func truncatedTenths(
+        _ byteCount: Int64,
+        unit: Int64,
+        suffix: String
+    ) -> String {
+        let tenths = byteCount / (unit / 10)
+        return "\(tenths / 10).\(tenths % 10) \(suffix)"
+    }
+}
