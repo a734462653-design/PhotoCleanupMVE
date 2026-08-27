@@ -1,174 +1,186 @@
-# IC-099 自验报告（top-bar-date-index-size）— **闸门 A 触发，停在 R0**
+# IC-099 自验报告（阶段二：顶部信息区实装，v2）
+
+> v1（`741a2c1`）在 R0 触发闸门 A 并停下报告；H43 真机探针取回数据后技术负责人定案路线，下发 v2。本报告**覆盖 v1**，v1 的 R0 探明结论保留在「v1 闸门 A 的处置」一节。
 
 ## 结论（先行）
 
-**闸门 A 触发，本卡停在 R0，未写一行产品代码。** R1、R2、R3 全部未开工。
+R1（文本纯函数）、R2（两行信息区实装）、R3（String Catalog）、R4（路线分派 + 缓存 + 异步管线）全部交付。
 
-R0 的探明结论是：**卡内点名的候选途径（`PHAssetResource` 资源枚举的尺寸信息）不存在**——`PHAssetResource` 没有公开的字节数属性。替代途径有三条，但**没有任何一条同时满足「公开可上架 + 无需完整加载数据 + 语义等于主资源实际字节数 + 代价可在本机核实」**：
+**CI 结果：CI #173 success**，被测提交 `968998579306fc1a4be861f783a49a3211987114`，XCTest **514 项、0 失败**，9 步全 success，被测命令真实退出码 **0**；IPA **836171 字节**、SHA-256 `454342c72ec64735a139b6aec71e742aa8773d1e0238324049b6bbeba0788044`，本地重下复核逐字节一致。**CI 只用了 1 次**（上限 3）。
 
-| 途径 | 公开 API | 无需完整读数据 | 语义等于「主资源实际字节数」 | 代价已实测 |
-|---|---|---|---|---|
-| 1 `PHAssetResource` KVC `value(forKey: "fileSize")` | ❌ 未公开属性 | ✅ | ✅ | — |
-| 2 `PHAssetResourceManager.requestData` 流式累加（本仓库 `AssetSizeScanner` 现行做法） | ✅ | ❌ **要读完整个资源** | ✅ | ✅ 真机 P8：8～38 ms（样本 ≤ 18.9 MB） |
-| 3 `requestContentEditingInput` → `fullSizeImageURL` → `fileSizeKey`（视频走 `requestAVAsset`） | ✅ | ✅ | ⚠️ 已编辑资产是渲染版而非原资源 | ❌ **本机无法实测** |
+计数算式：**508 + 6 − 0 = 514**。本地三项门禁真实退出码全为 **0**。
 
-三条各自的取舍是**上架风险 / IO 代价 / 语义偏差**之间的权衡，属产品与风险决策（CLAUDE.md 第一节「你不做产品决策」）。按闸门 A 原文「停下报告，列出候选途径、各自代价与风险，等技术负责人定」，**停在此处**。
+**未使用任何 KVC 私有键**；未碰产品图片请求策略与节流；**`AssetSizeScanner` 的 S3 语义一字未动**。三道闸门（A 图片请求策略 / 节流 / S3 语义，B 既有门禁，C 标定参数与 `schemaVersion`）**均未触发**。
 
-另有 **两处规格 / 口径矛盾**必须先定（见「必须先定的两个问题」），否则 R1 的断言无法写死。
-
-**本卡无 CI 运行**（无产品代码变更）。**尝试次数消耗 0 / 3。**
+**H42（v1 原文 + 两项加测）保留给 Lynn 真机判定，本报告不代为下结论。**
 
 ## 输入与边界
 
 | 项 | 值 |
 |---|---|
-| 开工时 `git status --porcelain` | 空（无其他会话残留） |
-| 继承提交（`git rev-parse main`） | `ef9d46aaaf6c6f0e2bae29712e751d39994f59ff` |
-| 目标分支 | `feature/ic-099-top-bar-date-index-size`（已从 `ef9d46a` 创建） |
-| 产品代码变更 | **无**。仅本目录两份报告 |
-| CI | **未推送、未运行** |
+| 开工时 `git status --porcelain` | 空 |
+| 继承提交 | `3b7d50e46b78184b0f2b18d34b7e6ebb0a95930c`（IC-101 交付，CI #171、508/0） |
+| 目标分支 | `feature/ic-099-top-bar-date-index-size`（未重切） |
+| 分支 tip（代码部分） | `968998579306fc1a4be861f783a49a3211987114` |
+| CI | **#173 success（1/3）** |
 | 合并动作 | 无 |
 
-## R0：字节数获取探明
+范围边界：新增 `S2TopBarInfoPresentation.swift`（并注册 pbxproj 四处）；改 `Services/AssetSizeScanner.swift`（**只追加** `AssetVolumeService`）、`S2View.swift`（顶部中部信息区 + 两个默认参数 + 接线）、`Localizable.xcstrings`（追加 3 个 key）、`CleanupCoordinator.swift` / `PhotoCleanupMVEApp.swift`（接线）、`S2CalibrationHarnessTests.swift`（6 项断言）。**底部布局、确认页入口、返回按钮、标记、横栏、操作条、手势、SPEC、Decision_log、`Scripts/`、`ci.yml` 一字未动。**
 
-### 探明方法
+## v1 闸门 A 的处置
 
-本机是 Windows、无 Xcode，**不能编译、不能跑模拟器、不能跑真机**，因此 R0 的取证限于三类可核验来源：
+v1 的 R0 结论（执行端①）：`PHAssetResource` 无公开字节属性，三条候选途径各有取舍，代价无法在本机核实 → 停。H43 真机探针 `099.txt` 取回数据后，技术负责人按类型分派定案，**v1 的闸门 A 已解除**。
 
-1. **本仓库现行实现**（`PhotoCleanupMVE/Services/AssetSizeScanner.swift`）——项目此前为 S3 求体积时实际选用的做法。
-2. **顶层探针仓库 `<top>/PhotoKitConstraintsProbe` 的真机实测日志**（`probe-log.txt`，2026-08-08）——只读取证，未改动该仓库。
-3. PhotoKit 公开 API 的已知形状（③，见下文分级说明）。
+| v1 未决项 | v2 定案与依据 |
+|---|---|
+| 用哪条途径取字节数 | **按类型分派、无数值阈值**（④ 2026-08-28，依 H43①） |
+| 已编辑照片的 URL 途径是否可信 | **不可信**。H43 病理反例 `CCE34A1A`：URL 途径 7,485 B，实际当前版本 3,899,648 B——相差 520 倍。该类改走 `.fullSizePhoto` 资源 |
+| 视频 / 未编辑照片的 URL 途径 | **可信**。H43 视频 14/14、未编辑照片与 LivePhoto 35/35 逐字节精确 |
+| 「占用空间」的语义 | **当前版本**（Decision_log 第 130 条④）。`.fullSizePhoto` 的语义即当前版本 |
+| 单张显示口径 | KB / 一位小数 MB / 一位小数 GB（第 130 条④），由 IC-099b 已交付的 `S2AssetVolumeFormatter` 承担 |
+| v1 报的「规格示例 2.4 MB 与 S3 口径矛盾」 | 已由第 130 条勘误对齐，本卡按新口径实装 |
 
-### 结论 1：`PHAssetResource` 没有公开的字节数属性
+## R4：取数路线分派、缓存与异步管线
 
-- **③合理推测（有两条旁证，本机无法直接核验 SDK 头文件）**：`PHAssetResource` 的公开成员为 `type` / `assetLocalIdentifier` / `uniformTypeIdentifier` / `originalFilename` / `pixelWidth` / `pixelHeight`（后两者 iOS 17 起）与 `assetResources(for:)` 等类方法，**没有 `fileSize`**。
-- **旁证一（①，仓库原文）**：本仓库 `AssetSizeScanner.bytes(of:)` 为了拿到一个资源的字节数，采用的是 `PHAssetResourceManager.default().requestData(...)` 逐块累加 `data.count`。若资源对象上有公开尺寸属性，没有理由绕这么大一圈。
-- **旁证二（①，探针仓库原文）**：`PhotoKitConstraintsProbe/ProbeModel.swift:1752` 在 P8 探针的输出串里把 `publicSizeAvailable=false` 写成**硬编码字面量**。
-  **注意**：这是探针作者当时的判定被写死在输出里，**不是一次测量**。本报告不把它当作实测数据引用，只作为「项目此前已得出同一结论」的书面旁证。
-- **唯一已知的取得途径是 KVC `resource.value(forKey: "fileSize")`**——访问未公开属性。是否可接受属上架风险决策，执行端不自行采用。
+### 分派表（`S2AssetVolumeRouter.route(mediaKind:isEdited:)`，纯函数）
 
-### 结论 2：途径 2（流式累加）的真机代价已有实测，但样本上限只有 18.9 MB
-
-来源：`<top>/PhotoKitConstraintsProbe/probe-log.txt`，2026-08-08T14:23:00～14:23:01，探针 P8，共 **40** 行记录，`error=none` 全部 40 条。
-
-探针的主资源选取规则（`ProbeModel.swift:428` `byteProbeResource`）与本卡取定几乎一致：视频取 `.video` / `.fullSizeVideo`，照片取 `.photo` / `.fullSizePhoto`，**单个资源、不求和**。
-
-| 媒体类型 | 样本数 | 字节数区间 | 单次耗时区间 |
+| 资产 | 路线枚举 | 实现 | H43 依据 |
 |---|---|---|---|
-| 照片 | 20 | 323,846 ～ 17,422,276 B（0.32 ～ 17.4 MB） | **12.32 ～ 37.62 ms** |
-| 视频 | 20 | 6,181,085 ～ 18,864,595 B（6.2 ～ 18.9 MB） | **7.63 ～ 18.03 ms** |
+| 视频（未编辑） | `.videoAssetURL` | `requestAVAsset` → `AVURLAsset.url` 文件属性 | 14/14 逐字节精确 |
+| 视频（已编辑） | `.videoAssetURL` | 同上 | 同上 |
+| 未编辑照片 / LivePhoto | `.contentEditingInputURL` | `requestContentEditingInput` → `fullSizeImageURL` 文件属性 | 35/35 精确 |
+| 已编辑照片 / 已编辑 LivePhoto | `.fullSizePhotoResource` | `.fullSizePhoto` 资源 `requestData` 流式累加 | URL 途径病理反例；该类读取实测 1.6～3.2 ms |
 
-- 等级：**①已验证事实**（真机实测原始日志），但**②样本观察**——样本最大只有 **18.9 MB**。
-- 推算（③）：吞吐约 0.5～1.5 GB/s 量级，属本地磁盘顺序读。**一段 4K 长视频（数 GB）按同一吞吐推算需数秒**，且这条途径的代价与资源大小**线性增长**。样本完全没有覆盖这一档。
-- 与 S2 用法的关键差异（①）：`AssetSizeScanner` 在 **S3** 使用，对**待删集合**在后台各扫一次；本卡要在 **S2** 用，**每翻一页都要出一个新数字**。同一 API、不同调用频率，代价性质不同。
+**失败降级**：`.fullSizePhoto` 缺失、任一路出错、请求被取消、iCloud 不可得（`PHContentEditingInputResultIsInCloudKey` / `PHImageResultIsInCloudKey`）一律返回 `nil` → 副行只显示 `{序号}/{总数}`，**不显示大小、不显示占位符**。全部路径 `isNetworkAccessAllowed = false`。
 
-### 结论 3：途径 3 公开且不读数据，但语义有偏差且本机无法测代价
+### 缓存与异步（`S2AssetVolumeStore`）
 
-- `PHAsset.requestContentEditingInput(with:completionHandler:)` → `PHContentEditingInput.fullSizeImageURL` → `URL.resourceValues(forKeys: [.fileSizeKey])`：全部公开 API，只做一次文件属性读取，**不读文件内容**。视频侧对应 `PHContentEditingInput.audiovisualAsset` 若为 `AVURLAsset` 则取 `.url` 再 stat。
-- **语义（③）**：`fullSizeImageURL` 指向**当前编辑版本的全尺寸图**。对未编辑资产通常即原始文件；对**已编辑**资产是渲染产物，字节数与原资源不同。这一点恰好与卡内取定「含系统编辑版本时取当前版本的全尺寸资源」**吻合**，但与「照片取原图资源」**不吻合**——取定这两句本身在已编辑资产上互相冲突。
-- **风险（③，全部未实测）**：(a) `requestContentEditingInput` 是为编辑会话设计的，对已编辑资产可能需要 Photos **先生成**渲染文件，代价不可预估；(b) iCloud-only 资产在 `isNetworkAccessAllowed = false` 下会失败；(c) 已编辑视频的 `audiovisualAsset` 可能是 `AVComposition`，没有单一 URL；(d) 本仓库与探针仓库**都没有这条途径的任何实测**。
-- **本机无法补测**：需要 Xcode 与真机，两者都不具备。这正是 R0 无法完成「途径与**代价**」中「代价」那一半的原因。
+- `resolved: [String: Int64?]`——值为 `nil` 表示**已解析且失败**，同样不再重复发起。写入用 `updateValue(_:forKey:)` 而非下标赋值，避免「值类型本身是 `Int64?`」时下标赋值被读成删除键。
+- `requestIfNeeded` 只在「未解析且不在途」时发起；在途集合 `inFlightAssetIDs` 防并发重复。
+- 对外取值 `byteCount(for:)` **按 `assetID` 索引**——切资产时读到的是新资产的条目（未取数即 `nil`），**结构上不可能显示上一张的值**。
+- 缓存只在内存，随 S2View 的 `@StateObject` 实例释放（会话级）。
+- 视图侧由 `.task(id: machine.currentAssetID)` 触发，切资产自动重新触发。
 
-### R0 判定
+## R1 / R2 / R3
 
-卡内候选（枚举尺寸属性）**不存在**；三条替代途径**没有一条同时满足全部条件**：
+**R1 纯函数**（`S2TopBarInfoPresentation`）：
 
-- 途径 1 满足代价与语义，**不是公开 API**。
-- 途径 2 是公开 API 且有实测，**要完整读完资源**——闸门 A 原文写的是「无需**完整加载数据**」，流式累加虽然不把数据留在内存里（`ByteAccumulator` 只累加 `data.count`），但确实把整个资源读了一遍。R0 段落里的括注写的是「不允许为取尺寸而完整加载图像数据**到内存**」，两处措辞宽严不同；按闸门（较严的一处）判定，途径 2 不满足。
-- 途径 3 满足「不读数据」，但**语义有偏差、代价无法在本机核实**。
+- `dateText(creationDate:now:calendar:)`——当年 `M月d日`、非当年 `yyyy年M月d日`；`creationDate == nil` 返回 `nil`，**主行整行不显示**（v1 卡内④取定，不引入新文案）。
+- `subtitleText(currentIndex:totalCount:byteCount:)`——`{序号}/{总数} · {占用空间}`；`byteCount` 为 `nil` 或负值时退化为 `{序号}/{总数}`。口径调用 IC-099b 已交付、IC-101 移入独立文件的 `S2AssetVolumeFormatter`，**未复制第二份格式逻辑**。
 
-→ **闸门 A 成立，停下报告。**
+**R2 两行布局**：顶部中部由 `Text(序号)` 单件替换为 `topInfoArea`（主行 + 副行的 `VStack`）。**返回按钮与确认页入口一字未动**；`S2OverlayLayout.topElementFrames` 的三帧几何模型未动（IC-075 G104 等顶部门禁不受影响）。
 
-## 必须先定的两个问题（否则 R1 的断言无法写死）
+**R3 String Catalog**：追加 3 个 key，全部被产品源码引用（扫描器 key ↔ 引用双向齐全，退出码 0）：
 
-### 问题一：规格第 102 行的示例 `2.4 MB` 与「S3 现行口径」互相矛盾（①）
+| key | zh-Hans | 说明 |
+|---|---|---|
+| `s2.top.date_format.current_year` | `M月d日` | 当年日期格式串 |
+| `s2.top.date_format.other_year` | `yyyy年M月d日` | 非当年日期格式串 |
+| `s2.top.position_with_volume` | `{current}/{total} · {volume}` | 副行含大小时的模板（分隔为空格 + U+00B7 + 空格） |
 
-规格 v16 第 102 行（决策 35）原文同时写了两件事：
+既有 `s2.top.position` = `{current}/{total}` **复用**为无大小分支，未改值。`export-format.md` 未动。
 
-> 副行为「{当前序号}/{总数} · {占用空间}」（**如「3/128 · 2.4 MB」**）。占用空间为资产资源实际字节数，**按 S3 现行十进制 MB/GB 向下截断口径格式化**。
-
-而 S3 现行口径（`PhotoCleanupMVE/Core/S3StateMachine.swift:24` `DecimalVolumeFormatter`，原文）是：
-
-```swift
-if byteCount >= bytesPerGigabyte {
-    let tenthsOfGigabyte = byteCount / (bytesPerGigabyte / 10)
-    return "\(tenthsOfGigabyte / 10).\(tenthsOfGigabyte % 10) GB"
-}
-return "\(byteCount / bytesPerMegabyte) MB"
-```
-
-**MB 档是整数、没有小数位**。2,400,000 B 按该口径输出的是 **`2 MB`**，**不可能输出 `2.4 MB`**。规格的示例与它自己指定的口径不自洽。
-
-卡内 §一 与 §二 R1 两处都只复述口径（「MB 向下截断与 GB 一位小数截断与 S3 断言口径一致」），**没有复述示例**。按结果层理解应取口径，但这条矛盾会直接影响 H42 的人工判定（「文件大小量级正确」），必须由技术负责人裁定示例是笔误还是 MB 档要加一位小数。
-
-### 问题二：小于 1 MB 的资产会显示 `0 MB`（①）
-
-同一口径下，任何 < 1,000,000 B 的资产整除后都是 `0 MB`。这不是边角情况：P8 实测样本里最小的照片就是 **323,846 B**，按口径显示 **`0 MB`**。截图类资产普遍在这一档。
-
-S3 用同一口径没问题——那里是**合计**体积，永远不会落到 0。S2 是**单张**，会经常落到 0。
-
-要不要为 S2 补一个 KB 档，属**新增用户可见格式语义**，规格未定，执行端不得自行决定（CLAUDE.md 第七节未定项条款）。若维持现口径，H42 判定时需要预先知道「0 MB 是预期行为」。
-
-## 取定（④技术负责人给定，Lynn 可改；本卡未实装，原样登记备查）
-
-卡内 §一「卡内取定」三条原样记录，**因闸门 A 触发，均未落到代码**：
-
-1. **`creationDate == nil` 时主行不显示，仅显示副行**（不引入新文案）。
-2. **占用空间取当前资产的主资源字节数**（照片取原图资源、视频取原视频资源；含系统编辑版本时取当前版本的全尺寸资源），多资源求和不采用。
-   - **执行端提请注意（①）**：这一条内部有冲突——「照片取**原图**资源」与「含系统编辑版本时取**当前版本**的全尺寸资源」在已编辑资产上指向两个不同的资源（`.photo` vs `.fullSizePhoto`），字节数不同。落到代码前需要明确优先级。探针 `byteProbeResource` 用的是 `resources.first { $0.type == .photo || $0.type == .fullSizePhoto }`，取的是**数组里先出现的那个**，并没有表达偏好——不能直接照抄。
-   - 另注（①）：本仓库 `AssetSizeScanner.scan` 是**全部资源求和**（`for resource in resources { total += ... }`），与本条「多资源求和不采用」**不同**。若 R2 复用 `AssetSizeScanner`，S2 与 S3 会显示两套口径；若不复用，则需要新写一个单资源版本。
-3. **字体 / 字号 / 颜色为视觉稿前占位样式**（系统字体、语义色），不进标定参数、不进规格。**本卡未实装，未产生任何占位样式，无可登记项。**
+**为什么日期格式串入了目录**：v1 卡写「日期/数字为数据派生值，不入目录」——那指的是**渲染出来的日期与数字**，本卡确实没把它们入目录。入目录的是**格式串本身**，它属规格锁定的显示格式（v16 决策 35 原文规定「M月d日」/「yyyy年M月d日」），不由实现自行决定。若写成源码里的中文字面量会被硬编码扫描器判为残留，而本卡范围外不许改 `Scripts/`；入目录既满足扫描器，也让格式可被审阅。**这是本卡的一处判断，请技术负责人确认。**
 
 ## 逐条验收门禁
 
-| 门禁 | 结果 | 说明 |
+| 门禁 | 结果 | 证据 |
 |---|---|---|
-| **G217** R1 断言全过；S3 既有断言零变化全过 | **未达成（未开工）** | R1 未开工。S3 代码一字未动，S3 既有断言随之未受影响 |
-| **G218** R2 断言全过；IC-063～IC-095 既有门禁全过；本地三项门禁退出码 0 | **未达成（未开工）** | R2 未开工。本地三项门禁本卡未跑——无代码变更可验 |
-| **G219** CI success / 真实退出码 0 / 计数算式 / IPA 重下一致 | **未达成（未运行）** | 无产品代码变更，未推送、未触发 CI |
+| **G225** C1～C5 通过 | 满足① | 六项测试函数名与 CI 通过行见下表；C5 见「既有门禁」 |
+| **G226** CI success、真实退出码 0、XCTest 0 失败、计数算式、IPA 重下一致、本地三项门禁 0 | 满足① | 见「CI 与本地门禁」 |
 
-三条机器门禁**全部未达成**，原因是闸门 A 在 R0 阶段触发、按卡内要求停工，**不是失败**。
+### C1～C5 逐项（CI #173 全部 passed）
 
-## 闸门核对
+| 项 | 测试函数 | 断言要点 |
+|---|---|---|
+| **C1** 分派四行全覆盖 | `testIC099v2C1VolumeRouteDispatchCoversAllFourRows` | 视频 ×2 → `.videoAssetURL`；未编辑照片 / LivePhoto → `.contentEditingInputURL`；已编辑照片 / LivePhoto → `.fullSizePhotoResource`；枚举恰 **3** 条 |
+| **C1 续** 失败降级 | `testIC099v2C1FailureDegradesToPositionOnly` | `byteCount == nil` → `3/128`；负字节数同样降级 → `1/1`；**不出现占位符** |
+| **C2** 缓存 | `testIC099v2C2StoreFetchesEachAssetAtMostOnce` | 成功与失败各一，重复请求后 `requestCount == 2`，请求序列恰 `["asset-1","asset-2"]` |
+| **C3** 三态副行 | `testIC099v2C3SubtitleReflectsPendingFailureAndAssetSwitch` | 未就绪 `1/2` → 就绪 `1/2 · 2.4 MB` → **切到未取数资产读到 `nil` 而非上一张的值**，副行 `2/2` → 就绪 `2/2 · 324 KB` |
+| **C4** 日期 | `testIC099v2C4DateTextCoversYearBoundaryAndNil` | 当年 `8月27日`；当年元旦 `1月1日`（月日均不补零）；跨年前一日 `2025年12月31日`；老照片 `2011年3月5日`；`nil` → 主行不显示 |
+| **C4 续** 副行原文 | `testIC099v2C4SubtitleTextUsesSlashAndMiddleDot` | `3/128 · 2.4 MB` 逐字符相等；分隔为空格 + `U+00B7` + 空格；不含 ` / `；三档口径六个用例与 IC-099b P1 同源 |
+| **C5** 既有门禁 + 099b/101 断言 + S3 零 diff | 既有 508 项**一字未改**全过（`git diff 3b7d50e..HEAD -- PhotoCleanupMVETests/` 为 **278 增 0 删**）；`git diff main..HEAD -- Core/S3StateMachine.swift S3StateMachineTests.swift VolumeFormattingTests.swift` **无输出** | 见 CI 514/0 |
+
+### CI 与本地门禁
+
+| 项 | 值 |
+|---|---|
+| 工作流 | `iOS 构建与自验`，run **#173**（id 33081195895） |
+| 被测提交 | `968998579306fc1a4be861f783a49a3211987114` |
+| 结论 | **success**，9 步全 success |
+| XCTest | **Executed 514 tests, with 0 failures (0 unexpected)** in 31.047 (34.549) seconds |
+| 计数算式 | 508（IC-101 后基数）+ 6（本卡新增）− 0 = **514** ✅ |
+| 真实退出码 | **0**（`set -o pipefail` + `exit "$test_status"`，步骤 6 conclusion = success） |
+| IPA 字节数 | **836171** |
+| IPA SHA-256 | `454342c72ec64735a139b6aec71e742aa8773d1e0238324049b6bbeba0788044` |
+| 本地重下复核 | `gh run download` 取 `PhotoCleanupMVE-unsigned-968998579306`，本地 `stat` = **836171**、`sha256sum` = `454342c7…8044`，**与 CI 报告值逐字符一致** ✅ |
+| `Scripts/selfcheck.ps1` | 退出码 **0** |
+| `Scripts/scan-hardcoded-user-visible-strings.ps1` | 退出码 **0** |
+| `git diff --check` | 退出码 **0** |
+| CI 使用次数 | **1 / 3** |
+
+**注**：本分支已含 IC-101，因此 CI #173 用的是**新版** `ci.yml`（错误摘录含产品目录）。本次全绿，该扩展仍未被真实产品编译错误命中——IC-101 报告里的「待自证」保持未覆盖。
+
+### 闸门核对
 
 | 闸门 | 触发 | 说明 |
 |---|---|---|
-| **A** 不存在稳定、无需完整加载数据的获取途径 | **是** | 见「R0 判定」 |
-| **B** 任一既有门禁失败 | 否 | 未改代码，既有门禁未受影响 |
-| **C** 须改手势路径 / 图片请求策略 / 横栏 / 操作条 | 否 | 未改代码 |
-| **D** 新增标定参数、改出厂值或 `schemaVersion` | 否 | 未改代码；`schemaVersion` 仍为 4 |
+| **A** 分派须改图片请求策略 / 节流 / `AssetSizeScanner` 的 S3 语义 | 否 | `S2TemporaryPhotoImageStrategy` 与产品的 `PHImageManager.requestImage*` 调用点一字未动；`AssetSizeScanner`（S3 用，多资源求和）一字未动，`AssetVolumeService` 与它无调用关系 |
+| **B** 任一既有门禁失败 | 否 | 514/0 全过；测试文件 **278 增 0 删**，既有断言一行未改 |
+| **C** 新增标定参数、改出厂值或 `schemaVersion`；KVC | 否 | `S2CalibrationConfiguration` 未加字段、出厂值未改、`schemaVersion` 仍为 **4**；全仓库无 `value(forKey:` 的资源尺寸访问 |
+
+## 取定与占位值登记
+
+### v1 卡内取定（④，本卡实装）
+
+1. **`creationDate == nil` 时主行不显示，仅显示副行**，不引入新文案。→ `dateText` 返回 `nil`，`topInfoArea` 用 `if let` 整行不渲染。
+2. **占用空间取当前版本字节数** → 由 v2 的分派表承担（v1 取定里「照片取原图资源」与「含系统编辑版本时取当前版本」的内部冲突，已被第 130 条④「当前版本语义」统一，本卡按当前版本实装）。
+3. **字体 / 字号 / 颜色为视觉稿前占位样式**，不进标定参数、不进规格。
+
+### 占位样式登记（卡内要求）
+
+| 元素 | 本卡所用样式 | 性质 |
+|---|---|---|
+| 主行（拍摄日期） | `.font(.caption)` + `.foregroundStyle(.primary)` | 视觉稿前占位，④ 可改 |
+| 副行（序号 · 占用空间） | `.font(.caption2)` + `.foregroundStyle(.secondary)` | 视觉稿前占位，④ 可改 |
+| 两行间距 | `VStack(spacing: 0)` | 视觉稿前占位，④ 可改 |
+| 行数限制 | 两行各 `.lineLimit(1)` | 防止长文案挤压顶部三件的既有几何 |
+
+**均为系统字体与语义色，不进 `S2CalibrationConfiguration`、不上参数面板、不进规格。** `schemaVersion` 仍为 **4**。
+
+未定项 7（顶部各元素字体、字号与精确位置属视觉稿范围）**未触碰**——本卡只做结构实装，样式全是占位。
 
 ## 人工判定项
 
-**H42 无法进行**——本卡没有产出可安装的包（无产品代码变更、无 CI 运行、无 IPA）。H42 保留到闸门 A 解除、R1/R2 实装并出包之后，由 Lynn 真机判定，本报告不代为下结论。
+**H42（v1 原文 + 两项加测），保留给 Lynn 真机判定，本报告不代为下结论。** 装本卡 CI #173 的包（IPA 836171 字节、SHA-256 `454342c7…8044`）。
+
+| 判定项 | 说明 |
+|---|---|
+| 抽三张照片一段视频对照系统「信息」页 | 日期文本（**含一张非当年老照片**）、序号、大小量级 |
+| **加测一张已编辑照片** | 大小应为**编辑后当前版本**量级，**不得出现 KB 级病理值**（H43 反例是 7,485 B ≈ 7 KB） |
+| **加测新照片刚进入时** | 副行先只有序号，稍后补出大小；**翻页不串张** |
+| 明暗两模式可读 | 占位样式用的是语义色，理论上跟随，仍需实看 |
+| 拖横栏期间顶部不可点 | 既有 `.disabled(machine.touchSequenceOwner != .none)` 未动 |
+| 无回归抽查 | 翻页 / 标记 / 双击 / 捏合 / `V` 显隐 / sheet |
 
 ## 真机未覆盖项清单
 
-1. **途径 3（`requestContentEditingInput` + `fileSizeKey`）零实测**——语义、耗时、iCloud 行为、已编辑资产行为全部未验证。本机无 Xcode、无真机，无法补测；需要一张探针卡或在探针仓库里加一个探针。
-2. **途径 2 的大文件档未覆盖**——P8 样本上限 18.9 MB，4K 长视频（数 GB）的实际耗时无数据。
-3. **翻页频率下的实际观感未覆盖**——S2 每翻一页触发一次字节读取的卡顿感、耗电与发热，只有真机能判。
-4. **iCloud-only 资产的表现未覆盖**——`isNetworkAccessAllowed = false` 时三条途径分别是失败、报错还是长时间挂起，无数据。
-5. **`creationDate == nil` 的真实占比未知**——取定说该情况下不显示主行，但这种资产在真实相册里有多常见没有数据。
+1. **三条取数路线在产品路径上零真机验证**——H43 验的是 IC-099b 的**探针**实现，本卡的 `AssetVolumeService` 是另一份代码（返回契约不同，见「发现」第 1 条）。路线选择的正确性有 H43 背书，但这份实现本身只有夹具级断言（用假 provider），**真实 PhotoKit 调用未跑过**。H42 的「已编辑照片加测」是第一次真机验证。
+2. **`.fullSizePhoto` 缺失的降级路径未覆盖**——夹具里用假 provider 返回 `nil` 模拟，真机上什么情况下会缺失、缺失后是否真的只显序号，未验证。
+3. **iCloud-only 资产未覆盖**——禁网络下三条路线各自的失败表现（是快速失败还是挂起）无数据；若挂起，副行会长期停在只显序号。
+4. **翻页速度与取数竞态未覆盖**——快速连翻时 `.task(id:)` 的取消与重入、缓存写入顺序，只有真机能判。夹具是串行的。
+5. **日期格式在真机 locale 下的输出未验证**——夹具用 `zh_Hans_CN` 日历显式构造；真机若系统语言非中文，`DateFormatter` 用目录里的中文格式串会输出中文月日字样。App 目前只有 zh-Hans 一种本地化，属预期，但未实看。
+6. **占位样式的可读性与顶部三件的横向挤压未验证**——两行 `.caption`/`.caption2` 在窄机型上是否会挤到返回按钮或确认页入口，只有真机能看。
 
 ## 发现但未处理的问题（按纪律只报告不修）
 
-1. **规格第 102 行示例与口径矛盾**（见「问题一」）。规格属范围外，未改。
-2. **单张 < 1 MB 显示 `0 MB`**（见「问题二」）。属未定的用户可见格式语义，未自行决定。
-3. **卡内取定第 2 条内部冲突**（「原图资源」vs「当前版本全尺寸资源」，见「取定」节）。未自行裁定。
-4. **`AssetSizeScanner` 是多资源求和，与本卡「主资源单取」口径不同**。若两者并存，S2 单张与 S3 合计会是两套口径（例如 Live Photo：S3 计入照片 + 视频两个资源，S2 只计其一）。未动 `AssetSizeScanner`（改它会改 S3 行为，属范围外）。
-5. **`DecimalVolumeFormatter` 已经是独立 `enum`、不依赖 S3 任何状态**（`S3StateMachine.swift:24`）。R1 若要共用，**直接调用即可，无需"提取"**——移动它反而会动到 S3 文件。这条留给技术负责人在放行 R1 时确认取哪种做法。
-6. **`s2.top.position` 现有条目值为 `{current}/{total}`**（`Localizable.xcstrings:1258`）。副行改成「{序号}/{总数} · {占用空间}」后，这个 key 是复用改值还是新增 key，卡内未写，未自行决定。
-
-## 建议（④待技术负责人裁定，执行端不自行选）
-
-若要在不解除「公开 API」约束的前提下推进，可行的最小路径是：
-
-- **A 案**：采用途径 2（`requestData` 流式累加，单主资源），配 per-`assetID` 缓存 + 切资产取消，把代价约束成「每张资产一生只读一次」。风险是大视频首次显示会等数秒。**优点**：本仓库已在用，有真机实测，零上架风险。
-- **B 案**：先发一张探针卡，在 `<top>/PhotoKitConstraintsProbe` 里加 P8b，实测途径 3 在未编辑 / 已编辑 / 视频 / iCloud-only 四种资产上的耗时与返回值，再定。**优点**：可能拿到零 IO 的方案。**代价**：多一轮真机。
-- **C 案**：接受途径 1（KVC）。**零代价、语义精确**，但访问未公开属性，上架风险由产品负责人承担。
-
-三案都需要先解决「必须先定的两个问题」，否则 R1 的断言写不死。
+1. **`AssetVolumeService` 与 IC-099b 的 `AssetSizeProbeService` 有三处 PhotoKit 调用外形重复**（contentEditingInput、requestAVAsset、requestData 各一）。没有合并是因为返回契约不同：探针要「两条路线各自的字节数 + 失败原因七分类」用于取证，产品路径只要「当前版本的一个 `Int64?`」；而且探针的数据路线取的是**原始**主资源，本卡取的是 `.fullSizePhoto`（当前版本），**语义相反**，强行共用反而会埋坑。若日后要收敛，应先抽出一层「给定资源 → 字节数」的最小共用件，而不是共用整条路线。
+2. **日期格式串入 String Catalog 是本卡的判断**（理由见 R3 节）。若技术负责人认为格式串不该进目录，替代方案是给 `Scripts/scan-hardcoded-user-visible-strings.ps1` 加一条与 IC-101 同类的路径豁免——那属 `Scripts/`，本卡范围外。
+3. **`.task(id:)` 只在当前资产上取数，没有预取相邻页**。翻页时新资产的大小要等一次异步往返才出现（H42 的加测项正是看这个）。是否要预取 ±1，属产品体验决策，卡内未写，未自行决定。
+4. **缓存无上限**。会话内浏览过的每个资产都会留一条记录（`String` + `Int64?`），一次会话上千张也只有几十 KB，但没有淘汰策略。卡内只要求「会话级」，未做 LRU。
+5. **顶部信息区两行没有无障碍标签合并**。主行与副行是两个独立 `Text`，VoiceOver 会分别朗读；系统相册是合并成一条朗读的。卡内未提，未自行决定。
+6. **扫描器的 key 提取正则要求键名字面量紧跟调用括号**（`L10n\.text\(\s*"…"`）。本卡最初把三元判断写进调用参数里，两个 key 立刻被判成「目录里有、源码没引用」；另外注释里写了一段含中文字面量的示例代码，也被当成真实调用与硬编码残留。两处都已改写。**这条规则没有写在任何文档里**，下一个加 key 的人会重踩，值得记进 CLAUDE.md 陷阱节——属 CLAUDE.md，本卡范围外。
 
 ## 完成后动作
 
-**停在 R0，等技术负责人裁定。** 未合并主干，未推 CI，未改任何产品代码。
+**完成即停，等 H42。** 未合并主干，未动冻结三链。
