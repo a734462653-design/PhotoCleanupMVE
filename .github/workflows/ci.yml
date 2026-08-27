@@ -68,7 +68,7 @@ jobs:
           if [ "$test_status" -ne 0 ]; then
             failure_lines="$(
               /usr/bin/grep -E \
-                'PhotoCleanupMVETests/.*error:|Test Case .* failed' \
+                'PhotoCleanupMVE/.*error:|PhotoCleanupMVETests/.*error:|Test Case .* failed' \
                 "$test_log" | tail -n 50 || true
             )"
             if [ -n "$failure_lines" ]; then

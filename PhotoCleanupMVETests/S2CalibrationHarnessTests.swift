@@ -7464,6 +7464,601 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
+    // MARK: - IC-099b P1：S2 单张资产占用空间口径（④ Lynn 2026-08-28 定案 2）
+
+    /// 卡内八个用例逐条断言。三档边界全部向下截断，无四舍五入。
+    /// 与 S3 合计口径并存——本节不触碰 `DecimalVolumeFormatter` 的任何断言。
+    func testIC099bP1SingleAssetVolumeUsesKilobyteMegabyteGigabyteTiers() {
+        let cases: [(Int64, String)] = [
+            (0, "0 KB"),
+            (324_846, "324 KB"),
+            (999_999, "999 KB"),
+            (1_000_000, "1.0 MB"),
+            (2_466_000, "2.4 MB"),
+            (999_949_999, "999.9 MB"),
+            (1_000_000_000, "1.0 GB"),
+            (25_480_000_000, "25.4 GB")
+        ]
+        for (byteCount, expected) in cases {
+            XCTAssertEqual(
+                S2AssetVolumeFormatter.string(forByteCount: byteCount),
+                expected,
+                "\(byteCount) 应显示为 \(expected)"
+            )
+        }
+    }
+
+    /// 档位切换恰好发生在 1_000_000 与 1_000_000_000，且两侧都不进位。
+    func testIC099bP1TierBoundariesTruncateInsteadOfRounding() {
+        XCTAssertEqual(
+            S2AssetVolumeFormatter.string(forByteCount: 999_999),
+            "999 KB"
+        )
+        XCTAssertEqual(
+            S2AssetVolumeFormatter.string(forByteCount: 1_000_000),
+            "1.0 MB"
+        )
+        XCTAssertEqual(
+            S2AssetVolumeFormatter.string(forByteCount: 1_099_999),
+            "1.0 MB"
+        )
+        XCTAssertEqual(
+            S2AssetVolumeFormatter.string(forByteCount: 999_999_999),
+            "999.9 MB"
+        )
+        XCTAssertEqual(
+            S2AssetVolumeFormatter.string(forByteCount: 1_000_000_000),
+            "1.0 GB"
+        )
+        XCTAssertEqual(
+            S2AssetVolumeFormatter.string(forByteCount: 1_099_999_999),
+            "1.0 GB"
+        )
+    }
+
+    /// S2 口径与 S3 口径互不影响：同一字节数在两处给出各自档位的结果。
+    func testIC099bP1SingleAssetTierDoesNotChangeAggregateTier() {
+        XCTAssertEqual(
+            S2AssetVolumeFormatter.string(forByteCount: 324_846),
+            "324 KB"
+        )
+        XCTAssertEqual(
+            DecimalVolumeFormatter.string(forByteCount: 324_846),
+            "0 MB"
+        )
+        XCTAssertEqual(
+            S2AssetVolumeFormatter.string(forByteCount: 2_466_000),
+            "2.4 MB"
+        )
+        XCTAssertEqual(
+            DecimalVolumeFormatter.string(forByteCount: 2_466_000),
+            "2 MB"
+        )
+    }
+
+    // MARK: - IC-099b P2 / P3：字节数探针（纯函数与零副作用）
+
+    private func makeProbeMeasurement(
+        assetID: String = "ABCDEFGH-1234-5678",
+        mediaKind: S2AssetSizeProbeMediaKind = .photo,
+        isEdited: Bool = false,
+        urlByteCount: Int64? = 2_466_000,
+        urlFailure: S2AssetSizeProbeFailure? = nil,
+        urlElapsedMilliseconds: Double = 3.214,
+        dataByteCount: Int64? = 2_400_000,
+        dataFailure: S2AssetSizeProbeFailure? = nil,
+        dataElapsedMilliseconds: Double = 14.081
+    ) -> S2AssetSizeProbeMeasurement {
+        S2AssetSizeProbeMeasurement(
+            assetID: assetID,
+            mediaKind: mediaKind,
+            isEdited: isEdited,
+            urlByteCount: urlByteCount,
+            urlFailure: urlFailure,
+            urlElapsedMilliseconds: urlElapsedMilliseconds,
+            dataByteCount: dataByteCount,
+            dataFailure: dataFailure,
+            dataElapsedMilliseconds: dataElapsedMilliseconds
+        )
+    }
+
+    /// IC-099b P2：行格式化按卡内九列原样拼装，两途径都成功时差值为实测差。
+    func testIC099bP2ProbeRowRendersNineColumnsInOrder() {
+        let measurement = makeProbeMeasurement(isEdited: true)
+        XCTAssertEqual(measurement.byteDelta, 66_000)
+        XCTAssertEqual(
+            S2AssetSizeProbeText.row(measurement),
+            "ABCDEFGH｜照片｜已编辑=是｜URL字节=2466000｜数据字节=2400000｜" +
+                "差值=66000｜URL耗时=3.21ms｜数据耗时=14.08ms｜失败原因=无"
+        )
+        XCTAssertEqual(
+            S2AssetSizeProbeText.row(measurement)
+                .components(separatedBy: "｜").count,
+            9
+        )
+    }
+
+    /// IC-099b P2：任一途径失败时该列与差值都是 `nil`，失败原因逐条列出。
+    func testIC099bP2ProbeRowRendersFailuresAndNilColumns() {
+        let urlFailed = makeProbeMeasurement(
+            assetID: "IJKLMNOPQR",
+            mediaKind: .video,
+            urlByteCount: nil,
+            urlFailure: .notLocal,
+            urlElapsedMilliseconds: 120.5,
+            dataByteCount: 13_612_393,
+            dataElapsedMilliseconds: 18.03
+        )
+        XCTAssertNil(urlFailed.byteDelta)
+        XCTAssertEqual(
+            S2AssetSizeProbeText.row(urlFailed),
+            "IJKLMNOP｜视频｜已编辑=否｜URL字节=nil｜数据字节=13612393｜" +
+                "差值=nil｜URL耗时=120.50ms｜数据耗时=18.03ms｜" +
+                "失败原因=URL:资源不在本地"
+        )
+
+        let bothFailed = makeProbeMeasurement(
+            assetID: "STUVWXYZ00",
+            mediaKind: .livePhoto,
+            urlByteCount: nil,
+            urlFailure: .noURL,
+            urlElapsedMilliseconds: 0,
+            dataByteCount: nil,
+            dataFailure: .requestFailed,
+            dataElapsedMilliseconds: 0
+        )
+        XCTAssertEqual(
+            S2AssetSizeProbeText.row(bothFailed),
+            "STUVWXYZ｜LivePhoto｜已编辑=否｜URL字节=nil｜数据字节=nil｜" +
+                "差值=nil｜URL耗时=0.00ms｜数据耗时=0.00ms｜" +
+                "失败原因=URL:无可用URL，数据:请求失败"
+        )
+    }
+
+    /// IC-099b P2：失败原因枚举齐全——七个分支各有互不相同的非空文案，
+    /// 且每一个都能在行文本里原样出现。
+    func testIC099bP2ProbeFailureReasonsAreCompleteAndDistinct() {
+        XCTAssertEqual(S2AssetSizeProbeFailure.allCases.count, 7)
+        XCTAssertEqual(S2AssetSizeProbeMediaKind.allCases.count, 3)
+
+        var names = Set<String>()
+        for failure in S2AssetSizeProbeFailure.allCases {
+            XCTAssertFalse(failure.displayName.isEmpty, failure.rawValue)
+            names.insert(failure.displayName)
+            let row = S2AssetSizeProbeText.row(makeProbeMeasurement(
+                urlByteCount: nil,
+                urlFailure: failure
+            ))
+            XCTAssertTrue(
+                row.contains("失败原因=URL:" + failure.displayName),
+                row
+            )
+        }
+        XCTAssertEqual(names.count, S2AssetSizeProbeFailure.allCases.count)
+
+        var kindNames = Set<String>()
+        for kind in S2AssetSizeProbeMediaKind.allCases {
+            XCTAssertFalse(kind.displayName.isEmpty, kind.rawValue)
+            kindNames.insert(kind.displayName)
+        }
+        XCTAssertEqual(
+            kindNames.count,
+            S2AssetSizeProbeMediaKind.allCases.count
+        )
+    }
+
+    /// IC-099b P2：汇总行给出两途径成功率、逐类样本数、已编辑数与差值非零行数。
+    func testIC099bP2ProbeSummaryCountsSuccessKindsAndDeltas() {
+        let measurements = [
+            makeProbeMeasurement(assetID: "AAAAAAAA"),
+            makeProbeMeasurement(
+                assetID: "BBBBBBBB",
+                mediaKind: .video,
+                isEdited: true,
+                urlByteCount: nil,
+                urlFailure: .notLocal
+            ),
+            makeProbeMeasurement(
+                assetID: "CCCCCCCC",
+                mediaKind: .livePhoto,
+                urlByteCount: 1_000,
+                dataByteCount: 1_000
+            )
+        ]
+        let summary = S2AssetSizeProbeText.summary(measurements)
+        XCTAssertTrue(
+            summary.contains("URL途径成功=2/3（66.7%）"),
+            summary
+        )
+        XCTAssertTrue(
+            summary.contains("数据途径成功=3/3（100.0%）"),
+            summary
+        )
+        XCTAssertTrue(
+            summary.contains("照片=1｜LivePhoto=1｜视频=1"),
+            summary
+        )
+        XCTAssertTrue(summary.contains("已编辑样本=1"), summary)
+        // 第一条差值 66000 非零；第二条 URL 失败不计；第三条差值 0 不计。
+        XCTAssertTrue(
+            summary.contains("两途径均成功且差值非零=1"),
+            summary
+        )
+        XCTAssertTrue(
+            summary.contains("失败原因分布：URL:资源不在本地=1"),
+            summary
+        )
+    }
+
+    /// IC-099b P2：头部声明列清单与样本／上限，超出上限时注明只取前 N 个。
+    func testIC099bP2ProbeHeaderDeclaresColumnsAndLimitNote() {
+        let within = S2AssetSizeProbeText.header(
+            sampleCount: 12,
+            totalCount: 12,
+            limit: 60
+        )
+        XCTAssertTrue(within.contains("格式版本=1"), within)
+        XCTAssertTrue(
+            within.contains("列=" + S2AssetSizeProbeText.columns),
+            within
+        )
+        XCTAssertTrue(
+            within.contains("样本数=12；范围内资产总数=12；上限=60"),
+            within
+        )
+        XCTAssertFalse(within.contains("只取前"), within)
+
+        let truncated = S2AssetSizeProbeText.header(
+            sampleCount: 60,
+            totalCount: 128,
+            limit: 60
+        )
+        XCTAssertTrue(truncated.contains("只取前 60 个"), truncated)
+    }
+
+    /// IC-099b P3：探针未被触发时零副作用——不取数、不出报告、不进运行态。
+    func testIC099bP3ProbeIsInertUntilExplicitlyRun() {
+        let prober = CountingAssetSizeProber()
+        let coordinator = S2AssetSizeProbeCoordinator()
+
+        XCTAssertFalse(coordinator.isRunning)
+        XCTAssertTrue(coordinator.reportText.isEmpty)
+        XCTAssertTrue(coordinator.progressText.isEmpty)
+        XCTAssertTrue(coordinator.measurements.isEmpty)
+        XCTAssertFalse(coordinator.canExport)
+        XCTAssertEqual(prober.measureCount, 0)
+
+        // 空范围同样不启动：不置运行态、不发起任何取数。
+        coordinator.run(assetIDs: [], using: prober)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertFalse(coordinator.isRunning)
+        XCTAssertTrue(coordinator.reportText.isEmpty)
+        XCTAssertEqual(prober.measureCount, 0)
+    }
+
+    /// IC-099b P3：显式运行后逐资产串行取数一次，报告含头部、每行与汇总。
+    func testIC099bP3ProbeRunMeasuresEachAssetOnceAndBuildsReport() {
+        let prober = CountingAssetSizeProber()
+        let coordinator = S2AssetSizeProbeCoordinator()
+        let assetIDs = ["asset-1", "asset-2", "asset-3"]
+
+        coordinator.run(assetIDs: assetIDs, using: prober)
+        let deadline = Date(timeIntervalSinceNow: 2)
+        while coordinator.isRunning, Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+
+        XCTAssertFalse(coordinator.isRunning)
+        XCTAssertEqual(prober.measureCount, assetIDs.count)
+        XCTAssertEqual(prober.requestedAssetIDs, assetIDs)
+        XCTAssertEqual(coordinator.measurements.count, assetIDs.count)
+        XCTAssertTrue(coordinator.canExport)
+        XCTAssertEqual(
+            coordinator.progressText,
+            S2AssetSizeProbeText.progress(finished: 3, total: 3)
+        )
+        for assetID in assetIDs {
+            XCTAssertTrue(
+                coordinator.reportText.contains(
+                    S2AssetSizeProbeText.identifierPrefix(assetID)
+                ),
+                assetID
+            )
+        }
+        XCTAssertTrue(
+            coordinator.reportText.contains("格式版本=1"),
+            coordinator.reportText
+        )
+        XCTAssertTrue(
+            coordinator.reportText.contains("汇总｜逐类样本数："),
+            coordinator.reportText
+        )
+    }
+
+    /// IC-099b P3：范围超过上限时只取前 60 个，并在头部注明总数。
+    func testIC099bP3ProbeStopsAtAssetLimitAndNotesTotal() {
+        let prober = CountingAssetSizeProber()
+        let coordinator = S2AssetSizeProbeCoordinator()
+        let assetIDs = (1...70).map { "asset-\($0)" }
+
+        XCTAssertEqual(S2AssetSizeProbeCoordinator.assetLimit, 60)
+        coordinator.run(assetIDs: assetIDs, using: prober)
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while coordinator.isRunning, Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+
+        XCTAssertFalse(coordinator.isRunning)
+        XCTAssertEqual(prober.measureCount, 60)
+        XCTAssertEqual(coordinator.measurements.count, 60)
+        XCTAssertTrue(
+            coordinator.reportText.contains(
+                "样本数=60；范围内资产总数=70；上限=60"
+            ),
+            coordinator.reportText
+        )
+        XCTAssertTrue(
+            coordinator.reportText.contains("只取前 60 个"),
+            coordinator.reportText
+        )
+    }
+
+    // MARK: - IC-099 阶段二：顶部信息区（日期主行 + 序号·占用空间副行）
+
+    private func zhCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "zh_Hans_CN")
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        return calendar
+    }
+
+    private func date(
+        _ year: Int,
+        _ month: Int,
+        _ day: Int,
+        calendar: Calendar
+    ) -> Date {
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = 12
+        return tryUnwrap(calendar.date(from: components))
+    }
+
+    /// IC-099 阶段二 C1：路线分派四行全覆盖（类型 × 是否已编辑）。
+    func testIC099v2C1VolumeRouteDispatchCoversAllFourRows() {
+        // 视频（含已编辑）一律走 requestAVAsset → URL
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .video, isEdited: false),
+            .videoAssetURL
+        )
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .video, isEdited: true),
+            .videoAssetURL
+        )
+        // 未编辑照片 / LivePhoto 走 contentEditingInput → fullSizeImageURL
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .photo, isEdited: false),
+            .contentEditingInputURL
+        )
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .livePhoto, isEdited: false),
+            .contentEditingInputURL
+        )
+        // 已编辑照片 / 已编辑 LivePhoto 走 .fullSizePhoto 资源（H43 病理反例的处置）
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .photo, isEdited: true),
+            .fullSizePhotoResource
+        )
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .livePhoto, isEdited: true),
+            .fullSizePhotoResource
+        )
+        // 三条路线各不相同，且枚举没有第四条
+        XCTAssertEqual(S2AssetVolumeRoute.allCases.count, 3)
+    }
+
+    /// IC-099 阶段二 C1 续：任一路失败 → 副行只显示序号，不显示大小、不显示占位符。
+    func testIC099v2C1FailureDegradesToPositionOnly() {
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 2,
+                totalCount: 128,
+                byteCount: nil
+            ),
+            "3/128"
+        )
+        // 负字节数同样按失败处理
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 0,
+                totalCount: 1,
+                byteCount: -1
+            ),
+            "1/1"
+        )
+    }
+
+    /// IC-099 阶段二 C2：会话级缓存命中不再发起第二次取数（含失败结论）。
+    func testIC099v2C2StoreFetchesEachAssetAtMostOnce() {
+        let provider = CountingAssetVolumeProvider(byteCounts: [
+            "asset-1": 2_466_000,
+            "asset-2": nil
+        ])
+        let store = S2AssetVolumeStore()
+
+        store.requestIfNeeded(assetID: "asset-1", using: provider)
+        store.requestIfNeeded(assetID: "asset-1", using: provider)
+        store.requestIfNeeded(assetID: "asset-2", using: provider)
+        let deadline = Date(timeIntervalSinceNow: 2)
+        while !(store.isResolved("asset-1") && store.isResolved("asset-2")),
+              Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+
+        XCTAssertEqual(store.byteCount(for: "asset-1"), 2_466_000)
+        XCTAssertNil(store.byteCount(for: "asset-2"))
+        XCTAssertTrue(store.isResolved("asset-2"))
+        XCTAssertEqual(provider.requestedAssetIDs, ["asset-1", "asset-2"])
+
+        // 已解析（成功与失败各一）后再请求，都不再发起
+        store.requestIfNeeded(assetID: "asset-1", using: provider)
+        store.requestIfNeeded(assetID: "asset-2", using: provider)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertEqual(provider.requestCount, 2)
+    }
+
+    /// IC-099 阶段二 C3：未就绪 / 失败 / 切资产三态的副行文本。
+    func testIC099v2C3SubtitleReflectsPendingFailureAndAssetSwitch() {
+        let provider = CountingAssetVolumeProvider(byteCounts: [
+            "asset-1": 2_466_000,
+            "asset-2": 324_846
+        ])
+        let store = S2AssetVolumeStore()
+
+        // 未就绪：只显示序号
+        XCTAssertNil(store.byteCount(for: "asset-1"))
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 0,
+                totalCount: 2,
+                byteCount: store.byteCount(for: "asset-1")
+            ),
+            "1/2"
+        )
+
+        store.requestIfNeeded(assetID: "asset-1", using: provider)
+        let deadline = Date(timeIntervalSinceNow: 2)
+        while !store.isResolved("asset-1"), Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 0,
+                totalCount: 2,
+                byteCount: store.byteCount(for: "asset-1")
+            ),
+            "1/2 · 2.4 MB"
+        )
+
+        // 切到还没取数的资产：读到的是 nil，**不会是上一张的值**
+        XCTAssertNil(store.byteCount(for: "asset-2"))
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 1,
+                totalCount: 2,
+                byteCount: store.byteCount(for: "asset-2")
+            ),
+            "2/2"
+        )
+
+        store.requestIfNeeded(assetID: "asset-2", using: provider)
+        let secondDeadline = Date(timeIntervalSinceNow: 2)
+        while !store.isResolved("asset-2"), Date() < secondDeadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 1,
+                totalCount: 2,
+                byteCount: store.byteCount(for: "asset-2")
+            ),
+            "2/2 · 324 KB"
+        )
+    }
+
+    /// IC-099 阶段二 C4：日期主行——当年 `M月d日`、非当年 `yyyy年M月d日`、
+    /// 元旦与跨年边界、`nil` 不显示主行。
+    func testIC099v2C4DateTextCoversYearBoundaryAndNil() {
+        let calendar = zhCalendar()
+        let now = date(2026, 8, 28, calendar: calendar)
+
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.dateText(
+                creationDate: date(2026, 8, 27, calendar: calendar),
+                now: now,
+                calendar: calendar
+            ),
+            "8月27日"
+        )
+        // 当年元旦：仍是当年格式，月与日都不补零
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.dateText(
+                creationDate: date(2026, 1, 1, calendar: calendar),
+                now: now,
+                calendar: calendar
+            ),
+            "1月1日"
+        )
+        // 跨年前一天：非当年格式
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.dateText(
+                creationDate: date(2025, 12, 31, calendar: calendar),
+                now: now,
+                calendar: calendar
+            ),
+            "2025年12月31日"
+        )
+        // 老照片
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.dateText(
+                creationDate: date(2011, 3, 5, calendar: calendar),
+                now: now,
+                calendar: calendar
+            ),
+            "2011年3月5日"
+        )
+        // 无拍摄日期：主行不显示
+        XCTAssertNil(
+            S2TopBarInfoPresentation.dateText(
+                creationDate: nil,
+                now: now,
+                calendar: calendar
+            )
+        )
+    }
+
+    /// IC-099 阶段二 C4 续：副行原文——半角斜杠无空格、分隔为「 · 」、
+    /// 口径沿用 IC-099b 已交付的 `S2AssetVolumeFormatter`（视频同规则）。
+    func testIC099v2C4SubtitleTextUsesSlashAndMiddleDot() {
+        XCTAssertEqual(
+            S2TopBarInfoPresentation.subtitleText(
+                currentIndex: 2,
+                totalCount: 128,
+                byteCount: 2_466_000
+            ),
+            "3/128 · 2.4 MB"
+        )
+        // 分隔符是「空格 + U+00B7 + 空格」
+        let text = S2TopBarInfoPresentation.subtitleText(
+            currentIndex: 0,
+            totalCount: 9,
+            byteCount: 25_480_000_000
+        )
+        XCTAssertEqual(text, "1/9 \u{00B7} 25.4 GB")
+        XCTAssertFalse(text.contains(" / "))
+
+        // 三档口径与 IC-099b P1 同源，视频资产走同一函数、同一结果
+        for (byteCount, expected) in [
+            (Int64(0), "1/1 · 0 KB"),
+            (Int64(324_846), "1/1 · 324 KB"),
+            (Int64(999_999), "1/1 · 999 KB"),
+            (Int64(1_000_000), "1/1 · 1.0 MB"),
+            (Int64(999_949_999), "1/1 · 999.9 MB"),
+            (Int64(1_000_000_000), "1/1 · 1.0 GB")
+        ] {
+            XCTAssertEqual(
+                S2TopBarInfoPresentation.subtitleText(
+                    currentIndex: 0,
+                    totalCount: 1,
+                    byteCount: byteCount
+                ),
+                expected
+            )
+        }
+    }
+
     private let physicalSize = CGSize(width: 300, height: 600)
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
     private let overlaySafeAreaInsets = S2OverlaySafeAreaInsets(
@@ -8166,6 +8761,52 @@ final class S2CalibrationHarnessTests: XCTestCase {
             fatalError("测试无法继续")
         }
         return value
+    }
+}
+
+/// IC-099b P3：计数用的假取数实现。只记录被问过哪些资产，不做任何 IO。
+/// IC-099 阶段二 C2/C3：计数用的假取数实现。记录被问过哪些资产，不做任何 IO。
+private final class CountingAssetVolumeProvider: S2AssetVolumeProviding {
+    private let byteCounts: [String: Int64?]
+    private(set) var requestedAssetIDs: [String] = []
+
+    var requestCount: Int {
+        requestedAssetIDs.count
+    }
+
+    init(byteCounts: [String: Int64?]) {
+        self.byteCounts = byteCounts
+    }
+
+    func byteCount(assetID: String) async -> Int64? {
+        requestedAssetIDs.append(assetID)
+        guard let value = byteCounts[assetID] else {
+            return nil
+        }
+        return value
+    }
+}
+
+private final class CountingAssetSizeProber: S2AssetSizeProbing {
+    private(set) var requestedAssetIDs: [String] = []
+
+    var measureCount: Int {
+        requestedAssetIDs.count
+    }
+
+    func measure(assetID: String) async -> S2AssetSizeProbeMeasurement {
+        requestedAssetIDs.append(assetID)
+        return S2AssetSizeProbeMeasurement(
+            assetID: assetID,
+            mediaKind: .photo,
+            isEdited: false,
+            urlByteCount: 1_000_000,
+            urlFailure: nil,
+            urlElapsedMilliseconds: 1,
+            dataByteCount: 1_000_000,
+            dataFailure: nil,
+            dataElapsedMilliseconds: 2
+        )
     }
 }
 
