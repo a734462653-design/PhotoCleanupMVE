@@ -112,11 +112,11 @@ final class AssetSizeProbeService: S2AssetSizeProbing {
         let isEdited = resources.contains { $0.type == .adjustmentData }
 
         let urlStartedAt = CACurrentMediaTime()
-        let urlOutcome = await urlOutcome(for: asset, mediaKind: mediaKind)
+        let urlResult = await measureURLRoute(for: asset, mediaKind: mediaKind)
         let urlElapsed = (CACurrentMediaTime() - urlStartedAt) * 1_000
 
         let dataStartedAt = CACurrentMediaTime()
-        let dataOutcome = await dataOutcome(
+        let dataResult = await measureDataRoute(
             resources: resources,
             mediaKind: mediaKind
         )
@@ -126,18 +126,18 @@ final class AssetSizeProbeService: S2AssetSizeProbing {
             assetID: assetID,
             mediaKind: mediaKind,
             isEdited: isEdited,
-            urlByteCount: Self.byteCount(of: urlOutcome),
-            urlFailure: Self.failure(of: urlOutcome),
+            urlByteCount: Self.byteCount(of: urlResult),
+            urlFailure: Self.failure(of: urlResult),
             urlElapsedMilliseconds: urlElapsed,
-            dataByteCount: Self.byteCount(of: dataOutcome),
-            dataFailure: Self.failure(of: dataOutcome),
+            dataByteCount: Self.byteCount(of: dataResult),
+            dataFailure: Self.failure(of: dataResult),
             dataElapsedMilliseconds: dataElapsed
         )
     }
 
     // MARK: - URL 途径
 
-    private func urlOutcome(
+    private func measureURLRoute(
         for asset: PHAsset,
         mediaKind: S2AssetSizeProbeMediaKind
     ) async -> Outcome {
@@ -153,7 +153,7 @@ final class AssetSizeProbeService: S2AssetSizeProbing {
             options.isNetworkAccessAllowed = false
             let resumer = ContinuationResumer()
 
-            asset.requestContentEditingInput(with: options) { input, info in
+            _ = asset.requestContentEditingInput(with: options) { input, info in
                 guard resumer.claim() else {
                     return
                 }
@@ -187,7 +187,7 @@ final class AssetSizeProbeService: S2AssetSizeProbing {
             options.deliveryMode = .highQualityFormat
             let resumer = ContinuationResumer()
 
-            PHImageManager.default().requestAVAsset(
+            _ = PHImageManager.default().requestAVAsset(
                 forVideo: asset,
                 options: options
             ) { avAsset, _, info in
@@ -230,7 +230,7 @@ final class AssetSizeProbeService: S2AssetSizeProbing {
 
     // MARK: - 数据途径（语义基准，仅探针内使用）
 
-    private func dataOutcome(
+    private func measureDataRoute(
         resources: [PHAssetResource],
         mediaKind: S2AssetSizeProbeMediaKind
     ) async -> Outcome {

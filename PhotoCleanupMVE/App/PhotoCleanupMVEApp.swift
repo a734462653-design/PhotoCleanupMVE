@@ -39,9 +39,8 @@ struct PhotoCleanupMVEApp: App {
                             assetIsScreenshot:
                                 coordinator.s2AssetIsScreenshot,
                             assetPixelSize: coordinator.s2AssetPixelSize,
-                            makeAssetSizeProber: {
-                                coordinator.makeS2AssetSizeProber()
-                            },
+                            assetSizeProber:
+                                coordinator.makeS2AssetSizeProber(),
                             photoContent: { context in
                                 AnyView(
                                     S2TemporaryPhotoImageView(

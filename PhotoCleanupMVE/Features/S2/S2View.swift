@@ -375,8 +375,10 @@ struct S2View: View {
         S2AlbumReference
     ) -> Void
     private let photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback
-    /// IC-099b R2：调试面板按下时现造一个取数实现；未接线（nil）时探针按钮禁用。
-    private let makeAssetSizeProber: (() -> S2AssetSizeProbing)?
+    /// IC-099b R2：字节数探针的取数实现。未接线（nil）时探针按钮禁用。
+    /// 用现成对象而不是工厂闭包：闭包体是非隔离的，在里面调 `@MainActor` 的
+    /// 协调器方法会触发隔离检查；由 App 层在自身的主线程上下文里造好传进来。
+    private let assetSizeProber: S2AssetSizeProbing?
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
@@ -397,6 +399,7 @@ struct S2View: View {
         assetAspectRatio: @escaping (String) -> CGFloat,
         assetIsScreenshot: @escaping (String) -> Bool = { _ in false },
         assetPixelSize: @escaping (String) -> CGSize = { _ in .zero },
+        assetSizeProber: S2AssetSizeProbing? = nil,
         photoContent: @escaping PhotoContent,
         stripItemContent: @escaping StripItemContent,
         albumPickerContent: @escaping AlbumPickerContent,
@@ -409,7 +412,6 @@ struct S2View: View {
             S2AlbumReference
         ) -> Void = { _, _ in },
         photoSwitchHapticFeedback: S2PhotoSwitchHapticFeedback = .live,
-        makeAssetSizeProber: (() -> S2AssetSizeProbing)? = nil,
         geometryDiagnostics: S2GeometryDiagnosticsCoordinator =
             S2GeometryDiagnosticsCoordinator(),
         transitionDiagnostics: S2OnDeviceTransitionDiagnosticsCoordinator =
@@ -432,7 +434,7 @@ struct S2View: View {
         self.onRecentAlbumRequest = onRecentAlbumRequest
         self.onAlbumPickerSelection = onAlbumPickerSelection
         self.photoSwitchHapticFeedback = photoSwitchHapticFeedback
-        self.makeAssetSizeProber = makeAssetSizeProber
+        self.assetSizeProber = assetSizeProber
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
             wrappedValue: transitionDiagnostics
@@ -1286,37 +1288,7 @@ struct S2View: View {
                         .font(.system(.caption2, design: .monospaced))
                         .textSelection(.enabled)
                 }
-                // IC-099b R2：字节数探针。只量当前范围内资产的字节数并生成可复制文本，
-                // 不改任何产品行为、不写持久化、不碰图片请求策略。
-                Divider()
-                Text(L10n.text("s2.calibration.asset_size_probe.title"))
-                Button(L10n.text("s2.calibration.asset_size_probe.start")) {
-                    guard let makeAssetSizeProber else {
-                        return
-                    }
-                    assetSizeProbe.run(
-                        assetIDs: machine.orderedAssetIDs,
-                        using: makeAssetSizeProber()
-                    )
-                }
-                .disabled(
-                    makeAssetSizeProber == nil || assetSizeProbe.isRunning
-                )
-                .s2MinimumTouchTarget()
-                if assetSizeProbe.isRunning {
-                    ProgressView(assetSizeProbe.progressText)
-                }
-                if !assetSizeProbe.reportText.isEmpty {
-                    ShareLink(item: assetSizeProbe.reportText) {
-                        Text(L10n.text(
-                            "s2.calibration.asset_size_probe.share"
-                        ))
-                    }
-                    .s2MinimumTouchTarget()
-                    Text(verbatim: assetSizeProbe.reportText)
-                        .font(.system(.caption2, design: .monospaced))
-                        .textSelection(.enabled)
-                }
+                assetSizeProbeSection
                 // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
                 // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
@@ -1327,6 +1299,43 @@ struct S2View: View {
                     Text(L10n.text("s2.calibration.persistence_failed"))
                 }
             }
+        }
+    }
+
+    /// IC-099b R2：调试面板的字节数探针段。单独抽出，既让面板主体少 8 个子视图，
+    /// 也把这一段的类型检查与面板其余部分隔开。
+    @ViewBuilder
+    private var assetSizeProbeSection: some View {
+        // IC-099b R2：字节数探针。只量当前范围内资产的字节数并生成可复制文本，
+        // 不改任何产品行为、不写持久化、不碰图片请求策略。
+        Divider()
+        Text(L10n.text("s2.calibration.asset_size_probe.title"))
+        Button(L10n.text("s2.calibration.asset_size_probe.start")) {
+            guard let prober = assetSizeProber else {
+                return
+            }
+            assetSizeProbe.run(
+                assetIDs: machine.orderedAssetIDs,
+                using: prober
+            )
+        }
+        .disabled(
+            assetSizeProber == nil || assetSizeProbe.isRunning
+        )
+        .s2MinimumTouchTarget()
+        if assetSizeProbe.isRunning {
+            ProgressView(assetSizeProbe.progressText)
+        }
+        if !assetSizeProbe.reportText.isEmpty {
+            ShareLink(item: assetSizeProbe.reportText) {
+                Text(L10n.text(
+                    "s2.calibration.asset_size_probe.share"
+                ))
+            }
+            .s2MinimumTouchTarget()
+            Text(verbatim: assetSizeProbe.reportText)
+                .font(.system(.caption2, design: .monospaced))
+                .textSelection(.enabled)
         }
     }
 
