@@ -4109,7 +4109,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // X1：缩放变换的实际锚点固定在物理视口中心。
+    // X1：缩放变换的实际锚点固定在物理视口中心（`viewportAnchor` 与
+    // `layer.anchorPoint` 均不变）。IC-104 C v3：两端**终点位置**不再同心——
+    // 正向终点（隐藏态沉浸）居中于视口，反向终点（显示态）居中于适配带。
     func testX1ImmersiveTransitionUsesViewportCenterAnchoredScaleTransform() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -4155,7 +4157,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
             transition.viewportAnchor
         )
         XCTAssertEqual(reverseAnchor.x, transition.viewportAnchor.x, accuracy: 0.000_001)
-        XCTAssertEqual(reverseAnchor.y, transition.viewportAnchor.y, accuracy: 0.000_001)
+        // IC-104 C v3：反向终点是显示态几何，其中心为**带中心**；变换锚点仍固定
+        // 在视口中心，由上方 `viewportAnchor` 与 `anchorPoint` 两条断言把关。
+        XCTAssertEqual(
+            reverseAnchor.y,
+            metrics(visibility: .visible).oneXDisplayCenterY,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            transition.viewportAnchor.y - reverseAnchor.y,
+            expectedOneXToNxCenterJump(),
+            accuracy: 0.000_001
+        )
         page.finishActivePresentationTransition()
     }
 
