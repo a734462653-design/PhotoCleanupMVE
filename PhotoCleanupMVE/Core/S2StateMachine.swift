@@ -463,6 +463,8 @@ enum S2GestureAvailability: Equatable {
 
 enum S2GestureEffect: Equatable {
     case toggleInterface
+    /// IC-104 B（第 132 条）：只迁 `V=显示`，不像单击那样双向切换。
+    case revealInterface
     case toggleZoom
     case continuousPinch
     case markCurrent
@@ -810,8 +812,12 @@ final class S2StateMachine: ObservableObject {
             case .state(.visibleOneXStripDragging),
                  .state(.visibleNxStripDragging):
                 return .unavailable
-            case .state(.visibleOneXIdle), .state(.hiddenOneX):
+            case .state(.visibleOneXIdle):
                 return .conditional(.sameState)
+            // IC-104 B（第 132 条）：V=隐藏 且 1x，上滑完全无效果——
+            // 不标记、不改 D、不翻页、不发提示。
+            case .state(.hiddenOneX):
+                return .ignored(.sameState)
             case .state(.visibleNxIdle), .state(.hiddenNx):
                 return .conditional(.dynamic)
             }
@@ -823,7 +829,12 @@ final class S2StateMachine: ObservableObject {
             case .state(.visibleOneXStripDragging),
                  .state(.visibleNxStripDragging):
                 return .unavailable
-            case .state(_):
+            // IC-104 B（第 132 条）：V=隐藏 且 1x，下滑迁 V=显示，与单击同形。
+            case .state(.hiddenOneX):
+                return .available(.state(.visibleOneXIdle))
+            case .state(.visibleOneXIdle),
+                 .state(.visibleNxIdle),
+                 .state(.hiddenNx):
                 return .conditional(.sameState)
             }
 
@@ -934,9 +945,13 @@ final class S2StateMachine: ObservableObject {
         }
     }
 
+    /// 手势矩阵。`visibility` 是 IC-104 B（第 132 条）引入的界面可见性维度：
+    /// 只有 1x 的上滑 / 下滑两格随 `V` 分叉，其余格在两个 `V` 上取值相同，
+    /// 故形参取默认值 `.visible`，既有调用点语义不变。
     static func gestureRule(
         for input: S2GestureInput,
-        context: S2GestureContext
+        context: S2GestureContext,
+        visibility: S2InterfaceVisibility = .visible
     ) -> S2GestureRule {
         if context == .albumSheetPresented {
             if input == .tapSheetControl {
@@ -968,21 +983,33 @@ final class S2StateMachine: ObservableObject {
             )
 
         case .swipeUpMainImage:
+            // IC-104 B（第 132 条）：V=隐藏 且 1x 完全无效果；Nx 分层不变。
+            if context == .oneX, visibility == .hidden {
+                return S2GestureRule(availability: .ignored, effect: .none)
+            }
             return S2GestureRule(
                 availability: .available,
                 effect: .markCurrent
             )
 
         case .swipeDownMainImage:
-            return context == .oneX
-                ? S2GestureRule(
-                    availability: .available,
-                    effect: .unmarkCurrent
-                )
-                : S2GestureRule(
+            guard context == .oneX else {
+                return S2GestureRule(
                     availability: .conditional,
                     effect: .panOnly
                 )
+            }
+            // IC-104 B（第 132 条）：V=隐藏 且 1x 下滑迁 V=显示。
+            if visibility == .hidden {
+                return S2GestureRule(
+                    availability: .available,
+                    effect: .revealInterface
+                )
+            }
+            return S2GestureRule(
+                availability: .available,
+                effect: .unmarkCurrent
+            )
 
         case .horizontalSwipeMainImage:
             return context == .oneX
@@ -1313,6 +1340,12 @@ final class S2StateMachine: ObservableObject {
         guard receivesUnobscuredInput else {
             return false
         }
+        // IC-104 B（第 132 条）：V=隐藏 且 1x，上滑完全无效果——不标记、不改 D、
+        // 不翻页、不发提示。必须置于下面的 `.alreadyMarked` 语义提示之前，
+        // 否则隐藏态仍会发出提示，与「无提示」相悖。
+        if interfaceVisibility == .hidden, zoomState == .oneX {
+            return false
+        }
         let assetID = currentAssetID
         guard !pendingDeletionAssetIDs.contains(assetID) else {
             // v15：已标记再上滑只触发主图标记脉冲（由视图消费），不弹文字。
@@ -1332,8 +1365,18 @@ final class S2StateMachine: ObservableObject {
     @discardableResult
     func handleSwipeDown() -> Bool {
         guard receivesUnobscuredInput,
-              zoomState == .oneX,
-              pendingDeletionAssetIDs.contains(currentAssetID) else {
+              zoomState == .oneX else {
+            return false
+        }
+        // IC-104 B（第 132 条）：V=隐藏 且 1x，下滑迁 V=显示；缩放、页索引、
+        // `D`、徽标一律不变，与是否已标记无关，故置于 `D` 判断之前。
+        // 过渡复用单击显隐切换的同款：视图层由 published `interfaceVisibility`
+        // 变化驱动 `startPresentationTransition`，本处不新增任何可调参数。
+        if interfaceVisibility == .hidden {
+            interfaceVisibility = .visible
+            return true
+        }
+        guard pendingDeletionAssetIDs.contains(currentAssetID) else {
             return false
         }
         var nextPending = pendingDeletionAssetIDs

@@ -260,7 +260,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // V4 替代断言：界面状态只可改变框显照片的 1x 呈现，不改变缩放基准。
     func testV4ReplacementPresentationStatesPreserveViewportAndZoomBaselines() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
-        configuration.fitInsetRatio = 0.08
         let states = [
             S2ViewportPresentationState(
                 interfaceVisibility: .visible,
@@ -327,7 +326,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             $0.pinchMaxScaleCeiling = 12
             $0.pinchMaxScaleOneToOneMultiplier = 3
             $0.zoomSnapBackThreshold = 1.25
-            $0.fitInsetRatio = 0.075
             $0.fitCornerRadius = 36
             $0.pageSpacing = 28
             $0.hapticOnPhotoSwitch = false
@@ -343,7 +341,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             )
         )
         XCTAssertEqual(restarted.configuration, first.configuration)
-        XCTAssertTrue(restarted.exportText().contains("fitInsetRatio=0.075000"))
         XCTAssertTrue(restarted.exportText().contains("fitCornerRadius=36.000000"))
         XCTAssertTrue(restarted.exportText().contains("pageSpacing=28.000000"))
         XCTAssertTrue(restarted.exportText().contains("hapticOnPhotoSwitch=false"))
@@ -362,12 +359,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // IC-087 G171：持久化数据的 `schemaVersion` 与代码版本不等（或缺失）→ 整套丢弃、取出厂值并删除条目；
-    // 相等 → 按现行逐字段解码。IC-090 R1：出厂值集合新增圆角半径，版本 3 → 4，导出文本含 schemaVersion=4。
+    // 相等 → 按现行逐字段解码。IC-104 C：删除 fitInsetRatio，出厂值集合变更，版本 4 → 6
+    // （5 已被冻结的 feature/ic-092-nx-window-follow 链占用），导出文本含 schemaVersion=6。
     func testIC087G171SchemaVersionGateDiscardsStaleStoreAndDeletesEntry() throws {
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 4)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)
         XCTAssertTrue(
             S2CalibrationConfiguration.factoryPlaceholder.exportText()
-                .contains("schemaVersion=4")
+                .contains("schemaVersion=6")
         )
 
         // 1) schemaVersion=3（IC-087 旧版）且 ceiling=10 → 出厂 40，且存储被删除。
@@ -382,9 +380,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(stale.saveCount, 0)
         XCTAssertFalse(staleModel.persistenceFailed)
 
-        // 2) schemaVersion=4 且 ceiling=12 → 12，存储保留。
+        // 2) schemaVersion=6 且 ceiling=12 → 12，存储保留。
         let current = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 4, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 6, ceiling: 12)
         )
         let currentModel = S2CalibrationModel(persistence: current)
         XCTAssertEqual(currentModel.configuration.pinchMaxScaleCeiling, 12)
@@ -400,13 +398,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNil(legacy.data)
         XCTAssertEqual(legacy.deleteCount, 1)
 
-        // 保存后的数据顶层带 schemaVersion=4，重新加载得同一配置。
+        // 保存后的数据顶层带 schemaVersion=6，重新加载得同一配置。
         XCTAssertTrue(currentModel.update { $0.pinchMaxScaleCeiling = 15 })
         let saved = try XCTUnwrap(current.data)
         let object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: saved) as? [String: Any]
         )
-        XCTAssertEqual(object["schemaVersion"] as? Int, 4)
+        XCTAssertEqual(object["schemaVersion"] as? Int, 6)
         XCTAssertEqual(
             S2CalibrationModel(persistence: current).configuration,
             currentModel.configuration
@@ -430,7 +428,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             L10n.text("s2.calibration.restore_factory").hasPrefix("【未定项 21 占位】")
         )
         let store = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 4, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 6, ceiling: 12)
         )
         let model = S2CalibrationModel(persistence: store)
         XCTAssertEqual(model.configuration.pinchMaxScaleCeiling, 12)
@@ -620,71 +618,258 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // V8 改写：内缩比例只作用于截图元数据，旧作用范围不再改变几何。
-    func testV8FitInsetRatioAppliesOnlyToScreenshotMetadata() {
-        var zero = S2CalibrationConfiguration.factoryPlaceholder
-        zero.fitInsetRatio = 0
-        let zeroMetrics = metrics(configuration: zero)
-        XCTAssertEqual(zeroMetrics.oneXDisplaySize, zeroMetrics.aspectFitSize)
+    // IC-104 C v3：截图在**显示态**的适配带顶缘回到旧位（0.15 × 视口高），
+    // 底距 = 顶距 = g；「横栏—操作条」30.7 不参与等距；隐藏态仍沉浸填满；
+    // 非截图零变化。
+    func testIC104CScreenshotFitBoxAnchorsLegacyTopWithEqualGaps() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        // IC-104 C v3：带顶缘 = 0.15 × 视口高，故必须用**真实配对**的视口与安全区
+        // （393×852 / 顶 59），而非夹具 300×600 配 59pt 顶——后者不对应任何机型，
+        // 会得出 g < 0 的伪几何。
+        let viewport = overlayPhysicalSize
+        let aspect = viewport.width / viewport.height
+        let insets = overlaySafeAreaInsets
+        let spacing = S2OverlayLayout.stripToActionVisibleBandSpacing
+        let stripHeight = max(
+            CGFloat(configuration.bottomStripCurrentItemSize),
+            CGFloat(configuration.bottomStripNeighborItemHeight)
+        )
+        let screenshot = S2ViewportLayout.metrics(
+            physicalSize: viewport,
+            presentationState: presentationState,
+            assetAspectRatio: aspect,
+            isScreenshot: true,
+            configuration: configuration,
+            safeAreaInsets: insets
+        )
 
-        var inset = zero
-        inset.fitInsetRatio = 0.1
-        let insetMetrics = metrics(configuration: inset)
-        let horizontalMarginRatio =
-            (insetMetrics.viewportSize.width -
-                insetMetrics.oneXDisplaySize.width) /
-            2 / insetMetrics.viewportSize.width
-        let verticalMarginRatio =
-            (insetMetrics.viewportSize.height -
-                insetMetrics.oneXDisplaySize.height) /
-            2 / insetMetrics.viewportSize.height
-
-        XCTAssertEqual(horizontalMarginRatio, 0.05, accuracy: 0.000_001)
-        XCTAssertEqual(verticalMarginRatio, 0.05, accuracy: 0.000_001)
-        XCTAssertEqual(zeroMetrics.viewportSize, insetMetrics.viewportSize)
+        // 带高严格等于推导式，且照片被带高约束（高度受限而非宽度受限）
+        let bandHeight = S2ViewportLayout.screenshotBandHeight(
+            physicalSize: viewport,
+            safeAreaInsets: insets,
+            bottomStripHeight: stripHeight
+        )
         XCTAssertEqual(
-            insetMetrics.aspectFillMultiplier,
-            1,
+            screenshot.oneXDisplaySize.height,
+            bandHeight,
+            accuracy: 0.000_001
+        )
+        XCTAssertLessThanOrEqual(
+            screenshot.oneXDisplaySize.width,
+            viewport.width
+        )
+
+        // 带顶缘 = 0.15 × 视口高（旧位）；g = 带顶缘 − 顶部栏底缘；
+        // 带底缘 = 横栏**视觉**顶缘 − g，即视觉底距 = 顶距（IC-104 C v4）。
+        let topBarBottom = insets.top + S2OverlayLayout.topBarHeight
+        let stripTop = viewport.height -
+            S2ViewportLayout.stripVisualTopFromViewportBottom(
+                safeAreaBottom: insets.bottom,
+                bottomStripHeight: stripHeight
+            )
+        // 视觉锚比触控锚低 `max(44, 横栏高) − 横栏高`（出厂 30 → 14 pt）
+        let touchStripTop = viewport.height -
+            S2OverlayLayout.stripTopFromViewportBottom(
+                safeAreaBottom: insets.bottom,
+                bottomStripHeight: stripHeight
+            )
+        XCTAssertEqual(
+            stripTop - touchStripTop,
+            max(S2OverlayLayout.minimumTouchTarget, stripHeight) - stripHeight,
+            accuracy: 0.000_001
+        )
+        let bandTop = S2ViewportLayout.screenshotBandTop(
+            physicalSize: viewport
+        )
+        let g = S2ViewportLayout.screenshotBandTopSpacing(
+            physicalSize: viewport,
+            safeAreaInsets: insets
+        )
+        XCTAssertEqual(
+            bandTop,
+            viewport.height * 0.15,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(g, bandTop - topBarBottom, accuracy: 0.000_001)
+        XCTAssertGreaterThan(g, 0)
+
+        // 摆放：显示态截图竖直居中于带；顶缘落在带顶缘、底缘落在带底缘
+        let photoTop = screenshot.oneXDisplayCenterY -
+            screenshot.oneXDisplaySize.height / 2
+        let photoBottom = photoTop + screenshot.oneXDisplaySize.height
+        XCTAssertEqual(photoTop, bandTop, accuracy: 0.000_001)
+        XCTAssertEqual(photoBottom, stripTop - g, accuracy: 0.000_001)
+
+        // 底距 = 顶距
+        XCTAssertEqual(photoTop - topBarBottom, g, accuracy: 0.000_001)
+        XCTAssertEqual(stripTop - photoBottom, g, accuracy: 0.000_001)
+
+        // 「横栏—操作条」间距维持 30.7，不参与等距（④ Lynn 明确选定）
+        let stripBottom = viewport.height -
+            S2OverlayLayout.stripBottomFromViewportBottom(
+                safeAreaBottom: insets.bottom
+            )
+        let actionVisibleBandTop = viewport.height -
+            S2OverlayLayout.actionVisibleBandTopFromViewportBottom(
+                safeAreaBottom: insets.bottom
+            )
+        XCTAssertEqual(
+            actionVisibleBandTop - stripBottom,
+            spacing,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(spacing, 30.7, accuracy: 0.000_001)
+
+        // 水平仍是等比适配 + 居中
+        XCTAssertEqual(
+            screenshot.oneXDisplaySize.width,
+            screenshot.oneXDisplaySize.height * aspect,
             accuracy: 0.000_001
         )
 
+        // 隐藏态维持规格 v16 第 121/177 行的截图沉浸：填满视口、圆角归零，
+        // chrome 带只作用于显示态
+        let hidden = S2ViewportLayout.metrics(
+            physicalSize: viewport,
+            presentationState: S2ViewportPresentationState(
+                interfaceVisibility: .hidden,
+                bottomStripState: .idle,
+                sheetState: .closed
+            ),
+            assetAspectRatio: aspect,
+            isScreenshot: true,
+            configuration: configuration,
+            safeAreaInsets: insets
+        )
+        XCTAssertEqual(hidden.oneXDisplaySize, hidden.aspectFitSize)
+        XCTAssertEqual(hidden.oneXCornerRadius, 0)
+        XCTAssertNotEqual(hidden.oneXDisplaySize, screenshot.oneXDisplaySize)
+        // 隐藏态沉浸 = 视口居中；显示态 = 带中心，两者不同心（morph 含平移）
+        XCTAssertEqual(
+            hidden.oneXDisplayCenterY,
+            viewport.height / 2,
+            accuracy: 0.000_001
+        )
+        XCTAssertNotEqual(
+            hidden.oneXDisplayCenterY,
+            screenshot.oneXDisplayCenterY
+        )
+
+        // 裁切截图（非屏幕比例）同样按带高适配
         let croppedScreenshotRatio: CGFloat = 0.1823
-        let scopedScreenshot = S2ViewportLayout.metrics(
-            physicalSize: physicalSize,
+        let cropped = S2ViewportLayout.metrics(
+            physicalSize: viewport,
             presentationState: presentationState,
             assetAspectRatio: croppedScreenshotRatio,
             isScreenshot: true,
-            configuration: inset
+            configuration: configuration,
+            safeAreaInsets: insets
         )
         XCTAssertEqual(
-            scopedScreenshot.oneXDisplaySize.width,
-            scopedScreenshot.aspectFitSize.width * 0.9,
+            cropped.oneXDisplaySize.height,
+            bandHeight,
             accuracy: 0.000_001
         )
 
-        let globalScreenshot = S2ViewportLayout.metrics(
-            physicalSize: physicalSize,
-            presentationState: presentationState,
-            assetAspectRatio: croppedScreenshotRatio,
-            isScreenshot: true,
-            configuration: inset
-        )
+        // 非截图零变化：仍是全视口等比适配，且不受 chrome 影响
         let ordinaryPhoto = S2ViewportLayout.metrics(
-            physicalSize: physicalSize,
+            physicalSize: viewport,
             presentationState: presentationState,
-            assetAspectRatio: screenAspectRatio,
+            assetAspectRatio: aspect,
             isScreenshot: false,
-            configuration: inset
-        )
-        XCTAssertEqual(
-            globalScreenshot.oneXDisplaySize,
-            scopedScreenshot.oneXDisplaySize
+            configuration: configuration,
+            safeAreaInsets: insets
         )
         XCTAssertEqual(
             ordinaryPhoto.oneXDisplaySize,
             ordinaryPhoto.aspectFitSize
         )
+        XCTAssertEqual(
+            ordinaryPhoto.oneXDisplayCenterY,
+            viewport.height / 2,
+            accuracy: 0.000_001
+        )
         XCTAssertFalse(ordinaryPhoto.isFramedPhoto)
+        XCTAssertEqual(
+            ordinaryPhoto.aspectFillMultiplier,
+            1,
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-104 C v3：**渲染帧**摆放断言——显示态截图的实际帧顶缘落在 0.15 × 视口高，
+    // 底缘距横栏顶缘 = g；隐藏态回到视口居中。C v2 只断言了计算值，未校验摆放。
+    func testIC104CScreenshotRenderedFrameSitsAtLegacyTopAnchor() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        // 夹具走 `.zero` 安全区：带顶缘 90、g = 90 − 48 = 42
+        let stripHeight = max(
+            CGFloat(configuration.bottomStripCurrentItemSize),
+            CGFloat(configuration.bottomStripNeighborItemHeight)
+        )
+        let bandTop = S2ViewportLayout.screenshotBandTop(
+            physicalSize: physicalSize
+        )
+        let g = S2ViewportLayout.screenshotBandTopSpacing(
+            physicalSize: physicalSize,
+            safeAreaInsets: .zero
+        )
+        let stripTop = physicalSize.height -
+            S2ViewportLayout.stripVisualTopFromViewportBottom(
+                safeAreaBottom: 0,
+                bottomStripHeight: stripHeight
+            )
+        XCTAssertGreaterThan(g, 0)
+
+        let visibleFrame = tryUnwrap(
+            page.zoomScrollView.visiblePresentationFrame()
+        )
+        XCTAssertEqual(visibleFrame.minY, bandTop, accuracy: 0.000_001)
+        XCTAssertEqual(
+            stripTop - visibleFrame.maxY,
+            g,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            visibleFrame.minY - S2OverlayLayout.topBarHeight,
+            g,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            visibleFrame.midX,
+            physicalSize.width / 2,
+            accuracy: 0.000_001
+        )
+
+        // 隐藏态：沉浸填满 + 视口居中
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration
+        )
+        page.finishActivePresentationTransition()
+        let hiddenFrame = tryUnwrap(
+            page.zoomScrollView.visiblePresentationFrame()
+        )
+        XCTAssertEqual(hiddenFrame.minY, 0, accuracy: 0.5)
+        XCTAssertEqual(
+            hiddenFrame.midY,
+            physicalSize.height / 2,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(hiddenFrame.height, physicalSize.height, accuracy: 0.5)
     }
 
     // L1：顶部三个元素全部从系统顶部安全区下沿开始布局（IC-075 起为三件）。
@@ -854,7 +1039,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
             animationDurationMilliseconds: 180,
             presentationToggleDuration: 220,
             presentationToggleDamping: 0.86,
-            fitInsetRatio: 0.30,
             fitCornerRadius: 28,
             fitBorderWidth: 1,
             fitBorderDarkAlpha: 0.09,
@@ -901,7 +1085,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(
             actual.exportText().contains("minDoubleTapScale=2.000000")
         )
-        XCTAssertTrue(actual.exportText().contains("fitInsetRatio=0.300000"))
         XCTAssertTrue(actual.exportText().contains("fitCornerRadius=28.000000"))
         XCTAssertTrue(actual.exportText().contains(
             "presentationToggleDuration=220.000000"
@@ -971,20 +1154,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-074 G96：配置字段恰 33 个；导出 37 行，含 schemaVersion 与 v15 规格基线。
     // IC-085：废止 1 项、新增 5 项横栏参数，字段 37 → 41，导出 41 + 4 行；R3 新增 1 项：42。
     // IC-088 合并：+ IC-081 乘数 1 项 = 43，导出 43 + 4 = 47；IC-087：schemaVersion=3。
-    // IC-090 R1：+ bottomStripCornerRadius 1 项 = 44，导出 44 + 4 = 48；出厂值集合变了，schemaVersion=4。
+    // IC-090 R1：+ bottomStripCornerRadius 1 项 = 44，导出 44 + 4 = 48；schemaVersion=4。
+    // IC-104 C：− fitInsetRatio 1 项 = 43，导出 43 + 4 = 47；出厂值集合变了，schemaVersion=6。
     func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
         ).children.compactMap(\.label)
-        XCTAssertEqual(fieldNames.count, 44)
+        XCTAssertEqual(fieldNames.count, 43)
 
         let lines = S2CalibrationConfiguration.factoryPlaceholder
             .exportText()
             .split(separator: "\n")
             .map(String.init)
-        XCTAssertEqual(lines.count, 44 + 4)
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 4)
-        XCTAssertTrue(lines.contains("schemaVersion=4"))
+        XCTAssertEqual(lines.count, 43 + 4)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)
+        XCTAssertTrue(lines.contains("schemaVersion=6"))
         XCTAssertTrue(lines.contains(
             "taskID=IC-20260821-074-parameter-layer-v15-alignment"
         ))
@@ -1005,8 +1189,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-090 R1：+ bottomStripCornerRadius（decided / effective）：44 条，decided 35。
     func testIC074G97ParameterRegistryDecidedSetMatchesV15() {
         let connections = S2CalibrationConfiguration.parameterConnections
-        XCTAssertEqual(connections.count, 44)
-        XCTAssertEqual(Set(connections.map(\.name)).count, 44)
+        XCTAssertEqual(connections.count, 43)
+        XCTAssertEqual(Set(connections.map(\.name)).count, 43)
 
         let decided = Set(connections
             .filter { $0.specStatus == .decided }
@@ -1017,7 +1201,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(decided, [
             "zoomSnapBackThreshold", "minDoubleTapScale",
             "presentationToggleDuration", "presentationToggleDamping",
-            "fitInsetRatio", "fitCornerRadius", "fitBorderWidth",
+            "fitCornerRadius", "fitBorderWidth",
             "fitBorderDarkAlpha", "fitBorderLightAlpha",
             "verticalSwipeDistance", "verticalSwipeVelocity",
             "pageSpacing", "hapticOnPhotoSwitch",
@@ -1038,7 +1222,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         ])
         // IC-088 合并：decided 34（IC-085）；placeholder 8（IC-085）+ 乘数 1（IC-081）= 9。
         // IC-090 R1：decided 34 → 35（圆角半径），placeholder 不变。
-        XCTAssertEqual(decided.count, 35)
+        // IC-104 C：decided 35 → 34（删 fitInsetRatio），placeholder 不变。
+        XCTAssertEqual(decided.count, 34)
         XCTAssertEqual(placeholder.count, 9)
         XCTAssertTrue(placeholder.contains("bottomStripFlickVelocityThreshold"))
         XCTAssertTrue(decided.isDisjoint(with: placeholder))
@@ -1115,6 +1300,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     interfaceVisibility: machine.interfaceVisibility,
                     isFramedPhoto: value.isFramedPhoto,
                     fittedSize: value.oneXDisplaySize,
+                    fittedCenterY: value.oneXDisplayCenterY,
                     nativeZoomBaseSize: value.nativeZoomBaseSize,
                     cornerRadius: value.oneXCornerRadius,
                     doubleTapTargetScale: value.doubleTapTargetScale,
@@ -1568,6 +1754,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 interfaceVisibility: machine.interfaceVisibility,
                 isFramedPhoto: value.isFramedPhoto,
                 fittedSize: value.oneXDisplaySize,
+                fittedCenterY: value.oneXDisplayCenterY,
                 nativeZoomBaseSize: value.nativeZoomBaseSize,
                 cornerRadius: value.oneXCornerRadius,
                 doubleTapTargetScale: value.doubleTapTargetScale,
@@ -1718,6 +1905,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     interfaceVisibility: machine.interfaceVisibility,
                     isFramedPhoto: value.isFramedPhoto,
                     fittedSize: value.oneXDisplaySize,
+                    fittedCenterY: value.oneXDisplayCenterY,
                     nativeZoomBaseSize: value.nativeZoomBaseSize,
                     cornerRadius: value.oneXCornerRadius,
                     doubleTapTargetScale: value.doubleTapTargetScale,
@@ -2046,49 +2234,127 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(machine.viewportOffset, .zero)
     }
 
-    // D1 再改写：截图按新出厂值等比适配到 0.70 视口框。
-    func testD1ScreenshotAspectFitShrinksToSeventyPercentViewport() {
-        var configuration = S2CalibrationConfiguration.factoryPlaceholder
-        configuration.fitInsetRatio = 0.30
-        let value = metrics(configuration: configuration)
-
-        XCTAssertEqual(
-            min(value.oneXDisplaySize.width, value.oneXDisplaySize.height),
-            min(value.viewportSize.width, value.viewportSize.height) * 0.70,
-            accuracy: 1
+    // D1 再改写（IC-104 C）：截图适配到 chrome 带内，横竖两种资产比例都成立。
+    func testD1ScreenshotAspectFitsIntoChromeBand() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        // IC-104 C v3：带顶缘按视口高推导，用 `.zero` 安全区与夹具视口配对
+        // （g = 90 − 48 = 42 > 0）；真实机型配对由 testIC104C 覆盖。
+        let insets = S2OverlaySafeAreaInsets.zero
+        let bandHeight = S2ViewportLayout.screenshotBandHeight(
+            physicalSize: physicalSize,
+            safeAreaInsets: insets,
+            bottomStripHeight: max(
+                CGFloat(configuration.bottomStripCurrentItemSize),
+                CGFloat(configuration.bottomStripNeighborItemHeight)
+            )
         )
+        let value = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: screenAspectRatio,
+            isScreenshot: true,
+            configuration: configuration,
+            safeAreaInsets: insets
+        )
+
+        // 竖向资产：带高受限，显示高恰为带高
+        XCTAssertEqual(
+            value.oneXDisplaySize.height,
+            bandHeight,
+            accuracy: 0.000_001
+        )
+        XCTAssertLessThan(
+            value.oneXDisplaySize.height,
+            value.aspectFitSize.height
+        )
+
+        // 横向资产：视口宽受限，显示宽恰为视口宽，且不超出带高
         let oppositeOrientation = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
             assetAspectRatio: 1 / screenAspectRatio,
             isScreenshot: true,
-            configuration: configuration
+            configuration: configuration,
+            safeAreaInsets: insets
         )
         XCTAssertEqual(
             oppositeOrientation.oneXDisplaySize.width,
-            oppositeOrientation.aspectFitSize.width * 0.70,
+            physicalSize.width,
             accuracy: 0.000_001
         )
-        XCTAssertEqual(
+        XCTAssertLessThanOrEqual(
             oppositeOrientation.oneXDisplaySize.height,
-            oppositeOrientation.aspectFitSize.height * 0.70,
-            accuracy: 0.000_001
+            bandHeight + 0.000_001
         )
     }
 
-    // D2：内缩比例为零时，1x 显示严格等于纯等比适配。
-    func testD2ZeroFitInsetMatchesPureAspectFit() {
-        var configuration = S2CalibrationConfiguration.factoryPlaceholder
-        configuration.fitInsetRatio = 0
-        let value = metrics(configuration: configuration)
+    // D2 改写（IC-104 C v3）：带顶缘只随视口高变，带底缘随安全区底与 g 变。
+    func testD2ScreenshotBandAdaptsToSafeArea() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let stripHeight = max(
+            CGFloat(configuration.bottomStripCurrentItemSize),
+            CGFloat(configuration.bottomStripNeighborItemHeight)
+        )
+        // IC-104 C v3：`.zero` 起算，两种安全区下 g 分别为 42 与 32，均 > 0。
+        let base = S2OverlaySafeAreaInsets.zero
+        let taller = S2OverlaySafeAreaInsets(
+            top: base.top + 10,
+            leading: base.leading,
+            bottom: base.bottom + 7,
+            trailing: base.trailing
+        )
 
-        XCTAssertEqual(value.oneXDisplaySize, value.aspectFitSize)
+        let baseBand = S2ViewportLayout.screenshotBandHeight(
+            physicalSize: physicalSize,
+            safeAreaInsets: base,
+            bottomStripHeight: stripHeight
+        )
+        let tallerBand = S2ViewportLayout.screenshotBandHeight(
+            physicalSize: physicalSize,
+            safeAreaInsets: taller,
+            bottomStripHeight: stripHeight
+        )
+
+        // IC-104 C v3：带顶缘只随视口高变（0.15 × H），与安全区顶无关；
+        // 安全区顶 +10 令 g 减小 10、带底缘随之下移 10，安全区底 +7 令横栏
+        // 顶缘上移 7 —— 净效果为带高 +10 − 7 = +3。
+        XCTAssertEqual(tallerBand - baseBand, 3, accuracy: 0.000_001)
+
+        // 显示尺寸随之变化，视口尺寸不受影响
+        let baseMetrics = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: screenAspectRatio,
+            isScreenshot: true,
+            configuration: configuration,
+            safeAreaInsets: base
+        )
+        let tallerMetrics = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: screenAspectRatio,
+            isScreenshot: true,
+            configuration: configuration,
+            safeAreaInsets: taller
+        )
+        XCTAssertEqual(
+            tallerMetrics.oneXDisplaySize.height -
+                baseMetrics.oneXDisplaySize.height,
+            3,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(baseMetrics.viewportSize, tallerMetrics.viewportSize)
+        // 带顶缘与安全区无关，两种安全区下完全一致
+        XCTAssertEqual(
+            S2ViewportLayout.screenshotBandTop(physicalSize: physicalSize),
+            physicalSize.height * 0.15,
+            accuracy: 0.000_001
+        )
     }
 
     // D3 改写：即使旧作用范围为全部照片，非截图的 1x 显示仍不变。
     func testD3AllPhotosScopeLeavesNonScreenshotUnchanged() {
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
-        configuration.fitInsetRatio = 0.30
         let value = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
@@ -2133,7 +2399,6 @@ final class S2CalibrationHarnessTests: XCTestCase {
     func testD5ReplacementNonScreenDoubleTapUsesAspectFillScale() {
         let assetAspectRatio: CGFloat = 0.75
         var configuration = S2CalibrationConfiguration.factoryPlaceholder
-        configuration.fitInsetRatio = 0.30
         let value = S2ViewportLayout.metrics(
             physicalSize: physicalSize,
             presentationState: presentationState,
@@ -2697,7 +2962,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(frame.height, UIScreen.main.bounds.height, accuracy: 0.5)
     }
 
-    // IC-063 G2 改写：裁切截图在显示态等比内缩且四边居中。
+    // IC-063 G2 再改写（IC-104 C）：裁切截图适配到 chrome 带且四边居中。
     func testIC063G2VisibleCroppedScreenshotUsesAspectFitInsetAndIsCentered() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let croppedScreenshotRatio: CGFloat = 0.1823
@@ -2710,24 +2975,38 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
         let frame = tryUnwrap(page.zoomScrollView.visiblePresentationFrame())
-        let expectedScale = 1 - CGFloat(configuration.fitInsetRatio)
-        let expectedFit = S2Geometry.aspectFitSize(
-            viewportSize: physicalSize,
-            assetAspectRatio: croppedScreenshotRatio
+        // 夹具未传 safeAreaInsets，带高按 `.zero` 安全区推导
+        let expectedBand = S2ViewportLayout.screenshotBandHeight(
+            physicalSize: physicalSize,
+            safeAreaInsets: .zero,
+            bottomStripHeight: max(
+                CGFloat(configuration.bottomStripCurrentItemSize),
+                CGFloat(configuration.bottomStripNeighborItemHeight)
+            )
         )
 
         XCTAssertEqual(
-            frame.width,
-            expectedFit.width * expectedScale,
+            frame.height,
+            expectedBand,
             accuracy: 0.5
         )
         XCTAssertEqual(
-            frame.height,
-            expectedFit.height * expectedScale,
+            frame.width,
+            expectedBand * croppedScreenshotRatio,
             accuracy: 0.5
         )
         XCTAssertEqual(frame.minX, physicalSize.width - frame.maxX, accuracy: 0.5)
-        XCTAssertEqual(frame.minY, physicalSize.height - frame.maxY, accuracy: 0.5)
+        // IC-104 C v3：竖直不再对称于视口——顶缘落在带顶缘、中心落在带中心。
+        XCTAssertEqual(
+            frame.minY,
+            S2ViewportLayout.screenshotBandTop(physicalSize: physicalSize),
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            frame.midY,
+            expectedScreenshotBandCenterY(configuration: configuration),
+            accuracy: 0.5
+        )
         XCTAssertEqual(
             page.cornerRadius,
             CGFloat(configuration.fitCornerRadius)
@@ -3157,14 +3436,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // F1：0.30 内缩令屏幕比例照片的 1x 短边等于视口短边的 0.70。
-    func testF1FactoryInsetShrinksShortEdgeToSeventyPercent() {
+    // F1 改写（IC-104 C v2）：显示态截图的 1x 高度等于 chrome 带高。
+    func testF1FactoryFitBoxMatchesChromeBandHeight() {
         let value = metrics()
 
         XCTAssertEqual(
-            min(value.oneXDisplaySize.width, value.oneXDisplaySize.height),
-            min(value.viewportSize.width, value.viewportSize.height) * 0.70,
-            accuracy: 1
+            value.oneXDisplaySize.height,
+            expectedScreenshotBandHeight(),
+            accuracy: 0.000_001
+        )
+        XCTAssertLessThan(
+            value.oneXDisplaySize.height,
+            value.aspectFitSize.height
         )
     }
 
@@ -3232,18 +3515,35 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(hidden.oneXCornerRadius, visible.oneXCornerRadius)
     }
 
-    // F4：内缩只改变 1x 显示尺寸，不改变视口或填满倍数基准。
-    func testF4InsetDoesNotChangeViewportOrAspectFillMultiplier() {
-        var withoutInset = S2CalibrationConfiguration.factoryPlaceholder
-        withoutInset.fitInsetRatio = 0
-        let plain = metrics(configuration: withoutInset)
-        let inset = metrics()
+    // F4 改写（IC-104 C）：chrome 带只改变 1x 显示尺寸，不改变视口或填满倍数基准。
+    func testF4ChromeBandDoesNotChangeViewportOrAspectFillMultiplier() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        // IC-104 C v3：带顶缘按视口高推导，用 `.zero` 安全区与夹具视口配对
+        // （g = 90 − 48 = 42 > 0）；真实机型配对由 testIC104C 覆盖。
+        let insets = S2OverlaySafeAreaInsets.zero
+        let plain = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: screenAspectRatio,
+            isScreenshot: false,
+            configuration: configuration,
+            safeAreaInsets: insets
+        )
+        let framed = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: presentationState,
+            assetAspectRatio: screenAspectRatio,
+            isScreenshot: true,
+            configuration: configuration,
+            safeAreaInsets: insets
+        )
 
-        XCTAssertNotEqual(plain.oneXDisplaySize, inset.oneXDisplaySize)
-        XCTAssertEqual(plain.viewportSize, inset.viewportSize)
+        XCTAssertNotEqual(plain.oneXDisplaySize, framed.oneXDisplaySize)
+        XCTAssertEqual(plain.viewportSize, framed.viewportSize)
+        XCTAssertEqual(plain.aspectFitSize, framed.aspectFitSize)
         XCTAssertEqual(
             plain.aspectFillMultiplier,
-            inset.aspectFillMultiplier,
+            framed.aspectFillMultiplier,
             accuracy: 0.000_001
         )
     }
@@ -3702,15 +4002,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // S1：框显照片在显示态使用 70% 短边和 28 点圆角。
-    func testS1FramedPhotoVisibleStateUsesSeventyPercentShortEdgeAndRadiusTwentyEight() {
+    // S1 改写（IC-104 C v2）：框显照片在显示态适配 chrome 带，圆角 28 点。
+    func testS1FramedPhotoVisibleStateFitsChromeBandAndRadiusTwentyEight() {
         let value = metrics(visibility: .visible)
 
         XCTAssertTrue(value.isFramedPhoto)
         XCTAssertEqual(
-            min(value.oneXDisplaySize.width, value.oneXDisplaySize.height),
-            min(value.viewportSize.width, value.viewportSize.height) * 0.70,
-            accuracy: 1
+            value.oneXDisplaySize.height,
+            expectedScreenshotBandHeight(),
+            accuracy: 0.000_001
         )
         XCTAssertEqual(value.oneXCornerRadius, 28, accuracy: 0.000_001)
     }
@@ -3820,7 +4120,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // X1：缩放变换的实际锚点固定在物理视口中心。
+    // X1：缩放变换的实际锚点固定在物理视口中心（`viewportAnchor` 与
+    // `layer.anchorPoint` 均不变）。IC-104 C v3：两端**终点位置**不再同心——
+    // 正向终点（隐藏态沉浸）居中于视口，反向终点（显示态）居中于适配带。
     func testX1ImmersiveTransitionUsesViewportCenterAnchoredScaleTransform() {
         let machine = makeMachine()
         let controller = makeNativePagerController(machine: machine)
@@ -3866,7 +4168,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
             transition.viewportAnchor
         )
         XCTAssertEqual(reverseAnchor.x, transition.viewportAnchor.x, accuracy: 0.000_001)
-        XCTAssertEqual(reverseAnchor.y, transition.viewportAnchor.y, accuracy: 0.000_001)
+        // IC-104 C v3：反向终点是显示态几何，其中心为**带中心**；变换锚点仍固定
+        // 在视口中心，由上方 `viewportAnchor` 与 `anchorPoint` 两条断言把关。
+        XCTAssertEqual(
+            reverseAnchor.y,
+            metrics(visibility: .visible).oneXDisplayCenterY,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            transition.viewportAnchor.y - reverseAnchor.y,
+            expectedOneXToNxCenterJump(),
+            accuracy: 0.000_001
+        )
         page.finishActivePresentationTransition()
     }
 
@@ -4658,8 +4971,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-065 G27：宽度受限、矮于视口的完整适配照片在 1x 垂直居中。
-    func testIC065G27HeightLimitedOneXIsVerticallyCentered() {
+    // IC-065 G27 改写（IC-104 C v3）：矮于视口的截图在 `s = 1` 显示态居中于
+    // **适配带**（④ 带锚定），顶缘落在 0.15 × 视口高。
+    func testIC065G27HeightLimitedOneXSitsAtBandCenter() {
         let hosted = makeIC065HostedPage(assetAspectRatio: 9.0 / 16.0)
         defer { hosted.window.isHidden = true }
         let frame = ic065PresentationFrameInWindow(
@@ -4670,13 +4984,27 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertLessThan(frame.height, hosted.window.bounds.height)
         XCTAssertEqual(
             frame.midY,
-            hosted.window.bounds.midY,
+            expectedScreenshotBandCenterY(),
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            frame.minY,
+            S2ViewportLayout.screenshotBandTop(physicalSize: physicalSize),
+            accuracy: 0.5
+        )
+        // 带中心与视口中心之差即 `s > 1` 进入瞬间的跳变量，恒 > 0
+        XCTAssertEqual(
+            hosted.window.bounds.midY - frame.midY,
+            expectedOneXToNxCenterJump(),
             accuracy: 0.5
         )
     }
 
-    // IC-065 G28～G29：60Hz presentation 轨迹在接管首帧及全程保持小尺寸方向居中。
-    func testIC065G28ToG29PinchTrackHasNoCenterJump() {
+    // IC-065 G28～G29 改述（IC-104 C v3）：60Hz presentation 轨迹全程，每一帧的
+    // 中心恒等于其所处 `s` 态的**规定中心**——`s = 1` 帧为适配带中心（④ 带锚定），
+    // `s > 1` 帧为视口中心（SPEC 决策 20「跳到该基准」）。两者之差即接管首帧的
+    // 位置跳变量，本身写成精确契约；接管之后各帧之间不再有跳变。
+    func testIC065G28ToG29PinchTrackCentersPerZoomState() {
         let samples: [(String, CGFloat)] = [
             ("width_limited", 478.0 / 2_622.0),
             ("height_limited", 9.0 / 16.0)
@@ -4719,12 +5047,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             let firstGrowth = tryUnwrap(
                 trace.first { $0.phase == "scale_1.001" }
             )
+            let bandCenterY = expectedScreenshotBandCenterY()
+            let viewportMidY = hosted.window.bounds.midY
+            // 横向全程无跳变（水平中心不受 ④ 影响）
             XCTAssertLessThanOrEqual(
                 abs(pinchBegan.frameInWindow.midX - oneX.frameInWindow.midX),
-                0.5
-            )
-            XCTAssertLessThanOrEqual(
-                abs(pinchBegan.frameInWindow.midY - oneX.frameInWindow.midY),
                 0.5
             )
             XCTAssertLessThanOrEqual(
@@ -4732,6 +5059,27 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     pinchBegan.frameInWindow.midX),
                 0.5
             )
+            // 竖向：`s = 1` 帧居中于带，接管首帧起居中于视口
+            XCTAssertEqual(
+                oneX.frameInWindow.midY,
+                bandCenterY,
+                accuracy: 0.5,
+                "样本=\(name)"
+            )
+            XCTAssertEqual(
+                pinchBegan.frameInWindow.midY,
+                viewportMidY,
+                accuracy: 0.5,
+                "样本=\(name)"
+            )
+            // 跳变量恰为两中心之差（精确契约，非容差放宽）
+            XCTAssertEqual(
+                pinchBegan.frameInWindow.midY - oneX.frameInWindow.midY,
+                expectedOneXToNxCenterJump(),
+                accuracy: 0.5,
+                "样本=\(name)"
+            )
+            // 接管之后各帧之间不再有跳变
             XCTAssertLessThanOrEqual(
                 abs(firstGrowth.frameInWindow.midY -
                     pinchBegan.frameInWindow.midY),
@@ -4750,11 +5098,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     )
                 }
                 if frame.height < viewport.height - 0.5 {
+                    // 每帧中心取其所处 `s` 态的规定中心
                     XCTAssertEqual(
                         frame.midY,
-                        viewport.midY,
+                        sample.phase == "one_x"
+                            ? bandCenterY
+                            : viewport.midY,
                         accuracy: 0.5,
-                        "样本=\(name)，序号=\(index)"
+                        "样本=\(name)，序号=\(index)，阶段=\(sample.phase)"
                     )
                 }
             }
@@ -4838,10 +5189,26 @@ final class S2CalibrationHarnessTests: XCTestCase {
             )
 
             XCTAssertTrue(expected.isFramedPhoto)
-            XCTAssertEqual(frame.size.width, expected.oneXDisplaySize.width)
-            XCTAssertEqual(frame.size.height, expected.oneXDisplaySize.height)
+            // IC-104 C v2：带高由多项加减推导，经渲染层往返后与直接计算值
+            // 存在 ~1e-13 的浮点噪声（旧口径是单次乘法，两侧位级相同）。
+            XCTAssertEqual(
+                frame.size.width,
+                expected.oneXDisplaySize.width,
+                accuracy: 0.000_001
+            )
+            XCTAssertEqual(
+                frame.size.height,
+                expected.oneXDisplaySize.height,
+                accuracy: 0.000_001
+            )
             XCTAssertEqual(frame.midX, hosted.window.bounds.midX, accuracy: 0.5)
-            XCTAssertEqual(frame.midY, hosted.window.bounds.midY, accuracy: 0.5)
+            // IC-104 C v3：竖直中心取该 `V` 的规定中心——显示态为带中心、
+            // 隐藏态为视口中心（沉浸填满）。
+            XCTAssertEqual(
+                frame.midY,
+                expected.oneXDisplayCenterY,
+                accuracy: 0.5
+            )
         }
     }
 
@@ -4882,7 +5249,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
         })
     }
 
-    // IC-067 G36：裁切截图在显示态等比适配 0.70 视口框，隐藏态等比适配全视口。
+    // IC-067 G36 改写（IC-104 C v2）：裁切截图在显示态等比适配到 chrome 带，
+    // 隐藏态沉浸填满全视口；圆角仍只在显示态出现。
     func testIC067G36CroppedScreenshotUsesMetadataDrivenAspectFitFrame() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let assetAspectRatio: CGFloat = 0.1823
@@ -4908,24 +5276,34 @@ final class S2CalibrationHarnessTests: XCTestCase {
             isScreenshot: true,
             configuration: configuration
         )
-        let expectedScale = 1 - CGFloat(configuration.fitInsetRatio)
+        // 两处调用都未传 safeAreaInsets，故带高按 `.zero` 安全区推导
+        let expectedBand = S2ViewportLayout.screenshotBandHeight(
+            physicalSize: physicalSize,
+            safeAreaInsets: .zero,
+            bottomStripHeight: max(
+                CGFloat(configuration.bottomStripCurrentItemSize),
+                CGFloat(configuration.bottomStripNeighborItemHeight)
+            )
+        )
 
         XCTAssertTrue(visible.isFramedPhoto)
         XCTAssertEqual(
-            visible.oneXDisplaySize.width,
-            visible.aspectFitSize.width * expectedScale,
+            visible.oneXDisplaySize.height,
+            expectedBand,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
-            visible.oneXDisplaySize.height,
-            visible.aspectFitSize.height * expectedScale,
+            visible.oneXDisplaySize.width,
+            expectedBand * assetAspectRatio,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
             visible.oneXCornerRadius,
             CGFloat(configuration.fitCornerRadius)
         )
+        // 隐藏态沉浸不变（规格 v16 第 121/177 行）：填满视口、圆角为 0
         XCTAssertEqual(hidden.oneXDisplaySize, hidden.aspectFitSize)
+        XCTAssertNotEqual(hidden.oneXDisplaySize, visible.oneXDisplaySize)
         XCTAssertEqual(hidden.oneXCornerRadius, 0)
 
         let machine = makeMachine(configuration: configuration)
@@ -4938,7 +5316,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
         let frame = page.zoomScrollView.oneXPresentationFrame
         XCTAssertEqual(frame.midX, physicalSize.width / 2, accuracy: 0.5)
-        XCTAssertEqual(frame.midY, physicalSize.height / 2, accuracy: 0.5)
+        // IC-104 C v3：显示态截图的 `s = 1` 中心为带中心。
+        XCTAssertEqual(
+            frame.midY,
+            expectedScreenshotBandCenterY(configuration: configuration),
+            accuracy: 0.5
+        )
         XCTAssertEqual(
             page.fitBorderLayer.borderWidth,
             CGFloat(configuration.fitBorderWidth)
@@ -5022,6 +5405,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
         defer { window.isHidden = true }
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        // IC-104 C v2：显示态端点改由 chrome 带推导；
+        // 隐藏态端点仍是视口全尺寸（规格 v16 第 121/177 行的截图沉浸）。
+        let visibleMetrics = metrics(
+            visibility: .visible,
+            configuration: configuration
+        )
+        let visibleSize = visibleMetrics.oneXDisplaySize
+        let visibleCenterY = visibleMetrics.oneXDisplayCenterY
 
         let hiding = capturePresentationToggle(
             machine: machine,
@@ -5043,6 +5434,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             configuration: configuration
         )
         let showingScaleKeyframes = page.lastPresentationScaleKeyframes
+        let showingPositionKeyframes = page.lastPresentationPositionKeyframes
         let showingLayoutReading = controller.presentationTapLayoutReading
         let visibleFrame = page.zoomScrollView.visiblePresentationFrame()
         let visibleStableSamples = captureStablePresentationWindow(
@@ -5058,13 +5450,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(visibleStableSamples.allSatisfy { $0.frame == visibleFrame })
         XCTAssertGreaterThan(
             Set(hidingScaleKeyframes.map {
-                Int(($0 * 210 * 1_000).rounded())
+                Int(($0 * visibleSize.width * 1_000).rounded())
             }).count,
             3
         )
         XCTAssertGreaterThan(
             Set(showingScaleKeyframes.map {
-                Int(($0 * 300 * 1_000).rounded())
+                Int(($0 * physicalSize.width * 1_000).rounded())
             }).count,
             3
         )
@@ -5095,10 +5487,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 physicalSize.width / 2,
                 accuracy: 0.5
             )
-            XCTAssertEqual(
+            // IC-104 C v3：两端点不同心，midY 在过渡期间随 spring 平移，
+            // 故逐采样只核区间（含过冲余量），端点由下方精确断言把关。
+            let lowerBound = min(visibleCenterY, physicalSize.height / 2)
+            let upperBound = max(visibleCenterY, physicalSize.height / 2)
+            let overshoot = (upperBound - lowerBound) * 0.10 + 0.5
+            XCTAssertGreaterThanOrEqual(
                 sample.frame.midY,
-                physicalSize.height / 2,
-                accuracy: 0.5
+                lowerBound - overshoot
+            )
+            XCTAssertLessThanOrEqual(
+                sample.frame.midY,
+                upperBound + overshoot
             )
             XCTAssertEqual(
                 sample.bounds.width / sample.bounds.height,
@@ -5111,29 +5511,77 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 CGRect(x: 0, y: 0, width: 1, height: 1)
             )
         }
-        XCTAssertEqual(
-            hiding.first?.bounds.size ?? .zero,
-            CGSize(width: 210, height: 420)
-        )
+        XCTAssertEqual(hiding.first?.bounds.size ?? .zero, visibleSize)
         XCTAssertEqual(hiding.last?.bounds.size ?? .zero, physicalSize)
         XCTAssertEqual(showing.first?.bounds.size ?? .zero, physicalSize)
+        XCTAssertEqual(showing.last?.bounds.size ?? .zero, visibleSize)
+        // IC-104 C v3：位置关键帧与 scale 同组同长度，端点覆盖两个中心。
         XCTAssertEqual(
-            showing.last?.bounds.size ?? .zero,
-            CGSize(width: 210, height: 420)
+            showingPositionKeyframes.count,
+            showingScaleKeyframes.count
         )
-        XCTAssertEqual(hiding.first?.frame.width ?? -1, 210, accuracy: 0.5)
-        XCTAssertEqual(hiding.last?.frame.width ?? -1, 300, accuracy: 0.5)
-        XCTAssertEqual(showing.first?.frame.width ?? -1, 300, accuracy: 0.5)
-        XCTAssertEqual(showing.last?.frame.width ?? -1, 210, accuracy: 0.5)
-        assertSpringOvershootAndConvergence(
-            hidingScaleKeyframes.map { $0 * 210 },
-            source: 210,
-            target: 300
+        XCTAssertGreaterThanOrEqual(showingPositionKeyframes.count, 3)
+        XCTAssertEqual(
+            showingPositionKeyframes.last?.y ?? -1,
+            visibleCenterY,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            showingPositionKeyframes.first?.y ?? -1,
+            physicalSize.height / 2,
+            accuracy: 0.5
+        )
+        // IC-104 C v3：端点摆放为精确断言——显示端 = 带中心，隐藏端 = 视口中心。
+        XCTAssertEqual(
+            hiding.first?.frame.midY ?? -1,
+            visibleCenterY,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            hiding.last?.frame.midY ?? -1,
+            physicalSize.height / 2,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            showing.first?.frame.midY ?? -1,
+            physicalSize.height / 2,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            showing.last?.frame.midY ?? -1,
+            visibleCenterY,
+            accuracy: 0.5
+        )
+        XCTAssertNotEqual(visibleCenterY, physicalSize.height / 2)
+        XCTAssertEqual(
+            hiding.first?.frame.width ?? -1,
+            visibleSize.width,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            hiding.last?.frame.width ?? -1,
+            physicalSize.width,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            showing.first?.frame.width ?? -1,
+            physicalSize.width,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            showing.last?.frame.width ?? -1,
+            visibleSize.width,
+            accuracy: 0.5
         )
         assertSpringOvershootAndConvergence(
-            showingScaleKeyframes.map { $0 * 300 },
-            source: 300,
-            target: 210
+            hidingScaleKeyframes.map { $0 * visibleSize.width },
+            source: visibleSize.width,
+            target: physicalSize.width
+        )
+        assertSpringOvershootAndConvergence(
+            showingScaleKeyframes.map { $0 * physicalSize.width },
+            source: physicalSize.width,
+            target: visibleSize.width
         )
         for reading in [hidingLayoutReading, showingLayoutReading] {
             XCTAssertGreaterThanOrEqual(reading.callbackCount, 1)
@@ -5249,7 +5697,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(page === borderlessPage)
         XCTAssertTrue(page === restoredPage)
         XCTAssertEqual(page.fittedSize, value.oneXDisplaySize)
-        XCTAssertEqual(frameWithBorder?.size, value.oneXDisplaySize)
+        // IC-104 C v2：fittedSize 仍精确相等；只有经渲染层往返的 frame
+        // 带 ~1e-13 浮点噪声，故按容差比较两轴。
+        XCTAssertEqual(
+            frameWithBorder?.size.width ?? -1,
+            value.oneXDisplaySize.width,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            frameWithBorder?.size.height ?? -1,
+            value.oneXDisplaySize.height,
+            accuracy: 0.000_001
+        )
         XCTAssertEqual(frameWithoutBorder, frameWithBorder)
         XCTAssertEqual(restoredFrame, frameWithBorder)
     }
@@ -5452,7 +5911,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
             let frame = scrollView.oneXPresentationFrame
             XCTAssertEqual(frame.midX, physicalSize.width / 2, accuracy: 0.5)
-            XCTAssertEqual(frame.midY, physicalSize.height / 2, accuracy: 0.5)
+            // IC-104 C v3：竖直中心取该 `V` 的规定中心。
+            XCTAssertEqual(
+                frame.midY,
+                expected.oneXDisplayCenterY,
+                accuracy: 0.5
+            )
             XCTAssertEqual(
                 frame.size.width,
                 expected.oneXDisplaySize.width,
@@ -6750,10 +7214,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(machine.handleSingleTap())
         XCTAssertEqual(machine.interfaceVisibility, .hidden)
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+        // IC-104 B（第 132 条）：隐藏态 1x 上滑完全无效果——连语义提示也不发，
+        // 故消费计数停在显示态那一次（改前隐藏态也会发一次，计数为 2）。
         XCTAssertFalse(machine.handleSwipeUp())
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
         XCTAssertNil(machine.semanticNotice)
-        XCTAssertEqual(presenter.consumedNoticeCount, 2)
+        XCTAssertEqual(presenter.consumedNoticeCount, 1)
         XCTAssertEqual(presenter.pulseCount, 1)
     }
 
@@ -6830,7 +7296,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(keyframes.count, 3)
         XCTAssertEqual(keyframes.first ?? -1, 1, accuracy: 0.000_001)
         XCTAssertEqual(
-            (keyframes.last ?? -1) * 210,
+            (keyframes.last ?? -1) * metrics(
+                visibility: .visible,
+                configuration: configuration
+            ).oneXDisplaySize.width,
             target.width,
             accuracy: 0.5
         )
@@ -7826,15 +8295,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
         return tryUnwrap(calendar.date(from: components))
     }
 
-    /// IC-099 阶段二 C1：路线分派四行全覆盖（类型 × 是否已编辑）。
-    func testIC099v2C1VolumeRouteDispatchCoversAllFourRows() {
-        // 视频（含已编辑）一律走 requestAVAsset → URL
+    /// IC-104 A：路线分派六行全覆盖（三类型 × 是否已编辑）。
+    ///
+    /// 第 133 条把「占用空间」定为**原始资源字节数**，已编辑资产一律走原始主资源；
+    /// 未编辑资产维持 IC-099 的两条 URL 路线。
+    func testIC104AVolumeRouteDispatchCoversAllSixRows() {
+        // 未编辑视频走 requestAVAsset → URL
         XCTAssertEqual(
             S2AssetVolumeRouter.route(mediaKind: .video, isEdited: false),
-            .videoAssetURL
-        )
-        XCTAssertEqual(
-            S2AssetVolumeRouter.route(mediaKind: .video, isEdited: true),
             .videoAssetURL
         )
         // 未编辑照片 / LivePhoto 走 contentEditingInput → fullSizeImageURL
@@ -7846,17 +8314,38 @@ final class S2CalibrationHarnessTests: XCTestCase {
             S2AssetVolumeRouter.route(mediaKind: .livePhoto, isEdited: false),
             .contentEditingInputURL
         )
-        // 已编辑照片 / 已编辑 LivePhoto 走 .fullSizePhoto 资源（H43 病理反例的处置）
+        // 已编辑资产（三类型全部）走原始主资源流式累加
         XCTAssertEqual(
             S2AssetVolumeRouter.route(mediaKind: .photo, isEdited: true),
-            .fullSizePhotoResource
+            .originalPrimaryResource
         )
         XCTAssertEqual(
             S2AssetVolumeRouter.route(mediaKind: .livePhoto, isEdited: true),
-            .fullSizePhotoResource
+            .originalPrimaryResource
+        )
+        // 已编辑视频改走原始主资源（IC-099 时走 videoAssetURL，第 133 条改口径）
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .video, isEdited: true),
+            .originalPrimaryResource
         )
         // 三条路线各不相同，且枚举没有第四条
         XCTAssertEqual(S2AssetVolumeRoute.allCases.count, 3)
+        // 六行覆盖三类型 × 两编辑态，无遗漏
+        XCTAssertEqual(S2AssetSizeProbeMediaKind.allCases.count, 3)
+        for kind in S2AssetSizeProbeMediaKind.allCases {
+            for edited in [false, true] {
+                let route = S2AssetVolumeRouter.route(
+                    mediaKind: kind,
+                    isEdited: edited
+                )
+                // 已编辑一律原始主资源；未编辑按类型二分
+                XCTAssertEqual(
+                    route == .originalPrimaryResource,
+                    edited,
+                    "\(kind)/\(edited)"
+                )
+            }
+        }
     }
 
     /// IC-099 阶段二 C1 续：任一路失败 → 副行只显示序号，不显示大小、不显示占位符。
@@ -8397,7 +8886,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     line: line
                 )
             }
-            if let index = values.firstIndex(of: extreme) {
+            // 未测到过冲时极值即末样本，尾部切片只有一个元素——单元素平凡单调，
+            // 无需再查（assertMonotonic 要求至少两个元素）。
+            if let index = values.firstIndex(of: extreme),
+               values.count - index >= 2 {
                 assertMonotonic(
                     Array(values[index...]),
                     direction: .decreasing,
@@ -8421,7 +8913,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     line: line
                 )
             }
-            if let index = values.firstIndex(of: extreme) {
+            // 同上：未测到过冲时尾部切片只有一个元素。
+            if let index = values.firstIndex(of: extreme),
+               values.count - index >= 2 {
                 assertMonotonic(
                     Array(values[index...]),
                     direction: .increasing,
@@ -8585,8 +9079,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
     ) -> (firstNonBackground: Int?, coverage: CGFloat) {
         var first: Int?
         var coverage: CGFloat = 0
+        // IC-104 C v4：背景判定阈值 250 → 238，避开抗锯齿死区。
+        // 圆角弧外沿必然存在一枚部分覆盖的 AA 像素（#188 实测 241）；旧阈值
+        // 把它记为 `firstNonBackground`，随即命中 `>= photoGray - 3`（234）而
+        // `break`，`coverage` 归零——扫描在够到描边前就中止了。
+        // 阈值必须 `<= 241` 才能把该 AA 像素归为背景，又必须 `> photoGray`(237)
+        // 才不会吞掉照片，故有效窗口为 238…241；取下端以最大化 AA 相位容忍度。
+        // **照片判定（`first >= 234` 即 break）原样保留**：若底角实为照片露边，
+        // 跳过薄边后下一采样即 237，`first = 237` 仍不满足 `< 234`，测试照旧红。
         for gray in grays {
-            if gray >= 250 {
+            if gray >= 238 {
                 if first != nil {
                     break
                 }
@@ -8691,6 +9193,39 @@ final class S2CalibrationHarnessTests: XCTestCase {
             return -1
         }
         return (Int(pixel[0]) + Int(pixel[1]) + Int(pixel[2])) / 3
+    }
+
+    /// IC-104 C v2：夹具（`.zero` 安全区）下截图**显示态**适配带的带高。
+    /// 隐藏态不走这条推导——按规格 v16 第 121/177 行仍填满视口。
+    private func expectedScreenshotBandHeight(
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder
+    ) -> CGFloat {
+        S2ViewportLayout.screenshotBandHeight(
+            physicalSize: physicalSize,
+            safeAreaInsets: .zero,
+            bottomStripHeight: max(
+                CGFloat(configuration.bottomStripCurrentItemSize),
+                CGFloat(configuration.bottomStripNeighborItemHeight)
+            )
+        )
+    }
+
+    /// IC-104 C v3：夹具（`.zero` 安全区）下截图**显示态** `s = 1` 的帧中心。
+    /// 即适配带中心。`s > 1` 的几何基准中心恒为视口中心（SPEC 决策 20），
+    /// 两者之差即捏合／双击进入瞬间的位置跳变量。
+    private func expectedScreenshotBandCenterY(
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder
+    ) -> CGFloat {
+        S2ViewportLayout.screenshotBandTop(physicalSize: physicalSize) +
+            expectedScreenshotBandHeight(configuration: configuration) / 2
+    }
+
+    /// `s = 1` 显示态截图中心与 `s > 1` 基准中心之差（跳变量），恒 > 0。
+    private func expectedOneXToNxCenterJump(
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder
+    ) -> CGFloat {
+        physicalSize.height / 2 -
+            expectedScreenshotBandCenterY(configuration: configuration)
     }
 
     private func metrics(
@@ -8921,6 +9456,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 interfaceVisibility: machine.interfaceVisibility,
                 isFramedPhoto: value.isFramedPhoto,
                 fittedSize: value.oneXDisplaySize,
+                fittedCenterY: value.oneXDisplayCenterY,
                 nativeZoomBaseSize: value.nativeZoomBaseSize,
                 cornerRadius: value.oneXCornerRadius,
                 doubleTapTargetScale: value.doubleTapTargetScale,
@@ -9684,7 +10220,7 @@ extension S2CalibrationHarnessTests {
             Double(S2BottomStripSystemReference.cornerRadius),
             accuracy: 0.000_000_001
         )
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 4)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)
 
         let metrics = tryUnwrap(configuration.resolvedParameters).bottomStripMetrics
         XCTAssertEqual(
@@ -9732,7 +10268,7 @@ extension S2CalibrationHarnessTests {
         var json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
-        XCTAssertEqual(json["schemaVersion"] as? Int, 4)
+        XCTAssertEqual(json["schemaVersion"] as? Int, 6)
         json.removeValue(forKey: "bottomStripCornerRadius")
         let legacy = try JSONSerialization.data(withJSONObject: json)
         let migrated = try JSONDecoder().decode(

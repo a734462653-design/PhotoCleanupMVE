@@ -1008,7 +1008,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "fitInsetRatio 生效后的实际显示尺寸：{width} × {height}"
+            "value" : "三等距适配框生效后的实际显示尺寸：{width} × {height}"
           }
         }
       }

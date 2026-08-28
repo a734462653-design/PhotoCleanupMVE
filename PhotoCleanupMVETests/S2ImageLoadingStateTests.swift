@@ -637,13 +637,13 @@ final class S2ImageLoadingStateTests: XCTestCase {
         // R3 新增 placeholder 1 项：41 → 42，placeholder 7 → 8。
         // IC-088 合并：+ IC-081 乘数（placeholder）1 项：42 → 43，placeholder 8 → 9。
         // IC-090 R1：+ bottomStripCornerRadius（decided）：43 → 44，decided 34 → 35。
-        XCTAssertEqual(connections.count, 44)
+        XCTAssertEqual(connections.count, 43)
         let statuses = Dictionary(uniqueKeysWithValues: connections.map {
             ($0.name, $0.specStatus)
         })
         XCTAssertEqual(statuses["degradedPreviewPolicy"], .decided)
         XCTAssertEqual(statuses["scaleChangeRequestPolicy"], .decided)
-        XCTAssertEqual(connections.filter { $0.specStatus == .decided }.count, 35)
+        XCTAssertEqual(connections.filter { $0.specStatus == .decided }.count, 34)
         XCTAssertEqual(connections.filter { $0.specStatus == .placeholder }.count, 9)
     }
 }

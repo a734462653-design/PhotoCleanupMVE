@@ -78,9 +78,11 @@ final class S2StateMachineTests: XCTestCase {
 
     // IC059：迁移表的上滑事件在 1x 标记，并在 Nx 标记后归一。
     func testIC047_006TransitionRowSwipeUp() {
+        // IC-104 B（第 132 条）：1x 行按 V 拆分——显示态照旧标记并翻页，
+        // 隐藏态完全无效果（第 4 格由 conditionalSame 改为 ignoredSame）。
         assertTransitionRow(
             .swipeUpMainImage,
-            [unavailable, conditionalSame, unavailable, conditionalSame,
+            [unavailable, conditionalSame, unavailable, ignoredSame,
              conditionalDynamic, unavailable, conditionalDynamic]
         )
 
@@ -89,24 +91,97 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertTrue(machine.pendingDeletionAssetIDs.contains("asset-2"))
         XCTAssertEqual(machine.currentAssetID, "asset-3")
         XCTAssertEqual(machine.state, .visibleOneXIdle)
+
+        // IC-104 B：V=隐藏 且 1x 上滑——不标记、不改 D、不翻页、不发提示。
+        let hidden = makeMachine(state: .hiddenOneX)
+        let pendingBefore = hidden.pendingDeletionAssetIDs
+        XCTAssertFalse(hidden.handleSwipeUp())
+        XCTAssertEqual(hidden.pendingDeletionAssetIDs, pendingBefore)
+        XCTAssertFalse(hidden.pendingDeletionAssetIDs.contains("asset-2"))
+        XCTAssertEqual(hidden.currentAssetID, "asset-2")
+        XCTAssertEqual(hidden.state, .hiddenOneX)
+        XCTAssertEqual(hidden.interfaceVisibility, .hidden)
+        XCTAssertNil(hidden.semanticNotice)
+        XCTAssertNil(hidden.pendingUndecidedItem)
+
+        // 已标记的资产在隐藏态上滑同样无提示（显示态才有 alreadyMarked 脉冲）
+        let hiddenMarked = makeMachine(
+            state: .hiddenOneX,
+            pendingDeletionAssetIDs: ["asset-2"]
+        )
+        XCTAssertFalse(hiddenMarked.handleSwipeUp())
+        XCTAssertNil(hiddenMarked.semanticNotice)
+        XCTAssertEqual(hiddenMarked.state, .hiddenOneX)
+
+        // Nx 分层不变：隐藏态 Nx 上滑照旧标记
+        let hiddenNx = makeMachine(state: .hiddenNx)
+        XCTAssertTrue(hiddenNx.handleSwipeUp())
+        XCTAssertTrue(hiddenNx.pendingDeletionAssetIDs.contains("asset-2"))
     }
 
     // IC047-007：迁移表的下滑事件只取消当前照片标记且不跳转。
     func testIC047_007TransitionRowSwipeDown() {
+        // IC-104 B（第 132 条）：1x 行按 V 拆分——显示态照旧取消标记且不跳转，
+        // 隐藏态改为迁 V=显示（第 4 格由 conditionalSame 改为 availableState）。
         assertTransitionRow(
             .swipeDownMainImage,
-            [unavailable, conditionalSame, unavailable, conditionalSame,
+            [unavailable, conditionalSame, unavailable,
+             availableState(.visibleOneXIdle),
              conditionalSame, unavailable, conditionalSame]
         )
 
+        // 显示态 1x：取消标记，不跳转，V 不变（原断言，只把状态由隐藏改到显示）
         let machine = makeMachine(
-            state: .hiddenOneX,
+            state: .visibleOneXIdle,
             pendingDeletionAssetIDs: ["asset-2"]
         )
         XCTAssertTrue(machine.handleSwipeDown())
         XCTAssertFalse(machine.pendingDeletionAssetIDs.contains("asset-2"))
         XCTAssertEqual(machine.currentAssetID, "asset-2")
-        XCTAssertEqual(machine.state, .hiddenOneX)
+        XCTAssertEqual(machine.state, .visibleOneXIdle)
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+
+        // IC-104 B：隐藏态 1x 下滑迁 V=显示，其余状态量一律不变
+        let hidden = makeMachine(
+            state: .hiddenOneX,
+            pendingDeletionAssetIDs: ["asset-2"]
+        )
+        let scaleBefore = hidden.scale
+        let indexBefore = hidden.currentIndex
+        let favoritesBefore = hidden.favoriteAssetIDs
+        XCTAssertTrue(hidden.handleSwipeDown())
+        XCTAssertEqual(hidden.interfaceVisibility, .visible)
+        XCTAssertEqual(hidden.state, .visibleOneXIdle)
+        // 标记不动：隐藏态下滑不取消标记
+        XCTAssertTrue(hidden.pendingDeletionAssetIDs.contains("asset-2"))
+        XCTAssertEqual(hidden.scale, scaleBefore)
+        XCTAssertEqual(hidden.currentIndex, indexBefore)
+        XCTAssertEqual(hidden.currentAssetID, "asset-2")
+        XCTAssertEqual(hidden.favoriteAssetIDs, favoritesBefore)
+        XCTAssertNil(hidden.semanticNotice)
+
+        // 当前资产未标记时，隐藏态下滑同样只迁 V，D 一格不动
+        // （夹具默认 D = ["asset-1"]，当前资产是 "asset-2"）
+        let hiddenUnmarked = makeMachine(state: .hiddenOneX)
+        let unmarkedPendingBefore = hiddenUnmarked.pendingDeletionAssetIDs
+        XCTAssertTrue(hiddenUnmarked.handleSwipeDown())
+        XCTAssertEqual(hiddenUnmarked.interfaceVisibility, .visible)
+        XCTAssertEqual(
+            hiddenUnmarked.pendingDeletionAssetIDs,
+            unmarkedPendingBefore
+        )
+        XCTAssertFalse(
+            hiddenUnmarked.pendingDeletionAssetIDs.contains("asset-2")
+        )
+
+        // Nx 分层不变：隐藏态 Nx 下滑仍不由状态机处理
+        let hiddenNx = makeMachine(
+            state: .hiddenNx,
+            pendingDeletionAssetIDs: ["asset-2"]
+        )
+        XCTAssertFalse(hiddenNx.handleSwipeDown())
+        XCTAssertEqual(hiddenNx.interfaceVisibility, .hidden)
+        XCTAssertTrue(hiddenNx.pendingDeletionAssetIDs.contains("asset-2"))
     }
 
     // IC047-008：迁移表的左右滑事件在 1x 翻页，在 Nx 受贴边条件约束。
@@ -450,19 +525,37 @@ final class S2StateMachineTests: XCTestCase {
 
     // IC059：手势矩阵的上滑行在 1x 与 Nx 都执行标记语义。
     func testIC047_026GestureMatrixSwipeUpRow() {
+        // V=显示：语义不变（IC-104 B 明令显示态全部手势零变化）
         assertGestureRow(
             .swipeUpMainImage,
             [gesture(.available, .markCurrent),
-             gesture(.available, .markCurrent), blocked]
+             gesture(.available, .markCurrent), blocked],
+            visibility: .visible
+        )
+        // IC-104 B（第 132 条）：V=隐藏 时 1x 格改为完全无效果；Nx 格不变
+        assertGestureRow(
+            .swipeUpMainImage,
+            [gesture(.ignored, .none),
+             gesture(.available, .markCurrent), blocked],
+            visibility: .hidden
         )
     }
 
     // IC047-027：手势矩阵的下滑行逐格覆盖取消标记、平移限定与遮挡。
     func testIC047_027GestureMatrixSwipeDownRow() {
+        // V=显示：语义不变
         assertGestureRow(
             .swipeDownMainImage,
             [gesture(.available, .unmarkCurrent),
-             gesture(.conditional, .panOnly), blocked]
+             gesture(.conditional, .panOnly), blocked],
+            visibility: .visible
+        )
+        // IC-104 B（第 132 条）：V=隐藏 时 1x 格改为迁 V=显示；Nx 格不变
+        assertGestureRow(
+            .swipeDownMainImage,
+            [gesture(.available, .revealInterface),
+             gesture(.conditional, .panOnly), blocked],
+            visibility: .hidden
         )
     }
 
@@ -1282,9 +1375,12 @@ final class S2StateMachineTests: XCTestCase {
         }
     }
 
+    /// IC-104 B（第 132 条）：手势矩阵新增界面可见性维度。`visibility` 默认
+    /// `.visible`，既有 11 行断言一字不改；只有 1x 上滑 / 下滑两行需要按 V 各断言一次。
     private func assertGestureRow(
         _ input: S2GestureInput,
         _ expected: [S2GestureRule],
+        visibility: S2InterfaceVisibility = .visible,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
@@ -1296,7 +1392,11 @@ final class S2StateMachineTests: XCTestCase {
         )
         for (context, expectedRule) in zip(allGestureContexts, expected) {
             XCTAssertEqual(
-                S2StateMachine.gestureRule(for: input, context: context),
+                S2StateMachine.gestureRule(
+                    for: input,
+                    context: context,
+                    visibility: visibility
+                ),
                 expectedRule,
                 file: file,
                 line: line
