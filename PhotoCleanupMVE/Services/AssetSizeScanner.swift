@@ -330,18 +330,18 @@ private final class ContinuationResumer {
 
 /// IC-099 阶段二 R4：顶部信息区「占用空间」的取数实现。
 ///
-/// 按 `S2AssetVolumeRouter` 的类型分派走三条路线之一（④ 技术负责人 2026-08-28，
-/// 依 H43 真机 `099.txt`①）。全部禁网络；任一路失败、`.fullSizePhoto` 缺失、
+/// 按 `S2AssetVolumeRouter` 分派走三条路线之一（④ Decision_log 第 133 条：
+/// 「占用空间」= **原始资源字节数**）。全部禁网络；任一路失败、主资源缺失、
 /// iCloud 不可得，一律返回 `nil`（副行退化为只显示序号，不显示占位符）。
 ///
 /// **不使用任何 KVC 私有键**；**不碰产品图片请求策略与节流**
 /// （`S2TemporaryPhotoImageStrategy` 与 `PHImageManager.requestImage*` 的产品调用点一字未动）；
 /// **不改 `AssetSizeScanner` 的 S3 语义**（那条链仍是多资源求和，本类型与它无调用关系）。
 ///
-/// 与 IC-099b 探针 `AssetSizeProbeService` 的取数辅助没有共用：探针要的是
-/// 「两条路线各自的字节数 + 失败原因分类」用于取证，本类型要的是
-/// 「当前版本的一个 `Int64?`」，返回契约不同；且探针的数据路线取的是**原始**
-/// 主资源，本类型取的是 `.fullSizePhoto`（当前版本），语义相反。
+/// 已编辑资产的资源选择**复用** IC-099b 探针的
+/// `AssetSizeProbeService.primaryResource(in:mediaKind:)`（同一规则，禁网络）；
+/// 返回契约仍与探针不同：探针给「两条路线各自的字节数 + 失败原因分类」用于取证，
+/// 本类型只给一个 `Int64?`。
 final class AssetVolumeService: S2AssetVolumeProviding {
     private let assets: [String: PHAsset]
 
@@ -354,8 +354,9 @@ final class AssetVolumeService: S2AssetVolumeProviding {
             return nil
         }
         let resources = PHAssetResource.assetResources(for: asset)
+        let mediaKind = AssetSizeProbeService.mediaKind(of: asset)
         let route = S2AssetVolumeRouter.route(
-            mediaKind: AssetSizeProbeService.mediaKind(of: asset),
+            mediaKind: mediaKind,
             isEdited: resources.contains { $0.type == .adjustmentData }
         )
         switch route {
@@ -363,9 +364,10 @@ final class AssetVolumeService: S2AssetVolumeProviding {
             return await videoURLByteCount(for: asset)
         case .contentEditingInputURL:
             return await contentEditingInputByteCount(for: asset)
-        case .fullSizePhotoResource:
-            guard let resource = resources.first(
-                where: { $0.type == .fullSizePhoto }
+        case .originalPrimaryResource:
+            guard let resource = AssetSizeProbeService.primaryResource(
+                in: resources,
+                mediaKind: mediaKind
             ) else {
                 return nil
             }

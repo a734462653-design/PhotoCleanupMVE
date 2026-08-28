@@ -7826,15 +7826,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
         return tryUnwrap(calendar.date(from: components))
     }
 
-    /// IC-099 阶段二 C1：路线分派四行全覆盖（类型 × 是否已编辑）。
-    func testIC099v2C1VolumeRouteDispatchCoversAllFourRows() {
-        // 视频（含已编辑）一律走 requestAVAsset → URL
+    /// IC-104 A：路线分派六行全覆盖（三类型 × 是否已编辑）。
+    ///
+    /// 第 133 条把「占用空间」定为**原始资源字节数**，已编辑资产一律走原始主资源；
+    /// 未编辑资产维持 IC-099 的两条 URL 路线。
+    func testIC104AVolumeRouteDispatchCoversAllSixRows() {
+        // 未编辑视频走 requestAVAsset → URL
         XCTAssertEqual(
             S2AssetVolumeRouter.route(mediaKind: .video, isEdited: false),
-            .videoAssetURL
-        )
-        XCTAssertEqual(
-            S2AssetVolumeRouter.route(mediaKind: .video, isEdited: true),
             .videoAssetURL
         )
         // 未编辑照片 / LivePhoto 走 contentEditingInput → fullSizeImageURL
@@ -7846,17 +7845,38 @@ final class S2CalibrationHarnessTests: XCTestCase {
             S2AssetVolumeRouter.route(mediaKind: .livePhoto, isEdited: false),
             .contentEditingInputURL
         )
-        // 已编辑照片 / 已编辑 LivePhoto 走 .fullSizePhoto 资源（H43 病理反例的处置）
+        // 已编辑资产（三类型全部）走原始主资源流式累加
         XCTAssertEqual(
             S2AssetVolumeRouter.route(mediaKind: .photo, isEdited: true),
-            .fullSizePhotoResource
+            .originalPrimaryResource
         )
         XCTAssertEqual(
             S2AssetVolumeRouter.route(mediaKind: .livePhoto, isEdited: true),
-            .fullSizePhotoResource
+            .originalPrimaryResource
+        )
+        // 已编辑视频改走原始主资源（IC-099 时走 videoAssetURL，第 133 条改口径）
+        XCTAssertEqual(
+            S2AssetVolumeRouter.route(mediaKind: .video, isEdited: true),
+            .originalPrimaryResource
         )
         // 三条路线各不相同，且枚举没有第四条
         XCTAssertEqual(S2AssetVolumeRoute.allCases.count, 3)
+        // 六行覆盖三类型 × 两编辑态，无遗漏
+        XCTAssertEqual(S2AssetSizeProbeMediaKind.allCases.count, 3)
+        for kind in S2AssetSizeProbeMediaKind.allCases {
+            for edited in [false, true] {
+                let route = S2AssetVolumeRouter.route(
+                    mediaKind: kind,
+                    isEdited: edited
+                )
+                // 已编辑一律原始主资源；未编辑按类型二分
+                XCTAssertEqual(
+                    route == .originalPrimaryResource,
+                    edited,
+                    "\(kind)/\(edited)"
+                )
+            }
+        }
     }
 
     /// IC-099 阶段二 C1 续：任一路失败 → 副行只显示序号，不显示大小、不显示占位符。

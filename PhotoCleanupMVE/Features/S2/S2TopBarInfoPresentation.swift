@@ -2,31 +2,36 @@ import Foundation
 
 // MARK: - IC-099 阶段二 R4：占用空间取数路线
 
-/// 取数路线。按资产类型分派，**无数值阈值**（④ 技术负责人 2026-08-28，依 H43 真机 `099.txt`①）。
+/// 取数路线。按「是否已编辑」先分派，未编辑再按类型分派，**无数值阈值**
+/// （④ Decision_log 第 133 条：「占用空间」= **原始资源字节数**）。
 enum S2AssetVolumeRoute: String, CaseIterable, Sendable {
-    /// 视频（含已编辑）：`requestAVAsset` → `AVURLAsset.url` 文件属性。H43 14/14 逐字节精确。
+    /// 未编辑视频：`requestAVAsset` → `AVURLAsset.url` 文件属性。H43 14/14 逐字节精确。
     case videoAssetURL
     /// 未编辑照片 / LivePhoto：`requestContentEditingInput` → `fullSizeImageURL` 文件属性。
     /// H43 35/35 精确。
     case contentEditingInputURL
-    /// 已编辑照片 / 已编辑 LivePhoto：`.fullSizePhoto` 资源 `requestData` 流式累加。
+    /// 已编辑资产（照片 / LivePhoto / 视频）：**原始**主资源 `requestData` 流式累加。
     ///
-    /// H43 病理反例 `CCE34A1A`：URL 途径读到 7,485 B，实际当前版本 3,899,648 B——
-    /// 已编辑照片的 `fullSizeImageURL` 不能代表当前版本，必须走资源。
-    /// 该类读取实测 1.6～3.2 ms。
-    case fullSizePhotoResource
+    /// 资源选择复用 IC-099b 探针的 `AssetSizeProbeService.primaryResource(in:mediaKind:)`：
+    /// 照片与 LivePhoto 取 `.photo`（取不到退 `.fullSizePhoto`），视频取 `.video`
+    /// （取不到退 `.fullSizeVideo`）；**LivePhoto 的配对视频不计入**。
+    ///
+    /// 已编辑资产的 URL 途径读到的是**当前版本**而非原始资源（H43 病理反例
+    /// `CCE34A1A`：URL 途径 7,485 B，当前版本 3,899,648 B），与第 133 条的
+    /// 「原始资源字节数」语义不符，故一律走资源。该类读取实测 1.6～3.2 ms。
+    case originalPrimaryResource
 }
 
-/// 路线分派器。四行全覆盖，纯函数。
+/// 路线分派器。六行全覆盖（三类型 × 是否已编辑），纯函数。
 enum S2AssetVolumeRouter {
     static func route(
         mediaKind: S2AssetSizeProbeMediaKind,
         isEdited: Bool
     ) -> S2AssetVolumeRoute {
-        if mediaKind == .video {
-            return .videoAssetURL
+        if isEdited {
+            return .originalPrimaryResource
         }
-        return isEdited ? .fullSizePhotoResource : .contentEditingInputURL
+        return mediaKind == .video ? .videoAssetURL : .contentEditingInputURL
     }
 }
 
