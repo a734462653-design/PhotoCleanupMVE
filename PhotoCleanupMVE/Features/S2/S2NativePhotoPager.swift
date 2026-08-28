@@ -13,6 +13,9 @@ struct S2NativePageContent {
     let interfaceVisibility: S2InterfaceVisibility
     let isFramedPhoto: Bool
     let fittedSize: CGSize
+    /// IC-104 C v3：`s = 1` 显示帧的竖直中心（视口坐标）。
+    /// `nil` 表示沿用视口居中（改前行为），非截图与隐藏态均为该值。
+    var fittedCenterY: CGFloat? = nil
     let nativeZoomBaseSize: CGSize
     let cornerRadius: CGFloat
     let doubleTapTargetScale: CGFloat
@@ -231,6 +234,8 @@ final class S2NativeZoomScrollView: UIScrollView {
     private(set) weak var zoomContentView: UIView?
     private(set) weak var presentationContentView: UIView?
     private(set) var fittedSize = CGSize.zero
+    /// IC-104 C v3：`s = 1` 显示帧的竖直中心（视口坐标）；`nil` = 视口居中。
+    private(set) var fittedCenterY: CGFloat?
     private(set) var nativeZoomBaseSize = CGSize.zero
     private(set) var viewportSize = CGSize.zero
     private(set) var hasResolvedAssetGeometry = true
@@ -262,7 +267,8 @@ final class S2NativeZoomScrollView: UIScrollView {
         nativeZoomBaseSize: CGSize,
         viewportSize: CGSize,
         maximumZoomScale: CGFloat,
-        assetPixelSize: CGSize? = nil
+        assetPixelSize: CGSize? = nil,
+        fittedCenterY: CGFloat? = nil
     ) {
         let nextMaximumScale = max(1, maximumZoomScale)
         self.maximumZoomScale = nextMaximumScale
@@ -299,8 +305,10 @@ final class S2NativeZoomScrollView: UIScrollView {
         )
         let geometryChanged = self.fittedSize != nextFittedSize ||
             self.nativeZoomBaseSize != nextNativeZoomBaseSize ||
-            self.viewportSize != nextViewportSize
+            self.viewportSize != nextViewportSize ||
+            self.fittedCenterY != fittedCenterY
         self.fittedSize = nextFittedSize
+        self.fittedCenterY = fittedCenterY
         self.nativeZoomBaseSize = nextNativeZoomBaseSize
         self.viewportSize = nextViewportSize
         hasResolvedAssetGeometry = assetPixelSize.map {
@@ -644,10 +652,36 @@ final class S2NativeZoomScrollView: UIScrollView {
         zoomContentView?.layer.presentation()?.affineTransform().a
     }
 
+    /// IC-104 C v3：`s = 1` 照片中心在 `zoomContentView` 坐标系中的竖直位置。
+    /// `fittedCenterY` 是**视口坐标**；`zoomContentView` 的 bounds 为
+    /// `nativeZoomBaseSize`、居中于视口，故需减去其在视口中的顶偏移。
+    /// 截图的 `nativeZoomBaseSize` 即视口，偏移为 0；非截图时 `fittedCenterY`
+    /// 为视口中心，换算后恰为 `nativeZoomBaseSize.height / 2`——与改前一致。
+    var oneXPhotoCenterYInZoomContent: CGFloat {
+        photoCenterYInZoomContent(
+            fittedCenterY: fittedCenterY,
+            nativeZoomBaseHeight: nativeZoomBaseSize.height
+        )
+    }
+
+    /// 同一换算的通用形式：过渡需要用**目标页**的值算终点，故单独暴露。
+    func photoCenterYInZoomContent(
+        fittedCenterY: CGFloat?,
+        nativeZoomBaseHeight: CGFloat
+    ) -> CGFloat {
+        guard let fittedCenterY else {
+            return nativeZoomBaseHeight / 2
+        }
+        let zoomTopInViewport =
+            (viewportSize.height - nativeZoomBaseHeight) / 2
+        return fittedCenterY - zoomTopInViewport
+    }
+
     var oneXPresentationFrame: CGRect {
         CGRect(
             x: (viewportSize.width - fittedSize.width) / 2,
-            y: (viewportSize.height - fittedSize.height) / 2,
+            y: (fittedCenterY ?? viewportSize.height / 2) -
+                fittedSize.height / 2,
             width: fittedSize.width,
             height: fittedSize.height
         )
@@ -795,9 +829,10 @@ final class S2NativeZoomScrollView: UIScrollView {
             geometryChanged = true
         }
         let targetPhotoBounds = CGRect(origin: .zero, size: fittedSize)
+        // IC-104 C v3：竖直摆放取适配带中心（显示态截图）或视口中心（其余）。
         let targetPhotoCenter = CGPoint(
             x: targetZoomBounds.midX,
-            y: targetZoomBounds.midY
+            y: oneXPhotoCenterYInZoomContent
         )
         if presentationContentView.transform != .identity ||
             presentationContentView.bounds != targetPhotoBounds ||
@@ -1011,6 +1046,8 @@ final class S2NativeZoomPageController: UIViewController,
     private var isFramedPhoto: Bool
     private var contentVersion: S2NativePhotoContentVersion
     private(set) var fittedSize: CGSize
+    /// IC-104 C v3：`s = 1` 显示帧竖直中心（视口坐标）；`nil` = 视口居中。
+    private(set) var fittedCenterY: CGFloat?
     private(set) var nativeZoomBaseSize: CGSize
     private(set) var cornerRadius: CGFloat
     private(set) var doubleTapTargetScale: CGFloat
@@ -1020,6 +1057,10 @@ final class S2NativeZoomPageController: UIViewController,
     private(set) var lastPresentationTransitionDuration: TimeInterval = 0
     private(set) var lastPresentationTransition: S2ImmersiveTransition?
     private(set) var lastPresentationScaleKeyframes: [CGFloat] = []
+    /// IC-104 C v3：过渡的位置端点与关键帧（供夹具核验，产品不读）。
+    private(set) var lastPresentationPositionKeyframes: [CGPoint] = []
+    private var presentationSourcePosition: CGPoint = .zero
+    private var presentationTargetPosition: CGPoint = .zero
     private(set) var isPresentationTransitionActive = false
     private(set) var presentationTransitionCount = 0
     private(set) var presentationGeometryCommitCount = 0
@@ -1118,6 +1159,7 @@ final class S2NativeZoomPageController: UIViewController,
         isFramedPhoto = page.isFramedPhoto
         contentVersion = page.contentVersion
         fittedSize = page.fittedSize
+        fittedCenterY = page.fittedCenterY
         nativeZoomBaseSize = page.nativeZoomBaseSize
         cornerRadius = page.cornerRadius
         doubleTapTargetScale = page.doubleTapTargetScale
@@ -1171,7 +1213,8 @@ final class S2NativeZoomPageController: UIViewController,
             nativeZoomBaseSize: nativeZoomBaseSize,
             viewportSize: latestViewportSize,
             maximumZoomScale: 1,
-            assetPixelSize: assetPixelSize
+            assetPixelSize: assetPixelSize,
+            fittedCenterY: fittedCenterY
         )
         applyCornerMask()
         hostingController.didMove(toParent: self)
@@ -1296,7 +1339,8 @@ final class S2NativeZoomPageController: UIViewController,
                     nativeZoomBaseSize: nativeZoomBaseSize,
                     viewportSize: viewportSize,
                     maximumZoomScale: latestMaximumZoomScale,
-                    assetPixelSize: assetPixelSize
+                    assetPixelSize: assetPixelSize,
+                    fittedCenterY: fittedCenterY
                 )
                 zoomScrollView.applyNativeState(
                     scale: isCurrent ? scale : 1,
@@ -1416,9 +1460,12 @@ final class S2NativeZoomPageController: UIViewController,
         } else {
             let page = pendingPresentationPage
             let targetSize = page?.fittedSize ?? fittedSize
+            // IC-104 C v3：回 1x 的竖直中心同样取适配带中心（显示态截图）。
+            let targetCenterY = page?.fittedCenterY ?? fittedCenterY
+                ?? view.bounds.height / 2
             targetFrame = CGRect(
                 x: (view.bounds.width - targetSize.width) / 2,
-                y: (view.bounds.height - targetSize.height) / 2,
+                y: targetCenterY - targetSize.height / 2,
                 width: targetSize.width,
                 height: targetSize.height
             )
@@ -1698,6 +1745,17 @@ final class S2NativeZoomPageController: UIViewController,
         )
         presentationSourceScale = safeSourceScale
         presentationTargetScale = safeTargetScale
+        // IC-104 C v3：端点不同心时 morph 含平移。源取当前呈现层 position，
+        // 目标由 `page.fittedCenterY` 换算到 `zoomContentView` 坐标。
+        // 曲线、时长、阻尼与 scale/cornerRadius 完全一致（同一 progressValues）。
+        presentationSourcePosition = sourceLayer.position
+        presentationTargetPosition = CGPoint(
+            x: sourceLayer.position.x,
+            y: zoomScrollView.photoCenterYInZoomContent(
+                fittedCenterY: page.fittedCenterY,
+                nativeZoomBaseHeight: page.nativeZoomBaseSize.height
+            )
+        )
         presentationSourceVisualCornerRadius = sourceVisualCornerRadius
         presentationTargetVisualCornerRadius = targetLayerCornerRadius
         presentationSourceVisualBorderWidth = sourceVisualBorderWidth
@@ -1712,6 +1770,9 @@ final class S2NativeZoomPageController: UIViewController,
                     scaleX: safeTargetScale,
                     y: safeTargetScale
                 )
+                // IC-104 C v3：模型层直接置于目标位置，动画负责从源位置补间，
+                // 与 transform 的处理方式一致。
+                contentView.layer.position = self.presentationTargetPosition
             }
             presentationContentView.layer.cornerRadius =
                 targetLayerCornerRadius / safeTargetScale
@@ -1756,6 +1817,17 @@ final class S2NativeZoomPageController: UIViewController,
                 (presentationTargetScale - presentationSourceScale) * value
         }
         lastPresentationScaleKeyframes = scales
+        let positions = progressValues.map { value -> CGPoint in
+            CGPoint(
+                x: presentationSourcePosition.x +
+                    (presentationTargetPosition.x -
+                        presentationSourcePosition.x) * value,
+                y: presentationSourcePosition.y +
+                    (presentationTargetPosition.y -
+                        presentationSourcePosition.y) * value
+            )
+        }
+        lastPresentationPositionKeyframes = positions
         let visualCornerRadii = progressValues.map { value in
             max(
                 0,
@@ -1792,8 +1864,18 @@ final class S2NativeZoomPageController: UIViewController,
         let cornerAnimation = CAKeyframeAnimation(keyPath: "cornerRadius")
         cornerAnimation.values = layerCornerRadii
         cornerAnimation.keyTimes = keyTimes
+        // IC-104 C v3：位置分量。`fitBorderLayer` 是照片层的**子层**
+        // （`hostingController.view.layer.addSublayer`，帧 = 父层 bounds），
+        // 随父层平移，故不另加位置分量——再加一份会双重平移。
+        let positionAnimation = CAKeyframeAnimation(keyPath: "position")
+        positionAnimation.values = positions.map { NSValue(cgPoint: $0) }
+        positionAnimation.keyTimes = keyTimes
         let photoGroup = presentationAnimationGroup(
-            animations: [scaleAnimation, cornerAnimation],
+            animations: [
+                scaleAnimation,
+                cornerAnimation,
+                positionAnimation
+            ],
             duration: duration
         )
         transitionDiagnostics?.recordPhotoAnimationOperation(
@@ -1935,6 +2017,7 @@ final class S2NativeZoomPageController: UIViewController,
         interfaceVisibility = page.interfaceVisibility
         isFramedPhoto = page.isFramedPhoto
         fittedSize = page.fittedSize
+        fittedCenterY = page.fittedCenterY
         nativeZoomBaseSize = page.nativeZoomBaseSize
         cornerRadius = page.cornerRadius
         assetPixelSize = page.assetPixelSize
@@ -1948,7 +2031,8 @@ final class S2NativeZoomPageController: UIViewController,
             nativeZoomBaseSize: nativeZoomBaseSize,
             viewportSize: latestViewportSize,
             maximumZoomScale: latestMaximumZoomScale,
-            assetPixelSize: assetPixelSize
+            assetPixelSize: assetPixelSize,
+            fittedCenterY: fittedCenterY
         )
         applyCornerMask()
         zoomScrollView.layoutIfNeeded()

@@ -704,6 +704,7 @@ struct S2View: View {
                 interfaceVisibility: machine.interfaceVisibility,
                 isFramedPhoto: pageMetrics.isFramedPhoto,
                 fittedSize: pageMetrics.oneXDisplaySize,
+                fittedCenterY: pageMetrics.oneXDisplayCenterY,
                 nativeZoomBaseSize: pageMetrics.nativeZoomBaseSize,
                 cornerRadius: pageMetrics.oneXCornerRadius,
                 doubleTapTargetScale: pageMetrics.doubleTapTargetScale,

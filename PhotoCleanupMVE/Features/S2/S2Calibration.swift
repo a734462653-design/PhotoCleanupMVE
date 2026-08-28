@@ -1122,6 +1122,9 @@ struct S2ViewportMetrics: Equatable {
     let nativeZoomBaseSize: CGSize
     let isFramedPhoto: Bool
     let oneXDisplaySize: CGSize
+    /// IC-104 C v3：`s = 1` 显示帧的**竖直中心**（视口坐标）。
+    /// 截图且 `V=显示` 时为适配带中心；其余一切情形为视口中心（与改前一致）。
+    let oneXDisplayCenterY: CGFloat
     let oneXCornerRadius: CGFloat
     let aspectFillMultiplier: CGFloat
     let doubleTapTargetScale: CGFloat
@@ -1156,26 +1159,32 @@ enum S2ViewportLayout {
             CGFloat(configuration.bottomStripCurrentItemSize),
             CGFloat(configuration.bottomStripNeighborItemHeight)
         )
-        // IC-104 C v2：截图适配框的上下缘由 chrome 推导，但**仅限 V=显示**。
-        // 隐藏态仍按规格 v16 第 121/177 行填满视口（截图沉浸，行为恒开），
-        // 故 `keepsFrame` 与尺寸、圆角两者的门控条件完全一致。
-        // 顶缘 = 顶部栏底缘 + 30.7；底缘 = 底部横栏顶缘 − 30.7。
+        // IC-104 C v3：截图适配带**仅限 V=显示**。隐藏态仍按规格 v16 第 121/177
+        // 行填满视口（截图沉浸，行为恒开），故 `keepsFrame` 与尺寸、摆放、圆角
+        // 三者的门控条件完全一致。
+        // 带顶缘 = 0.15 × 视口高（还原 v15 顶缘位置）；带底缘 = 横栏顶缘 − g。
         // 水平方向仍走等比适配与居中：把带高连同视口宽交给 `aspectFitSize`。
         let keepsFrame = isScreenshot &&
             presentationState.interfaceVisibility == .visible
+        let bandTop = screenshotBandTop(physicalSize: physicalSize)
+        let bandHeight = screenshotBandHeight(
+            physicalSize: physicalSize,
+            safeAreaInsets: safeAreaInsets,
+            bottomStripHeight: stripHeight
+        )
         let displaySize = keepsFrame
             ? S2Geometry.aspectFitSize(
                 viewportSize: CGSize(
                     width: physicalSize.width,
-                    height: screenshotBandHeight(
-                        physicalSize: physicalSize,
-                        safeAreaInsets: safeAreaInsets,
-                        bottomStripHeight: stripHeight
-                    )
+                    height: bandHeight
                 ),
                 assetAspectRatio: assetAspectRatio
             )
             : fitSize
+        // 摆放：显示态截图居中于**带**，其余一切情形居中于视口（与改前一致）。
+        let displayCenterY = keepsFrame
+            ? bandTop + bandHeight / 2
+            : physicalSize.height / 2
         let fillMultiplier = S2Geometry.aspectFillMultiplier(
             viewportSize: physicalSize,
             assetAspectRatio: assetAspectRatio
@@ -1188,6 +1197,7 @@ enum S2ViewportLayout {
             nativeZoomBaseSize: isScreenshot ? physicalSize : fitSize,
             isFramedPhoto: isScreenshot,
             oneXDisplaySize: displaySize,
+            oneXDisplayCenterY: displayCenterY,
             // 圆角沿用既有规则（截图且 V=显示），与尺寸同一门控。
             oneXCornerRadius: keepsFrame
                 ? CGFloat(configuration.fitCornerRadius)
@@ -1200,27 +1210,49 @@ enum S2ViewportLayout {
         )
     }
 
-    /// IC-104 C：截图适配框的可用带高。
+    /// IC-104 C v3（④ Lynn，H45 第 5 项返工）：截图显示态适配带的顶缘比例。
     ///
-    /// 顶缘 = 顶部栏底缘（安全区顶 + `S2OverlayLayout.topBarHeight`）+ 30.7；
-    /// 底缘 = 底部横栏顶缘（`S2OverlayLayout.stripTopFromViewportBottom`）− 30.7。
-    /// 两处 chrome 边缘都引用 IC-100 v2 已有的推导式，本卡未新增任何测量值。
-    /// 三段间距（顶部栏—截图、截图—横栏、横栏—操作条可见图标带）因而全部等于
-    /// `S2OverlayLayout.stripToActionVisibleBandSpacing`。
+    /// 旧版（v15 比例内缩）显示态截图 = `fitSize × 0.70` 后全视口垂直居中，
+    /// 与视口同比例的截图顶缘恒为 `(1 − 0.70) / 2 = 0.15` 倍视口高。本卡以该
+    /// 比例还原顶缘位置，各机型一致。**不是可调参数，不进登记表。**
+    static let legacyVisibleFitTopRatio: CGFloat = 0.15
+
+    /// 带顶缘（视口坐标）＝ `0.15 × 视口高`。
+    static func screenshotBandTop(physicalSize: CGSize) -> CGFloat {
+        physicalSize.height * legacyVisibleFitTopRatio
+    }
+
+    /// 顶距 `g` ＝ 带顶缘 − 顶部栏底缘（安全区顶 + `topBarHeight`）。纯推导值。
+    static func screenshotBandTopSpacing(
+        physicalSize: CGSize,
+        safeAreaInsets: S2OverlaySafeAreaInsets
+    ) -> CGFloat {
+        screenshotBandTop(physicalSize: physicalSize) -
+            (safeAreaInsets.top + S2OverlayLayout.topBarHeight)
+    }
+
+    /// IC-104 C v3：截图适配带的可用带高。
+    ///
+    /// 带顶缘 = `0.15 × 视口高`（旧位）；带底缘 = 底部横栏顶缘
+    /// （`S2OverlayLayout.stripTopFromViewportBottom`）− `g`，即底距 = 顶距。
+    /// 「横栏—操作条」间距（`stripToActionVisibleBandSpacing` = 30.7）
+    /// **不参与等距**（④ Lynn 明确选定），本卡对 chrome 布局零改动。
     static func screenshotBandHeight(
         physicalSize: CGSize,
         safeAreaInsets: S2OverlaySafeAreaInsets,
         bottomStripHeight: CGFloat
     ) -> CGFloat {
-        let spacing = S2OverlayLayout.stripToActionVisibleBandSpacing
-        let bandTop = safeAreaInsets.top + S2OverlayLayout.topBarHeight +
-            spacing
-        let bandBottom = physicalSize.height -
+        let bandTop = screenshotBandTop(physicalSize: physicalSize)
+        let spacing = screenshotBandTopSpacing(
+            physicalSize: physicalSize,
+            safeAreaInsets: safeAreaInsets
+        )
+        let stripTop = physicalSize.height -
             S2OverlayLayout.stripTopFromViewportBottom(
                 safeAreaBottom: safeAreaInsets.bottom,
                 bottomStripHeight: bottomStripHeight
-            ) - spacing
-        return max(0, bandBottom - bandTop)
+            )
+        return max(0, (stripTop - spacing) - bandTop)
     }
 
 }
