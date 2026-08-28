@@ -660,13 +660,24 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
 
         // 带顶缘 = 0.15 × 视口高（旧位）；g = 带顶缘 − 顶部栏底缘；
-        // 带底缘 = 横栏顶缘 − g，即底距 = 顶距。
+        // 带底缘 = 横栏**视觉**顶缘 − g，即视觉底距 = 顶距（IC-104 C v4）。
         let topBarBottom = insets.top + S2OverlayLayout.topBarHeight
         let stripTop = viewport.height -
+            S2ViewportLayout.stripVisualTopFromViewportBottom(
+                safeAreaBottom: insets.bottom,
+                bottomStripHeight: stripHeight
+            )
+        // 视觉锚比触控锚低 `max(44, 横栏高) − 横栏高`（出厂 30 → 14 pt）
+        let touchStripTop = viewport.height -
             S2OverlayLayout.stripTopFromViewportBottom(
                 safeAreaBottom: insets.bottom,
                 bottomStripHeight: stripHeight
             )
+        XCTAssertEqual(
+            stripTop - touchStripTop,
+            max(S2OverlayLayout.minimumTouchTarget, stripHeight) - stripHeight,
+            accuracy: 0.000_001
+        )
         let bandTop = S2ViewportLayout.screenshotBandTop(
             physicalSize: viewport
         )
@@ -815,7 +826,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             safeAreaInsets: .zero
         )
         let stripTop = physicalSize.height -
-            S2OverlayLayout.stripTopFromViewportBottom(
+            S2ViewportLayout.stripVisualTopFromViewportBottom(
                 safeAreaBottom: 0,
                 bottomStripHeight: stripHeight
             )

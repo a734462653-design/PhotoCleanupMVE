@@ -1231,10 +1231,28 @@ enum S2ViewportLayout {
             (safeAreaInsets.top + S2OverlayLayout.topBarHeight)
     }
 
-    /// IC-104 C v3：截图适配带的可用带高。
+    /// IC-104 C v4：底部横栏的**视觉**顶缘距视口底。
     ///
-    /// 带顶缘 = `0.15 × 视口高`（旧位）；带底缘 = 底部横栏顶缘
-    /// （`S2OverlayLayout.stripTopFromViewportBottom`）− `g`，即底距 = 顶距。
+    /// `S2OverlayLayout.stripTopFromViewportBottom` 内含
+    /// `resolvedStripHeight = max(minimumTouchTarget 44, 横栏高)` 的**触控带下限**，
+    /// 是给手指的**触控锚**；渲染容器（`S2View` 的
+    /// `.frame(height: viewportMetrics.bottomStripHeight)`）用的是**原始横栏高**，
+    /// 是给眼睛的**视觉锚**。出厂值下两者差 `44 − 30 = 14` pt。
+    /// 截图适配带的底缘要对齐眼睛看到的横栏，故取后者、与渲染同源。
+    /// **触控带语义（命中区域、toast 等既有消费方）一律不变。**
+    static func stripVisualTopFromViewportBottom(
+        safeAreaBottom: CGFloat,
+        bottomStripHeight: CGFloat
+    ) -> CGFloat {
+        S2OverlayLayout.stripBottomFromViewportBottom(
+            safeAreaBottom: safeAreaBottom
+        ) + bottomStripHeight
+    }
+
+    /// IC-104 C v3 / v4：截图适配带的可用带高。
+    ///
+    /// 带顶缘 = `0.15 × 视口高`（旧位，v3 不变）；带底缘 = 横栏**视觉**顶缘 − `g`
+    /// （v4 由触控锚改为视觉锚），即视觉底距 = 顶距。
     /// 「横栏—操作条」间距（`stripToActionVisibleBandSpacing` = 30.7）
     /// **不参与等距**（④ Lynn 明确选定），本卡对 chrome 布局零改动。
     static func screenshotBandHeight(
@@ -1248,7 +1266,7 @@ enum S2ViewportLayout {
             safeAreaInsets: safeAreaInsets
         )
         let stripTop = physicalSize.height -
-            S2OverlayLayout.stripTopFromViewportBottom(
+            stripVisualTopFromViewportBottom(
                 safeAreaBottom: safeAreaInsets.bottom,
                 bottomStripHeight: bottomStripHeight
             )
