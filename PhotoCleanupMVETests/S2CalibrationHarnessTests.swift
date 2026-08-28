@@ -4982,8 +4982,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
             )
 
             XCTAssertTrue(expected.isFramedPhoto)
-            XCTAssertEqual(frame.size.width, expected.oneXDisplaySize.width)
-            XCTAssertEqual(frame.size.height, expected.oneXDisplaySize.height)
+            // IC-104 C v2：带高由多项加减推导，经渲染层往返后与直接计算值
+            // 存在 ~1e-13 的浮点噪声（旧口径是单次乘法，两侧位级相同）。
+            XCTAssertEqual(
+                frame.size.width,
+                expected.oneXDisplaySize.width,
+                accuracy: 0.000_001
+            )
+            XCTAssertEqual(
+                frame.size.height,
+                expected.oneXDisplaySize.height,
+                accuracy: 0.000_001
+            )
             XCTAssertEqual(frame.midX, hosted.window.bounds.midX, accuracy: 0.5)
             XCTAssertEqual(frame.midY, hosted.window.bounds.midY, accuracy: 0.5)
         }
@@ -5420,7 +5430,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(page === borderlessPage)
         XCTAssertTrue(page === restoredPage)
         XCTAssertEqual(page.fittedSize, value.oneXDisplaySize)
-        XCTAssertEqual(frameWithBorder?.size, value.oneXDisplaySize)
+        // IC-104 C v2：fittedSize 仍精确相等；只有经渲染层往返的 frame
+        // 带 ~1e-13 浮点噪声，故按容差比较两轴。
+        XCTAssertEqual(
+            frameWithBorder?.size.width ?? -1,
+            value.oneXDisplaySize.width,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            frameWithBorder?.size.height ?? -1,
+            value.oneXDisplaySize.height,
+            accuracy: 0.000_001
+        )
         XCTAssertEqual(frameWithoutBorder, frameWithBorder)
         XCTAssertEqual(restoredFrame, frameWithBorder)
     }
@@ -8593,7 +8614,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     line: line
                 )
             }
-            if let index = values.firstIndex(of: extreme) {
+            // 未测到过冲时极值即末样本，尾部切片只有一个元素——单元素平凡单调，
+            // 无需再查（assertMonotonic 要求至少两个元素）。
+            if let index = values.firstIndex(of: extreme),
+               values.count - index >= 2 {
                 assertMonotonic(
                     Array(values[index...]),
                     direction: .decreasing,
@@ -8617,7 +8641,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     line: line
                 )
             }
-            if let index = values.firstIndex(of: extreme) {
+            // 同上：未测到过冲时尾部切片只有一个元素。
+            if let index = values.firstIndex(of: extreme),
+               values.count - index >= 2 {
                 assertMonotonic(
                     Array(values[index...]),
                     direction: .increasing,
