@@ -872,6 +872,142 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(hiddenFrame.height, physicalSize.height, accuracy: 0.5)
     }
 
+    // IC-108 A（④ Lynn 2026-08-30，未定项 22 定案）：主图快速连续翻页时，两个跟随者
+    // ——底部横栏当前项与顶部日期/序号——逐张立即随动，不等滑动停稳。
+    //
+    // 两个跟随者读的都是 `machine.currentIndex`（横栏见 `S2View` 的
+    // `isCurrent: machine.bottomStripState == .idle && index == machine.currentIndex`，
+    // 顶部见 `S2TopBarInfoPresentation.subtitleText(currentIndex:...)` 与
+    // `machine.currentAssetID`），故此处断言索引与资产标识在**每越过一页边界时**即已更新。
+    //
+    // **夹具驱动，真机未覆盖**（陷阱 1）：真实手势时序、runloop 分帧与 SwiftUI 刷新
+    // 由 H46 第 1 项兜底。
+    func testIC108AFollowersTrackEveryPageDuringFastPaging() {
+        let assetIDs = (1...6).map { "asset-\($0)" }
+        let machine = makeMachine(
+            orderedAssetIDs: assetIDs,
+            currentIndex: 0
+        )
+        let controller = makeNativePagerController(machine: machine)
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let paging = controller.pagingScrollView
+
+        XCTAssertEqual(machine.currentIndex, 0)
+        XCTAssertEqual(machine.bottomStripState, .idle)
+
+        // 一次拖动内连续越过 4 页，**中途不结算**
+        controller.scrollViewWillBeginDragging(paging)
+        var observedIndices: [Int] = []
+        var observedAssetIDs: [String] = []
+        var observedSubtitles: [String] = []
+        var observedStripCurrent: [Int] = []
+        for target in 1...4 {
+            paging.setContentOffset(
+                paging.contentOffsetForPage(at: target),
+                animated: false
+            )
+            observedIndices.append(machine.currentIndex)
+            observedAssetIDs.append(machine.currentAssetID)
+            observedSubtitles.append(
+                S2TopBarInfoPresentation.subtitleText(
+                    currentIndex: machine.currentIndex,
+                    totalCount: machine.orderedAssetIDs.count,
+                    byteCount: nil
+                )
+            )
+            // 横栏当前项判定式与 `S2View` 一致
+            let stripCurrent = machine.orderedAssetIDs.indices.first {
+                machine.bottomStripState == .idle &&
+                    $0 == machine.currentIndex
+            }
+            observedStripCurrent.append(stripCurrent ?? -1)
+        }
+
+        // 停稳**之前**两个跟随者已逐张更新
+        XCTAssertEqual(observedIndices, [1, 2, 3, 4])
+        XCTAssertEqual(
+            observedAssetIDs,
+            ["asset-2", "asset-3", "asset-4", "asset-5"]
+        )
+        XCTAssertEqual(observedStripCurrent, [1, 2, 3, 4])
+        XCTAssertEqual(Set(observedSubtitles).count, 4, "顶部序号逐张不同")
+
+        // 停稳后与滑动中最后一次一致，未回退
+        controller.scrollViewDidEndDecelerating(paging)
+        XCTAssertEqual(machine.currentIndex, 4)
+        XCTAssertEqual(machine.currentAssetID, "asset-5")
+        XCTAssertEqual(
+            paging.contentOffset,
+            paging.contentOffsetForPage(at: 4)
+        )
+        // 切页后 `s` 按规格 v17 第 210 行重置为 1
+        XCTAssertEqual(machine.scale, 1, accuracy: 0.000_001)
+    }
+
+    // IC-108 A：滑动中推进索引不得引入静止态几何写入（陷阱 5），也不得在序列
+    // 边界误报「已是最后一张」轻提示——后者是把索引更新前移的直接连带：停稳处
+    // 的「目标 == 当前」不再等价于「这次拖动没能翻页」。
+    //
+    // **夹具驱动，真机未覆盖**（陷阱 1）。
+    func testIC108ANoGeometryWriteAndNoSpuriousBoundaryHintDuringFastPaging() {
+        let assetIDs = (1...6).map { "asset-\($0)" }
+        let machine = makeMachine(
+            orderedAssetIDs: assetIDs,
+            currentIndex: 0
+        )
+        let controller = makeNativePagerController(machine: machine)
+        let diagnostics = S2OnDeviceTransitionDiagnosticsCoordinator()
+        diagnostics.attach(controller)
+        diagnostics.start()
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let paging = controller.pagingScrollView
+
+        func nonAnimatedPagingWriteCount() -> Int {
+            diagnostics.recordedEntries.filter {
+                if case let .event(name, _, details) = $0.payload {
+                    return name == "外层setContentOffset" &&
+                        details.hasSuffix("animated=false")
+                }
+                return false
+            }.count
+        }
+
+        let writesBefore = nonAnimatedPagingWriteCount()
+
+        // 一路滑到最后一张（索引 5），中途逐页越界
+        controller.scrollViewWillBeginDragging(paging)
+        for target in 1...5 {
+            paging.setContentOffset(
+                paging.contentOffsetForPage(at: target),
+                animated: false
+            )
+        }
+        XCTAssertEqual(machine.currentIndex, 5)
+        XCTAssertEqual(
+            nonAnimatedPagingWriteCount() - writesBefore,
+            0,
+            "滑动期间不得有非动画外层偏移写入"
+        )
+
+        controller.scrollViewDidEndDecelerating(paging)
+
+        XCTAssertEqual(machine.currentIndex, 5)
+        // 停稳处不得因「目标 == 当前」而误报边界轻提示
+        XCTAssertNil(
+            machine.pendingUndecidedItem,
+            "索引已在滑动中推进，停稳时不应误报序列边界提示"
+        )
+        diagnostics.stop()
+    }
+
     // L1：顶部三个元素全部从系统顶部安全区下沿开始布局（IC-075 起为三件）。
     func testL1TopOverlayFramesRespectSafeAreaTop() {
         let snapshot = overlaySnapshot()

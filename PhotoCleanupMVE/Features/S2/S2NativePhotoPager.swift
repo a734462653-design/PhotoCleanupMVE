@@ -2400,6 +2400,10 @@ final class S2NativePagerViewController: UIViewController,
     /// IC-079 R1：各资产图像加载态（只读埋点，来自 S2View 的加载态回调）。
     weak var imageLoadStateRegistry: S2ImageLoadStateRegistry?
     private var outerDragStartDate: Date?
+    /// IC-108 A：本次外层滑动序列内是否已在滑动中推进过 `machine.currentIndex`。
+    /// 只是每手势一个布尔标志，**不是索引副本**——索引唯一来源仍是
+    /// `machine.currentIndex`。用途见 `finishNativePaging` 里的边界提示门控。
+    private var didAdvanceIndexDuringScroll = false
     private var lastOuterTranslation = CGSize.zero
     private var lastOuterVelocity: CGFloat = 0
     private var lastOuterDuration: TimeInterval = 0
@@ -2645,6 +2649,38 @@ final class S2NativePagerViewController: UIViewController,
             return
         }
         ensurePagesExistAroundPagingOffset()
+        advanceCurrentIndexToPagingOffsetIfNeeded()
+    }
+
+    /// IC-108 A（④ Lynn 2026-08-30，未定项 22 定案）：主图每越过一页边界即刻更新
+    /// `machine.currentIndex`，两个跟随者（底部横栏当前项、顶部日期/序号）因此逐张
+    /// 立即随动，不再等滑动停稳。
+    ///
+    /// 只改**索引更新时机**，不碰几何：本方法不写任何 `contentOffset`、不调
+    /// `synchronizeNativeStateToMachine`（那是停稳路径 `finishNativePaging` 的职责），
+    /// 故不引入静止态几何写入（陷阱 5）。外层滑动期间 `pendingSettledPagingOffset()`
+    /// 已由 `isTracking / isDragging / isDecelerating` 守住，`apply` 路径不会回写偏移
+    /// （IC-095 R2）。
+    private func advanceCurrentIndexToPagingOffsetIfNeeded() {
+        guard let machine else {
+            return
+        }
+        let targetIndex = pagingScrollView.pageIndex(
+            forContentOffsetX: pagingScrollView.contentOffset.x
+        )
+        let previousIndex = machine.currentIndex
+        guard targetIndex != previousIndex else {
+            return
+        }
+        let accepted = machine.handleNativePageChange(to: targetIndex)
+        if accepted {
+            didAdvanceIndexDuringScroll = true
+        }
+        transitionDiagnostics?.recordNativePageChange(
+            from: previousIndex,
+            to: targetIndex,
+            accepted: accepted
+        )
     }
 
     /// IC-079 R1：外层分页偏移的唯一 `setContentOffset` 入口，带来源与 animated 标志记入诊断。
@@ -3043,6 +3079,7 @@ final class S2NativePagerViewController: UIViewController,
             return
         }
         outerDragStartDate = Date()
+        didAdvanceIndexDuringScroll = false
         lastOuterTranslation = .zero
         lastOuterVelocity = 0
         lastOuterDuration = 0
@@ -3280,12 +3317,17 @@ final class S2NativePagerViewController: UIViewController,
                 to: targetIndex,
                 accepted: accepted
             )
-        } else if targetIndex == previousIndex {
+        } else if targetIndex == previousIndex,
+                  !didAdvanceIndexDuringScroll {
+            // IC-108 A：索引已在滑动中推进过时，停稳处的「目标 == 当前」不再表示
+            // 「这次拖动没能翻页」，故不得据此报边界。只有整个滑动序列自始至终
+            // 未改变索引，才与改前语义一致。
             reportSequenceBoundaryAttemptIfNeeded()
         }
         settledIndex = machine.currentIndex
         synchronizeNativeStateToMachine(animatedPaging: false)
         outerDragStartDate = nil
+        didAdvanceIndexDuringScroll = false
     }
 
     private func synchronizeNativeStateToMachine(animatedPaging: Bool) {
