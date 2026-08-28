@@ -183,6 +183,11 @@ struct S2TemporaryPhotoImageView: View {
     /// IC-093 R1：因像素更少而未上屏时回调，仅供诊断埋点。
     var onImageReplacementSuppressed:
         (S2ImageReplacementSuppressionReading) -> Void = { _ in }
+    /// IC-108 B：一次图像请求的发起观测（目标尺寸）。默认空实现，探针关闭时零开销。
+    var onImageRequestStarted: (CGSize) -> Void = { _ in }
+    /// IC-108 B：原始回调观测——在切回主线程**之前**调用，故 `isMainThread`
+    /// 反映解码 / 回调的真实线程。第二个参数是返回图像的像素尺寸。
+    var onImageRequestRawResult: (Bool, CGSize) -> Void = { _, _ in }
 
     @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
@@ -302,14 +307,21 @@ struct S2TemporaryPhotoImageView: View {
         let hasDisplayedImage = image != nil && displayedAssetID == assetID
         setLoadState(hasDisplayedImage ? .displayed : .loading)
         onReading(S2ImageRequestReading(trigger: trigger, returnType: .pending))
+        let requestTargetSize = CGSize(
+            width: CGFloat(key.width),
+            height: CGFloat(key.height)
+        )
+        onImageRequestStarted(requestTargetSize)
         requestID = strategy.requestImage(
             assetID: assetID,
-            targetSize: CGSize(
-                width: CGFloat(key.width),
-                height: CGFloat(key.height)
-            ),
+            targetSize: requestTargetSize,
             requestStrategy: activeStrategy
         ) { result in
+            // IC-108 B：在 `DispatchQueue.main.async` 之前捕获真实回调线程。
+            onImageRequestRawResult(
+                Thread.isMainThread,
+                result.image?.size ?? .zero
+            )
             DispatchQueue.main.async {
                 guard requestGeneration == generation else {
                     return

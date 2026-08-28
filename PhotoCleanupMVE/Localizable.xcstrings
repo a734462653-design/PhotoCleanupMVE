@@ -628,6 +628,50 @@
         }
       }
     },
+    "s2.calibration.double_tap_probe.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制双击探针报告"
+          }
+        }
+      }
+    },
+    "s2.calibration.double_tap_probe.start" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始记录双击"
+          }
+        }
+      }
+    },
+    "s2.calibration.double_tap_probe.stop" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止记录双击"
+          }
+        }
+      }
+    },
+    "s2.calibration.double_tap_probe.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "双击丝滑度探针（IC-108）"
+          }
+        }
+      }
+    },
     "s2.calibration.asset_size_probe.title" : {
       "extractionState" : "manual",
       "localizations" : {

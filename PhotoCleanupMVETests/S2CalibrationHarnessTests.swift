@@ -1008,6 +1008,176 @@ final class S2CalibrationHarnessTests: XCTestCase {
         diagnostics.stop()
     }
 
+    // IC-108 B：双击丝滑度探针——录制态下必采字段逐条齐全。
+    //
+    // 探针只做观测：不改双击 / 缩放 / 解码任何行为（G259 由产品侧 diff 审计把关）。
+    // **夹具驱动，真机未覆盖**（陷阱 1）：真实帧间隔、解码线程与 PhotoKit 回调
+    // 由 H46 第 3 项兜底——本测试只核字段完整性与统计口径。
+    func testIC108BProbeRecordsAllRequiredFieldsWhenRecording() {
+        let probe = S2DoubleTapSmoothnessProbeCoordinator()
+        probe.start()
+        XCTAssertTrue(probe.isRecording)
+
+        probe.recordDoubleTapBegan(
+            enteringNx: true,
+            targetScale: 2.5,
+            assetID: "asset-1",
+            pageIndex: 3,
+            startScale: 1,
+            timestamp: 100
+        )
+        // 标称 60Hz；第 3 个间隔 0.05s 超过 1.5 倍标称，计一次丢帧。
+        for timestamp in [100.0, 100.016_7, 100.033_4, 100.083_4] {
+            probe.recordDoubleTapFrame(
+                timestamp: timestamp,
+                nominalInterval: 1.0 / 60.0
+            )
+        }
+        probe.recordImageRequestScaleChange(scale: 2.5, timestamp: 100.02)
+        probe.recordImageRequestStarted(
+            assetID: "asset-1",
+            targetSize: CGSize(width: 1_200, height: 900),
+            timestamp: 100.03
+        )
+        probe.recordImageRequestFinished(
+            assetID: "asset-1",
+            onMainThread: false,
+            pixelSize: CGSize(width: 1_190, height: 892),
+            timestamp: 100.09
+        )
+        probe.recordDoubleTapEnded(endScale: 2.5, timestamp: 100.2)
+        probe.stop()
+
+        XCTAssertFalse(probe.isRecording)
+        XCTAssertTrue(probe.canExport)
+        XCTAssertEqual(probe.events.count, 1)
+        let event = tryUnwrap(probe.events.first)
+
+        // 方向、目标倍率、s 起止、资产与页索引
+        XCTAssertTrue(event.enteringNx)
+        XCTAssertEqual(event.targetScale, 2.5, accuracy: 0.000_001)
+        XCTAssertEqual(event.startScale, 1, accuracy: 0.000_001)
+        XCTAssertEqual(event.endScale ?? -1, 2.5, accuracy: 0.000_001)
+        XCTAssertEqual(event.assetID, "asset-1")
+        XCTAssertEqual(event.pageIndex, 3)
+
+        // 动画起止时间戳与时长
+        XCTAssertEqual(event.startedAt, 100, accuracy: 0.000_001)
+        XCTAssertEqual(event.endedAt ?? -1, 100.2, accuracy: 0.000_001)
+        XCTAssertEqual(event.durationSeconds, 0.2, accuracy: 0.000_001)
+
+        // 帧间隔序列的四个统计量
+        XCTAssertEqual(event.totalFrameCount, 4)
+        XCTAssertEqual(event.droppedFrameCount, 1)
+        XCTAssertEqual(event.maximumFrameInterval, 0.05, accuracy: 0.000_1)
+        XCTAssertEqual(event.p95FrameInterval, 0.05, accuracy: 0.000_1)
+
+        // imageRequestScale 变化时刻
+        XCTAssertEqual(event.imageRequestScaleChanges.count, 1)
+        XCTAssertEqual(
+            event.imageRequestScaleChanges.first?.scale ?? -1,
+            2.5,
+            accuracy: 0.000_001
+        )
+
+        // 图像请求发起 / 完成时刻、回调线程、返回像素尺寸
+        XCTAssertEqual(event.imageRequests.count, 1)
+        let request = tryUnwrap(event.imageRequests.first)
+        XCTAssertEqual(request.startedAt, 100.03, accuracy: 0.000_001)
+        XCTAssertEqual(request.finishedAt ?? -1, 100.09, accuracy: 0.000_001)
+        XCTAssertEqual(request.callbackOnMainThread, false)
+        XCTAssertEqual(request.returnedPixelSize.width, 1_190)
+        XCTAssertEqual(request.returnedPixelSize.height, 892)
+        XCTAssertEqual(request.targetSize.width, 1_200)
+
+        // 报告文本含各必采字段的表头与该事件行
+        let text = probe.reportText
+        XCTAssertTrue(text.contains("IC-108 B 双击丝滑度探针"))
+        XCTAssertTrue(text.contains("列=" + S2DoubleTapProbeText.columns))
+        XCTAssertTrue(text.contains("事件数=1"))
+        XCTAssertTrue(text.contains("｜进｜"))
+        XCTAssertTrue(text.contains("imageRequestScale变化"))
+        XCTAssertTrue(text.contains("回调线程=非主线程"))
+        XCTAssertTrue(text.contains("返回像素=(w=1190.000000,h=892.000000)"))
+    }
+
+    // IC-108 B：默认关闭；关闭态下所有埋点零记录、报告为空、不可导出。
+    func testIC108BProbeRecordsNothingWhenDisabled() {
+        let probe = S2DoubleTapSmoothnessProbeCoordinator()
+
+        XCTAssertFalse(probe.isRecording)
+        XCTAssertFalse(probe.canExport)
+
+        probe.recordDoubleTapBegan(
+            enteringNx: false,
+            targetScale: 1,
+            assetID: "asset-1",
+            pageIndex: 0,
+            startScale: 2.5,
+            timestamp: 10
+        )
+        probe.recordDoubleTapFrame(timestamp: 10.1, nominalInterval: 1.0 / 60.0)
+        probe.recordImageRequestScaleChange(scale: 1, timestamp: 10.2)
+        probe.recordImageRequestStarted(
+            assetID: "asset-1",
+            targetSize: CGSize(width: 100, height: 100),
+            timestamp: 10.3
+        )
+        probe.recordImageRequestFinished(
+            assetID: "asset-1",
+            onMainThread: true,
+            pixelSize: CGSize(width: 100, height: 100),
+            timestamp: 10.4
+        )
+        probe.recordDoubleTapEnded(endScale: 1, timestamp: 10.5)
+
+        XCTAssertTrue(probe.events.isEmpty)
+        XCTAssertTrue(probe.reportText.isEmpty)
+        XCTAssertFalse(probe.canExport)
+    }
+
+    // IC-108 B：探针经 pager 接线后，一次真实双击过渡产生一条完整事件；
+    // 未接线（关闭）时同一序列零记录。**夹具驱动，真机未覆盖**（陷阱 1）。
+    func testIC108BProbeCapturesDoubleTapThroughPager() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        // 关闭态：不接线，双击零记录
+        let probe = S2DoubleTapSmoothnessProbeCoordinator()
+        XCTAssertTrue(page.applyRecognizedDoubleTap(
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2)
+        ))
+        page.finishActiveDoubleTapTransition()
+        XCTAssertTrue(probe.events.isEmpty, "未接线时探针不得有记录")
+
+        // 录制态：接线后再双击，产生一条事件并带页索引与资产标识
+        probe.start()
+        controller.doubleTapProbe = probe
+        XCTAssertTrue(page.applyRecognizedDoubleTap(
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2)
+        ))
+        page.finishActiveDoubleTapTransition()
+        probe.stop()
+
+        XCTAssertEqual(probe.events.count, 1)
+        let event = tryUnwrap(probe.events.first)
+        XCTAssertEqual(event.pageIndex, machine.currentIndex)
+        XCTAssertEqual(event.assetID, machine.currentAssetID)
+        XCTAssertNotNil(event.endedAt)
+        XCTAssertNotNil(event.endScale)
+        XCTAssertFalse(probe.reportText.isEmpty)
+    }
+
     // L1：顶部三个元素全部从系统顶部安全区下沿开始布局（IC-075 起为三件）。
     func testL1TopOverlayFramesRespectSafeAreaTop() {
         let snapshot = overlaySnapshot()

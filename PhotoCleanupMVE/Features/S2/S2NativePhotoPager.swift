@@ -94,6 +94,8 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
     let transitionDiagnosticsCoordinator:
         S2OnDeviceTransitionDiagnosticsCoordinator
     var imageLoadStateRegistry: S2ImageLoadStateRegistry? = nil
+    /// IC-108 B：双击丝滑度探针。nil = 关闭 = 埋点零开销。
+    var doubleTapProbe: S2DoubleTapSmoothnessProbeCoordinator? = nil
     /// IC-079 R2：按索引提供任意页内容，供分页控制器在滚动中按需创建页。
     var pageContentProvider: ((Int) -> S2NativePageContent?)? = nil
 
@@ -111,6 +113,7 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
         diagnosticsCoordinator.attach(controller)
         transitionDiagnosticsCoordinator.attach(controller)
         controller.imageLoadStateRegistry = imageLoadStateRegistry
+        controller.doubleTapProbe = doubleTapProbe
         let photoWriteCountBefore = transitionDiagnosticsCoordinator
             .photoGeometryWriteCount
         // IC-095 R1：本次重进是否落笔任何几何，取录制窗口内几何写入总数的差值。
@@ -1031,6 +1034,8 @@ final class S2NativeZoomPageController: UIViewController,
     let fitBorderLayer = CALayer()
     private let hostingController: UIHostingController<AnyView>
     private weak var owner: S2NativePagerViewController?
+    /// IC-108 B：双击丝滑度探针。默认 nil（探针关闭），埋点均为可选链空调用。
+    weak var doubleTapProbe: S2DoubleTapSmoothnessProbeCoordinator?
     weak var transitionDiagnostics:
         S2OnDeviceTransitionDiagnosticsCoordinator? {
         didSet {
@@ -1515,6 +1520,14 @@ final class S2NativeZoomPageController: UIViewController,
         isDoubleTapTransitionActive = true
         presentationContentView.isHidden = true
         zoomScrollView.isUserInteractionEnabled = false
+        doubleTapProbe?.recordDoubleTapBegan(
+            enteringNx: enteringNx,
+            targetScale: targetScale,
+            assetID: assetID,
+            pageIndex: index,
+            startScale: zoomScrollView.zoomScale,
+            timestamp: CACurrentMediaTime()
+        )
         doubleTapTransitionObserver?(.started(transition))
 
         guard doubleTapTransitionDuration > 0,
@@ -1542,6 +1555,10 @@ final class S2NativeZoomPageController: UIViewController,
         }
         doubleTapDisplayLink?.invalidate()
         doubleTapDisplayLink = nil
+        doubleTapProbe?.recordDoubleTapEnded(
+            endScale: zoomScrollView.zoomScale,
+            timestamp: CACurrentMediaTime()
+        )
         applyDoubleTapTransitionProgress(1)
         let window = view.window
         let beforeFrame = transitionView.convert(
@@ -1648,6 +1665,10 @@ final class S2NativeZoomPageController: UIViewController,
         if doubleTapTransitionStartTimestamp == nil {
             doubleTapTransitionStartTimestamp = displayLink.timestamp
         }
+        doubleTapProbe?.recordDoubleTapFrame(
+            timestamp: displayLink.timestamp,
+            nominalInterval: displayLink.duration
+        )
         let elapsed = displayLink.timestamp -
             (doubleTapTransitionStartTimestamp ?? displayLink.timestamp)
         let progress = doubleTapTransitionDuration > 0
@@ -2414,6 +2435,14 @@ final class S2NativePagerViewController: UIViewController,
     private(set) var presentationTapLayoutReading =
         S2PresentationTapLayoutReading()
     var diagnosticsRun: S2GeometryDiagnosticsRun?
+    /// IC-108 B：双击丝滑度探针，向各页控制器传播。默认 nil = 关闭 = 零开销。
+    weak var doubleTapProbe: S2DoubleTapSmoothnessProbeCoordinator? {
+        didSet {
+            pageControllers.values.forEach {
+                $0.doubleTapProbe = doubleTapProbe
+            }
+        }
+    }
     weak var transitionDiagnostics:
         S2OnDeviceTransitionDiagnosticsCoordinator? {
         didSet {
@@ -2575,6 +2604,7 @@ final class S2NativePagerViewController: UIViewController,
             owner: self
         )
         controller.transitionDiagnostics = transitionDiagnostics
+        controller.doubleTapProbe = doubleTapProbe
         addChild(controller)
         pagingScrollView.addSubview(controller.view)
         controller.prioritizeVerticalSwipe(
@@ -5318,5 +5348,321 @@ final class S2AssetSizeProbeCoordinator: ObservableObject {
             self.isRunning = false
             self.runTask = nil
         }
+    }
+}
+
+
+// MARK: - IC-108 B：双击丝滑度诊断探针（只测不改）
+//
+// 模式照 IC-099b 字节数探针：coordinator + 报告文本 + 标定面板只读区与复制入口。
+// 开关是**运行态**：不入 `S2CalibrationConfiguration`（`schemaVersion` 不动）、
+// 不进 `export-format.md`；默认关闭，关闭时 pager 侧的 `doubleTapProbe` 为 nil，
+// 所有埋点是可选链空调用，**零开销**。
+//
+// 本探针不改双击 / 缩放 / 解码的任何行为，只做观测。
+
+/// 一次图像请求在双击窗口内的观测。`finishedAt` 为 nil 表示录制结束时仍未回。
+struct S2DoubleTapProbeImageRequest: Equatable {
+    let assetID: String
+    let targetSize: CGSize
+    let startedAt: CFTimeInterval
+    var finishedAt: CFTimeInterval?
+    /// 原始回调所在线程是否为主线程——在 `DispatchQueue.main.async` 之前捕获，
+    /// 故反映的是解码 / 回调的真实线程，而不是切回主线程之后的假象。
+    var callbackOnMainThread: Bool?
+    /// 返回图像的像素尺寸；未回或无图时为 `.zero`。
+    var returnedPixelSize: CGSize = .zero
+}
+
+/// `imageRequestScale` 的一次变化。
+struct S2DoubleTapProbeScaleChange: Equatable {
+    let scale: CGFloat
+    let timestamp: CFTimeInterval
+}
+
+/// 一次双击事件的完整观测。
+struct S2DoubleTapProbeEvent: Equatable {
+    /// 进入 `Nx` 为 true，退回 `1x` 为 false。
+    let enteringNx: Bool
+    let targetScale: CGFloat
+    let assetID: String
+    let pageIndex: Int
+    let startScale: CGFloat
+    let startedAt: CFTimeInterval
+    var endedAt: CFTimeInterval?
+    var endScale: CGFloat?
+    /// CADisplayLink 每帧时间戳；统计量在出报告时才算，采样期只做 O(1) 追加，
+    /// 不做任何排序或格式化，避免阻塞主线程。
+    var frameTimestamps: [CFTimeInterval] = []
+    /// 显示链路的标称帧间隔（`CADisplayLink.duration`），用于判定丢帧。
+    var nominalFrameInterval: CFTimeInterval = 0
+    var imageRequestScaleChanges: [S2DoubleTapProbeScaleChange] = []
+    var imageRequests: [S2DoubleTapProbeImageRequest] = []
+
+    var frameIntervals: [CFTimeInterval] {
+        guard frameTimestamps.count >= 2 else {
+            return []
+        }
+        return zip(frameTimestamps, frameTimestamps.dropFirst()).map {
+            $1 - $0
+        }
+    }
+
+    var totalFrameCount: Int {
+        frameTimestamps.count
+    }
+
+    /// 丢帧数：间隔超过标称帧间隔 1.5 倍的帧数（标称值缺失时按 60Hz 兜底）。
+    var droppedFrameCount: Int {
+        let nominal = nominalFrameInterval > 0
+            ? nominalFrameInterval
+            : 1.0 / 60.0
+        return frameIntervals.filter { $0 > nominal * 1.5 }.count
+    }
+
+    var maximumFrameInterval: CFTimeInterval {
+        frameIntervals.max() ?? 0
+    }
+
+    /// p95 帧间隔：升序后取第 `ceil(0.95 * n) - 1` 位。
+    var p95FrameInterval: CFTimeInterval {
+        let sorted = frameIntervals.sorted()
+        guard !sorted.isEmpty else {
+            return 0
+        }
+        let rank = Int((0.95 * Double(sorted.count)).rounded(.up))
+        return sorted[min(sorted.count - 1, max(0, rank - 1))]
+    }
+
+    var durationSeconds: CFTimeInterval {
+        guard let endedAt else {
+            return 0
+        }
+        return endedAt - startedAt
+    }
+}
+
+final class S2DoubleTapSmoothnessProbeCoordinator: ObservableObject {
+    @Published private(set) var isRecording = false
+    @Published private(set) var reportText = ""
+
+    private(set) var events: [S2DoubleTapProbeEvent] = []
+    private var activeEventIndex: Int?
+
+    var canExport: Bool {
+        !isRecording && !events.isEmpty
+    }
+
+    func start() {
+        guard !isRecording else {
+            return
+        }
+        events = []
+        activeEventIndex = nil
+        reportText = ""
+        isRecording = true
+    }
+
+    func stop() {
+        guard isRecording else {
+            return
+        }
+        isRecording = false
+        activeEventIndex = nil
+        reportText = S2DoubleTapProbeText.report(events: events)
+    }
+
+    // MARK: 埋点（关闭时调用方持 nil 引用，这些方法根本不会被调到）
+
+    func recordDoubleTapBegan(
+        enteringNx: Bool,
+        targetScale: CGFloat,
+        assetID: String,
+        pageIndex: Int,
+        startScale: CGFloat,
+        timestamp: CFTimeInterval
+    ) {
+        guard isRecording else {
+            return
+        }
+        events.append(
+            S2DoubleTapProbeEvent(
+                enteringNx: enteringNx,
+                targetScale: targetScale,
+                assetID: assetID,
+                pageIndex: pageIndex,
+                startScale: startScale,
+                startedAt: timestamp
+            )
+        )
+        activeEventIndex = events.count - 1
+    }
+
+    func recordDoubleTapFrame(
+        timestamp: CFTimeInterval,
+        nominalInterval: CFTimeInterval
+    ) {
+        guard isRecording, let index = activeEventIndex else {
+            return
+        }
+        events[index].frameTimestamps.append(timestamp)
+        if events[index].nominalFrameInterval <= 0 {
+            events[index].nominalFrameInterval = nominalInterval
+        }
+    }
+
+    func recordDoubleTapEnded(
+        endScale: CGFloat,
+        timestamp: CFTimeInterval
+    ) {
+        guard isRecording, let index = activeEventIndex else {
+            return
+        }
+        events[index].endedAt = timestamp
+        events[index].endScale = endScale
+        activeEventIndex = nil
+    }
+
+    func recordImageRequestScaleChange(
+        scale: CGFloat,
+        timestamp: CFTimeInterval
+    ) {
+        guard isRecording, let index = activeEventIndex else {
+            return
+        }
+        events[index].imageRequestScaleChanges.append(
+            S2DoubleTapProbeScaleChange(scale: scale, timestamp: timestamp)
+        )
+    }
+
+    func recordImageRequestStarted(
+        assetID: String,
+        targetSize: CGSize,
+        timestamp: CFTimeInterval
+    ) {
+        guard isRecording, let index = activeEventIndex else {
+            return
+        }
+        events[index].imageRequests.append(
+            S2DoubleTapProbeImageRequest(
+                assetID: assetID,
+                targetSize: targetSize,
+                startedAt: timestamp
+            )
+        )
+    }
+
+    func recordImageRequestFinished(
+        assetID: String,
+        onMainThread: Bool,
+        pixelSize: CGSize,
+        timestamp: CFTimeInterval
+    ) {
+        guard isRecording, let index = activeEventIndex else {
+            return
+        }
+        guard let requestIndex = events[index].imageRequests.lastIndex(
+            where: { $0.assetID == assetID && $0.finishedAt == nil }
+        ) else {
+            return
+        }
+        events[index].imageRequests[requestIndex].finishedAt = timestamp
+        events[index].imageRequests[requestIndex].callbackOnMainThread =
+            onMainThread
+        events[index].imageRequests[requestIndex].returnedPixelSize = pixelSize
+    }
+}
+
+enum S2DoubleTapProbeText {
+    static let formatVersion = 1
+    static let columns =
+        "序号｜方向｜目标倍率｜s起｜s止｜时长ms｜总帧数｜丢帧数｜" +
+        "最大间隔ms｜p95间隔ms｜页索引｜资产前8位"
+
+    static func milliseconds(_ seconds: CFTimeInterval) -> String {
+        String(format: "%.2f", seconds * 1_000)
+    }
+
+    static func decimal(_ value: CGFloat) -> String {
+        String(format: "%.4f", Double(value))
+    }
+
+    static func identifierPrefix(_ assetID: String) -> String {
+        String(assetID.prefix(8))
+    }
+
+    static func row(index: Int, event: S2DoubleTapProbeEvent) -> String {
+        [
+            "\(index + 1)",
+            event.enteringNx ? "进" : "出",
+            decimal(event.targetScale),
+            decimal(event.startScale),
+            event.endScale.map(decimal) ?? "未结束",
+            milliseconds(event.durationSeconds),
+            "\(event.totalFrameCount)",
+            "\(event.droppedFrameCount)",
+            milliseconds(event.maximumFrameInterval),
+            milliseconds(event.p95FrameInterval),
+            "\(event.pageIndex)",
+            identifierPrefix(event.assetID)
+        ].joined(separator: "｜")
+    }
+
+    static func scaleChangeLines(
+        _ event: S2DoubleTapProbeEvent
+    ) -> [String] {
+        event.imageRequestScaleChanges.map { change in
+            "  imageRequestScale变化｜倍率=" + decimal(change.scale) +
+                "｜距起始ms=" +
+                milliseconds(change.timestamp - event.startedAt)
+        }
+    }
+
+    static func imageRequestLines(
+        _ event: S2DoubleTapProbeEvent
+    ) -> [String] {
+        event.imageRequests.map { request in
+            let finished = request.finishedAt.map {
+                milliseconds($0 - event.startedAt)
+            } ?? "未回"
+            let thread = request.callbackOnMainThread.map {
+                $0 ? "主线程" : "非主线程"
+            } ?? "未回"
+            return "  图像请求｜资产=" + identifierPrefix(request.assetID) +
+                "｜发起距起始ms=" +
+                milliseconds(request.startedAt - event.startedAt) +
+                "｜完成距起始ms=" + finished +
+                "｜回调线程=" + thread +
+                "｜目标尺寸=(w=" +
+                S2OnDeviceTransitionText.number(request.targetSize.width) +
+                ",h=" +
+                S2OnDeviceTransitionText.number(request.targetSize.height) +
+                ")｜返回像素=(w=" +
+                S2OnDeviceTransitionText.number(
+                    request.returnedPixelSize.width
+                ) +
+                ",h=" +
+                S2OnDeviceTransitionText.number(
+                    request.returnedPixelSize.height
+                ) + ")"
+        }
+    }
+
+    static func report(events: [S2DoubleTapProbeEvent]) -> String {
+        var lines = [
+            "IC-108 B 双击丝滑度探针",
+            "格式版本=\(formatVersion)",
+            "列=" + columns,
+            "口径=帧间隔取 CADisplayLink 相邻时间戳之差；" +
+                "丢帧=间隔超过标称帧间隔 1.5 倍的帧数；" +
+                "回调线程在切回主线程之前捕获",
+            "事件数=\(events.count)"
+        ]
+        for (index, event) in events.enumerated() {
+            lines.append(row(index: index, event: event))
+            lines.append(contentsOf: scaleChangeLines(event))
+            lines.append(contentsOf: imageRequestLines(event))
+        }
+        return lines.joined(separator: "\n")
     }
 }

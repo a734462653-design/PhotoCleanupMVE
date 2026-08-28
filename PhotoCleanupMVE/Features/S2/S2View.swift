@@ -395,6 +395,9 @@ struct S2View: View {
     @StateObject private var primaryMark: S2PrimaryMarkPresenter
     /// IC-099b R2：字节数探针。**只在面板按钮触发时才取数**；未接线时按钮不可用。
     @StateObject private var assetSizeProbe = S2AssetSizeProbeCoordinator()
+    /// IC-108 B：双击丝滑度探针。默认关闭；关闭时不向 pager 传引用，埋点零开销。
+    @StateObject private var doubleTapProbe =
+        S2DoubleTapSmoothnessProbeCoordinator()
     /// IC-099 阶段二 R4：占用空间的会话级缓存与异步取数管线。随本视图释放。
     @StateObject private var assetVolumeStore = S2AssetVolumeStore()
     @StateObject private var feedbackToast: S2FeedbackToastPresenter
@@ -515,6 +518,14 @@ struct S2View: View {
         }
         .ignoresSafeArea()
         .statusBarHidden(statusBarHidden)
+        // IC-108 B：`imageRequestScale` 变化时刻——探针关闭时 `record...` 内部
+        // 的 `isRecording` 守卫直接返回，零记录。
+        .onChange(of: machine.imageRequestScale) { _, scale in
+            doubleTapProbe.recordImageRequestScaleChange(
+                scale: scale,
+                timestamp: CACurrentMediaTime()
+            )
+        }
         .onChange(of: machine.interfaceVisibility) { _, visibility in
             applyStatusBarAppearance(for: visibility)
         }
@@ -620,6 +631,9 @@ struct S2View: View {
             diagnosticsCoordinator: geometryDiagnostics,
             transitionDiagnosticsCoordinator: transitionDiagnostics,
             imageLoadStateRegistry: imageLoadStateRegistry,
+            // IC-108 B：只有录制中才把探针引用交给 pager；关闭态传 nil，
+            // pager 侧埋点是可选链空调用，零开销。
+            doubleTapProbe: doubleTapProbe.isRecording ? doubleTapProbe : nil,
             // IC-079 R2：滚动中按需创建页时，分页控制器用同一构造取任意索引的页内容。
             pageContentProvider: { index in
                 guard machine.orderedAssetIDs.indices.contains(index) else {
@@ -686,6 +700,22 @@ struct S2View: View {
                     )
                     imageLoadStateRegistry.recordImageReplacement(record)
                     transitionDiagnostics.recordImageReplacement(record)
+                },
+                // IC-108 B：图像请求发起 / 原始回调（含真实线程与返回像素）转给探针。
+                onImageRequestStarted: { [doubleTapProbe] targetSize in
+                    doubleTapProbe.recordImageRequestStarted(
+                        assetID: assetID,
+                        targetSize: targetSize,
+                        timestamp: CACurrentMediaTime()
+                    )
+                },
+                onImageRequestRawResult: { [doubleTapProbe] isMain, pixelSize in
+                    doubleTapProbe.recordImageRequestFinished(
+                        assetID: assetID,
+                        onMainThread: isMain,
+                        pixelSize: pixelSize,
+                        timestamp: CACurrentMediaTime()
+                    )
                 },
                 // IC-093 R1：像素更少而未上屏的返回结果只记事件，不改任何登记状态。
                 onImageReplacementSuppressed: {
@@ -1361,6 +1391,7 @@ struct S2View: View {
                         .textSelection(.enabled)
                 }
                 assetSizeProbeSection
+                doubleTapProbeSection
                 // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
                 // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
@@ -1406,6 +1437,35 @@ struct S2View: View {
             }
             .s2MinimumTouchTarget()
             Text(verbatim: assetSizeProbe.reportText)
+                .font(.system(.caption2, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    }
+
+    /// IC-108 B：调试面板的双击丝滑度探针段。只读区 + 复制入口，模式照 IC-099b。
+    /// 探针只做观测，不改双击 / 缩放 / 解码任何行为。
+    @ViewBuilder
+    private var doubleTapProbeSection: some View {
+        Divider()
+        Text(L10n.text("s2.calibration.double_tap_probe.title"))
+        Button(
+            doubleTapProbe.isRecording
+                ? L10n.text("s2.calibration.double_tap_probe.stop")
+                : L10n.text("s2.calibration.double_tap_probe.start")
+        ) {
+            if doubleTapProbe.isRecording {
+                doubleTapProbe.stop()
+            } else {
+                doubleTapProbe.start()
+            }
+        }
+        .s2MinimumTouchTarget()
+        if !doubleTapProbe.reportText.isEmpty {
+            ShareLink(item: doubleTapProbe.reportText) {
+                Text(L10n.text("s2.calibration.double_tap_probe.share"))
+            }
+            .s2MinimumTouchTarget()
+            Text(verbatim: doubleTapProbe.reportText)
                 .font(.system(.caption2, design: .monospaced))
                 .textSelection(.enabled)
         }
