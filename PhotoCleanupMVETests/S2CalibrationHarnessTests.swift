@@ -2985,7 +2985,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
             accuracy: 0.5
         )
         XCTAssertEqual(frame.minX, physicalSize.width - frame.maxX, accuracy: 0.5)
-        XCTAssertEqual(frame.minY, physicalSize.height - frame.maxY, accuracy: 0.5)
+        // IC-104 C v3：竖直不再对称于视口——顶缘落在带顶缘、中心落在带中心。
+        XCTAssertEqual(
+            frame.minY,
+            S2ViewportLayout.screenshotBandTop(physicalSize: physicalSize),
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            frame.midY,
+            expectedScreenshotBandCenterY(configuration: configuration),
+            accuracy: 0.5
+        )
         XCTAssertEqual(
             page.cornerRadius,
             CGFloat(configuration.fitCornerRadius)
@@ -4937,8 +4947,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-065 G27：宽度受限、矮于视口的完整适配照片在 1x 垂直居中。
-    func testIC065G27HeightLimitedOneXIsVerticallyCentered() {
+    // IC-065 G27 改写（IC-104 C v3）：矮于视口的截图在 `s = 1` 显示态居中于
+    // **适配带**（④ 带锚定），顶缘落在 0.15 × 视口高。
+    func testIC065G27HeightLimitedOneXSitsAtBandCenter() {
         let hosted = makeIC065HostedPage(assetAspectRatio: 9.0 / 16.0)
         defer { hosted.window.isHidden = true }
         let frame = ic065PresentationFrameInWindow(
@@ -4949,13 +4960,27 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertLessThan(frame.height, hosted.window.bounds.height)
         XCTAssertEqual(
             frame.midY,
-            hosted.window.bounds.midY,
+            expectedScreenshotBandCenterY(),
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            frame.minY,
+            S2ViewportLayout.screenshotBandTop(physicalSize: physicalSize),
+            accuracy: 0.5
+        )
+        // 带中心与视口中心之差即 `s > 1` 进入瞬间的跳变量，恒 > 0
+        XCTAssertEqual(
+            hosted.window.bounds.midY - frame.midY,
+            expectedOneXToNxCenterJump(),
             accuracy: 0.5
         )
     }
 
-    // IC-065 G28～G29：60Hz presentation 轨迹在接管首帧及全程保持小尺寸方向居中。
-    func testIC065G28ToG29PinchTrackHasNoCenterJump() {
+    // IC-065 G28～G29 改述（IC-104 C v3）：60Hz presentation 轨迹全程，每一帧的
+    // 中心恒等于其所处 `s` 态的**规定中心**——`s = 1` 帧为适配带中心（④ 带锚定），
+    // `s > 1` 帧为视口中心（SPEC 决策 20「跳到该基准」）。两者之差即接管首帧的
+    // 位置跳变量，本身写成精确契约；接管之后各帧之间不再有跳变。
+    func testIC065G28ToG29PinchTrackCentersPerZoomState() {
         let samples: [(String, CGFloat)] = [
             ("width_limited", 478.0 / 2_622.0),
             ("height_limited", 9.0 / 16.0)
@@ -4998,12 +5023,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             let firstGrowth = tryUnwrap(
                 trace.first { $0.phase == "scale_1.001" }
             )
+            let bandCenterY = expectedScreenshotBandCenterY()
+            let viewportMidY = hosted.window.bounds.midY
+            // 横向全程无跳变（水平中心不受 ④ 影响）
             XCTAssertLessThanOrEqual(
                 abs(pinchBegan.frameInWindow.midX - oneX.frameInWindow.midX),
-                0.5
-            )
-            XCTAssertLessThanOrEqual(
-                abs(pinchBegan.frameInWindow.midY - oneX.frameInWindow.midY),
                 0.5
             )
             XCTAssertLessThanOrEqual(
@@ -5011,6 +5035,27 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     pinchBegan.frameInWindow.midX),
                 0.5
             )
+            // 竖向：`s = 1` 帧居中于带，接管首帧起居中于视口
+            XCTAssertEqual(
+                oneX.frameInWindow.midY,
+                bandCenterY,
+                accuracy: 0.5,
+                "样本=\(name)"
+            )
+            XCTAssertEqual(
+                pinchBegan.frameInWindow.midY,
+                viewportMidY,
+                accuracy: 0.5,
+                "样本=\(name)"
+            )
+            // 跳变量恰为两中心之差（精确契约，非容差放宽）
+            XCTAssertEqual(
+                pinchBegan.frameInWindow.midY - oneX.frameInWindow.midY,
+                expectedOneXToNxCenterJump(),
+                accuracy: 0.5,
+                "样本=\(name)"
+            )
+            // 接管之后各帧之间不再有跳变
             XCTAssertLessThanOrEqual(
                 abs(firstGrowth.frameInWindow.midY -
                     pinchBegan.frameInWindow.midY),
@@ -5029,11 +5074,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
                     )
                 }
                 if frame.height < viewport.height - 0.5 {
+                    // 每帧中心取其所处 `s` 态的规定中心
                     XCTAssertEqual(
                         frame.midY,
-                        viewport.midY,
+                        sample.phase == "one_x"
+                            ? bandCenterY
+                            : viewport.midY,
                         accuracy: 0.5,
-                        "样本=\(name)，序号=\(index)"
+                        "样本=\(name)，序号=\(index)，阶段=\(sample.phase)"
                     )
                 }
             }
@@ -5130,7 +5178,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 accuracy: 0.000_001
             )
             XCTAssertEqual(frame.midX, hosted.window.bounds.midX, accuracy: 0.5)
-            XCTAssertEqual(frame.midY, hosted.window.bounds.midY, accuracy: 0.5)
+            // IC-104 C v3：竖直中心取该 `V` 的规定中心——显示态为带中心、
+            // 隐藏态为视口中心（沉浸填满）。
+            XCTAssertEqual(
+                frame.midY,
+                expected.oneXDisplayCenterY,
+                accuracy: 0.5
+            )
         }
     }
 
@@ -5238,7 +5292,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
         let frame = page.zoomScrollView.oneXPresentationFrame
         XCTAssertEqual(frame.midX, physicalSize.width / 2, accuracy: 0.5)
-        XCTAssertEqual(frame.midY, physicalSize.height / 2, accuracy: 0.5)
+        // IC-104 C v3：显示态截图的 `s = 1` 中心为带中心。
+        XCTAssertEqual(
+            frame.midY,
+            expectedScreenshotBandCenterY(configuration: configuration),
+            accuracy: 0.5
+        )
         XCTAssertEqual(
             page.fitBorderLayer.borderWidth,
             CGFloat(configuration.fitBorderWidth)
@@ -5828,7 +5887,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
             let frame = scrollView.oneXPresentationFrame
             XCTAssertEqual(frame.midX, physicalSize.width / 2, accuracy: 0.5)
-            XCTAssertEqual(frame.midY, physicalSize.height / 2, accuracy: 0.5)
+            // IC-104 C v3：竖直中心取该 `V` 的规定中心。
+            XCTAssertEqual(
+                frame.midY,
+                expected.oneXDisplayCenterY,
+                accuracy: 0.5
+            )
             XCTAssertEqual(
                 frame.size.width,
                 expected.oneXDisplaySize.width,
@@ -9112,6 +9176,24 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 CGFloat(configuration.bottomStripNeighborItemHeight)
             )
         )
+    }
+
+    /// IC-104 C v3：夹具（`.zero` 安全区）下截图**显示态** `s = 1` 的帧中心。
+    /// 即适配带中心。`s > 1` 的几何基准中心恒为视口中心（SPEC 决策 20），
+    /// 两者之差即捏合／双击进入瞬间的位置跳变量。
+    private func expectedScreenshotBandCenterY(
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder
+    ) -> CGFloat {
+        S2ViewportLayout.screenshotBandTop(physicalSize: physicalSize) +
+            expectedScreenshotBandHeight(configuration: configuration) / 2
+    }
+
+    /// `s = 1` 显示态截图中心与 `s > 1` 基准中心之差（跳变量），恒 > 0。
+    private func expectedOneXToNxCenterJump(
+        configuration: S2CalibrationConfiguration = .factoryPlaceholder
+    ) -> CGFloat {
+        physicalSize.height / 2 -
+            expectedScreenshotBandCenterY(configuration: configuration)
     }
 
     private func metrics(
