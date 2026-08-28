@@ -115,7 +115,7 @@ extension S2ResolvedParameters {
 struct S2CalibrationConfiguration: Codable, Equatable {
     /// IC-087：出厂值版本。持久化数据顶层写入 `schemaVersion`；加载时与本值不等即整套丢弃并删除条目。
     /// **纪律：任何改动 `factoryPlaceholder` 出厂值的卡必须同时递增本值。**
-    static let schemaVersion = 4
+    static let schemaVersion = 6
 
     var pinchMaxScaleFloor: Double
     var pinchMaxScaleCeiling: Double
@@ -138,7 +138,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
     var animationDurationMilliseconds: Double
     var presentationToggleDuration: Double
     var presentationToggleDamping: Double
-    var fitInsetRatio: Double
     var fitCornerRadius: Double
     var fitBorderWidth: Double
     var fitBorderDarkAlpha: Double
@@ -189,7 +188,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
         animationDurationMilliseconds: 180,
         presentationToggleDuration: 220,
         presentationToggleDamping: 0.86,
-        fitInsetRatio: 0.30,
         fitCornerRadius: 28,
         fitBorderWidth: 1,
         fitBorderDarkAlpha: 0.09,
@@ -269,7 +267,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             presentationToggleDuration >= 0 &&
             presentationToggleDamping >= 0.6 &&
             presentationToggleDamping <= 1 &&
-            fitInsetRatio >= 0 && fitInsetRatio < 0.5 &&
             fitCornerRadius >= 0 &&
             fitBorderWidth >= 0 &&
             fitBorderDarkAlpha >= 0 && fitBorderDarkAlpha <= 1 &&
@@ -308,7 +305,6 @@ struct S2CalibrationConfiguration: Codable, Equatable {
             ("animationDurationMilliseconds", formatted(animationDurationMilliseconds)),
             ("presentationToggleDuration", formatted(presentationToggleDuration)),
             ("presentationToggleDamping", formatted(presentationToggleDamping)),
-            ("fitInsetRatio", formatted(fitInsetRatio)),
             ("fitCornerRadius", formatted(fitCornerRadius)),
             ("fitBorderWidth", formatted(fitBorderWidth)),
             ("fitBorderDarkAlpha", formatted(fitBorderDarkAlpha)),
@@ -370,7 +366,6 @@ extension S2CalibrationConfiguration {
         .init(name: "animationDurationMilliseconds", specStatus: .placeholder, wiringStatus: .effective),
         .init(name: "presentationToggleDuration", specStatus: .decided, wiringStatus: .effective),
         .init(name: "presentationToggleDamping", specStatus: .decided, wiringStatus: .effective),
-        .init(name: "fitInsetRatio", specStatus: .decided, wiringStatus: .effective),
         .init(name: "fitCornerRadius", specStatus: .decided, wiringStatus: .effective),
         .init(name: "fitBorderWidth", specStatus: .decided, wiringStatus: .effective),
         .init(name: "fitBorderDarkAlpha", specStatus: .decided, wiringStatus: .effective),
@@ -423,7 +418,6 @@ extension S2CalibrationConfiguration {
         case animationDurationMilliseconds
         case presentationToggleDuration
         case presentationToggleDamping
-        case fitInsetRatio
         case fitCornerRadius
         case fitBorderWidth
         case fitBorderDarkAlpha
@@ -481,7 +475,6 @@ extension S2CalibrationConfiguration {
             animationDurationMilliseconds: try values.decode(Double.self, forKey: .animationDurationMilliseconds),
             presentationToggleDuration: try values.decodeIfPresent(Double.self, forKey: .presentationToggleDuration) ?? 220,
             presentationToggleDamping: try values.decodeIfPresent(Double.self, forKey: .presentationToggleDamping) ?? 0.86,
-            fitInsetRatio: try values.decode(Double.self, forKey: .fitInsetRatio),
             fitCornerRadius: try values.decodeIfPresent(Double.self, forKey: .fitCornerRadius) ?? 28,
             fitBorderWidth: try values.decodeIfPresent(Double.self, forKey: .fitBorderWidth) ?? 1,
             fitBorderDarkAlpha: try values.decodeIfPresent(Double.self, forKey: .fitBorderDarkAlpha) ?? 0.09,
@@ -531,7 +524,6 @@ extension S2CalibrationConfiguration {
         try values.encode(animationDurationMilliseconds, forKey: .animationDurationMilliseconds)
         try values.encode(presentationToggleDuration, forKey: .presentationToggleDuration)
         try values.encode(presentationToggleDamping, forKey: .presentationToggleDamping)
-        try values.encode(fitInsetRatio, forKey: .fitInsetRatio)
         try values.encode(fitCornerRadius, forKey: .fitCornerRadius)
         try values.encode(fitBorderWidth, forKey: .fitBorderWidth)
         try values.encode(fitBorderDarkAlpha, forKey: .fitBorderDarkAlpha)
@@ -1137,12 +1129,17 @@ struct S2ViewportMetrics: Equatable {
 }
 
 enum S2ViewportLayout {
+    /// IC-104 C（④ 2026-08-29，待入 Decision_log 第 134 条）：截图内缩改锚上下
+    /// chrome，三段间距相等，等距值 = `S2OverlayLayout.stripToActionVisibleBandSpacing`
+    /// （30.7 pt）。`safeAreaInsets` 是为此新增的输入，默认 `.zero`——既有调用点
+    /// 语义不变，只有需要真实 chrome 几何的调用方才传。
     static func metrics(
         physicalSize: CGSize,
         presentationState: S2ViewportPresentationState,
         assetAspectRatio: CGFloat,
         isScreenshot: Bool = false,
-        configuration: S2CalibrationConfiguration
+        configuration: S2CalibrationConfiguration,
+        safeAreaInsets: S2OverlaySafeAreaInsets = .zero
     ) -> S2ViewportMetrics {
         let viewportAspectRatio = physicalSize.height > 0
             ? physicalSize.width / physicalSize.height
@@ -1155,15 +1152,27 @@ enum S2ViewportLayout {
             assetAspectRatio: assetAspectRatio,
             viewportAspectRatio: viewportAspectRatio
         )
-        let keepsFrame = isScreenshot &&
-            presentationState.interfaceVisibility == .visible
-        let insetScale = keepsFrame
-            ? max(0, 1 - CGFloat(configuration.fitInsetRatio))
-            : 1
-        let displaySize = CGSize(
-            width: fitSize.width * insetScale,
-            height: fitSize.height * insetScale
+        let stripHeight = max(
+            CGFloat(configuration.bottomStripCurrentItemSize),
+            CGFloat(configuration.bottomStripNeighborItemHeight)
         )
+        // IC-104 C：截图适配框的上下缘由 chrome 推导，**与 V 显隐无关**
+        // （同 IC-100 B2 不变量：隐藏态尺寸不变，故这里不读 interfaceVisibility）。
+        // 顶缘 = 顶部栏底缘 + 30.7；底缘 = 底部横栏顶缘 − 30.7。
+        // 水平方向仍走等比适配与居中：把带高连同视口宽交给 `aspectFitSize`。
+        let displaySize = isScreenshot
+            ? S2Geometry.aspectFitSize(
+                viewportSize: CGSize(
+                    width: physicalSize.width,
+                    height: screenshotBandHeight(
+                        physicalSize: physicalSize,
+                        safeAreaInsets: safeAreaInsets,
+                        bottomStripHeight: stripHeight
+                    )
+                ),
+                assetAspectRatio: assetAspectRatio
+            )
+            : fitSize
         let fillMultiplier = S2Geometry.aspectFillMultiplier(
             viewportSize: physicalSize,
             assetAspectRatio: assetAspectRatio
@@ -1176,18 +1185,40 @@ enum S2ViewportLayout {
             nativeZoomBaseSize: isScreenshot ? physicalSize : fitSize,
             isFramedPhoto: isScreenshot,
             oneXDisplaySize: displaySize,
-            oneXCornerRadius: keepsFrame
+            // 圆角沿用既有规则（截图且 V=显示），本卡只改尺寸口径。
+            oneXCornerRadius: isScreenshot &&
+                presentationState.interfaceVisibility == .visible
                 ? CGFloat(configuration.fitCornerRadius)
                 : 0,
             aspectFillMultiplier: fillMultiplier,
             doubleTapTargetScale: matchesScreenAspect
                 ? CGFloat(configuration.minDoubleTapScale)
                 : fillMultiplier,
-            bottomStripHeight: max(
-                CGFloat(configuration.bottomStripCurrentItemSize),
-                CGFloat(configuration.bottomStripNeighborItemHeight)
-            )
+            bottomStripHeight: stripHeight
         )
+    }
+
+    /// IC-104 C：截图适配框的可用带高。
+    ///
+    /// 顶缘 = 顶部栏底缘（安全区顶 + `S2OverlayLayout.topBarHeight`）+ 30.7；
+    /// 底缘 = 底部横栏顶缘（`S2OverlayLayout.stripTopFromViewportBottom`）− 30.7。
+    /// 两处 chrome 边缘都引用 IC-100 v2 已有的推导式，本卡未新增任何测量值。
+    /// 三段间距（顶部栏—截图、截图—横栏、横栏—操作条可见图标带）因而全部等于
+    /// `S2OverlayLayout.stripToActionVisibleBandSpacing`。
+    static func screenshotBandHeight(
+        physicalSize: CGSize,
+        safeAreaInsets: S2OverlaySafeAreaInsets,
+        bottomStripHeight: CGFloat
+    ) -> CGFloat {
+        let spacing = S2OverlayLayout.stripToActionVisibleBandSpacing
+        let bandTop = safeAreaInsets.top + S2OverlayLayout.topBarHeight +
+            spacing
+        let bandBottom = physicalSize.height -
+            S2OverlayLayout.stripTopFromViewportBottom(
+                safeAreaBottom: safeAreaInsets.bottom,
+                bottomStripHeight: bottomStripHeight
+            ) - spacing
+        return max(0, bandBottom - bandTop)
     }
 
 }

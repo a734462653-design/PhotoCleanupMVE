@@ -464,7 +464,9 @@ struct S2View: View {
                 presentationState: viewportPresentationState,
                 assetAspectRatio: ratio,
                 isScreenshot: assetIsScreenshot(machine.currentAssetID),
-                configuration: calibration.configuration
+                configuration: calibration.configuration,
+                // IC-104 C：截图适配框锚上下 chrome，需要真实安全区。
+                safeAreaInsets: safeAreaInsets
             )
 
             ZStack {
@@ -641,7 +643,9 @@ struct S2View: View {
                 presentationState: viewportPresentationState,
                 assetAspectRatio: assetAspectRatio(assetID),
                 isScreenshot: assetIsScreenshot(assetID),
-                configuration: calibration.configuration
+                configuration: calibration.configuration,
+                // IC-104 C：同上，逐页几何也必须用真实安全区。
+                safeAreaInsets: safeAreaInsets
             )
             let requestRevision = machine.imageRequestAssetID == assetID
                 ? machine.imageRequestRevision
@@ -1204,13 +1208,6 @@ struct S2View: View {
                     ),
                     range: 0.6...1,
                     step: 0.01
-                )
-                .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
-                S2CalibrationSliderRow(
-                    title: "fitInsetRatio",
-                    value: calibrationBinding(\.fitInsetRatio),
-                    range: 0...0.45,
-                    step: 0.005
                 )
                 .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
                 S2CalibrationSliderRow(
