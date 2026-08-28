@@ -6750,10 +6750,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(machine.handleSingleTap())
         XCTAssertEqual(machine.interfaceVisibility, .hidden)
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+        // IC-104 B（第 132 条）：隐藏态 1x 上滑完全无效果——连语义提示也不发，
+        // 故消费计数停在显示态那一次（改前隐藏态也会发一次，计数为 2）。
         XCTAssertFalse(machine.handleSwipeUp())
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
         XCTAssertNil(machine.semanticNotice)
-        XCTAssertEqual(presenter.consumedNoticeCount, 2)
+        XCTAssertEqual(presenter.consumedNoticeCount, 1)
         XCTAssertEqual(presenter.pulseCount, 1)
     }
 
