@@ -1,117 +1,122 @@
-# IC-104 自验报告（A + B + C v2 已交付；C v3 实装后于捏合连续性冲突停线）
+# IC-104 自验报告（A + B + C v3 全部交付，CI #187 绿）
 
-覆盖 IC-104 全程：首轮停线（CI #178）、恢复后子项 A 收官（#180）、子项 B 收官（#181）、子项 C v1 规格冲突停线（#182）、子项 C v2 交付（#183 → #184）。
+覆盖 IC-104 全程：首轮停线（#178）、子项 A 收官（#180）、子项 B 收官（#181）、子项 C v1 规格冲突停线（#182）、子项 C v2 交付（#183 → #184）、子项 C v3 旧位锚定返工（#185 → #186 → **#187 绿**）。
 
 ## 结论（先行）
 
-**A、B、C v2 已交付并 CI 绿（#184）。C v3 按下发单 v6 的三处修订全部实装并推 CI（#185），带几何、摆放、过渡 position 分量均已落地；但 CI 暴露出一类下发单未预见的冲突——④ 的带中心令 `s = 1` 与 `s > 1` 两个基准不再同心，捏合起手出现新的位置突跳，而两端我都无权改动。按纪律 5 与角色边界停线，未动用最后一次 CI 预算。**
+**A、B、C 三个子项全部交付，最终 CI 绿。Lynn 的复测包 = CI #187。**
 
-- **C v3 状态**：**实装已提交并推送**（`efca05012b1aca63e11c8ee7e6f74c99cc6242ca`），CI **#185 failure**，`Executed 520 tests, with 12 failures`
-- **C v3 CI 预算**：**1 / 2 次已用**，剩 1 次**未动用**
-- **Cv3-3 停线信号**：`testIC100B2` **不在失败之列**，信号未触发
-- **`g ≤ 0` 停线条件**：**不触发**（全部被支持输入下 `g > 0`）
-- **当时最新绿 tip 与 run**：`2d3d7894e4b2f1c66e889974a8ad5997f4870463` / **CI #184**（即 C v2 的包，H45 第 5 项在该包上已被 Lynn 判为不通过；本轮**未产出新的复测包**）
+- **最终绿 tip**①：`0d461ccd6a7aa54a869d6494e9265785cb2a51b9`
+- **最终 CI**①：**#187 success**，9/9 步全绿，**真实退出码 0**，`Executed 520 tests, with 0 failures (0 unexpected) in 36.084 (52.830) seconds`
+- **IPA**①：**837925 字节**，SHA-256 **`747a8b6e15ff7443632d6afebb6863bec63b58ba850d8f7d3ed55eabe9c41991`**
+- **闸门**：A1、B1、C1、C2 评估后均未触发；Cv2-1、Cv2-2、**Cv3-1、Cv3-2** 通过；Cv2-3 与 **Cv3-3** 的停线信号（`testIC100B2`）全程未触发；`g ≤ 0` 未触发
+- **CI 预算**：本卡（v7）2 次，**已用 2 次**（#186、#187）
+- **时间闸门**：C v3 收官开工 2026-08-28T13:50:56Z，到期 16:50:56Z，**完成于 14:11:11Z，未到期**
+- **`main` 全程未被触碰**（停在 `e6bd5aa`），分支独立；`schemaVersion == 6`；冻结三链未动
 
-**A、B、C v2 的交付事实（不受本次停线影响）：**
+**Lynn 复测清单 6 项全部可测**（第 6 项为本次新增的捏合/双击瞬间跳变观感）。
 
-- **最终绿 tip**①：`2d3d7894e4b2f1c66e889974a8ad5997f4870463`
-- **最终 CI**①：**#184 success**，9/9 步全绿，**真实退出码 0**，`Executed 519 tests, with 0 failures (0 unexpected) in 44.805 (71.379) seconds`
-- **IPA**①：**836375 字节**，SHA-256 **`495d93b79f1df4520ce35aa7c52edfb7ddb885da2e819288637d3f94d4bde2f1`**
-- **闸门 A1、B1、C1、C2 全部评估后未触发；Cv2-1、Cv2-2 通过；Cv2-3 的停线信号（`testIC100B2`）未触发**
-- **CI 预算**：总 6 + C v2 追加 2 = 8 次，**已用 8 次**（A 2 / B 1 / C v1 1 / C v2 2，另首轮 #178 计入 A）
-- **时间闸门**：C v2 开工 2026-08-28T03:34:51Z，到期 06:34:51Z，**完成于 04:01:17Z，未到期**
-- **`main` 全程未被触碰**，分支独立；`schemaVersion == 6`；冻结三链未动
+## 子项 C v3：等距带改旧位锚定（H45 第 5 项返工）
 
-**H45 人工判定 8 项全部可测**（第 5 项按下发单 v4 改读）。
+### 上游裁定的落实
 
-## 子项 C v3：旧位锚定实装与捏合连续性停线
+Lynn 的 ④：**截图顶缘必须保持旧版（v15 比例内缩）位置不动**，上下两段间距按旧顶距等距、只缩截图；**「横栏—操作条」30.7 不参与等距**。决策会话另裁定两条：显隐过渡的 morph 含平移属几何必然（v6 选项 A）；捏合/双击进入瞬间的位置跳变同属 SPEC 决策 20「跳到该基准」与 ④ 组合后的几何必然，**不修订规格、不加中途过渡**（v7 选项 A）。
 
-### 开工检查（通过）
+### 一、摆放勘查结论（勘查轮产出，本轮采信并已修复）
 
-工作树净；续做开工时分支 tip = `0b024cb8ac9760ca47f4e347000d755dd652f62f`。开工 2026-08-28T13:07:37Z，3 小时闸门到期 16:07:37Z（**未到期**，停线非超时）。
+`s = 1` 显示态几何写入**单一入口** = `S2NativeZoomScrollView.enforceOneXContentGeometry`（`S2NativePhotoPager.swift:761`，落笔 `:805`）。C v2 的实际摆放是**视口居中**（`targetPhotoCenter.y = targetZoomBounds.midY`，而截图 `nativeZoomBaseSize = physicalSize`）——`oneXDisplaySize` 只决定尺寸，摆放另有出处。
 
-### 一、摆放勘查结论（上一轮产出，本轮采信）
+**C v2 的测试缺口属实**：`testIC104C` 中 `photoTop` 是**被定义**为 `topBarBottom + spacing`、而非从渲染帧读出，整条断言是对计算值的算术恒等式，**从未校验过真实摆放**。本卡已补渲染帧摆放断言（见第四节）。
 
-`s = 1` 显示态几何写入**单一入口** = `S2NativeZoomScrollView.enforceOneXContentGeometry`；C v2 的实际摆放是**视口居中**（`targetPhotoCenter.y = targetZoomBounds.midY`，而截图 `nativeZoomBaseSize = physicalSize`），`oneXDisplaySize` 只决定尺寸。C v2 的 `testIC104C` 中 `photoTop` 是被定义值而非渲染帧读数，故从未校验过真实摆放。
+**H45 第 5 项不通过的完整成因为两条**：① 顶距取 30.7（已废除，改回旧位）；② 摆放是视口居中（已改为带中心）。
 
-### 二、已实装内容（提交 `efca050`）
+### 二、带几何与 `g` 核算（①，由代码常量推导）
 
-| 层 | 改动 | 范围依据 |
-|---|---|---|
-| 带几何 | 带顶缘 = `0.15 × 视口高`；`g` = 带顶缘 − 顶部栏底缘；带底缘 = 横栏顶缘 − `g`。新增 `screenshotBandTop` / `screenshotBandTopSpacing` 两个纯推导式 | 原卡目标语义 |
-| 常量 | `legacyVisibleFitTopRatio = 0.15`（`static let`，**非可调参数、不进登记表**，值由 `(1 − 0.70) / 2` 而来） | 原卡「禁止新增可调参数」 |
-| 摆放 | `S2ViewportMetrics` 新增 `oneXDisplayCenterY`；`enforceOneXContentGeometry` 的竖直中心改按其换算（视口坐标 → `zoomContentView` 坐标）。非截图与隐藏态换算结果**恰为原值** | 原卡范围内第 2 项 |
-| 管线 | `fittedCenterY` 经 `S2NativePageContent` → 页控制器 → `configure` 传递，默认 `nil` = 视口居中，既有调用点语义不变 | 同上 |
-| `Nx` 推迟 | position 目标随 `page.fittedCenterY` 与尺寸/圆角走**同一条** `enforceOneXContentGeometry` 落笔，未新增独立路径 | 修订 3 |
-| 过渡 | 新增 `position` 关键帧，与 `scale`/`cornerRadius` **同组、同 `progressValues`、同曲线与时长**；`S2ImmersiveTransition` 建模字段与触发条件一字未改 | 修订 1 |
-| 双击回 1x | 目标帧竖直中心同步取带中心 | 原卡「摆放改为带中心」 |
+常量：`topBarHeight = 48`、`stripToActionVisibleBandSpacing = 30.7`、`resolvedStripHeight(30) = max(44, 30) = 44`。
 
-**`chrome` 布局与 30.7 登记值零 diff；`schemaVersion` 维持 6；冻结三链未动。**
+| 输入 | 带顶缘 `0.15 × H` | 顶部栏底缘 | **`g`** | 横栏顶缘 | 带底缘 | 带高 | 带中心 | 视口中心 | 中心差 |
+|---|---|---|---|---|---|---|---|---|---|
+| 夹具 300×600，`.zero` | 90 | 48 | **42** | 492.3 | 450.3 | 360.3 | 270.15 | 300 | 29.85 |
+| 393×852，顶 59 / 底 34 | 127.8 | 107 | **20.8** | 710.3 | 689.5 | 561.7 | 408.65 | 426 | **17.35** |
 
-### 三、与修订 1 字面不同的一处（按实际层级处理）
+与卡内参考数（`g = 42` / `g ≈ 20.8`、带顶缘 90 / 127.8）逐个吻合。
 
-修订 1 要求「挂该动画组的每一层（含 `fitBorderLayer`）必须同步获得该分量」。实测层级①：`fitBorderLayer` 由 `hostingController.view.layer.addSublayer(fitBorderLayer)` 挂载，而 `presentationContentView === hostingController.view`，且 `fitBorderLayer.frame = hostingController.view.bounds`——**它是照片层的子层，不是兄弟层**，随父层 position 自动平移。再挂一份 position 分量会**双重平移**。既有代码只给它动画 `cornerRadius` 与 `borderWidth` 并除以 scale 补偿，正是父子关系的写法。
+**`g ≤ 0` 停线检查：不触发。** 全部被支持输入下 `g > 0`：393×852/59 → **20.8（最小）**；390×844/47 → 31.6；430×932/62 → 29.8；428×926/47 → 43.9；375×812/44 → 29.8；375×667/20 → 32.05；320×568/20 → 17.2；夹具 300×600/0 → 42。
 
-收口方面陷阱 8 的要求已满足：照片层 `photoLayer.removeAllAnimations()`（`:748`）与 `fitBorderLayer.removeAllAnimations()`（`:2159`）均为既有实现，`removeAllAnimations` 覆盖新增的 position 分量，无需新增清除代码。
+### 三、产品侧实装
 
-### 四、推 CI 前拦下的夹具问题（已修）
-
-`testIC104C` / `D1` / `D2` / `F4` 把夹具 `physicalSize`（300×600）与 `overlaySafeAreaInsets`（顶 59）配对。新定义下 `g = 90 − 59 − 48 = **−17**`——该组合**不对应任何机型**（59pt 顶安全区对应 852 高视口），是夹具产生的伪几何，不是产品缺陷。已改：`testIC104C` 用真实配对 `overlayPhysicalSize`（393×852）+ 顶 59 / 底 34（恰得卡内参考数 127.8 / 20.8），其余三个改用 `.zero`（`g = 42`）。
-
-### 五、CI #185
-
-| 项 | 值 |
+| 层 | 改动 |
 |---|---|
-| run 编号 / id | **#185** / `33175294331` |
-| 被测提交 | `efca05012b1aca63e11c8ee7e6f74c99cc6242ca` |
-| 结论 | **failure**，失败步骤 6「运行 XCTest」（步骤 1–5 全 success） |
-| XCTest | `Executed 520 tests, with 12 failures (0 unexpected) in 35.674 (43.896) seconds` |
-| 步骤 7/8 | skipped，**无 IPA** |
-| 真实退出码 | 非 0；**数值未取到**（注解 10 条上限被失败行占满，job 日志端点本轮经多次重试仍不可用）。按纪律不复述未取到的数字 |
+| 带几何 | 新增 `screenshotBandTop`（= `0.15 × 视口高`）与 `screenshotBandTopSpacing`（= `g`）两个纯推导式；`screenshotBandHeight` 改为 `(横栏顶缘 − g) − 带顶缘` |
+| 常量 | `legacyVisibleFitTopRatio = 0.15`（`static let`，值即 `(1 − 0.70) / 2`）。**不是可调参数、不进登记表、不入 `S2CalibrationConfiguration`**，故 `schemaVersion` 不动 |
+| 摆放 | `S2ViewportMetrics` 新增 `oneXDisplayCenterY`（截图 ∧ `V=显示` 取带中心，其余取视口中心）；`enforceOneXContentGeometry` 的竖直中心改按其换算（视口坐标 → `zoomContentView` 坐标）。**非截图与隐藏态换算结果恰为原值**，行为不变 |
+| 管线 | `fittedCenterY` 经 `S2NativePageContent` → 页控制器 → `configure` 传递，默认 `nil` = 视口居中，既有调用点语义不变 |
+| `Nx` 推迟 | position 目标与尺寸/圆角走**同一条**既有推迟机制（`s` 回 1 时经 `enforceOneXContentGeometry` 落笔），未新增独立路径或旁路 |
+| 过渡 | 既有动画组内新增 `position` 关键帧，与 `scale`/`cornerRadius` **同组、同 `progressValues`、同 spring 曲线与时长**；`S2ImmersiveTransition` 的建模字段与触发条件一字未改 |
+| 双击回 1x | 目标帧竖直中心同步取带中心 |
 
-**测试计数 519 → 520**：新增 `testIC104CScreenshotRenderedFrameSitsAtLegacyTopAnchor`（渲染帧摆放断言，补 C v2 缺口）。
+**chrome 布局函数与 30.7 登记值零 diff**（`actionBandCenterFromViewportBottom`、`stripBottomFromViewportBottom`、`stripTopFromViewportBottom`、`toastBottomFromViewportBottom` 及 `stripToActionVisibleBandSpacing` 的定义与取值全部未动）。
 
-### 六、12 项失败的分类与停线理由
+#### 与修订 1 字面不同的一处（已获 v7 追认）
 
-**`testIC100B2GeometryIsIndependentOfInterfaceVisibility` 不在失败之列**，Cv3-3 的停线信号未触发。12 项失败分两类：
+修订 1 要求「挂该动画组的每一层（含 `fitBorderLayer`）必须同步获得该分量」。实测层级①：`fitBorderLayer` 由 `hostingController.view.layer.addSublayer(...)` 挂载，而 `presentationContentView === hostingController.view`，且 `fitBorderLayer.frame = hostingController.view.bounds`——**它是照片层的子层，不是兄弟层**，随父层 position 自动平移；再挂一份会**双重平移**。既有代码只给它动画 `cornerRadius` 与 `borderWidth` 并除以 scale 补偿，正是父子关系的写法。收口沿用既有 `photoLayer.removeAllAnimations()`（`:748`）与 `fitBorderLayer.removeAllAnimations()`（`:2159`），`removeAllAnimations` 覆盖新增分量，**每层清净**，陷阱 8 满足。v7 已追认「以无双重动画、收口每层清净为准」。
 
-**类别 (i)：静态摆放事实——可改，与修订 2 授权同类**
+### 四、测试侧
 
-断言「照片静止时竖直居中于视口」，这正是 ④ 决策改变的契约：
+#### 夹具伪几何修正（已获 v7 追认）
 
-| 测试 | 位置 | 断言 | 实测 |
+`testIC104C` / `D1` / `D2` / `F4` 把夹具 `physicalSize`（300×600）与 `overlaySafeAreaInsets`（顶 59）配对，新定义下 `g = 90 − 59 − 48 = **−17**`——该组合**不对应任何机型**（59pt 顶安全区对应 852 高视口），是夹具产生的伪几何。已改：`testIC104C` 用真实配对 `overlayPhysicalSize`（393×852）+ 顶 59 / 底 34（恰得 127.8 / 20.8），其余三个改用 `.zero`（`g = 42`）。
+
+#### 新增（1 个）
+
+`testIC104CScreenshotRenderedFrameSitsAtLegacyTopAnchor`——**渲染帧**摆放断言，补 C v2 缺口：显示态 `minY == 0.15 × 视口高`、底缘距横栏顶缘 `== g`、`minY − topBarHeight == g`、`g > 0`；隐藏态回视口居中且填满。
+
+#### 按新契约改写（9 处，全部精确断言，未放宽任何容差、未删除任何断言）
+
+**类 (i) 静态摆放**
+
+| 测试 | 旧 | 新 |
+|---|---|---|
+| `testIC065G27…IsVerticallyCentered` → `…SitsAtBandCenter` | `midY == 视口中心` | `midY == 带中心`、`minY == 0.15×H`，另断言 `视口中心 − 帧中心 == 跳变量` |
+| `testIC063G2…` | `minY == H − maxY`（竖直对称） | `minY == 带顶缘`、`midY == 带中心`（**横向对称断言原样保留**） |
+| `testIC065G31…` | `midY == window.midY` | `midY == expected.oneXDisplayCenterY`（一条覆盖 `.visible` 带中心与 `.hidden` 视口中心两轮） |
+| `testIC067G41…` | 同上 | 同上 |
+| `testIC067G36…` | `midY == H / 2` | `midY == 带中心` |
+
+**类 (ii) 边界连续性**
+
+`testIC065G28ToG29PinchTrackHasNoCenterJump` → **`…PinchTrackCentersPerZoomState`**：契约改述为「捏合全程每一帧的中心恒等于其所处 `s` 态的**规定中心**」。
+- `s = 1` 帧 `midY == 带中心`；接管首帧 `midY == 视口中心`（两条精确断言）
+- **跳变本身写成契约**：`pinchBegan.midY − oneX.midY == 两中心之差`（精确值）
+- 接管之后各帧之间不再有跳变（原断言保留）；逐采样循环按 `sample.phase` 取该帧的规定中心
+- **横向 `midX` 全程无跳变的断言原样保留**
+
+**过渡端点（`testIC064G13ToG18…`）**：逐采样 `midY` 改区间断言（含 spring 过冲余量），两端点为精确断言（显示端 = 带中心、隐藏端 = 视口中心）；新增 position 关键帧断言（与 scale 同长度、端点覆盖两个中心）；**曲线/时长类断言不动**。
+
+**`testX1…`（#186 唯一失败，即 #185 未定位的第 12 项）**：`reverseAnchor.y == metrics(visibility: .visible).oneXDisplayCenterY`，另加精确契约 `transition.viewportAnchor.y − reverseAnchor.y == 跳变量`；`transition.viewportAnchor`、`layer.anchorPoint == (0.5, 0.5)`、`targetScale` 各条**原样保留且全部通过**——证明 `S2ImmersiveTransition` 建模字段与变换锚点未被改动。
+
+**隐藏态、圆角断言零改动。**
+
+#### 收敛过程中更正的三处②推定
+
+#185 停线报告中我按断言内容推定 `testIC067G40`、`testIC070G75`、`testIC070R5` 等也会失败，复核后**推定有误**，如实更正：`IC067G40` 断言的是 `prepareForNativeZoom` 之后的 **`s > 1` 基准**（照片填满视口，仍居中于视口）；`IC070G75` 与 `R5` 用 `isScreenshot: false`；`assertFitBorderConcentric`、`IC063G4`、`IC070R6` 中的 `midY` 是**以帧自身为基准的扫描坐标**而非对视口中心的断言。四者均不受影响，实测全部通过。
+
+### 五、行为变更登记（须 Lynn 真机判定）
+
+| # | 变更 | 幅度（393×852） | 依据 |
 |---|---|---|---|
-| `testIC065G27HeightLimitedOneXIsVerticallyCentered` | `:4950` | `midY == 视口中心` | 270.15 vs 300 ① |
-| `testIC063G2VisibleCroppedScreenshotUsesAspectFitInsetAndIsCentered` | `:2988` | 上下边距对称 | 上 89.99…（= 带顶缘 90 ✓ 符合预期）vs 下 149.7 ① |
-| `testIC065G31ScreenshotMetadataKeepsIC063Geometry` | `:5133` | `frame.midY == window.midY`（`.visible` 轮） | ② 推定 |
-| `testIC067G36CroppedScreenshotUsesMetadataDrivenAspectFitFrame` | `:5241` | `oneXPresentationFrame.midY == 视口中心` | ② 推定 |
-| `testIC067G41OneXReturnRestoresCurrentVisibilityGeometry` | `:5831` | 同上（`.visible` 轮） | ② 推定 |
+| 1 | 显示态截图顶缘回到 `0.15 × 视口高` | 顶缘 127.8（旧位） | ④ Lynn |
+| 2 | 底距 = 顶距 = `g` | `g = 20.8` | ④ Lynn |
+| 3 | 显隐切换时照片随缩放**竖向平移** | ≈ 17.35 pt，走同一 spring 曲线与时长 | 决策会话 v6 选项 A |
+| 4 | 捏合/双击进入 `s > 1` 的**瞬间位置跳变** | ≈ 17.35 pt，无过渡（尺寸跳变旧已有） | 决策会话 v7 选项 A（SPEC 决策 20「跳到该基准」+ ④ 的几何必然） |
 
-**类别 (ii)：跨 `s = 1 ↔ s > 1` 边界的连续性契约——不可改，构成停线**
+### 六、CI 记录（C v3 三轮）
 
-| 测试 | 位置 | 断言 | 实测 |
-|---|---|---|---|
-| `testIC065G28ToG29PinchTrackHasNoCenterJump` | `:5005` | `abs(pinchBegan.midY − oneX.midY) ≤ 0.5` | **29.85**① |
-| 同上（逐采样） | `:5032` | 小于视口的帧一律居中于视口 | 270.15 vs 300 ① |
-| `testIC067G40PinchTakeoverCommitsCenteredGeometrySynchronously` | `:5805` | 接管落笔后 `midY == 视口中心` | ② 推定 |
-| `testIC070G75AndG76TakeoverKeepsJointCenteringEveryFrame` | `:6594` | 接管全程小于视口的帧居中于视口 | ② 推定 |
-
-**停线理由**：类别 (ii) 断言的不是「照片放在哪」，而是**跨缩放边界的位置连续性**。C v3 令 `s = 1` 显示态截图居中于**带**（④ 定死），而 `s > 1` 的几何基准是「照片完整填满视口」（SPEC v16 决策 20，本卡**范围外**明文「`s > 1` 基准与 #184 逐条一致」）——两个基准不再同心，**捏合起手瞬间照片位置突跳**：夹具 29.85 pt①，393×852 机型 **≈ 17.35 pt**（带中心 408.65 vs 视口中心 426）。
-
-- 这与决策会话已裁定的显隐 morph **不是同一件事**：那是**有曲线的平移**（同 spring、同时长），这是 `prepareNativeZoomGeometry` 落笔造成的**瞬时突跳**，无过渡。
-- 两端我都无权改：`s = 1` 带中心是 ④ 的决策；`s > 1` 全视口基准是 SPEC 决策 20 且卡列为范围外。
-- 把「无中心跳变」的断言改成接受跳变，等于把新出现的用户可见突跳登记为正确行为，触犯纪律 5「不伪造通过」，并单方面废止 IC-065 G28/G29 建立的契约。
-
-**一条可能加快裁定的观察（③推测）**：SPEC v16 第 68 行（决策 20）原文写「**`s` 从 1 增大的瞬间跳到该基准**」——规格本就承认 `s → 1+` 时几何会「跳」。旧版之所以只跳尺寸不跳位置，是因为当时 1x 几何恰与该基准同心；④ 改了 1x 几何后，位置也随之跳，可能属规格已预留的情形。但「17 pt 瞬时位移是否可接受」是产品观感判定，不由执行会话取定。
-
-### 七、需要决策会话裁定的问题（一条）
-
-**`s = 1`（显示态截图，带中心）与 `s > 1`（全视口基准，视口中心）不同心，捏合起手出现约 17 pt 瞬时位置突跳，是否接受？**
-
-- **选项 A**：接受（依 SPEC 决策 20「跳到该基准」的既有措辞），授权把类别 (ii) 的三处断言按新基准关系改造，并把「捏合起手位置突跳观感」加入 Lynn 复测清单。此路径下本卡可一次收口——类别 (i) 的五处同时改造，1 次 CI 预算足够。
-- **选项 B**：不接受，需要为 `s = 1 → s > 1` 补位置过渡或另定 `s > 1` 基准——两者都触及 SPEC 决策 20，需先修订规格。
-
-**裁定后可直接续做**：`efca050` 已含全部带几何、摆放与过渡实装，剩余仅为按裁定改造上述两类断言（共 8 处测试函数，位置已在上表逐条列明），预计 1 次 CI 预算即可收口。
+| run | id | 被测提交 | 结论 | XCTest | 说明 |
+|---|---|---|---|---|---|
+| #185 | `33175294331` | `efca050` | failure | 520 / 12 | 摆放契约变更引发，含捏合连续性冲突 → 停线报告 |
+| #186 | `33177682658` | `eb28f22` | failure | 520 / 1 | 八处断言改写后，仅余 `testX1:4158` |
+| **#187** | **`33178302985`** | **`0d461cc`** | **success** | **520 / 0** | 9/9 步全绿，退出码 0，IPA 已产出 |
 
 ## 输入与边界
 
@@ -270,6 +275,11 @@ C v1 令几何与 `V` 无关 ⇒ `fittedSize` 与 `cornerRadius` 均不随 `V` �
 | **Cv2-1** | **通过** | #184 success、519/0、真实退出码 0、IPA 已登记 |
 | **Cv2-2** | **通过** | 产品 diff 仅 `S2Calibration.swift` / `S2View.swift` / xcstrings 一条；`schemaVersion == 6` 唯一；冻结三链未动 |
 | **Cv2-3** | **未触发停线** | #183 三项失败均不含 `testIC100B2`，全部落在截图几何/沉浸/改写测试内；用剩余预算修一次后转绿 |
+| **Cv3-1** | **通过** | #187 success、520 项 0 失败、真实退出码 0、IPA 已登记 |
+| **Cv3-2** | **通过** | 产品 diff 仅 `S2Calibration.swift` / `S2NativePhotoPager.swift` / `S2View.swift` 三处，限于适配带推导与显示态摆放；chrome 布局与 30.7 登记值零 diff；`schemaVersion == 6` 未动；冻结三链未动 |
+| **Cv3-3** | **未触发停线** | #185 / #186 的失败项全部落在两类契约内，`testIC100B2` 全程未失败 |
+| `g ≤ 0` | **未触发** | 全部被支持输入下 `g > 0`，最小 20.8 @ 393×852 |
+| 时间闸门（C v3，3h） | **未到期** | 13:50:56Z 开工，14:11:11Z 完成，到期 16:50:56Z |
 | **G239**（C） | **达成** | `fitInsetRatio` 产品零残留、`schemaVersion == 6`、四条扫描已记入报告、几何断言 CI 绿 |
 | **G240** | **通过** | 三子项**全部落在同一包内**（#184），IPA 已登记 |
 | **G241** | **通过** | 每子项独立 commit；A（#180）、B（#181）、C（#184）各自 CI 绿有据；本地三项门禁全 0 |
@@ -344,27 +354,37 @@ C v2 改造的 8 个测试：`testIC104C…`、`testIC067G36…`（隐藏态回�
 
 | 项 | 值 |
 |---|---|
-| **run 编号** | **#184**（`https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/33140294919`） |
-| 被测提交 | `2d3d7894e4b2f1c66e889974a8ad5997f4870463` |
-| artifact | `PhotoCleanupMVE-unsigned-2d3d7894e4b2`（id `9673769485`，zip 836545 字节） |
-| **IPA 字节数** | **836375** |
-| **IPA SHA-256** | **`495d93b79f1df4520ce35aa7c52edfb7ddb885da2e819288637d3f94d4bde2f1`** |
-| 内含 | 子项 **A** + 子项 **B** + 子项 **C**，以及 IC-105 / IC-106 的测试侧修复 |
+| **run 编号** | **#187**（`https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/33178302985`） |
+| 被测提交 | `0d461ccd6a7aa54a869d6494e9265785cb2a51b9` |
+| artifact | `PhotoCleanupMVE-unsigned-0d461ccd6a7a`（id `9688814042`，zip 838095 字节） |
+| **IPA 字节数** | **837925** |
+| **IPA SHA-256** | **`747a8b6e15ff7443632d6afebb6863bec63b58ba850d8f7d3ed55eabe9c41991`** |
+| 内含 | 子项 **A** + **B** + **C v3**，以及 IC-105 / IC-106 的测试侧修复；`schemaVersion == 6` |
 
-**IPA 复核说明**：字节数与 SHA-256 取自 CI 内「未签名 IPA 校验」步骤注解（CI 侧实算，①）。本机未重下复核——G240 只要求登记，且 IPA 归档不可复现（IC-094/097 证据①），重下哈希不能作跨运行同一性判据。
+**IPA 复核说明**：字节数与 SHA-256 取自 CI 内「未签名 IPA 校验」步骤注解（CI 侧实算，①）。本机未重下复核——Cv3-1 只要求登记，且 IPA 归档不可复现（IC-094/097 证据①），重下哈希不能作跨运行同一性判据。
 
-## H45 人工判定清单（8 项，第 5 项按下发单 v4 改读，原样列出）
+## H45 人工判定：已通过项与本轮复测清单
 
-1. 已编辑照片：S2 占用空间 = 系统「信息」页原始大小（核心项）。
-2. 已编辑视频：同上。
-3. 未编辑照片/视频各抽一张：数值与此前一致。
-3b. 已编辑 LivePhoto 一张，S2 占用空间 vs 系统「信息」页。现实装按探针既有规则只计静态图原始主资源（配对视频不计入）；若与系统口径不符，记录差值即可，不改码，回决策会话定夺。
-4. 隐藏态：1x 上滑无任何反应；下滑回显示态且缩放/页码/标记不变；显示态标记/取消照旧；Nx 照旧。
-5. 截图：显示态顶部栏—截图—横栏—操作条三段间距目测等距；**隐藏态截图仍填满屏幕（沉浸行为与现版一致）**；显隐切换时截图尺寸过渡正常；非截图资产构图不变。
-6. 回归抽查：顶部信息区、底部布局、翻页、双击/捏合、标记→确认页流程。
-7. 顺带核查（无代码，第 76 条挂账）：重启 App 观察徽标 88 跨会话残留是否复现。
+### 已由 Lynn 判定**通过**的七项（④，下发单 v5 确认，本卡未改动其相关代码）
 
-**8 项全部可测。**
+1. 已编辑照片：S2 占用空间 = 系统「信息」页原始大小 ✓
+2. 已编辑视频：同上 ✓
+3. 未编辑照片/视频各抽一张：数值与此前一致 ✓
+3b. 已编辑 LivePhoto：只计静态图原始主资源（配对视频不计入）✓
+4. 隐藏态：1x 上滑无反应；下滑回显示态且缩放/页码/标记不变；显示态与 Nx 照旧 ✓
+6. 回归抽查：顶部信息区、底部布局、翻页、双击/捏合、标记→确认页流程 ✓
+7. 顺带核查（无代码，第 76 条挂账）：徽标 88 跨会话残留是否复现 ✓
+
+### 第 5 项返工后的复测清单（决策会话 v7 确认为六点，原样列出）
+
+① 顶缘与旧版一致；
+② 底距 = 顶距；
+③ 第三段 30.7 不变；
+④ 隐藏态仍填满；
+⑤ 显隐切换过渡观感（缩放伴随竖移）；
+⑥ **捏合起手 / 双击进入的瞬间跳变观感（尺寸跳变旧已有，新增约 17 pt 位移分量）**。
+
+**六点全部可测**（CI #187 的包已含全部 C v3 实装）。第 ⑤ ⑥ 两点是本轮新增的观感判定，对应「行为变更登记」第 3、4 条；若 Lynn 不接受第 ⑥ 点，按 v7 裁定作为新产品输入另行修订 SPEC 决策 20。
 
 ## 卡内取定登记
 
@@ -381,9 +401,9 @@ C v2 改造的 8 个测试：`testIC104C…`、`testIC067G36…`（隐藏态回�
 
 ## 发现但未处理的问题（只报告不修）
 
-0. **C v3 停线的核心矛盾**（详见「子项 C v3」第六节）：④ 的带中心令 `s = 1` 与 `s > 1` 两个基准不再同心，捏合起手出现约 17 pt 瞬时位置突跳；`s > 1` 基准属本卡范围外且由 SPEC 决策 20 锁定，两端均不可改。已给出两个选项供决策会话裁定。
-0b. **上一轮（勘查停线）的矛盾已由下发单 v6 修订解除**：过渡 position 分量获授权，`testIC064G13ToG18` 的 `midY` 断言获准按端点改造。本轮已按修订实装完毕。
-0c. **与修订 1 字面不同的一处**：`fitBorderLayer` 是照片层的**子层**而非兄弟层，随父层自动平移，故未另加 position 分量（再加会双重平移）；收口由既有 `removeAllAnimations()` 覆盖。见第三节。
+0. **两处新的用户可见行为，须真机判定**（不是缺陷，是两条已锁定决策的几何必然，均已由决策会话裁定并入复测清单）：显隐切换的竖向平移（≈ 17.35 pt，有曲线）与捏合/双击进入 `s > 1` 的瞬时位置跳变（≈ 17.35 pt，无过渡）。见「行为变更登记」第 3、4 条与复测清单第 ⑤ ⑥ 点。
+0b. **与修订 1 字面不同的一处（已获 v7 追认）**：`fitBorderLayer` 是照片层的**子层**而非兄弟层，随父层自动平移，故未另加 position 分量（再加会双重平移）；收口由既有 `removeAllAnimations()` 覆盖，每层清净。
+0c. **#185 停线报告中三处②推定已更正**：`IC067G40`（断言的是 `s > 1` 基准）、`IC070G75` / `R5`（`isScreenshot: false`）、`assertFitBorderConcentric` / `IC063G4` / `IC070R6`（`midY` 为帧自身扫描坐标）均不受影响，实测全部通过。见第四节。
 1. **`S2CalibrationHarnessTests.swift:9909` 有一条过期注释**：IC-090 的历史叙述仍写「`schemaVersion == 4`（v2 保持不变）」，而同函数末尾的实际断言已是 `XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)`。**仅注释不一致，不影响断言**；该注释属 IC-090 测试，不在本卡范围内。
 2. **`Scripts/verify-IC-20260815-05x.ps1` 系列引用已重命名的测试名**（如 `testV8FitInsetRatioGeometryAndScopeAreCorrect`、`testD2ZeroFitInsetMatchesPureAspectFit`、`testF1FactoryInsetShrinksShortEdgeToSeventyPercent`）。这些是各卡历史验证脚本，**不在 CI 门禁之列**（`ci.yml` 只跑 `selfcheck.ps1` 与硬编码扫描），且其中部分自 IC-067 起就已过期，非本卡引入。`Scripts/` 在本卡范围外，未动。
 3. **`primaryResource` 无单元覆盖**（PhotoKit 类型不可构造），正确性只能由 H45 第 1/2/3/3b 项兜底。

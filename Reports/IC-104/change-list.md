@@ -1,32 +1,41 @@
-# IC-104 变更清单（A + B + C v2 已交付；C v3 实装后于捏合连续性冲突停线）
+# IC-104 变更清单（A + B + C v3 全部交付，CI #187 绿）
 
-## C v3：实装已提交，CI #185 红后停线
+## C v3：等距带改旧位锚定（收官，CI #187 绿）
 
 | 项 | 值 |
 |---|---|
-| 续做开工时分支 tip | `0b024cb8ac9760ca47f4e347000d755dd652f62f` |
-| **C v3 代码提交** | **`efca05012b1aca63e11c8ee7e6f74c99cc6242ca`** — `fix(s2): 等距带改旧位锚定，第三段间距不参与（IC-104 C v3）` |
-| CI | **#185 failure**（`33175294331`），`Executed 520 tests, with 12 failures`，无 IPA |
-| CI 预算 | **1 / 2 次已用**，剩 1 次未动用 |
-| 时间闸门 | 13:07:37Z 开工 / 16:07:37Z 到期，**未到期** |
-| `g ≤ 0` 停线条件 | **不触发** |
-| Cv3-3 停线信号 | `testIC100B2` 不在失败之列，**未触发** |
-| 最新绿 tip / run | `2d3d7894e4b2f1c66e889974a8ad5997f4870463` / **#184**（本轮未产出新复测包） |
+| **最终绿 tip** | **`0d461ccd6a7aa54a869d6494e9265785cb2a51b9`** |
+| **最终 CI** | **#187 success**（`33178302985`），9/9 步全绿，退出码 0，`Executed 520 tests, with 0 failures` |
+| **IPA** | **837925 字节**，SHA-256 **`747a8b6e15ff7443632d6afebb6863bec63b58ba850d8f7d3ed55eabe9c41991`**；artifact `PhotoCleanupMVE-unsigned-0d461ccd6a7a`（id `9688814042`，zip 838095） |
+| CI 预算（v7） | 2 次，**已用 2 次**（#186、#187） |
+| 时间闸门 | 13:50:56Z 开工 / 16:50:56Z 到期，**完成于 14:11:11Z** |
+| `g ≤ 0` / Cv3-3 | 均**未触发**（`testIC100B2` 全程未失败） |
 
-### 文件变化（`0b024cb..efca050`）
+### C v3 的三个提交
+
+| # | 完整 SHA | 提交信息首行 | CI |
+|---|---|---|---|
+| 1 | `efca05012b1aca63e11c8ee7e6f74c99cc6242ca` | `fix(s2): 等距带改旧位锚定，第三段间距不参与（IC-104 C v3）` | #185 红（520 / 12） |
+| 2 | `eb28f223aa92163817327c9d46d4db118b7bf7a6` | `fix(test): 按新契约改写摆放与边界连续性断言（IC-104 C v3 收官）` | #186 红（520 / 1） |
+| 3 | **`0d461ccd6a7aa54a869d6494e9265785cb2a51b9`** | `fix(test): X1 反向过渡终点改带中心（IC-104 C v3）` | **#187 绿（520 / 0）** |
+
+### 文件变化（`2d3d789..0d461cc`，即相对 C v2 绿 tip）
 
 | 文件 | 增 | 删 |
 |---|---|---|
 | `PhotoCleanupMVE/Features/S2/S2Calibration.swift` | 53 | 21 |
 | `PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift` | 93 | 9 |
 | `PhotoCleanupMVE/Features/S2/S2View.swift` | 1 | 0 |
-| `PhotoCleanupMVETests/S2CalibrationHarnessTests.swift` | 220 | 35 |
+| `PhotoCleanupMVETests/S2CalibrationHarnessTests.swift` | 332 | 52 |
 
-合计 **4 files, 367 insertions(+), 65 deletions(-)**。`chrome` 布局与 30.7 登记值零 diff；`schemaVersion` 维持 6；冻结三链未动；`main` 未触碰。
+**产品侧仅 3 个文件**，限于截图适配带推导与显示态摆放（含过渡 position 分量），满足 Cv3-2。chrome 布局函数（`actionBandCenterFromViewportBottom`、`stripBottomFromViewportBottom`、`stripTopFromViewportBottom`、`toastBottomFromViewportBottom`）与 `stripToActionVisibleBandSpacing` 的定义与取值**零 diff**；`schemaVersion == 6` 未动；冻结三链未动；`main` 未触碰。
 
 ### 关键差异
 
 ```diff
++    /// 旧版（v15 比例内缩）显示态截图 = `fitSize × 0.70` 后全视口垂直居中，
++    /// 与视口同比例的截图顶缘恒为 `(1 − 0.70) / 2 = 0.15` 倍视口高。
++    /// **不是可调参数，不进登记表。**
 +    static let legacyVisibleFitTopRatio: CGFloat = 0.15
 +
 +    static func screenshotBandTop(physicalSize: CGSize) -> CGFloat {
@@ -46,7 +55,7 @@
      let targetPhotoCenter = CGPoint(
          x: targetZoomBounds.midX,
 -        y: targetZoomBounds.midY
-+        y: oneXPhotoCenterYInZoomContent      // 带中心（显示态截图）/ 视口中心（其余）
++        y: oneXPhotoCenterYInZoomContent   // 带中心（显示态截图）／视口中心（其余）
      )
 ```
 
@@ -58,20 +67,38 @@
      )
 ```
 
+`fitBorderLayer` **不加** position 分量——它是照片层的子层（`hostingController.view.layer.addSublayer`，帧 = 父层 bounds），随父层平移；再加一份会双重平移。收口沿用既有 `removeAllAnimations()`，两层均清净。
+
 ### 测试改造
 
-| 测试 | 改动 |
-|---|---|
-| `testIC104C…AnchorsLegacyTopWithEqualGaps` | 改名（原 `…AnchorsChromeWithEqualSpacing`）；改用真实配对 393×852 + 顶 59 / 底 34；断言带顶缘 = 0.15×H、`g > 0`、底距 = 顶距、30.7 不参与等距 |
-| **新增** `testIC104CScreenshotRenderedFrameSitsAtLegacyTopAnchor` | **渲染帧**摆放断言（C v2 缺口）：显示态 `minY == 0.15×H`、底缘距横栏顶缘 `== g`；隐藏态回视口居中填满 |
-| `testIC064G13ToG18…` | 逐采样 `midY` 改区间断言（含过冲余量）；两端点精确断言（显示端 = 带中心、隐藏端 = 视口中心）；新增 position 关键帧断言；曲线/时长断言不动 |
-| `testD1` / `testD2` / `testF4` | 改用 `.zero` 安全区（`g = 42 > 0`）；D2 改为核「带顶缘只随视口高变」 |
+**新增 1 个**：`testIC104CScreenshotRenderedFrameSitsAtLegacyTopAnchor`——渲染帧摆放断言（补 C v2 缺口）。
 
-**测试函数 519 → 520。**
+**按新契约改写 9 处**（全部精确断言，未放宽容差、未删断言）：
 
-### 停线登记
+| 类 | 测试 | 新契约 |
+|---|---|---|
+| (i) | `testIC065G27…SitsAtBandCenter`（改名） | `midY == 带中心`、`minY == 0.15×H`、`视口中心 − 帧中心 == 跳变量` |
+| (i) | `testIC063G2…` | `minY == 带顶缘`、`midY == 带中心`（横向对称原样保留） |
+| (i) | `testIC065G31…` / `testIC067G41…` | `midY == expected.oneXDisplayCenterY`（覆盖 `.visible` / `.hidden` 两轮） |
+| (i) | `testIC067G36…` | `midY == 带中心` |
+| (ii) | `testIC065G28ToG29…CentersPerZoomState`（改名） | 每帧中心 == 其所处 `s` 态的规定中心；跳变量写成精确契约；接管后无跳变、横向无跳变原样保留 |
+| — | `testIC104C…AnchorsLegacyTopWithEqualGaps`（改名） | 真实配对 393×852；带顶缘 = 0.15×H、`g > 0`、底距 = 顶距、30.7 不参与等距 |
+| — | `testIC064G13ToG18…` | 逐采样 `midY` 区间断言 + 两端点精确断言 + position 关键帧断言；曲线/时长不动 |
+| — | `testX1…` | `reverseAnchor.y == 带中心`、`viewportAnchor.y − reverseAnchor.y == 跳变量`；`viewportAnchor` / `anchorPoint` / `targetScale` 原样保留且通过 |
+| — | `testD1` / `testD2` / `testF4` | 改用 `.zero` 安全区（`g = 42 > 0`）；D2 改核「带顶缘只随视口高变」 |
 
-CI #185 的 12 项失败分两类：**(i) 静态摆放事实**（`IC065G27`、`IC063G2`、`IC065G31`、`IC067G36`、`IC067G41`）与修订 2 授权改造的同类，可改；**(ii) 跨 `s=1 ↔ s>1` 边界的连续性契约**（`IC065G28`、`IC067G40`、`IC070G75`）不可改——④ 的带中心与 SPEC 决策 20 的全视口基准不同心，捏合起手瞬时突跳（夹具 29.85 pt，393×852 约 17.35 pt），两端均在本卡权限之外。完整证据与待裁定选项见 `self-check.md` 第六、七节。
+**新增夹具**：`expectedScreenshotBandCenterY`、`expectedOneXToNxCenterJump`（另有 C v2 遗留的 `expectedScreenshotBandHeight`）。**隐藏态与圆角断言零改动。**
+
+**测试函数 519 → 520**（新增 1，零删除）。
+
+### 行为变更登记（须 Lynn 真机判定）
+
+| # | 变更 | 幅度（393×852） | 依据 |
+|---|---|---|---|
+| 1 | 显示态截图顶缘回到 `0.15 × 视口高` | 127.8（旧位） | ④ Lynn |
+| 2 | 底距 = 顶距 = `g` | 20.8 | ④ Lynn |
+| 3 | 显隐切换照片随缩放**竖向平移** | ≈ 17.35 pt，同一 spring 曲线与时长 | 决策会话 v6 选项 A |
+| 4 | 捏合/双击进入 `s > 1` 的**瞬时位置跳变** | ≈ 17.35 pt，无过渡 | 决策会话 v7 选项 A |
 
 ## 分支与提交
 
