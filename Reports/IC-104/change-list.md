@@ -1,26 +1,77 @@
-# IC-104 变更清单（A + B + C v2 已交付；C v3 摆放勘查后停线）
+# IC-104 变更清单（A + B + C v2 已交付；C v3 实装后于捏合连续性冲突停线）
 
-## C v3：零代码改动
-
-**C v3 在卡内规定的「摆放勘查」一步停线，未产生任何代码提交。**
+## C v3：实装已提交，CI #185 红后停线
 
 | 项 | 值 |
 |---|---|
-| 开工时分支 tip | `d9dd55a770002f42fe19e9f395d3342a563c397f`（与下发单 v5 规定值相符） |
-| 产品侧 diff | **零** |
-| 测试侧 diff | **零** |
-| CI 预算 | **0 / 2 次已用**（未推送） |
-| 时间闸门 | 11:59:00Z 开工 / 14:59:00Z 到期，**未到期**（停线非超时） |
-| `g ≤ 0` 停线条件 | **不触发**（全部被支持输入下 `g > 0`，最小值 20.8 @ 393×852） |
-| 本次唯一改动 | `Reports/IC-104/self-check.md`、`Reports/IC-104/change-list.md`（报告） |
+| 续做开工时分支 tip | `0b024cb8ac9760ca47f4e347000d755dd652f62f` |
+| **C v3 代码提交** | **`efca05012b1aca63e11c8ee7e6f74c99cc6242ca`** — `fix(s2): 等距带改旧位锚定，第三段间距不参与（IC-104 C v3）` |
+| CI | **#185 failure**（`33175294331`），`Executed 520 tests, with 12 failures`，无 IPA |
+| CI 预算 | **1 / 2 次已用**，剩 1 次未动用 |
+| 时间闸门 | 13:07:37Z 开工 / 16:07:37Z 到期，**未到期** |
+| `g ≤ 0` 停线条件 | **不触发** |
+| Cv3-3 停线信号 | `testIC100B2` 不在失败之列，**未触发** |
+| 最新绿 tip / run | `2d3d7894e4b2f1c66e889974a8ad5997f4870463` / **#184**（本轮未产出新复测包） |
 
-**停线原因**：摆放勘查（卡内明文要求「先于一切改动」）查实 C v2 实际是**视口居中**而非带锚定，据此改摆放会与卡内另两条条款正面冲突——「过渡断言零改动」与「过渡属范围外」。三者不可兼得，且两条化解路分别触犯范围外与纪律 5。完整证据、数值核算与待裁定选项见 `self-check.md`「子项 C v3」。
+### 文件变化（`0b024cb..efca050`）
 
-**勘查产出（可直接用于续做）**：
-- `s = 1` 显示态几何写入单一入口 = `S2NativeZoomScrollView.enforceOneXContentGeometry`（`S2NativePhotoPager.swift:761`，落笔 `:805`）
-- 带几何数值已核算：夹具 300×600/`.zero` → 带顶缘 90、`g = 42`、带高 360.3、中心偏移 29.85；393×852/顶 59 → 带顶缘 127.8、`g = 20.8`、带高 561.7、**中心偏移 17.35**
-- 过渡无位置分量：`addPresentationLayerAnimations`（`:1744`）只构造 `transform.scale` + `cornerRadius`；`S2ImmersiveTransition`（`:36`）只建模锚点/尺寸/圆角
-- 冲突断言：`testIC064G13ToG18PresentationSamplesMeetGeometryContract` 逐采样 `XCTAssertEqual(sample.frame.midY, physicalSize.height / 2, accuracy: 0.5)`
+| 文件 | 增 | 删 |
+|---|---|---|
+| `PhotoCleanupMVE/Features/S2/S2Calibration.swift` | 53 | 21 |
+| `PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift` | 93 | 9 |
+| `PhotoCleanupMVE/Features/S2/S2View.swift` | 1 | 0 |
+| `PhotoCleanupMVETests/S2CalibrationHarnessTests.swift` | 220 | 35 |
+
+合计 **4 files, 367 insertions(+), 65 deletions(-)**。`chrome` 布局与 30.7 登记值零 diff；`schemaVersion` 维持 6；冻结三链未动；`main` 未触碰。
+
+### 关键差异
+
+```diff
++    static let legacyVisibleFitTopRatio: CGFloat = 0.15
++
++    static func screenshotBandTop(physicalSize: CGSize) -> CGFloat {
++        physicalSize.height * legacyVisibleFitTopRatio
++    }
++
++    static func screenshotBandTopSpacing(
++        physicalSize: CGSize,
++        safeAreaInsets: S2OverlaySafeAreaInsets
++    ) -> CGFloat {
++        screenshotBandTop(physicalSize: physicalSize) -
++            (safeAreaInsets.top + S2OverlayLayout.topBarHeight)
++    }
+```
+
+```diff
+     let targetPhotoCenter = CGPoint(
+         x: targetZoomBounds.midX,
+-        y: targetZoomBounds.midY
++        y: oneXPhotoCenterYInZoomContent      // 带中心（显示态截图）/ 视口中心（其余）
+     )
+```
+
+```diff
+     let photoGroup = presentationAnimationGroup(
+-        animations: [scaleAnimation, cornerAnimation],
++        animations: [scaleAnimation, cornerAnimation, positionAnimation],
+         duration: duration
+     )
+```
+
+### 测试改造
+
+| 测试 | 改动 |
+|---|---|
+| `testIC104C…AnchorsLegacyTopWithEqualGaps` | 改名（原 `…AnchorsChromeWithEqualSpacing`）；改用真实配对 393×852 + 顶 59 / 底 34；断言带顶缘 = 0.15×H、`g > 0`、底距 = 顶距、30.7 不参与等距 |
+| **新增** `testIC104CScreenshotRenderedFrameSitsAtLegacyTopAnchor` | **渲染帧**摆放断言（C v2 缺口）：显示态 `minY == 0.15×H`、底缘距横栏顶缘 `== g`；隐藏态回视口居中填满 |
+| `testIC064G13ToG18…` | 逐采样 `midY` 改区间断言（含过冲余量）；两端点精确断言（显示端 = 带中心、隐藏端 = 视口中心）；新增 position 关键帧断言；曲线/时长断言不动 |
+| `testD1` / `testD2` / `testF4` | 改用 `.zero` 安全区（`g = 42 > 0`）；D2 改为核「带顶缘只随视口高变」 |
+
+**测试函数 519 → 520。**
+
+### 停线登记
+
+CI #185 的 12 项失败分两类：**(i) 静态摆放事实**（`IC065G27`、`IC063G2`、`IC065G31`、`IC067G36`、`IC067G41`）与修订 2 授权改造的同类，可改；**(ii) 跨 `s=1 ↔ s>1` 边界的连续性契约**（`IC065G28`、`IC067G40`、`IC070G75`）不可改——④ 的带中心与 SPEC 决策 20 的全视口基准不同心，捏合起手瞬时突跳（夹具 29.85 pt，393×852 约 17.35 pt），两端均在本卡权限之外。完整证据与待裁定选项见 `self-check.md` 第六、七节。
 
 ## 分支与提交
 
