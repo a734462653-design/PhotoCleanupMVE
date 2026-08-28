@@ -1,4 +1,26 @@
-# IC-104 变更清单（single-build-batch，A + B + C v2 全部交付）
+# IC-104 变更清单（A + B + C v2 已交付；C v3 摆放勘查后停线）
+
+## C v3：零代码改动
+
+**C v3 在卡内规定的「摆放勘查」一步停线，未产生任何代码提交。**
+
+| 项 | 值 |
+|---|---|
+| 开工时分支 tip | `d9dd55a770002f42fe19e9f395d3342a563c397f`（与下发单 v5 规定值相符） |
+| 产品侧 diff | **零** |
+| 测试侧 diff | **零** |
+| CI 预算 | **0 / 2 次已用**（未推送） |
+| 时间闸门 | 11:59:00Z 开工 / 14:59:00Z 到期，**未到期**（停线非超时） |
+| `g ≤ 0` 停线条件 | **不触发**（全部被支持输入下 `g > 0`，最小值 20.8 @ 393×852） |
+| 本次唯一改动 | `Reports/IC-104/self-check.md`、`Reports/IC-104/change-list.md`（报告） |
+
+**停线原因**：摆放勘查（卡内明文要求「先于一切改动」）查实 C v2 实际是**视口居中**而非带锚定，据此改摆放会与卡内另两条条款正面冲突——「过渡断言零改动」与「过渡属范围外」。三者不可兼得，且两条化解路分别触犯范围外与纪律 5。完整证据、数值核算与待裁定选项见 `self-check.md`「子项 C v3」。
+
+**勘查产出（可直接用于续做）**：
+- `s = 1` 显示态几何写入单一入口 = `S2NativeZoomScrollView.enforceOneXContentGeometry`（`S2NativePhotoPager.swift:761`，落笔 `:805`）
+- 带几何数值已核算：夹具 300×600/`.zero` → 带顶缘 90、`g = 42`、带高 360.3、中心偏移 29.85；393×852/顶 59 → 带顶缘 127.8、`g = 20.8`、带高 561.7、**中心偏移 17.35**
+- 过渡无位置分量：`addPresentationLayerAnimations`（`:1744`）只构造 `transform.scale` + `cornerRadius`；`S2ImmersiveTransition`（`:36`）只建模锚点/尺寸/圆角
+- 冲突断言：`testIC064G13ToG18PresentationSamplesMeetGeometryContract` 逐采样 `XCTAssertEqual(sample.frame.midY, physicalSize.height / 2, accuracy: 0.5)`
 
 ## 分支与提交
 

@@ -1,10 +1,17 @@
-# IC-104 自验报告（single-build-batch，A + B + C v2 全部交付）
+# IC-104 自验报告（A + B + C v2 已交付；C v3 摆放勘查后停线）
 
 覆盖 IC-104 全程：首轮停线（CI #178）、恢复后子项 A 收官（#180）、子项 B 收官（#181）、子项 C v1 规格冲突停线（#182）、子项 C v2 交付（#183 → #184）。
 
 ## 结论（先行）
 
-**三个子项全部交付，最终 CI 绿。Lynn 的可测包 = CI #184，含 A + B + C。**
+**A、B、C v2 已交付并 CI 绿（#184）。C v3 在卡内规定的「摆放勘查」一步即停线——勘查结论推翻了卡的前提，且化解冲突的两条路都在本卡范围外或触犯纪律，故未做任何代码改动。**
+
+- **C v3 状态**：**停线，零代码改动**，工作树干净，分支 tip 仍为 `d9dd55a770002f42fe19e9f395d3342a563c397f`
+- **C v3 CI 预算**：**0 / 2 次已用**（未推送）
+- **`g ≤ 0` 停线条件**：**不触发**（全部被支持输入下 `g > 0`，见下）
+- **当时最新绿 tip 与 run**：`2d3d7894e4b2f1c66e889974a8ad5997f4870463` / **CI #184**（即 C v2 的包，H45 第 5 项在该包上已被 Lynn 判为不通过）
+
+**A、B、C v2 的交付事实（不受本次停线影响）：**
 
 - **最终绿 tip**①：`2d3d7894e4b2f1c66e889974a8ad5997f4870463`
 - **最终 CI**①：**#184 success**，9/9 步全绿，**真实退出码 0**，`Executed 519 tests, with 0 failures (0 unexpected) in 44.805 (71.379) seconds`
@@ -16,10 +23,120 @@
 
 **H45 人工判定 8 项全部可测**（第 5 项按下发单 v4 改读）。
 
+## 子项 C v3：摆放勘查与停线
+
+### 开工检查（通过）
+
+工作树净；分支 tip = `d9dd55a770002f42fe19e9f395d3342a563c397f`（与下发单 v5 规定值相符）。开工时刻 2026-08-28T11:59:00Z，3 小时闸门到期 14:59:00Z。
+
+### 一、摆放勘查结论（卡内第 2 项，先于一切改动）
+
+**C v2 的实际摆放是「视口居中」，不是带锚定。**①
+
+`s = 1` 显示态帧的几何写入**单一入口**是 `S2NativeZoomScrollView.enforceOneXContentGeometry`（`S2NativePhotoPager.swift:761`，落笔处 `writePhotoGeometry(reason: .enforceOneXContentGeometry)` 在 `:805`）：
+
+```swift
+let targetZoomBounds = CGRect(origin: .zero, size: nativeZoomBaseSize)
+let targetPhotoBounds = CGRect(origin: .zero, size: fittedSize)
+let targetPhotoCenter = CGPoint(
+    x: targetZoomBounds.midX,
+    y: targetZoomBounds.midY          // ← 竖直方向取视口中心
+)
+```
+
+配合 `zoomContentView.center = (viewportSize.width / 2, viewportSize.height / 2)`，而截图的 `nativeZoomBaseSize` = `physicalSize`（整视口，`S2Calibration.swift:1188`），故照片几何中心恒与**视口**中心重合。`oneXDisplaySize` 只决定尺寸，摆放确实另有出处——与卡的预判一致。
+
+**C v2 的测试缺口属实**：`testIC104CScreenshotFitBoxAnchorsChromeWithEqualSpacing` 里的
+
+```swift
+let photoTop = topBarBottom + spacing
+let photoBottom = photoTop + screenshot.oneXDisplaySize.height
+XCTAssertEqual(photoBottom, stripTop - spacing, accuracy: 0.000_001)
+```
+
+其中 `photoTop` 是**被定义**为 `topBarBottom + spacing`，不是从渲染帧读出的——该断言是对计算值的算术恒等式，**从未校验过真实摆放**。这正是卡所说「C v2 的缺口」。
+
+**由此可确认 H45 第 5 项不通过的完整成因（两条，非一条）**：
+1. 顶距取 30.7（卡已裁定废除，改回旧位）；
+2. **摆放是视口居中**，因此即使把带高改对，照片顶缘仍不会落在带顶缘。
+
+### 二、C v3 带几何的数值核算（①，由代码常量推导）
+
+实测常量：`topBarHeight = 48`、`stripToActionVisibleBandSpacing = 30.7`、`resolvedStripHeight(30) = max(44, 30) = 44`、`stripTopFromViewportBottom(safeBottom) = actionVisibleBandTop + 30.7 + 44`。
+
+| 输入 | 带顶缘 `0.15 × H` | 顶部栏底缘 | **`g`** | 横栏顶缘 | 带底缘 | 带高 | 带中心 | 视口中心 | **中心偏移** |
+|---|---|---|---|---|---|---|---|---|---|
+| 夹具 300×600，`.zero` | 90 | 48 | **42** | 492.3 | 450.3 | 360.3 | 270.15 | 300 | **29.85** |
+| 393×852，顶 59 / 底 34 | 127.8 | 107 | **20.8** | 710.3 | 689.5 | 561.7 | 408.65 | 426 | **17.35** |
+
+`g = 42` 与 `g ≈ 20.8`、带顶缘 90 与 127.8 **与卡内给出的参考数逐个吻合**，可确认本报告对带定义的读法与卡一致。
+
+**`g ≤ 0` 停线检查（卡内明文要求）：不触发。** 全部被支持几何输入下 `g > 0`：
+
+| 视口 | 安全区顶 | `g = 0.15H − (top + 48)` |
+|---|---|---|
+| 393×852 | 59 | **20.8**（最小值） |
+| 390×844 | 47 | 31.6 |
+| 430×932 | 62 | 29.8 |
+| 428×926 | 47 | 43.9 |
+| 375×812 | 44 | 29.8 |
+| 375×667 | 20 | 32.05 |
+| 320×568 | 20 | 17.2 |
+| 夹具 300×600 | 0 | 42 |
+
+### 三、停线：卡的前提被勘查推翻，且两条化解路都不可走
+
+卡同时要求三件事，**三者不可兼得**：
+
+| 卡内条款 | 出处 |
+|---|---|
+| (a) 把截图显示态摆放改为**几何中心与带中心重合** | 范围内第 2 项（明文「属本卡范围内的产品改动」） |
+| (b) **显隐过渡与 #184 逐条一致**；`隐藏态/过渡/圆角断言零改动` | 目标语义 + 范围内第 4 项 |
+| (c) `过渡` 语义属**范围外** | 范围外 |
+
+**冲突的实测依据**①：
+
+1. **过渡动画没有位置分量。** `addPresentationLayerAnimations`（`S2NativePhotoPager.swift:1744`）为照片层只构造 `transform.scale` 与 `cornerRadius` 两条 `CAKeyframeAnimation`，为 `fitBorderLayer` 只构造 `cornerRadius` 与 `borderWidth`；`S2ImmersiveTransition`（`:36`）只建模 `viewportAnchor` + 两个尺寸 + 两个圆角。过渡期间照片 `position` 固定在**源**稳态中心。
+
+2. **过渡测试逐采样断言照片竖直居中于视口。** `testIC064G13ToG18PresentationSamplesMeetGeometryContract` 中：
+
+   ```swift
+   for sample in hiding + showing {
+       ...
+       XCTAssertEqual(
+           sample.frame.midY,
+           physicalSize.height / 2,
+           accuracy: 0.5
+       )
+   ```
+
+**推论**：一旦按 (a) 把显示态中心移到带中心，(i) 该断言必然失败（夹具上 270.15 vs 300，超出 0.5 容差），与 (b)「过渡断言零改动」直接冲突；(ii) 过渡因无位置分量，会绕带中心缩放、在收口时把照片**跳回**视口中心，真机跳变量 **≈ 17.35 pt**（393×852），肉眼可见。
+
+**两条化解路，都不可走**：
+
+- **补过渡的 position 关键帧**（沿用同一 spring 曲线/时长/阻尼）：这是让 (a) 自洽的唯一技术路径，但改动落在 `过渡` 上——**范围外**，且「过渡期间照片是否平移」是产品观感决策，按角色边界不由执行会话取定；同时触及 CLAUDE.md 陷阱 6/8（动画层、收口需清干净每一层），本卡只有 2 次 CI 预算。
+- **把跳变写进测试当作预期**（例如按方向分别断言源中心）：等于把已知缺陷登记为正确行为，触犯纪律 5「不伪造通过」与纪律 4「不为测试改产品/期望」。
+
+**为何不做「只改带高、不改摆放」的部分交付**：那样 393×852 上照片顶缘 = `(852 − 561.7) / 2 = 145.15`，而旧位是 **127.8**，仍差 17.35 pt——**Lynn 复测的第一条（顶缘与旧版一致）依旧不通过**，等于消耗一次真机复测却必然失败，比不交付更差。故不做部分交付。
+
+**结论**：按 CLAUDE.md 纪律 3（假设被推翻要说，不硬套假设、不凑逻辑）、纪律 1（完成即停）与角色边界（不做产品决策），**停在勘查步，零代码改动，交由决策会话裁定**。
+
+### 四、需要决策会话裁定的问题（一条）
+
+**显示态摆放移到带中心后，显隐过渡期间照片是否随之平移？**
+
+- **选项 A**：补 position 关键帧，与现有 scale/cornerRadius 同组、同 spring 曲线与时长（过渡语义不变，只是端点位置变了）。需同时授权修改 `testIC064G13ToG18` 的逐采样 `midY` 断言（该断言本质是**摆放**断言，落在过渡测试内），并明确 `fitBorderLayer` 是否同步平移（陷阱 8）。
+- **选项 B**：另定过渡形态（例如显示态与隐藏态共用某一固定锚点、或过渡期间不平移而在别处补偿）。属产品观感决策。
+
+裁定后本卡可直接续做：带几何推导与 `g` 数值均已核算完毕（上表），`g ≤ 0` 不触发，摆放写入单一入口已定位，剩余工作是按裁定实装 + 补摆放断言。
+
 ## 输入与边界
 
 | 项 | 值 |
 |---|---|
+| C v3 开工 `git status --porcelain` | 空（纪律 8 检查通过） |
+| C v3 开工时分支 tip | `d9dd55a770002f42fe19e9f395d3342a563c397f`（与下发单 v5 规定值相符） |
+| C v3 开工时刻 / 时间闸门 | 2026-08-28T11:59:00Z / 14:59:00Z（**未到期**，停线非超时） |
 | C v2 开工 `git status --porcelain` | 空（纪律 8 检查通过） |
 | C v2 开工时分支 tip | `44ca59f4c0dfced6b96a3b2cb67d3427d7136301`（与下发单 v4 规定值相符） |
 | 分支 | `feature/ic-104-single-build-batch`（**全程未合并进 `main`**） |
@@ -281,6 +398,7 @@ C v2 改造的 8 个测试：`testIC104C…`、`testIC067G36…`（隐藏态回�
 
 ## 发现但未处理的问题（只报告不修）
 
+0. **C v3 停线的核心矛盾**（详见「子项 C v3」第三节）：卡内 (a) 摆放改带中心、(b) 过渡断言零改动、(c) 过渡属范围外，三者不可兼得。已给出两个选项供决策会话裁定。
 1. **`S2CalibrationHarnessTests.swift:9909` 有一条过期注释**：IC-090 的历史叙述仍写「`schemaVersion == 4`（v2 保持不变）」，而同函数末尾的实际断言已是 `XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)`。**仅注释不一致，不影响断言**；该注释属 IC-090 测试，不在本卡范围内。
 2. **`Scripts/verify-IC-20260815-05x.ps1` 系列引用已重命名的测试名**（如 `testV8FitInsetRatioGeometryAndScopeAreCorrect`、`testD2ZeroFitInsetMatchesPureAspectFit`、`testF1FactoryInsetShrinksShortEdgeToSeventyPercent`）。这些是各卡历史验证脚本，**不在 CI 门禁之列**（`ci.yml` 只跑 `selfcheck.ps1` 与硬编码扫描），且其中部分自 IC-067 起就已过期，非本卡引入。`Scripts/` 在本卡范围外，未动。
 3. **`primaryResource` 无单元覆盖**（PhotoKit 类型不可构造），正确性只能由 H45 第 1/2/3/3b 项兜底。
