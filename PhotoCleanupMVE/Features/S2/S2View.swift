@@ -59,6 +59,10 @@ struct S2ImageContentContext {
     /// IC-093 R1：被抑制的替换回调，仅供诊断埋点记录。
     var onImageReplacementSuppressed:
         (S2ImageReplacementSuppressionReading) -> Void = { _ in }
+    /// IC-108 B：图像请求发起观测（目标尺寸），仅供探针记录。
+    var onImageRequestStarted: (CGSize) -> Void = { _ in }
+    /// IC-108 B：原始回调观测（是否主线程、返回像素尺寸），仅供探针记录。
+    var onImageRequestRawResult: (Bool, CGSize) -> Void = { _, _ in }
 }
 
 struct S2BottomStripItemPresentation {
@@ -701,6 +705,16 @@ struct S2View: View {
                     imageLoadStateRegistry.recordImageReplacement(record)
                     transitionDiagnostics.recordImageReplacement(record)
                 },
+                // IC-093 R1：像素更少而未上屏的返回结果只记事件，不改任何登记状态。
+                onImageReplacementSuppressed: {
+                    [transitionDiagnostics] reading in
+                    transitionDiagnostics.recordImageReplacementSuppressed(
+                        assetID: assetID,
+                        resultName: reading.result.diagnosticName,
+                        displayedPixelSize: reading.displayedPixelSize,
+                        candidatePixelSize: reading.candidatePixelSize
+                    )
+                },
                 // IC-108 B：图像请求发起 / 原始回调（含真实线程与返回像素）转给探针。
                 onImageRequestStarted: { [doubleTapProbe] targetSize in
                     doubleTapProbe.recordImageRequestStarted(
@@ -715,16 +729,6 @@ struct S2View: View {
                         onMainThread: isMain,
                         pixelSize: pixelSize,
                         timestamp: CACurrentMediaTime()
-                    )
-                },
-                // IC-093 R1：像素更少而未上屏的返回结果只记事件，不改任何登记状态。
-                onImageReplacementSuppressed: {
-                    [transitionDiagnostics] reading in
-                    transitionDiagnostics.recordImageReplacementSuppressed(
-                        assetID: assetID,
-                        resultName: reading.result.diagnosticName,
-                        displayedPixelSize: reading.displayedPixelSize,
-                        candidatePixelSize: reading.candidatePixelSize
                     )
                 }
             ))
