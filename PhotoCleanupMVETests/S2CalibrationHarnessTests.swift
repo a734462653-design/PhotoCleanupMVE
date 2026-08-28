@@ -8976,6 +8976,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
 /// IC-099b P3：计数用的假取数实现。只记录被问过哪些资产，不做任何 IO。
 /// IC-099 阶段二 C2/C3：计数用的假取数实现。记录被问过哪些资产，不做任何 IO。
+@MainActor
 private final class CountingAssetVolumeProvider: S2AssetVolumeProviding {
     private let byteCounts: [String: Int64?]
     private(set) var requestedAssetIDs: [String] = []
@@ -8997,6 +8998,7 @@ private final class CountingAssetVolumeProvider: S2AssetVolumeProviding {
     }
 }
 
+@MainActor
 private final class CountingAssetSizeProber: S2AssetSizeProbing {
     private(set) var requestedAssetIDs: [String] = []
 
