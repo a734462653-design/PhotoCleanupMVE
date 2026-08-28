@@ -9079,8 +9079,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
     ) -> (firstNonBackground: Int?, coverage: CGFloat) {
         var first: Int?
         var coverage: CGFloat = 0
+        // IC-104 C v4：背景判定阈值 250 → 238，避开抗锯齿死区。
+        // 圆角弧外沿必然存在一枚部分覆盖的 AA 像素（#188 实测 241）；旧阈值
+        // 把它记为 `firstNonBackground`，随即命中 `>= photoGray - 3`（234）而
+        // `break`，`coverage` 归零——扫描在够到描边前就中止了。
+        // 阈值必须 `<= 241` 才能把该 AA 像素归为背景，又必须 `> photoGray`(237)
+        // 才不会吞掉照片，故有效窗口为 238…241；取下端以最大化 AA 相位容忍度。
+        // **照片判定（`first >= 234` 即 break）原样保留**：若底角实为照片露边，
+        // 跳过薄边后下一采样即 237，`first = 237` 仍不满足 `< 234`，测试照旧红。
         for gray in grays {
-            if gray >= 250 {
+            if gray >= 238 {
                 if first != nil {
                     break
                 }
