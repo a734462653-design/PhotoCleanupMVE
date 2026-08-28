@@ -8976,10 +8976,18 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
 /// IC-099b P3：计数用的假取数实现。只记录被问过哪些资产，不做任何 IO。
 /// IC-099 阶段二 C2/C3：计数用的假取数实现。记录被问过哪些资产，不做任何 IO。
-@MainActor
 private final class CountingAssetVolumeProvider: S2AssetVolumeProviding {
     private let byteCounts: [String: Int64?]
-    private(set) var requestedAssetIDs: [String] = []
+    /// `byteCount(assetID:)` 是非隔离 `async`，多个在途资产会在并发执行器上同时
+    /// 进入该方法，记录数组必须过锁；读取一并过锁，避免读到半个写入。
+    private let recordLock = NSLock()
+    private var recordedAssetIDs: [String] = []
+
+    var requestedAssetIDs: [String] {
+        recordLock.lock()
+        defer { recordLock.unlock() }
+        return recordedAssetIDs
+    }
 
     var requestCount: Int {
         requestedAssetIDs.count
@@ -8990,7 +8998,9 @@ private final class CountingAssetVolumeProvider: S2AssetVolumeProviding {
     }
 
     func byteCount(assetID: String) async -> Int64? {
-        requestedAssetIDs.append(assetID)
+        recordLock.lock()
+        recordedAssetIDs.append(assetID)
+        recordLock.unlock()
         guard let value = byteCounts[assetID] else {
             return nil
         }
@@ -8998,16 +9008,25 @@ private final class CountingAssetVolumeProvider: S2AssetVolumeProviding {
     }
 }
 
-@MainActor
 private final class CountingAssetSizeProber: S2AssetSizeProbing {
-    private(set) var requestedAssetIDs: [String] = []
+    /// 同 `CountingAssetVolumeProvider`：`measure(assetID:)` 非隔离且可并发进入。
+    private let recordLock = NSLock()
+    private var recordedAssetIDs: [String] = []
+
+    var requestedAssetIDs: [String] {
+        recordLock.lock()
+        defer { recordLock.unlock() }
+        return recordedAssetIDs
+    }
 
     var measureCount: Int {
         requestedAssetIDs.count
     }
 
     func measure(assetID: String) async -> S2AssetSizeProbeMeasurement {
-        requestedAssetIDs.append(assetID)
+        recordLock.lock()
+        recordedAssetIDs.append(assetID)
+        recordLock.unlock()
         return S2AssetSizeProbeMeasurement(
             assetID: assetID,
             mediaKind: .photo,
