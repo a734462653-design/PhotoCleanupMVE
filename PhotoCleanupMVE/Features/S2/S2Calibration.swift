@@ -1156,11 +1156,14 @@ enum S2ViewportLayout {
             CGFloat(configuration.bottomStripCurrentItemSize),
             CGFloat(configuration.bottomStripNeighborItemHeight)
         )
-        // IC-104 C：截图适配框的上下缘由 chrome 推导，**与 V 显隐无关**
-        // （同 IC-100 B2 不变量：隐藏态尺寸不变，故这里不读 interfaceVisibility）。
+        // IC-104 C v2：截图适配框的上下缘由 chrome 推导，但**仅限 V=显示**。
+        // 隐藏态仍按规格 v16 第 121/177 行填满视口（截图沉浸，行为恒开），
+        // 故 `keepsFrame` 与尺寸、圆角两者的门控条件完全一致。
         // 顶缘 = 顶部栏底缘 + 30.7；底缘 = 底部横栏顶缘 − 30.7。
         // 水平方向仍走等比适配与居中：把带高连同视口宽交给 `aspectFitSize`。
-        let displaySize = isScreenshot
+        let keepsFrame = isScreenshot &&
+            presentationState.interfaceVisibility == .visible
+        let displaySize = keepsFrame
             ? S2Geometry.aspectFitSize(
                 viewportSize: CGSize(
                     width: physicalSize.width,
@@ -1185,9 +1188,8 @@ enum S2ViewportLayout {
             nativeZoomBaseSize: isScreenshot ? physicalSize : fitSize,
             isFramedPhoto: isScreenshot,
             oneXDisplaySize: displaySize,
-            // 圆角沿用既有规则（截图且 V=显示），本卡只改尺寸口径。
-            oneXCornerRadius: isScreenshot &&
-                presentationState.interfaceVisibility == .visible
+            // 圆角沿用既有规则（截图且 V=显示），与尺寸同一门控。
+            oneXCornerRadius: keepsFrame
                 ? CGFloat(configuration.fitCornerRadius)
                 : 0,
             aspectFillMultiplier: fillMultiplier,
