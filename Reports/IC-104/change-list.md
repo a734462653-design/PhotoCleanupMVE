@@ -1,4 +1,65 @@
-# IC-104 变更清单（A + B + C v3 全部交付，CI #187 绿）
+# IC-104 变更清单（A + B 已交付；C v3 绿于 #187，C v4 停线于描边探针歧义）
+
+## C v4：带底缘改锚横栏视觉顶缘（CI #188 红后停线）
+
+| 项 | 值 |
+|---|---|
+| 开工时分支 tip | `c09e5c915a672ba1a8b1fc5aff78dd9b849c66d5` |
+| **C v4 代码提交** | **`4996873e8e102096e5de07913b035bab34a450d1`** — `fix(s2): 带底缘改锚横栏视觉顶缘（IC-104 C v4）` |
+| CI | **#188 failure**（`33184560783`），`Executed 520 tests, with 8 failures`，退出码 **65**，无 IPA |
+| CI 预算 | **1 / 2 次已用**，剩 1 次未动用 |
+| 时间闸门 | 15:11:36Z 开工 / 17:11:36Z 到期，**未到期** |
+| Cv4-3 | 失败不含 `testIC100B2`；8 项全在单个测试 `testIC070G77…` |
+| 最新绿 tip / run | `0d461ccd6a7aa54a869d6494e9265785cb2a51b9` / **#187**（本轮未产出改进包） |
+
+### 文件变化（`c09e5c9..4996873`）
+
+| 文件 | 增 | 删 |
+|---|---|---|
+| `PhotoCleanupMVE/Features/S2/S2Calibration.swift` | 22 | 4 |
+| `PhotoCleanupMVETests/S2CalibrationHarnessTests.swift` | 13 | 2 |
+
+**Cv4-2 核验通过**：产品侧仅一个文件；`stripTopFromViewportBottom` / `resolvedStripHeight` 本体、渲染层、`S2View.swift`、`S2NativePhotoPager.swift`、chrome 布局零 diff；`schemaVersion == 6`；冻结三链未动；`main` 未触碰。
+
+### 关键差异
+
+```diff
++    /// IC-104 C v4：底部横栏的**视觉**顶缘距视口底。
++    /// `stripTopFromViewportBottom` 内含 `resolvedStripHeight = max(44, 横栏高)`
++    /// 的触控带下限，是给手指的**触控锚**；渲染容器用**原始横栏高**，
++    /// 是给眼睛的**视觉锚**。出厂值下两者差 44 − 30 = 14 pt。
++    static func stripVisualTopFromViewportBottom(
++        safeAreaBottom: CGFloat,
++        bottomStripHeight: CGFloat
++    ) -> CGFloat {
++        S2OverlayLayout.stripBottomFromViewportBottom(
++            safeAreaBottom: safeAreaBottom
++        ) + bottomStripHeight
++    }
+```
+
+```diff
+         let stripTop = physicalSize.height -
+-            S2OverlayLayout.stripTopFromViewportBottom(
++            stripVisualTopFromViewportBottom(
+                 safeAreaBottom: safeAreaInsets.bottom,
+                 bottomStripHeight: bottomStripHeight
+             )
+```
+
+### 带常量硬编码全量扫描：**0 处**
+
+`382.9` / `191.45` / `289.9` / `270.15` / `29.85` / `450.3` / `561.7` / `17.35`（另 `360.3` / `127.8` / `20.8`）全部 0 处——C v3 已一律写成推导式。测试侧实际只改两处触控锚 → 视觉锚，并新增一条锁定 `视觉锚 − 触控锚 == max(44, 横栏高) − 横栏高` 的断言。`testIC100B6`（toast，范围外）未动。
+
+**测试函数 520 不变。**
+
+### 卡内数值笔误登记
+
+卡写「夹具带高 382.9 → 396.9」，但 382.9 是 **C v2** 的值；C v3 为 **360.3**，+14 应为 **374.3**。卡内其余数字（带底缘 464.3、带中心 277.15、跳变量 22.85、393×852 的 575.7）与推导逐个吻合。测试走推导式，不受影响。
+
+### 停线登记
+
+CI #188 的 8 项失败全部在 `testIC070G77FitBorderIsConcentricAtCornersBeforeAndAfterToggle`，仅**底部两角**，顶部两角与四条边全部通过（`edgeWidth = 1.0163` ≈ 1pt，描边渲染正确）。失败值 `first = 241` 落在探针 `borderScanReading` 的 **234–249 死区**内。该值有两种互斥读法（A 探针死区 / B 同心性亚像素偏差），单凭该值无法区分；按 A 处置而真相为 B 将掩盖真实伪影、触犯纪律 5，故停线。区分所需的 `grays=[…]` 打印已在 CI #188 日志中（job `98894082654`），本机日志端点不可用，决策会话可在浏览器直接读取。详见 `self-check.md` 第六～八节。
 
 ## C v3：等距带改旧位锚定（收官，CI #187 绿）
 
