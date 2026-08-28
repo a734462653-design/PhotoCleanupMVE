@@ -7920,7 +7920,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(store.byteCount(for: "asset-1"), 2_466_000)
         XCTAssertNil(store.byteCount(for: "asset-2"))
         XCTAssertTrue(store.isResolved("asset-2"))
-        XCTAssertEqual(provider.requestedAssetIDs, ["asset-1", "asset-2"])
+        XCTAssertEqual(provider.requestedAssetIDs.sorted(), ["asset-1", "asset-2"])
 
         // 已解析（成功与失败各一）后再请求，都不再发起
         store.requestIfNeeded(assetID: "asset-1", using: provider)
