@@ -465,95 +465,7 @@ final class S2ActionBarWiringTests: XCTestCase {
         }
         return value
     }
-}
 
-/// 测试用假写入服务：记录请求、延迟完成；加入相册沿用生产的 `PhotoAlbumAdditionPlan`，
-/// 已包含时不计写入。完成回调在调用方线程（主线程）同步触发。
-final class FakeAssetActionService: PhotoAssetActionServicing {
-    struct AdditionRequest: Equatable {
-        let assetID: String
-        let albumID: String
-    }
-
-    private let albums: [S2AlbumReference]
-    private let containedPairs: Set<String>
-    private(set) var favoriteRequests: [String] = []
-    private(set) var additionRequests: [AdditionRequest] = []
-    private(set) var albumExistsQueries: [String] = []
-    private(set) var writeCount = 0
-    private var pendingFavorites: [(Bool) -> Void] = []
-    private(set) var pendingAdditions: [(S2AlbumAdditionOutcome) -> Void] = []
-
-    init(
-        albums: [S2AlbumReference],
-        containedPairs: Set<String> = []
-    ) {
-        self.albums = albums
-        self.containedPairs = containedPairs
-    }
-
-    static func pair(_ albumID: String, _ assetID: String) -> String {
-        "\(albumID)|\(assetID)"
-    }
-
-    func toggleFavorite(
-        assetID: String,
-        completion: @escaping (Bool) -> Void
-    ) {
-        favoriteRequests.append(assetID)
-        pendingFavorites.append(completion)
-    }
-
-    func addAsset(
-        assetID: String,
-        toAlbumWithID albumID: String,
-        completion: @escaping (S2AlbumAdditionOutcome) -> Void
-    ) {
-        additionRequests.append(
-            AdditionRequest(assetID: assetID, albumID: albumID)
-        )
-        let plan = PhotoAlbumAdditionPlan.make(
-            albumExists: albums.contains { $0.id == albumID },
-            assetExists: !assetID.isEmpty,
-            alreadyContained: containedPairs.contains(
-                Self.pair(albumID, assetID)
-            )
-        )
-        switch plan {
-        case .albumUnavailable:
-            completion(.albumUnavailable)
-        case .assetUnavailable:
-            completion(.failure)
-        case .alreadyContained:
-            completion(.success(alreadyContained: true))
-        case .write:
-            writeCount += 1
-            pendingAdditions.append(completion)
-        }
-    }
-
-    func userAlbums() -> [S2AlbumReference] {
-        albums
-    }
-
-    func albumExists(id: String) -> Bool {
-        albumExistsQueries.append(id)
-        return albums.contains { $0.id == id }
-    }
-
-    func completePendingFavorite(succeeded: Bool) {
-        guard !pendingFavorites.isEmpty else {
-            return XCTFail("没有进行中的收藏写入")
-        }
-        pendingFavorites.removeFirst()(succeeded)
-    }
-
-    func completePendingAddition(with outcome: S2AlbumAdditionOutcome) {
-        guard !pendingAdditions.isEmpty else {
-            return XCTFail("没有进行中的相册写入")
-        }
-        pendingAdditions.removeFirst()(outcome)
-    }
     // MARK: - IC-110 B：chrome 换装
 
     // IC-110 B G269：布局锚零改动——换装只动容器样式，
@@ -643,6 +555,95 @@ final class FakeAssetActionService: PhotoAssetActionServicing {
         XCTAssertTrue(withHistory.favoriteEnabled)
         XCTAssertTrue(withHistory.recentAlbumEnabled)
         XCTAssertTrue(withHistory.addAlbumEnabled)
+    }
+}
+
+/// 测试用假写入服务：记录请求、延迟完成；加入相册沿用生产的 `PhotoAlbumAdditionPlan`，
+/// 已包含时不计写入。完成回调在调用方线程（主线程）同步触发。
+final class FakeAssetActionService: PhotoAssetActionServicing {
+    struct AdditionRequest: Equatable {
+        let assetID: String
+        let albumID: String
+    }
+
+    private let albums: [S2AlbumReference]
+    private let containedPairs: Set<String>
+    private(set) var favoriteRequests: [String] = []
+    private(set) var additionRequests: [AdditionRequest] = []
+    private(set) var albumExistsQueries: [String] = []
+    private(set) var writeCount = 0
+    private var pendingFavorites: [(Bool) -> Void] = []
+    private(set) var pendingAdditions: [(S2AlbumAdditionOutcome) -> Void] = []
+
+    init(
+        albums: [S2AlbumReference],
+        containedPairs: Set<String> = []
+    ) {
+        self.albums = albums
+        self.containedPairs = containedPairs
+    }
+
+    static func pair(_ albumID: String, _ assetID: String) -> String {
+        "\(albumID)|\(assetID)"
+    }
+
+    func toggleFavorite(
+        assetID: String,
+        completion: @escaping (Bool) -> Void
+    ) {
+        favoriteRequests.append(assetID)
+        pendingFavorites.append(completion)
+    }
+
+    func addAsset(
+        assetID: String,
+        toAlbumWithID albumID: String,
+        completion: @escaping (S2AlbumAdditionOutcome) -> Void
+    ) {
+        additionRequests.append(
+            AdditionRequest(assetID: assetID, albumID: albumID)
+        )
+        let plan = PhotoAlbumAdditionPlan.make(
+            albumExists: albums.contains { $0.id == albumID },
+            assetExists: !assetID.isEmpty,
+            alreadyContained: containedPairs.contains(
+                Self.pair(albumID, assetID)
+            )
+        )
+        switch plan {
+        case .albumUnavailable:
+            completion(.albumUnavailable)
+        case .assetUnavailable:
+            completion(.failure)
+        case .alreadyContained:
+            completion(.success(alreadyContained: true))
+        case .write:
+            writeCount += 1
+            pendingAdditions.append(completion)
+        }
+    }
+
+    func userAlbums() -> [S2AlbumReference] {
+        albums
+    }
+
+    func albumExists(id: String) -> Bool {
+        albumExistsQueries.append(id)
+        return albums.contains { $0.id == id }
+    }
+
+    func completePendingFavorite(succeeded: Bool) {
+        guard !pendingFavorites.isEmpty else {
+            return XCTFail("没有进行中的收藏写入")
+        }
+        pendingFavorites.removeFirst()(succeeded)
+    }
+
+    func completePendingAddition(with outcome: S2AlbumAdditionOutcome) {
+        guard !pendingAdditions.isEmpty else {
+            return XCTFail("没有进行中的相册写入")
+        }
+        pendingAdditions.removeFirst()(outcome)
     }
 }
 
