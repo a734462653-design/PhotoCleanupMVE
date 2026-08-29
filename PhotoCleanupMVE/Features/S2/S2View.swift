@@ -533,48 +533,10 @@ struct S2View: View {
 
                 // IC-110 D：教程浮层压在最上层（标定浮层之上），
                 // 但等真实手势的步骤整层不吃点击，手势原样落到主图。
-                if let step = tutorial.activeStep {
-                    S2TutorialOverlay(
-                        step: step,
-                        spotlight: S2TutorialSpotlight.targetRect(
-                            step: step,
-                            viewportSize: geometry.size,
-                            safeAreaInsets: safeAreaInsets,
-                            photoSize: viewportMetrics.oneXDisplaySize,
-                            photoCenterY: viewportMetrics.oneXDisplayCenterY,
-                            bottomStripHeight: viewportMetrics
-                                .bottomStripHeight,
-                            stripMetrics: machine.parameters
-                                .bottomStripMetrics,
-                            currentIndex: machine.currentIndex,
-                            showsRecentAlbumCapsule:
-                                machine.recentAlbum != nil
-                        ),
-                        spotlightCornerRadius:
-                            S2TutorialSpotlight.cornerRadius(for: step),
-                        photoCenterY: viewportMetrics.oneXDisplayCenterY,
-                        cardBottomInset: S2TutorialCardLayout.bottomInset(
-                            safeAreaBottom: safeAreaInsets.bottom,
-                            bottomStripHeight: viewportMetrics
-                                .bottomStripHeight
-                        ),
-                        onAcknowledge: { tutorial.acknowledge() },
-                        onSkip: { tutorial.skip() }
-                    )
-                    .task(id: step) {
-                        // 第 2 步「点击任意处或 2 秒后推进」的计时分支。
-                        guard step == .seeStripMark else {
-                            return
-                        }
-                        try? await Task.sleep(
-                            nanoseconds: UInt64(
-                                S2TutorialCoordinator.autoAdvanceSeconds *
-                                    1_000_000_000
-                            )
-                        )
-                        tutorial.acknowledge()
-                    }
-                }
+                tutorialOverlay(
+                    metrics: viewportMetrics,
+                    viewportSize: geometry.size
+                )
 
                 S2SafeAreaInsetsReader(insets: $safeAreaInsets)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -988,6 +950,58 @@ struct S2View: View {
         }
         .padding(.leading, safeAreaInsets.leading)
         .padding(.trailing, safeAreaInsets.trailing)
+    }
+
+    /// IC-113 C：教程浮层抽成独立 builder。
+    ///
+    /// #214 的编译失败即因这段内联在 `body` 的 `ZStack` 里，参数变多后
+    /// 整个 body 表达式超出类型检查预算（error: the compiler is unable to
+    /// type-check this expression in reasonable time）。抽出来后 body 只剩一次调用。
+    @ViewBuilder
+    private func tutorialOverlay(
+        metrics: S2ViewportMetrics,
+        viewportSize: CGSize
+    ) -> some View {
+        if let step = tutorial.activeStep {
+            let spotlight = S2TutorialSpotlight.targetRect(
+                step: step,
+                viewportSize: viewportSize,
+                safeAreaInsets: safeAreaInsets,
+                photoSize: metrics.oneXDisplaySize,
+                photoCenterY: metrics.oneXDisplayCenterY,
+                bottomStripHeight: metrics.bottomStripHeight,
+                stripMetrics: machine.parameters.bottomStripMetrics,
+                currentIndex: machine.currentIndex,
+                showsRecentAlbumCapsule: machine.recentAlbum != nil
+            )
+            let cardInset = S2TutorialCardLayout.bottomInset(
+                safeAreaBottom: safeAreaInsets.bottom,
+                bottomStripHeight: metrics.bottomStripHeight
+            )
+            S2TutorialOverlay(
+                step: step,
+                spotlight: spotlight,
+                spotlightCornerRadius:
+                    S2TutorialSpotlight.cornerRadius(for: step),
+                photoCenterY: metrics.oneXDisplayCenterY,
+                cardBottomInset: cardInset,
+                onAcknowledge: { tutorial.acknowledge() },
+                onSkip: { tutorial.skip() }
+            )
+            .task(id: step) {
+                // 第 2 步「点击任意处或 2 秒后推进」的计时分支。
+                guard step == .seeStripMark else {
+                    return
+                }
+                try? await Task.sleep(
+                    nanoseconds: UInt64(
+                        S2TutorialCoordinator.autoAdvanceSeconds *
+                            1_000_000_000
+                    )
+                )
+                tutorial.acknowledge()
+            }
+        }
     }
 
     /// IC-112 B：中央状态指示浮层。位置 = **主图几何中心**
@@ -2794,35 +2808,7 @@ struct S2TutorialOverlay: View {
             }
 
             // IC-113 C 步 2：一枚小箭头直指角标（角标在该缩略图右上角）。
-            if step == .seeStripMark {
-                S2TutorialArrowShape(direction: .down)
-                    .stroke(
-                        Color.white,
-                        style: StrokeStyle(
-                            lineWidth: S2TutorialGestureHint.arrowLineWidth,
-                            lineCap: .round,
-                            lineJoin: .round
-                        )
-                    )
-                    .frame(
-                        width: Self.badgeArrowLength,
-                        height: Self.badgeArrowLength
-                    )
-                    .shadow(
-                        color: Color.black.opacity(
-                            S2TutorialGestureHint.contrastShadowOpacity
-                        ),
-                        radius: S2TutorialGestureHint.contrastShadowRadius,
-                        x: 0,
-                        y: 1
-                    )
-                    .position(
-                        x: spotlight.maxX - Self.badgeArrowLength / 2,
-                        y: spotlight.minY - Self.badgeArrowLength / 2
-                    )
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
+            badgeArrow
 
             // IC-112 C 第 6 步：弧形箭头从提示卡方向兜向右上确认入口。
             if step == .confirmEntry {
@@ -2881,6 +2867,41 @@ struct S2TutorialOverlay: View {
             }
             .animation(.spring(response: 0.42, dampingFraction: 0.82), value: step)
             .ignoresSafeArea()
+    }
+
+    /// IC-113 C 步 2：指向角标的小箭头。抽成计算属性，避免把 `body` 的
+    /// `ZStack` 撑到类型检查预算之外（#214 即栽在同一个坑上）。
+    @ViewBuilder
+    private var badgeArrow: some View {
+        if step == .seeStripMark {
+            S2TutorialArrowShape(direction: .down)
+                .stroke(
+                    Color.white,
+                    style: StrokeStyle(
+                        lineWidth: S2TutorialGestureHint.arrowLineWidth,
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
+                .frame(
+                    width: Self.badgeArrowLength,
+                    height: Self.badgeArrowLength
+                )
+                .shadow(
+                    color: Color.black.opacity(
+                        S2TutorialGestureHint.contrastShadowOpacity
+                    ),
+                    radius: S2TutorialGestureHint.contrastShadowRadius,
+                    x: 0,
+                    y: 1
+                )
+                .position(
+                    x: spotlight.maxX - Self.badgeArrowLength / 2,
+                    y: spotlight.minY - Self.badgeArrowLength / 2
+                )
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 
     private var hintCard: some View {
