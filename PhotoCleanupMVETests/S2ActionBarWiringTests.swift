@@ -1438,8 +1438,9 @@ final class S2ActionBarWiringTests: XCTestCase {
     //
     // 以下均为**夹具驱动**的状态机断言，真机走查由 H47 兜底（陷阱 1）。
 
-    // IC-110 D：五步顺序推进——每一步只被它该等的那个真实事件推动。
-    func testIC110DTutorialAdvancesThroughFiveStepsInOrder() {
+    // IC-110 D：顺序推进——每一步只被它该等的那个真实事件推动。
+    // IC-112 C：由五步扩为六步（第 4 步之后插入收藏引导）。
+    func testIC110DTutorialAdvancesThroughAllStepsInOrder() {
         let store = S2InMemoryTutorialCompletionStore()
         let tutorial = S2TutorialCoordinator(store: store)
 
@@ -1466,9 +1467,15 @@ final class S2ActionBarWiringTests: XCTestCase {
         tutorial.assetDidBecomeUnmarked(assetID: "asset-9")
         XCTAssertEqual(tutorial.activeStep, .swipeDownToCancel)
         tutorial.assetDidBecomeUnmarked(assetID: "asset-2")
+        XCTAssertEqual(tutorial.activeStep, .favoriteGuide)
+
+        // IC-112 C 第 5 步只认「真实收藏成功」；点击无效。
+        tutorial.acknowledge()
+        XCTAssertEqual(tutorial.activeStep, .favoriteGuide)
+        tutorial.assetDidBecomeFavorited(assetID: "asset-2")
         XCTAssertEqual(tutorial.activeStep, .confirmEntry)
 
-        // 第 5 步点击任意处结束——完成，并落盘。
+        // 第 6 步点击任意处结束——完成，并落盘。
         XCTAssertFalse(store.completed)
         tutorial.acknowledge()
         XCTAssertNil(tutorial.activeStep)
