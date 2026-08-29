@@ -466,75 +466,188 @@ final class S2ActionBarWiringTests: XCTestCase {
         return value
     }
 
-    // MARK: - IC-110 B：chrome 换装
+    // MARK: - IC-111 A：chrome 几何对齐 v18 画布
 
-    // IC-110 B G269：布局锚零改动——换装只动容器样式，
-    // 顶栏高、左右控件宽、触控带、可见带高、横栏间距一律保持原值。
-    func testIC110BLayoutAnchorsAreUnchangedByChromeRestyle() {
-        XCTAssertEqual(S2OverlayLayout.topBarHeight, 48)
-        XCTAssertEqual(S2OverlayLayout.topLeadingControlWidth, 88)
+    // IC-111 A：画布常量逐条落值；v17 的三个量已废止（编译期即可证——
+    // 引用它们的断言本卡一并改写，符号不复存在）。
+    func testIC111ALayoutAnchorsMatchCanvas() {
+        XCTAssertEqual(S2OverlayLayout.chromeRowHeight, 44)
+        XCTAssertEqual(S2OverlayLayout.topRowTopInset, 3)
+        XCTAssertEqual(S2OverlayLayout.bottomRowBottomInset, 8)
+        XCTAssertEqual(S2OverlayLayout.chromeHorizontalMargin, 16)
+        XCTAssertEqual(S2OverlayLayout.stripToBottomRowSpacing, 24)
+        // 顶栏底缘 = 3 + 44 = 47（由画布两量推导，不是裸值）
+        XCTAssertEqual(S2OverlayLayout.topBarHeight, 47)
+        XCTAssertEqual(
+            S2OverlayLayout.topBarHeight,
+            S2OverlayLayout.topRowTopInset + S2OverlayLayout.chromeRowHeight,
+            accuracy: 0.000_001
+        )
+        // 未被本卡改动的量维持原值
         XCTAssertEqual(S2OverlayLayout.minimumTouchTarget, 44)
         XCTAssertEqual(S2OverlayLayout.minimumSpacing, 8)
         XCTAssertEqual(S2OverlayLayout.horizontalPadding, 8)
-        XCTAssertEqual(S2OverlayLayout.actionBarVisibleBandHeight, 22)
+    }
+
+    // IC-111 A：底排竖向逐层落在画布上（393×852、安全区底 34）——
+    // 下缘距视口底 42、上缘 86（画布 y=766）、横栏底缘 110（画布 y=742）。
+    func testIC111ABottomRowMatchesCanvasVerticalPositions() {
+        let safeBottom: CGFloat = 34
         XCTAssertEqual(
-            S2OverlayLayout.stripToActionVisibleBandSpacing,
-            30.7,
+            S2OverlayLayout.actionBandBottomFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ),
+            42,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2OverlayLayout.actionBandTopFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ),
+            86,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2OverlayLayout.actionBandCenterFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ),
+            64,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2OverlayLayout.stripBottomFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ),
+            110,
+            accuracy: 0.000_001
+        )
+        // 画布坐标核对：视口高 852 ⟹ 底排上缘 y = 766、横栏底缘 y = 742
+        XCTAssertEqual(
+            852 - S2OverlayLayout.actionBandTopFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ),
+            766,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            852 - S2OverlayLayout.stripBottomFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ),
+            742,
+            accuracy: 0.000_001
+        )
+        // 「横栏底缘 ↔ 底排上缘」恰为 24
+        XCTAssertEqual(
+            S2OverlayLayout.stripBottomFromViewportBottom(
+                safeAreaBottom: safeBottom
+            ) -
+                S2OverlayLayout.actionBandTopFromViewportBottom(
+                    safeAreaBottom: safeBottom
+                ),
+            S2OverlayLayout.stripToBottomRowSpacing,
             accuracy: 0.000_001
         )
     }
 
-    // IC-110 B：药丸取值自洽——圆钮与胶囊同高（视觉带对齐），
-    // 且完整落在 44 pt 触控带内，不撑高操作条外框。
-    func testIC110BChromePillMetricsFitInsideTouchTarget() {
-        XCTAssertEqual(S2ChromePillMetrics.circleDiameter, 36)
-        XCTAssertEqual(
-            S2ChromePillMetrics.capsuleMinHeight,
-            S2ChromePillMetrics.circleDiameter,
-            "圆钮与胶囊必须同高，否则底部视觉带不齐"
-        )
-        XCTAssertLessThanOrEqual(
-            S2ChromePillMetrics.circleDiameter,
-            S2OverlayLayout.minimumTouchTarget,
-            "圆钮不得超出 44 pt 触控带"
-        )
-        XCTAssertGreaterThan(S2ChromePillMetrics.capsuleHorizontalPadding, 0)
-        XCTAssertGreaterThan(S2ChromePillMetrics.iconPointSize, 0)
-        XCTAssertLessThan(
-            S2ChromePillMetrics.iconPointSize,
-            S2ChromePillMetrics.circleDiameter,
-            "图标必须小于圆钮直径"
-        )
+    // IC-111 A：底排随安全区自适应——锚的是安全区底而非视口底。
+    func testIC111ABottomRowFollowsSafeArea() {
+        for safeBottom in [CGFloat(0), 20, 34, 60] {
+            XCTAssertEqual(
+                S2OverlayLayout.actionBandBottomFromViewportBottom(
+                    safeAreaBottom: safeBottom
+                ),
+                safeBottom + S2OverlayLayout.bottomRowBottomInset,
+                accuracy: 0.000_001
+            )
+            // L2：底排下缘严格高于安全区底，不进主屏幕指示条区域
+            XCTAssertGreaterThan(
+                S2OverlayLayout.actionBandBottomFromViewportBottom(
+                    safeAreaBottom: safeBottom
+                ),
+                safeBottom
+            )
+        }
     }
 
-    // IC-110 B：顶栏三槽几何不因换装改变——仍是
-    // [左 88 宽, 中间剩余宽, 右 88 宽]，三者高度均为 topBarHeight。
-    func testIC110BTopElementFramesUnchangedByChromeRestyle() {
-        let bounds = CGRect(x: 0, y: 0, width: 390, height: 48)
+    // IC-111 A：药丸取值自洽——圆钮与胶囊同高且等于 chrome 行高；
+    // 可见带自此就是触控带本身（v17 的「可见带高 22」概念已废止）。
+    func testIC111AChromePillMetricsEqualChromeRow() {
+        XCTAssertEqual(
+            S2ChromePillMetrics.pillHeight,
+            S2OverlayLayout.chromeRowHeight,
+            "圆钮/胶囊高必须与 chrome 行高同源，否则可见带又会与模型脱节"
+        )
+        XCTAssertEqual(
+            S2ChromePillMetrics.pillHeight,
+            S2OverlayLayout.minimumTouchTarget,
+            accuracy: 0.000_001
+        )
+        XCTAssertGreaterThan(S2ChromePillMetrics.capsuleHorizontalPadding, 0)
+        XCTAssertLessThan(
+            S2ChromePillMetrics.circleIconPointSize,
+            S2ChromePillMetrics.pillHeight,
+            "图标必须小于圆钮直径"
+        )
+        // 画布字号
+        XCTAssertEqual(S2ChromePillMetrics.titleFontSize, 15)
+        XCTAssertEqual(S2ChromePillMetrics.subtitleFontSize, 11.5)
+        XCTAssertEqual(S2ChromePillMetrics.subtitleOpacity, 0.62, accuracy: 0.000_001)
+        XCTAssertEqual(S2ChromePillMetrics.bottomCapsuleIconPointSize, 17)
+        XCTAssertEqual(S2ChromePillMetrics.bottomCapsuleTextFontSize, 15)
+    }
+
+    // IC-111 A：顶排三槽改画布几何——左右 Ø44 圆钮、边距 16、行内下移 3。
+    func testIC111ATopElementFramesMatchCanvas() {
+        let bounds = CGRect(
+            x: 0,
+            y: 0,
+            width: 393,
+            height: S2OverlayLayout.topBarHeight
+        )
         let frames = S2OverlayLayout.topElementFrames(in: bounds)
         XCTAssertEqual(frames.count, 3)
-        XCTAssertEqual(frames[0].minX, 8, accuracy: 0.000_001)
-        XCTAssertEqual(frames[0].width, 88, accuracy: 0.000_001)
-        XCTAssertEqual(frames[2].maxX, 390 - 8, accuracy: 0.000_001)
-        XCTAssertEqual(frames[2].width, 88, accuracy: 0.000_001)
-        // 中槽夹在两者之间、各留 8 pt 间隔
+
+        // 左右为 Ø44 圆钮，贴 16 边距
+        XCTAssertEqual(frames[0].minX, 16, accuracy: 0.000_001)
+        XCTAssertEqual(frames[0].width, 44, accuracy: 0.000_001)
+        XCTAssertEqual(frames[2].maxX, 393 - 16, accuracy: 0.000_001)
+        XCTAssertEqual(frames[2].width, 44, accuracy: 0.000_001)
+
+        // 行整体下移 3，行高 44（不是 47——47 是含上留白的顶栏帧高）
+        for frame in frames {
+            XCTAssertEqual(
+                frame.minY,
+                S2OverlayLayout.topRowTopInset,
+                accuracy: 0.000_001
+            )
+            XCTAssertEqual(
+                frame.height,
+                S2OverlayLayout.chromeRowHeight,
+                accuracy: 0.000_001
+            )
+            XCTAssertLessThanOrEqual(
+                frame.maxY,
+                S2OverlayLayout.topBarHeight
+            )
+        }
+
+        // 中槽夹在两圆之间、各留 8 pt；且左右对称 ⟹ 居中
         XCTAssertEqual(
             frames[1].minX,
-            frames[0].maxX + 8,
+            frames[0].maxX + S2OverlayLayout.minimumSpacing,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
             frames[1].maxX,
-            frames[2].minX - 8,
+            frames[2].minX - S2OverlayLayout.minimumSpacing,
             accuracy: 0.000_001
         )
-        for frame in frames {
-            XCTAssertEqual(
-                frame.height,
-                S2OverlayLayout.topBarHeight,
-                accuracy: 0.000_001
-            )
-        }
+        XCTAssertEqual(
+            frames[1].midX,
+            bounds.width / 2,
+            accuracy: 0.000_001,
+            "中槽必须水平居中，胶囊居中于它即居中于屏"
+        )
     }
 
     // IC-110 B：中胶囊承载现有「加入最近相簿」按钮，沿用原条件显示语义——

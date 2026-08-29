@@ -360,12 +360,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // IC-087 G171：持久化数据的 `schemaVersion` 与代码版本不等（或缺失）→ 整套丢弃、取出厂值并删除条目；
     // 相等 → 按现行逐字段解码。IC-104 C：删除 fitInsetRatio，出厂值集合变更，版本 4 → 6
-    // （5 已被冻结的 feature/ic-092-nx-window-follow 链占用），导出文本含 schemaVersion=6。
+    // （5 已被冻结的 feature/ic-092-nx-window-follow 链占用），导出文本含 schemaVersion=7
+    // （IC-111 A 随 chrome 画布几何由 6 升 7；7 未被任何链占用）。
     func testIC087G171SchemaVersionGateDiscardsStaleStoreAndDeletesEntry() throws {
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 7)
         XCTAssertTrue(
             S2CalibrationConfiguration.factoryPlaceholder.exportText()
-                .contains("schemaVersion=6")
+                .contains("schemaVersion=7")
         )
 
         // 1) schemaVersion=3（IC-087 旧版）且 ceiling=10 → 出厂 40，且存储被删除。
@@ -380,9 +381,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(stale.saveCount, 0)
         XCTAssertFalse(staleModel.persistenceFailed)
 
-        // 2) schemaVersion=6 且 ceiling=12 → 12，存储保留。
+        // 2) schemaVersion=7 且 ceiling=12 → 12，存储保留。
         let current = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 6, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 7, ceiling: 12)
         )
         let currentModel = S2CalibrationModel(persistence: current)
         XCTAssertEqual(currentModel.configuration.pinchMaxScaleCeiling, 12)
@@ -398,13 +399,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNil(legacy.data)
         XCTAssertEqual(legacy.deleteCount, 1)
 
-        // 保存后的数据顶层带 schemaVersion=6，重新加载得同一配置。
+        // 保存后的数据顶层带 schemaVersion=7，重新加载得同一配置。
         XCTAssertTrue(currentModel.update { $0.pinchMaxScaleCeiling = 15 })
         let saved = try XCTUnwrap(current.data)
         let object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: saved) as? [String: Any]
         )
-        XCTAssertEqual(object["schemaVersion"] as? Int, 6)
+        XCTAssertEqual(object["schemaVersion"] as? Int, 7)
         XCTAssertEqual(
             S2CalibrationModel(persistence: current).configuration,
             currentModel.configuration
@@ -428,7 +429,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             L10n.text("s2.calibration.restore_factory").hasPrefix("【未定项 21 占位】")
         )
         let store = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 6, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 7, ceiling: 12)
         )
         let model = S2CalibrationModel(persistence: store)
         XCTAssertEqual(model.configuration.pinchMaxScaleCeiling, 12)
@@ -629,7 +630,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let viewport = overlayPhysicalSize
         let aspect = viewport.width / viewport.height
         let insets = overlaySafeAreaInsets
-        let spacing = S2OverlayLayout.stripToActionVisibleBandSpacing
+        let spacing = S2OverlayLayout.stripToBottomRowSpacing
         let stripHeight = max(
             CGFloat(configuration.bottomStripCurrentItemSize),
             CGFloat(configuration.bottomStripNeighborItemHeight)
@@ -704,21 +705,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(photoTop - topBarBottom, g, accuracy: 0.000_001)
         XCTAssertEqual(stripTop - photoBottom, g, accuracy: 0.000_001)
 
-        // 「横栏—操作条」间距维持 30.7，不参与等距（④ Lynn 明确选定）
+        // IC-111 A：「横栏—底排」间距改为 24，仍**不参与等距**（④ Lynn 选定）
         let stripBottom = viewport.height -
             S2OverlayLayout.stripBottomFromViewportBottom(
                 safeAreaBottom: insets.bottom
             )
-        let actionVisibleBandTop = viewport.height -
-            S2OverlayLayout.actionVisibleBandTopFromViewportBottom(
+        let bottomRowTop = viewport.height -
+            S2OverlayLayout.actionBandTopFromViewportBottom(
                 safeAreaBottom: insets.bottom
             )
         XCTAssertEqual(
-            actionVisibleBandTop - stripBottom,
+            bottomRowTop - stripBottom,
             spacing,
             accuracy: 0.000_001
         )
-        XCTAssertEqual(spacing, 30.7, accuracy: 0.000_001)
+        XCTAssertEqual(spacing, 24, accuracy: 0.000_001)
 
         // 水平仍是等比适配 + 居中
         XCTAssertEqual(
@@ -1352,8 +1353,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 S2OverlayLayout.minimumTouchTarget
             )
         }
-        XCTAssertEqual(frames[0].width, S2OverlayLayout.topLeadingControlWidth)
-        XCTAssertEqual(frames[2].width, S2OverlayLayout.topLeadingControlWidth)
+        // IC-111 A：左右已是 Ø`chromeRowHeight` 圆钮（原 88 宽控件废止）
+        XCTAssertEqual(frames[0].width, S2OverlayLayout.chromeRowHeight)
+        XCTAssertEqual(frames[2].width, S2OverlayLayout.chromeRowHeight)
         XCTAssertLessThan(frames[0].maxX, frames[1].minX)
         XCTAssertLessThan(frames[1].maxX, frames[2].minX)
 
@@ -1579,6 +1581,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-088 合并：+ IC-081 乘数 1 项 = 43，导出 43 + 4 = 47；IC-087：schemaVersion=3。
     // IC-090 R1：+ bottomStripCornerRadius 1 项 = 44，导出 44 + 4 = 48；schemaVersion=4。
     // IC-104 C：− fitInsetRatio 1 项 = 43，导出 43 + 4 = 47；出厂值集合变了，schemaVersion=6。
+    // IC-111 A：**字段数不变（仍 43）**，只因 chrome 布局常量整体改按 v18 画布
+    // 而升 schemaVersion=7——见报告「schemaVersion 说明」。
     func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
@@ -1590,8 +1594,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             .split(separator: "\n")
             .map(String.init)
         XCTAssertEqual(lines.count, 43 + 4)
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)
-        XCTAssertTrue(lines.contains("schemaVersion=6"))
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 7)
+        XCTAssertTrue(lines.contains("schemaVersion=7"))
         XCTAssertTrue(lines.contains(
             "taskID=IC-20260821-074-parameter-layer-v15-alignment"
         ))
@@ -9008,7 +9012,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertLessThan(stripFrame.maxY, actionFrames[0].minY)
         XCTAssertLessThanOrEqual(stripFrame.maxY, safeBottom)
 
-        // 横栏底缘距视口底 = 可见图标带顶缘 + 30.7（常规机型 67.0 + 30.7 = 97.7）
+        // IC-111 A：横栏底缘距视口底 = 底排上缘 + 24（常规机型 86 + 24 = 110）
         XCTAssertEqual(
             viewportBottom - stripFrame.maxY,
             S2OverlayLayout.stripBottomFromViewportBottom(
@@ -9016,7 +9020,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             ),
             accuracy: 1
         )
-        XCTAssertEqual(viewportBottom - stripFrame.maxY, 97.7, accuracy: 1)
+        XCTAssertEqual(viewportBottom - stripFrame.maxY, 110, accuracy: 1)
 
         // 触控带顶缘与横栏底缘之间的净空（卡内要求 ≥ 15 pt）
         XCTAssertGreaterThanOrEqual(
@@ -9046,22 +9050,24 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let viewportBottom = overlayPhysicalSize.height
         let safeBottom = viewportBottom - tallInsets.bottom
 
+        // IC-111 A：底排中心 = 安全区底 + 8 + 22（tall 机型 60 + 30 = 90）
         XCTAssertEqual(
             viewportBottom - actionFrame.midY,
-            tallInsets.bottom + S2OverlayLayout.minimumTouchTarget / 2,
+            tallInsets.bottom + S2OverlayLayout.bottomRowBottomInset +
+                S2OverlayLayout.chromeRowHeight / 2,
             accuracy: 0.5
         )
-        XCTAssertEqual(viewportBottom - actionFrame.midY, 82, accuracy: 0.5)
+        XCTAssertEqual(viewportBottom - actionFrame.midY, 90, accuracy: 0.5)
         for frame in frames {
             XCTAssertLessThanOrEqual(frame.maxY, safeBottom)
         }
-        // 两间距语义保持：横栏底缘仍是「可见带顶缘 + 30.7」
+        // 间距语义保持：横栏底缘仍是「底排上缘 + 24」
         XCTAssertEqual(
             viewportBottom - stripFrame.maxY -
-                S2OverlayLayout.actionVisibleBandTopFromViewportBottom(
+                S2OverlayLayout.actionBandTopFromViewportBottom(
                     safeAreaBottom: tallInsets.bottom
                 ),
-            S2OverlayLayout.stripToActionVisibleBandSpacing,
+            S2OverlayLayout.stripToBottomRowSpacing,
             accuracy: 0.000_001
         )
     }
@@ -9150,15 +9156,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
             ),
             accuracy: 0.000_001
         )
-        // 「操作条避让安全区贴近底缘」＝触控带底缘恰为安全区上沿
+        // IC-111 A：底排下缘 = 安全区底 + 8（画布把整排抬起，L2 更宽松地满足）
         XCTAssertEqual(
             S2OverlayLayout.actionBandBottomFromViewportBottom(
                 safeAreaBottom: safeBottom
             ),
-            safeBottom,
+            safeBottom + S2OverlayLayout.bottomRowBottomInset,
             accuracy: 0.000_001
         )
-        // 推导式自洽：顶 − 底 = 触控带高；可见带顶 − 中心 = 半个可见带
+        // 推导式自洽：上缘 − 下缘 = chrome 行高；中心恰在两者之间
         XCTAssertEqual(
             S2OverlayLayout.actionBandTopFromViewportBottom(
                 safeAreaBottom: safeBottom
@@ -9166,17 +9172,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 S2OverlayLayout.actionBandBottomFromViewportBottom(
                     safeAreaBottom: safeBottom
                 ),
-            S2OverlayLayout.minimumTouchTarget,
+            S2OverlayLayout.chromeRowHeight,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
-            S2OverlayLayout.actionVisibleBandTopFromViewportBottom(
+            S2OverlayLayout.actionBandCenterFromViewportBottom(
                 safeAreaBottom: safeBottom
             ) -
-                S2OverlayLayout.actionBandCenterFromViewportBottom(
+                S2OverlayLayout.actionBandBottomFromViewportBottom(
                     safeAreaBottom: safeBottom
                 ),
-            S2OverlayLayout.actionBarVisibleBandHeight / 2,
+            S2OverlayLayout.chromeRowHeight / 2,
             accuracy: 0.000_001
         )
     }
@@ -10643,7 +10649,7 @@ extension S2CalibrationHarnessTests {
             Double(S2BottomStripSystemReference.cornerRadius),
             accuracy: 0.000_000_001
         )
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 7)
 
         let metrics = tryUnwrap(configuration.resolvedParameters).bottomStripMetrics
         XCTAssertEqual(
@@ -10691,7 +10697,7 @@ extension S2CalibrationHarnessTests {
         var json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
-        XCTAssertEqual(json["schemaVersion"] as? Int, 6)
+        XCTAssertEqual(json["schemaVersion"] as? Int, 7)
         json.removeValue(forKey: "bottomStripCornerRadius")
         let legacy = try JSONSerialization.data(withJSONObject: json)
         let migrated = try JSONDecoder().decode(

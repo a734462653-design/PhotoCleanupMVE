@@ -843,8 +843,10 @@ struct S2View: View {
         ZStack(alignment: .bottom) {
             // 顶部信息区：几何与 IC-100 前逐字相同（只受顶部安全区约束）。
             VStack(spacing: 0) {
-                // IC-110 B：整条不再铺玻璃，改由三枚药丸各自承载材质。
-                // 帧高仍为 `topBarHeight`，几何模型与安全区推导不受影响。
+                // IC-111 A：顶栏帧高 = `topBarHeight`（3 + 44 = 47）；
+                // 行内由 `S2TopBarLayout` 按 `topElementFrames` 落位——
+                // 上缘留 `topRowTopInset` 3、左右 `chromeHorizontalMargin` 16。
+                // 渲染与门禁模型共用同一个 `topElementFrames`，不另起真相。
                 topBar
                     .frame(height: S2OverlayLayout.topBarHeight)
 
@@ -870,7 +872,7 @@ struct S2View: View {
             )
             .frame(maxWidth: .infinity)
             .frame(height: bottomStripHeight)
-            .background(.regularMaterial)
+            .background(.ultraThinMaterial)
             .padding(
                 .bottom,
                 S2OverlayLayout.stripBottomFromViewportBottom(
@@ -884,7 +886,7 @@ struct S2View: View {
             actionBar
                 .padding(
                     .horizontal,
-                    S2OverlayLayout.horizontalPadding
+                    S2OverlayLayout.chromeHorizontalMargin
                 )
                 .frame(maxWidth: .infinity)
                 .padding(
@@ -1018,7 +1020,7 @@ struct S2View: View {
                     onBack(payload)
                 }
             } label: {
-                Image(systemName: "chevron.left")
+                Image(systemName: "chevron.backward")
                     .s2ChromeCircleGlass()
             }
             .accessibilityLabel(L10n.text("s2.action.back"))
@@ -1076,7 +1078,10 @@ struct S2View: View {
                 now: Date()
             ) {
                 Text(verbatim: dateText)
-                    .font(.caption)
+                    .font(.system(
+                        size: S2ChromePillMetrics.titleFontSize,
+                        weight: .semibold
+                    ))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
             }
@@ -1087,8 +1092,12 @@ struct S2View: View {
                     for: machine.currentAssetID
                 )
             ))
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+            .font(.system(size: S2ChromePillMetrics.subtitleFontSize))
+            // 画布 ④：副行为白 62%。深色 chrome 上以 `.white` 加不透明度表达，
+            // 不用 `.secondary`——后者随环境浮动，对不上画布定值。
+            .foregroundStyle(
+                Color.white.opacity(S2ChromePillMetrics.subtitleOpacity)
+            )
             .lineLimit(1)
         }
         .task(id: machine.currentAssetID) {
@@ -1119,6 +1128,8 @@ struct S2View: View {
     /// `S2ActionBarPresentation` 的启用/禁用规则与触控带高度零语义变化，只换容器样式。
     private var actionBar: some View {
         let presentation = S2ActionBarPresentation(machine: machine)
+        // IC-111 A：左右圆钮贴边距 16，中胶囊被两侧 Spacer 夹住 ⟹ 宽随内容且
+        // 水平居中（画布 ④）。无最近相簿时两个 Spacer 合并，只余左右圆钮。
         return HStack(spacing: S2OverlayLayout.minimumSpacing) {
             Button {
                 guard let request = machine.makeFavoriteToggleRequest() else {
@@ -1135,7 +1146,8 @@ struct S2View: View {
             }
             .disabled(!presentation.favoriteEnabled)
             .accessibilityLabel(favoriteActionTitle)
-            .s2MinimumTouchTarget()
+
+            Spacer(minLength: 0)
 
             if let album = machine.recentAlbum {
                 Button {
@@ -1144,19 +1156,27 @@ struct S2View: View {
                     }
                     onRecentAlbumRequest(request)
                 } label: {
-                    Label(
-                        L10n.text(
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock")
+                            .font(.system(
+                                size: S2ChromePillMetrics
+                                    .bottomCapsuleIconPointSize,
+                                weight: .medium
+                            ))
+                        Text(verbatim: L10n.text(
                             "s2.action.add_recent_album",
                             replacing: ["album": album.name]
-                        ),
-                        systemImage: "clock"
-                    )
-                    .lineLimit(1)
+                        ))
+                        .font(.system(
+                            size: S2ChromePillMetrics
+                                .bottomCapsuleTextFontSize
+                        ))
+                        .lineLimit(1)
+                    }
                     .s2ChromeCapsuleGlass()
                 }
                 .disabled(!presentation.recentAlbumEnabled)
-                .s2MinimumTouchTarget(expandsHorizontally: true)
-            } else {
+
                 Spacer(minLength: 0)
             }
 
@@ -1165,14 +1185,13 @@ struct S2View: View {
                     _ = machine.presentAlbumPicker()
                 }
             } label: {
-                Image(systemName: "rectangle.stack.badge.plus")
+                Image(systemName: "plus.rectangle.on.rectangle")
                     .s2ChromeCircleGlass()
             }
             .disabled(!presentation.addAlbumEnabled)
             .accessibilityLabel(L10n.text("s2.action.add_album"))
-            .s2MinimumTouchTarget()
         }
-        .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
+        .frame(height: S2OverlayLayout.chromeRowHeight)
     }
 
     private var favoriteActionTitle: String {
@@ -1885,47 +1904,60 @@ struct S2View: View {
 ///
 /// 这些是**视觉微观取定**（卡内取定 + 报告登记），不是布局锚：
 /// 不进 `S2CalibrationConfiguration`、不上参数面板、`schemaVersion` 不动。
-/// 布局锚（`topBarHeight` 48、`topLeadingControlWidth` 88、
-/// `minimumTouchTarget` 44、`stripToActionVisibleBandSpacing` 30.7、
-/// 安全区与截图等距带推导）本卡**零改动**。
+/// 布局锚见 `S2OverlayLayout`——IC-111 A 已按 v18 画布整体重定
+/// （`chromeRowHeight` 44、`topRowTopInset` 3、`bottomRowBottomInset` 8、
+/// `chromeHorizontalMargin` 16、`stripToBottomRowSpacing` 24）。
 enum S2ChromePillMetrics {
-    /// 圆形按钮直径。取 36：贴近系统观感，且仍完整落在 44 pt 触控带内。
-    static let circleDiameter: CGFloat = 36
-
-    /// 跑道胶囊最小高度，与圆钮同高以对齐视觉带。
-    static let capsuleMinHeight: CGFloat = 36
+    /// 圆钮直径 = 胶囊高 = chrome 行高。IC-111 A 由 36 改为画布的 44，
+    /// 与 `S2OverlayLayout.chromeRowHeight` 同源，可见带自此就是触控带本身。
+    static var pillHeight: CGFloat {
+        S2OverlayLayout.chromeRowHeight
+    }
 
     /// 胶囊内水平留白。
-    static let capsuleHorizontalPadding: CGFloat = 12
+    static let capsuleHorizontalPadding: CGFloat = 14
 
-    /// 图标字号。
-    static let iconPointSize: CGFloat = 16
+    /// 圆钮图标字号（画布 ④）。
+    static let circleIconPointSize: CGFloat = 17
+
+    /// 顶部胶囊主行（日期）字号与字重（画布 ④）。
+    static let titleFontSize: CGFloat = 15
+
+    /// 顶部胶囊副行（序号·大小）字号与不透明度（画布 ④：白 62%）。
+    static let subtitleFontSize: CGFloat = 11.5
+    static let subtitleOpacity: Double = 0.62
+
+    /// 底部胶囊：时钟图标 17pt + 文字 15pt（画布 ④）。
+    static let bottomCapsuleIconPointSize: CGFloat = 17
+    static let bottomCapsuleTextFontSize: CGFloat = 15
 }
 
 private extension View {
-    /// 玻璃圆钮：定尺 + `.regularMaterial` 裁成正圆。
+    /// 玻璃圆钮：定尺 Ø44 + 系统深色毛玻璃裁成正圆。
+    ///
+    /// 材质取 `.ultraThinMaterial`（画布 ④ 指定），不是半透明色块。
     func s2ChromeCircleGlass() -> some View {
         font(
             .system(
-                size: S2ChromePillMetrics.iconPointSize,
+                size: S2ChromePillMetrics.circleIconPointSize,
                 weight: .semibold
             )
         )
         .frame(
-            width: S2ChromePillMetrics.circleDiameter,
-            height: S2ChromePillMetrics.circleDiameter
+            width: S2ChromePillMetrics.pillHeight,
+            height: S2ChromePillMetrics.pillHeight
         )
-        .background(.regularMaterial, in: Circle())
+        .background(.ultraThinMaterial, in: Circle())
     }
 
-    /// 玻璃跑道胶囊：水平留白 + 最小高度 + `.regularMaterial` 裁成胶囊。
+    /// 玻璃跑道胶囊：宽随内容 + 定高 44 + 同款毛玻璃。
     func s2ChromeCapsuleGlass() -> some View {
         padding(
             .horizontal,
             S2ChromePillMetrics.capsuleHorizontalPadding
         )
-        .frame(minHeight: S2ChromePillMetrics.capsuleMinHeight)
-        .background(.regularMaterial, in: Capsule())
+        .frame(height: S2ChromePillMetrics.pillHeight)
+        .background(.ultraThinMaterial, in: Capsule())
     }
 }
 
