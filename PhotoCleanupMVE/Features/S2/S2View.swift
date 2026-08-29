@@ -407,6 +407,11 @@ struct S2View: View {
     /// IC-110 C：标记残影的在途集合（决策 32 ④）。
     @StateObject private var markAfterimages =
         S2MarkAfterimageCoordinator()
+    /// IC-110 D：首次引导教程（未定项 20 ④）。持久化走 `UserDefaults`，
+    /// 不入标定出厂值、`schemaVersion` 不动。
+    @StateObject private var tutorial = S2TutorialCoordinator(
+        store: S2UserDefaultsTutorialCompletionStore()
+    )
     @StateObject private var feedbackToast: S2FeedbackToastPresenter
 
     init(
@@ -518,6 +523,29 @@ struct S2View: View {
                         )
                 )
 
+                // IC-110 D：教程浮层压在最上层（标定浮层之上），
+                // 但等真实手势的步骤整层不吃点击，手势原样落到主图。
+                if let step = tutorial.activeStep {
+                    S2TutorialOverlay(
+                        step: step,
+                        onAcknowledge: { tutorial.acknowledge() },
+                        onSkip: { tutorial.skip() }
+                    )
+                    .task(id: step) {
+                        // 第 2 步「点击任意处或 2 秒后推进」的计时分支。
+                        guard step == .seeStripMark else {
+                            return
+                        }
+                        try? await Task.sleep(
+                            nanoseconds: UInt64(
+                                S2TutorialCoordinator.autoAdvanceSeconds *
+                                    1_000_000_000
+                            )
+                        )
+                        tutorial.acknowledge()
+                    }
+                }
+
                 S2SafeAreaInsetsReader(insets: $safeAreaInsets)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
@@ -525,6 +553,12 @@ struct S2View: View {
             .allowsHitTesting(machine.sheetState == .closed)
             .onAppear {
                 _ = machine.applyCalibration(calibration.configuration)
+                // IC-110 D：首次进入 S2 放一次；已完成/已跳过过不再放。
+                tutorial.startIfNeeded()
+            }
+            .onDisappear {
+                // IC-110 D：中途离开 S2 视为跳过，不拦截。
+                tutorial.leaveScreen()
             }
             .onChange(of: calibration.configuration) { _, configuration in
                 _ = machine.applyCalibration(configuration)
@@ -558,19 +592,26 @@ struct S2View: View {
         // （第 132 条），不会产生新增，残影路径天然不存在。
         .onChange(of: machine.pendingDeletionAssetIDs) { previous, current in
             let inserted = current.subtracting(previous)
-            guard !inserted.isEmpty else {
-                return
-            }
+            let removed = previous.subtracting(current)
             let ordered = machine.orderedAssetIDs
-            for assetID in ordered where inserted.contains(assetID) {
-                guard let targetIndex = ordered.firstIndex(of: assetID) else {
-                    continue
-                }
+            for (index, assetID) in ordered.enumerated()
+            where inserted.contains(assetID) {
                 markAfterimages.begin(
                     assetID: assetID,
-                    targetIndex: targetIndex
+                    targetIndex: index
                 )
+                // IC-110 D 第 1 步：等的就是这个真实上滑标记。
+                tutorial.assetDidBecomeMarked(assetID: assetID)
             }
+            // IC-110 D 第 4 步：真实下滑取消＝集合移除。
+            // 残影不走这条分支——取消不做反向飞出（卡内取定）。
+            for assetID in removed {
+                tutorial.assetDidBecomeUnmarked(assetID: assetID)
+            }
+        }
+        // IC-110 D 第 3 步：等用户真实翻回刚标记那张。
+        .onChange(of: machine.currentAssetID) { _, assetID in
+            tutorial.currentAssetDidChange(to: assetID)
         }
         .onChange(of: machine.feedbackEvent) { _, event in
             guard event != nil,
@@ -1514,6 +1555,11 @@ struct S2View: View {
                     calibration.restoreFactoryPlaceholder()
                 }
                 .s2MinimumTouchTarget()
+                // IC-110 D：重看教程。清掉持久化标记并当场重放。
+                Button(L10n.text("s2.tutorial.replay")) {
+                    tutorial.replay()
+                }
+                .s2MinimumTouchTarget()
                 if calibration.persistenceFailed {
                     Text(L10n.text("s2.calibration.persistence_failed"))
                 }
@@ -2019,6 +2065,265 @@ private struct S2CalibrationSliderRow: View {
 /// IC-085：横栏几何的单一入口。内容坐标以第 0 张中心为原点，第 i 张中心 = i × 节距；
 /// `contentX` 是视口中心对应的内容坐标；`expansion` 取 0～1，是当前张的展开程度
 /// （1 = 静止态方形放大 + 两侧间隙；0 = 滑动态全部等距矩形）。
+// MARK: - IC-110 D：首次引导教程
+
+/// IC-110 D：教程浮层。半透明遮罩 + 步骤文案 + 手势示意 + 常驻「跳过」。
+///
+/// 遮罩**不吞真实手势**：等真实手势的三步（1/3/4）把点击穿透下去，
+/// 用户要能真的上滑、翻页、下滑；只有不等手势的两步（2/5）吃点击用于推进。
+struct S2TutorialOverlay: View {
+    let step: S2TutorialStep
+    let onAcknowledge: () -> Void
+    let onSkip: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black
+                .opacity(0.45)
+                .ignoresSafeArea()
+                // 等真实手势时整层不参与命中测试，手势原样落到下面的主图。
+                .allowsHitTesting(!step.waitsForRealGesture)
+                .onTapGesture { onAcknowledge() }
+
+            VStack(spacing: 16) {
+                Spacer()
+
+                gestureHint
+                    .allowsHitTesting(false)
+
+                Text(step.text)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .allowsHitTesting(false)
+
+                Spacer()
+            }
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(L10n.text("s2.tutorial.skip")) {
+                        onSkip()
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.trailing, 16)
+                }
+                Spacer()
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    /// 手势示意：上滑/下滑步给箭头，其余步给指示符号。纯装饰，不参与命中测试。
+    @ViewBuilder
+    private var gestureHint: some View {
+        switch step {
+        case .swipeUpToMark:
+            S2TutorialArrow(systemName: "arrow.up")
+        case .swipeDownToCancel:
+            S2TutorialArrow(systemName: "arrow.down")
+        case .seeStripMark, .returnToMarked:
+            S2TutorialArrow(systemName: "arrow.down.to.line")
+        case .confirmEntry:
+            S2TutorialArrow(systemName: "arrow.up.right")
+        }
+    }
+}
+
+/// IC-110 D：手势示意箭头。往复位移由 `keyframeAnimator` 驱动，
+/// 沿用本文件既有脉冲动画的同款机制；教程结束即整层移除，不留残余层（陷阱 8）。
+struct S2TutorialArrow: View {
+    let systemName: String
+
+    /// 往复位移幅度与单程时长（卡内取定，常量）。
+    static let travel: CGFloat = 18
+    static let halfCycleSeconds: TimeInterval = 0.6
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 34, weight: .semibold))
+            .foregroundStyle(.white)
+            .keyframeAnimator(
+                initialValue: CGFloat(0),
+                repeating: true
+            ) { view, offset in
+                view.offset(y: offset)
+            } keyframes: { _ in
+                CubicKeyframe(
+                    -Self.travel,
+                    duration: Self.halfCycleSeconds
+                )
+                CubicKeyframe(0, duration: Self.halfCycleSeconds)
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+
+/// 五步脚本（未定项 20，④ 流程 + 决策会话补充）。全程显示态、1x，
+/// 用用户当前真实照片，**不发生任何真实删除**——第 5 步只指向确认入口并结束，
+/// 不进入确认页。
+enum S2TutorialStep: Int, CaseIterable, Equatable {
+    /// 上滑手势示意 → 等用户**真实上滑标记**当前照片。
+    case swipeUpToMark = 1
+    /// 高亮横栏对应格位（残影动画自然发生）→ 点击任意处或 2 秒后推进。
+    case seeStripMark = 2
+    /// 引导翻回刚标记那张 → 等用户**真实回到该张**。
+    case returnToMarked = 3
+    /// 下滑手势示意 → 等用户**真实下滑取消**。
+    case swipeDownToCancel = 4
+    /// 指向右上角确认入口 → 点击任意处结束。
+    case confirmEntry = 5
+
+    /// 步骤文案。每个分支各自整句取文案，不拼 key、也不把 key 外传——
+    /// 硬编码扫描器只认取文案调用里写死的字面量 key，拼出来的 key 它查不到，
+    /// 会判成「目录有条目、源码无引用」而卡门禁。
+    /// （本注释刻意不写出那个调用的样子：注释里的字面量同样会被扫描器抓成 key。）
+    var text: String {
+        switch self {
+        case .swipeUpToMark:
+            return L10n.text("s2.tutorial.step1")
+        case .seeStripMark:
+            return L10n.text("s2.tutorial.step2")
+        case .returnToMarked:
+            return L10n.text("s2.tutorial.step3")
+        case .swipeDownToCancel:
+            return L10n.text("s2.tutorial.step4")
+        case .confirmEntry:
+            return L10n.text("s2.tutorial.step5")
+        }
+    }
+
+    /// 该步是否在等一个真实手势（等待期间不接受「点击推进」）。
+    var waitsForRealGesture: Bool {
+        switch self {
+        case .swipeUpToMark, .returnToMarked, .swipeDownToCancel:
+            return true
+        case .seeStripMark, .confirmEntry:
+            return false
+        }
+    }
+}
+
+enum S2TutorialOutcome: Equatable {
+    case completed
+    case skipped
+}
+
+/// IC-110 D：教程状态机。
+///
+/// **不旁路手势分派**（停线 D1，参照 IC-104 B1）：三处「等真实手势」全部靠
+/// 状态机已发布的状态判定——上滑标记＝`pendingDeletionAssetIDs` 新增、
+/// 下滑取消＝同集合移除、翻回＝`currentAssetID` 变为记下的那张。
+/// 本类不接触任何手势识别器，故 D1 的前提不成立。
+final class S2TutorialCoordinator: ObservableObject {
+    /// 第 2 步的自动推进秒数（卡内取定）。
+    static let autoAdvanceSeconds: TimeInterval = 2
+
+    @Published private(set) var activeStep: S2TutorialStep?
+    @Published private(set) var outcome: S2TutorialOutcome?
+
+    /// 第 1 步标记下的那张，供第 3、4 步比对。
+    private(set) var markedAssetID: String?
+
+    private let store: S2TutorialCompletionStoring
+
+    init(store: S2TutorialCompletionStoring) {
+        self.store = store
+    }
+
+    var isRunning: Bool {
+        activeStep != nil
+    }
+
+    /// 首次进入 S2 放一次；已完成或已跳过过就不再放。
+    func startIfNeeded() {
+        guard activeStep == nil,
+              outcome == nil,
+              !store.isCompleted() else {
+            return
+        }
+        activeStep = .swipeUpToMark
+    }
+
+    /// 标定面板「重看教程」：清掉持久化标记并立即重放。
+    func replay() {
+        store.reset()
+        outcome = nil
+        markedAssetID = nil
+        activeStep = .swipeUpToMark
+    }
+
+    // MARK: 真实事件（全部来自已发布状态，不来自手势识别器）
+
+    func assetDidBecomeMarked(assetID: String) {
+        guard activeStep == .swipeUpToMark else {
+            return
+        }
+        markedAssetID = assetID
+        activeStep = .seeStripMark
+    }
+
+    func currentAssetDidChange(to assetID: String) {
+        guard activeStep == .returnToMarked,
+              assetID == markedAssetID else {
+            return
+        }
+        activeStep = .swipeDownToCancel
+    }
+
+    func assetDidBecomeUnmarked(assetID: String) {
+        guard activeStep == .swipeDownToCancel,
+              assetID == markedAssetID else {
+            return
+        }
+        activeStep = .confirmEntry
+    }
+
+    /// 点击任意处或第 2 步计时到点。等真实手势的步骤对此无反应。
+    func acknowledge() {
+        guard let step = activeStep, !step.waitsForRealGesture else {
+            return
+        }
+        switch step {
+        case .seeStripMark:
+            activeStep = .returnToMarked
+        case .confirmEntry:
+            finish(.completed)
+        default:
+            break
+        }
+    }
+
+    /// 右上角常驻「跳过」。
+    func skip() {
+        guard activeStep != nil else {
+            return
+        }
+        finish(.skipped)
+    }
+
+    /// 中途离开 S2 视为跳过，不拦截。
+    func leaveScreen() {
+        guard activeStep != nil else {
+            return
+        }
+        finish(.skipped)
+    }
+
+    private func finish(_ outcome: S2TutorialOutcome) {
+        activeStep = nil
+        self.outcome = outcome
+        store.markCompleted()
+    }
+}
+
 // MARK: - IC-110 C：标记残影飞入
 
 /// IC-110 C：单枚残影的呈现。进度由 `keyframeAnimator` 推进

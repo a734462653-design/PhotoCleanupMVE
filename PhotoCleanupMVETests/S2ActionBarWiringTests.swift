@@ -714,6 +714,157 @@ final class S2ActionBarWiringTests: XCTestCase {
             previous = value
         }
     }
+
+    // MARK: - IC-110 D：首次引导教程
+    //
+    // 以下均为**夹具驱动**的状态机断言，真机走查由 H47 兜底（陷阱 1）。
+
+    // IC-110 D：五步顺序推进——每一步只被它该等的那个真实事件推动。
+    func testIC110DTutorialAdvancesThroughFiveStepsInOrder() {
+        let store = S2InMemoryTutorialCompletionStore()
+        let tutorial = S2TutorialCoordinator(store: store)
+
+        tutorial.startIfNeeded()
+        XCTAssertEqual(tutorial.activeStep, .swipeUpToMark)
+
+        // 第 1 步只认「标记」；点击无效（等真实手势）。
+        tutorial.acknowledge()
+        XCTAssertEqual(tutorial.activeStep, .swipeUpToMark)
+        tutorial.assetDidBecomeMarked(assetID: "asset-2")
+        XCTAssertEqual(tutorial.activeStep, .seeStripMark)
+
+        // 第 2 步不等手势：点击（或 2 秒计时）推进。
+        tutorial.acknowledge()
+        XCTAssertEqual(tutorial.activeStep, .returnToMarked)
+
+        // 第 3 步只认「翻回刚标记那张」；翻到别张无效。
+        tutorial.currentAssetDidChange(to: "asset-3")
+        XCTAssertEqual(tutorial.activeStep, .returnToMarked)
+        tutorial.currentAssetDidChange(to: "asset-2")
+        XCTAssertEqual(tutorial.activeStep, .swipeDownToCancel)
+
+        // 第 4 步只认「取消刚标记那张」；取消别张无效。
+        tutorial.assetDidBecomeUnmarked(assetID: "asset-9")
+        XCTAssertEqual(tutorial.activeStep, .swipeDownToCancel)
+        tutorial.assetDidBecomeUnmarked(assetID: "asset-2")
+        XCTAssertEqual(tutorial.activeStep, .confirmEntry)
+
+        // 第 5 步点击任意处结束——完成，并落盘。
+        XCTAssertFalse(store.completed)
+        tutorial.acknowledge()
+        XCTAssertNil(tutorial.activeStep)
+        XCTAssertEqual(tutorial.outcome, .completed)
+        XCTAssertTrue(store.completed)
+    }
+
+    // IC-110 D：等真实手势的三步（1/3/4）不接受点击推进——
+    // 这正是「不旁路手势分派」的形式保证。
+    func testIC110DGestureStepsIgnoreTapAdvance() {
+        XCTAssertTrue(S2TutorialStep.swipeUpToMark.waitsForRealGesture)
+        XCTAssertTrue(S2TutorialStep.returnToMarked.waitsForRealGesture)
+        XCTAssertTrue(S2TutorialStep.swipeDownToCancel.waitsForRealGesture)
+        XCTAssertFalse(S2TutorialStep.seeStripMark.waitsForRealGesture)
+        XCTAssertFalse(S2TutorialStep.confirmEntry.waitsForRealGesture)
+
+        let tutorial = S2TutorialCoordinator(
+            store: S2InMemoryTutorialCompletionStore()
+        )
+        tutorial.startIfNeeded()
+        for _ in 0..<5 {
+            tutorial.acknowledge()
+        }
+        XCTAssertEqual(
+            tutorial.activeStep,
+            .swipeUpToMark,
+            "第 1 步必须一直等真实上滑，点击不得推进"
+        )
+    }
+
+    // IC-110 D：跳过与中途离开都算走完，落盘后不再复现。
+    func testIC110DSkipAndLeavePersistCompletion() {
+        let store = S2InMemoryTutorialCompletionStore()
+        let tutorial = S2TutorialCoordinator(store: store)
+        tutorial.startIfNeeded()
+        tutorial.skip()
+        XCTAssertNil(tutorial.activeStep)
+        XCTAssertEqual(tutorial.outcome, .skipped)
+        XCTAssertTrue(store.completed)
+
+        // 已落盘：同一实例再 start 不复现
+        tutorial.startIfNeeded()
+        XCTAssertNil(tutorial.activeStep)
+
+        // 新实例读到同一存储，同样不复现
+        let reopened = S2TutorialCoordinator(store: store)
+        reopened.startIfNeeded()
+        XCTAssertNil(reopened.activeStep)
+
+        // 中途离开 S2 视为跳过
+        let leaveStore = S2InMemoryTutorialCompletionStore()
+        let leaving = S2TutorialCoordinator(store: leaveStore)
+        leaving.startIfNeeded()
+        leaving.assetDidBecomeMarked(assetID: "asset-2")
+        XCTAssertEqual(leaving.activeStep, .seeStripMark)
+        leaving.leaveScreen()
+        XCTAssertNil(leaving.activeStep)
+        XCTAssertEqual(leaving.outcome, .skipped)
+        XCTAssertTrue(leaveStore.completed)
+    }
+
+    // IC-110 D：标定面板「重看教程」——清持久化并当场从第 1 步重放。
+    func testIC110DReplayResetsPersistenceAndRestarts() {
+        let store = S2InMemoryTutorialCompletionStore()
+        store.completed = true
+        let tutorial = S2TutorialCoordinator(store: store)
+
+        // 已完成过：首次进入不放
+        tutorial.startIfNeeded()
+        XCTAssertNil(tutorial.activeStep)
+
+        tutorial.replay()
+        XCTAssertEqual(tutorial.activeStep, .swipeUpToMark)
+        XCTAssertNil(tutorial.outcome)
+        XCTAssertFalse(store.completed, "重看必须先清掉已完成标记")
+        XCTAssertEqual(store.resetCount, 1)
+    }
+
+    // IC-110 D：未完成时才放；步骤原始值与文案一一对应且互不相同。
+    func testIC110DStepCatalogIsWellFormed() {
+        XCTAssertEqual(S2TutorialStep.allCases.count, 5)
+        XCTAssertEqual(
+            S2TutorialStep.allCases.map(\.rawValue),
+            [1, 2, 3, 4, 5]
+        )
+        let texts = S2TutorialStep.allCases.map(\.text)
+        XCTAssertEqual(
+            Set(texts).count,
+            5,
+            "五步文案必须互不相同"
+        )
+        for text in texts {
+            XCTAssertFalse(text.isEmpty)
+        }
+        XCTAssertEqual(S2TutorialCoordinator.autoAdvanceSeconds, 2)
+    }
+}
+
+/// IC-110 D：教程持久化的测试用内存实现，与 `UserDefaults` 实现遵循同一协议。
+final class S2InMemoryTutorialCompletionStore: S2TutorialCompletionStoring {
+    var completed = false
+    private(set) var resetCount = 0
+
+    func isCompleted() -> Bool {
+        completed
+    }
+
+    func markCompleted() {
+        completed = true
+    }
+
+    func reset() {
+        resetCount += 1
+        completed = false
+    }
 }
 
 /// 测试用假写入服务：记录请求、延迟完成；加入相册沿用生产的 `PhotoAlbumAdditionPlan`，
