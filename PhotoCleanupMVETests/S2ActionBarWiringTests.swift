@@ -921,7 +921,7 @@ final class S2ActionBarWiringTests: XCTestCase {
             S2TutorialStep.allCases.map(\.rawValue),
             [1, 2, 3, 4, 5, 6]
         )
-        XCTAssertEqual(S2TutorialStep.favoriteGuide.rawValue, 5)
+        XCTAssertEqual(S2TutorialStep.albumGuide.rawValue, 5)
         XCTAssertEqual(S2TutorialStep.confirmEntry.rawValue, 6)
         // 六步文案互不相同且非空
         let texts = S2TutorialStep.allCases.map(\.text)
@@ -932,7 +932,7 @@ final class S2ActionBarWiringTests: XCTestCase {
     }
 
     // IC-112 C：第 5 步只被**真实收藏成功**推动；点击任意处不推进。
-    func testIC112CFavoriteGuideAdvancesOnlyOnRealFavorite() {
+    func testIC113CAlbumGuideAdvancesOnlyOnRealAlbumJoin() {
         let tutorial = S2TutorialCoordinator(
             store: S2InMemoryTutorialCompletionStore()
         )
@@ -942,17 +942,17 @@ final class S2ActionBarWiringTests: XCTestCase {
         tutorial.currentAssetDidChange(to: "asset-2")
         tutorial.assetDidBecomeUnmarked(assetID: "asset-2")
         // 第 4 步完成后进入新的第 5 步（收藏引导），而不是直接到确认入口
-        XCTAssertEqual(tutorial.activeStep, .favoriteGuide)
-        XCTAssertTrue(S2TutorialStep.favoriteGuide.waitsForRealGesture)
+        XCTAssertEqual(tutorial.activeStep, .albumGuide)
+        XCTAssertTrue(S2TutorialStep.albumGuide.waitsForRealGesture)
 
         // 点击不推进
         for _ in 0..<3 {
             tutorial.acknowledge()
         }
-        XCTAssertEqual(tutorial.activeStep, .favoriteGuide)
+        XCTAssertEqual(tutorial.activeStep, .albumGuide)
 
         // 真实收藏成功才推进
-        tutorial.assetDidBecomeFavorited(assetID: "asset-2")
+        tutorial.assetDidJoinAlbum(assetID: "asset-2")
         XCTAssertEqual(tutorial.activeStep, .confirmEntry)
 
         // 第 6 步点击任意处结束
@@ -987,8 +987,67 @@ final class S2ActionBarWiringTests: XCTestCase {
     }
 
     // IC-112 C：第 5 步聚光套**左下 ♡ 圆钮**，与 chrome 底排同一套表达式；
-    // 两个套圆钮的步骤都用正圆挖孔。
-    func testIC112CFavoriteGuideSpotlightTargetsBottomLeadingCircle() {
+    // IC-113 C 第 5 步：聚光改套底部**中胶囊**；中位为空时改套右圆钮选择器。
+    func testIC113CAlbumGuideSpotlightTargetsBottomCapsuleOrPicker() {
+        let viewport = CGSize(width: 393, height: 852)
+        let insets = S2OverlaySafeAreaInsets(
+            top: 59,
+            leading: 0,
+            bottom: 34,
+            trailing: 0
+        )
+        let stripMetrics = makeMachine().parameters.bottomStripMetrics
+
+        func rect(_ step: S2TutorialStep, capsule: Bool) -> CGRect {
+            S2TutorialSpotlight.targetRect(
+                step: step,
+                viewportSize: viewport,
+                safeAreaInsets: insets,
+                photoSize: CGSize(width: 393, height: 562),
+                photoCenterY: 409,
+                bottomStripHeight: 30,
+                stripMetrics: stripMetrics,
+                currentIndex: 1,
+                showsRecentAlbumCapsule: capsule
+            )
+        }
+
+        // 有最近相簿 → 套**中胶囊**：横跨左右圆钮之间，且水平居中。
+        let capsule = rect(.albumGuide, capsule: true)
+        XCTAssertGreaterThan(
+            capsule.width,
+            S2OverlayLayout.chromeRowHeight * 2,
+            "中胶囊应横跨左右圆钮之间，不该只有一个圆钮宽"
+        )
+        XCTAssertEqual(capsule.midX, viewport.width / 2, accuracy: 0.5)
+
+        // 无最近相簿 → 改套**右圆钮选择器**：正方、居右。
+        let picker = rect(.albumGuide, capsule: false)
+        XCTAssertEqual(
+            picker.width,
+            picker.height,
+            accuracy: 0.000_001,
+            "选择器是圆钮，聚光应为正方"
+        )
+        XCTAssertGreaterThan(picker.midX, viewport.width / 2, "选择器在右侧")
+        XCTAssertNotEqual(capsule, picker)
+
+        // 与右上确认入口不是同一个目标
+        XCTAssertNotEqual(capsule, rect(.confirmEntry, capsule: true))
+
+        // 两步仍用正圆挖孔
+        XCTAssertEqual(
+            S2TutorialSpotlight.cornerRadius(for: .albumGuide),
+            S2TutorialSpotlight.circleCornerRadius
+        )
+        XCTAssertEqual(
+            S2TutorialSpotlight.cornerRadius(for: .confirmEntry),
+            S2TutorialSpotlight.circleCornerRadius
+        )
+    }
+
+    // IC-113 C 步 2：聚光收紧到**那一枚缩略图**并放大 1.6 倍，不再套整条横栏。
+    func testIC113CStripSpotlightTightensToSingleItem() {
         let viewport = CGSize(width: 393, height: 852)
         let insets = S2OverlaySafeAreaInsets(
             top: 59,
@@ -997,40 +1056,73 @@ final class S2ActionBarWiringTests: XCTestCase {
             trailing: 0
         )
         let rect = S2TutorialSpotlight.targetRect(
-            step: .favoriteGuide,
+            step: .seeStripMark,
             viewportSize: viewport,
             safeAreaInsets: insets,
             photoSize: CGSize(width: 393, height: 562),
             photoCenterY: 409,
-            bottomStripHeight: 30
+            bottomStripHeight: 30,
+            stripMetrics: makeMachine().parameters.bottomStripMetrics,
+            currentIndex: 1,
+            showsRecentAlbumCapsule: true
         )
-        // 左边距 16、Ø44，故中心 x = 16 + 22 = 38
-        XCTAssertEqual(rect.midX, 38, accuracy: 0.000_001)
-        // 底排上缘距视口底 86 ⟹ 顶缘 y = 852 − 86 = 766，中心 y = 766 + 22 = 788
-        XCTAssertEqual(rect.midY, 788, accuracy: 0.000_001)
-        // 与右上确认入口不是同一个目标
-        let trash = S2TutorialSpotlight.targetRect(
-            step: .confirmEntry,
-            viewportSize: viewport,
-            safeAreaInsets: insets,
-            photoSize: CGSize(width: 393, height: 562),
-            photoCenterY: 409,
-            bottomStripHeight: 30
+        // 远窄于整条横栏——这正是「收紧」
+        XCTAssertLessThan(
+            rect.width,
+            viewport.width / 2,
+            "聚光不该再横跨整条横栏"
         )
-        XCTAssertNotEqual(rect, trash)
-        // 两个圆钮步都用正圆挖孔
+        // 横栏把当前张摆在视口水平中心
+        XCTAssertEqual(rect.midX, viewport.width / 2, accuracy: 1)
         XCTAssertEqual(
-            S2TutorialSpotlight.cornerRadius(for: .favoriteGuide),
-            S2TutorialSpotlight.circleCornerRadius
+            S2TutorialSpotlight.stripItemMagnification,
+            1.6,
+            accuracy: 0.000_001
+        )
+        // 放大助手围绕中心：中心不动、尺寸按倍数走
+        let base = CGRect(x: 10, y: 20, width: 30, height: 40)
+        let scaled = S2TutorialSpotlight.magnified(base, by: 2)
+        XCTAssertEqual(scaled.midX, base.midX, accuracy: 0.000_001)
+        XCTAssertEqual(scaled.midY, base.midY, accuracy: 0.000_001)
+        XCTAssertEqual(scaled.width, 60, accuracy: 0.000_001)
+        XCTAssertEqual(scaled.height, 80, accuracy: 0.000_001)
+    }
+
+    // IC-113 C 步 4：图示单元整体落在中央指示块**下方**，全程不穿过它。
+    func testIC113CHintAvoidsCenterIndicatorOnStepFour() {
+        let photoCenterY: CGFloat = 409
+        let spotlight = CGRect(x: 0, y: 148, width: 393, height: 522)
+        let indicatorBottom = photoCenterY +
+            S2CenterIndicatorView.containerHeight / 2
+
+        let top = S2TutorialHintAnchor.unitTop(
+            step: .swipeDownToCancel,
+            spotlight: spotlight,
+            photoCenterY: photoCenterY
+        )
+        XCTAssertGreaterThanOrEqual(
+            top,
+            indicatorBottom,
+            "步 4 的图示单元顶缘必须在指示块底缘之下，否则会穿过它"
         )
         XCTAssertEqual(
-            S2TutorialSpotlight.cornerRadius(for: .confirmEntry),
-            S2TutorialSpotlight.circleCornerRadius
+            top - indicatorBottom,
+            S2TutorialHintAnchor.indicatorClearance,
+            accuracy: 0.000_001
         )
+        // 方向仍向下——自指示块下方向下平移，不会回头穿过
         XCTAssertEqual(
-            S2TutorialSpotlight.cornerRadius(for: .swipeUpToMark),
-            S2TutorialSpotlight.cornerRadius
+            S2TutorialStep.swipeDownToCancel.gestureDirection,
+            .down
         )
+        // 其余步骤仍以聚光中心为锚
+        let other = S2TutorialHintAnchor.point(
+            step: .swipeUpToMark,
+            spotlight: spotlight,
+            photoCenterY: photoCenterY
+        )
+        XCTAssertEqual(other.x, spotlight.midX, accuracy: 0.000_001)
+        XCTAssertEqual(other.y, spotlight.midY, accuracy: 0.000_001)
     }
 
     // IC-112 C：手势图示按第三轮画布放大，循环周期不变。
@@ -1057,7 +1149,27 @@ final class S2ActionBarWiringTests: XCTestCase {
             S2TutorialGestureHint.ringDiameter
         )
         // 第 5 步给向下箭头（指向左下角的 ♡）
-        XCTAssertEqual(S2TutorialStep.favoriteGuide.gestureDirection, .down)
+        // IC-113 C：圆与箭头收紧成一个单元，并统一加投影保证白底可辨。
+        XCTAssertEqual(S2TutorialGestureHint.unitSpacing, 2)
+        XCTAssertLessThan(
+            S2TutorialGestureHint.unitSpacing,
+            10,
+            "间距过大会读成两个各动各的物件——H49 的观感问题就在这里"
+        )
+        XCTAssertEqual(
+            S2TutorialGestureHint.contrastShadowOpacity,
+            0.35,
+            accuracy: 0.000_001
+        )
+        XCTAssertGreaterThan(S2TutorialGestureHint.contrastShadowRadius, 0)
+        XCTAssertEqual(
+            S2TutorialGestureHint.unitHeight,
+            S2TutorialGestureHint.arrowLength +
+                S2TutorialGestureHint.unitSpacing +
+                S2TutorialGestureHint.ringDiameter,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(S2TutorialStep.albumGuide.gestureDirection, .down)
         // 第 6 步只指向、无循环手势图示
         XCTAssertNil(S2TutorialStep.confirmEntry.gestureDirection)
     }
@@ -1078,6 +1190,8 @@ final class S2ActionBarWiringTests: XCTestCase {
         let photoCenterY: CGFloat = 409
         let stripHeight: CGFloat = 30
 
+        let stripMetrics = makeMachine().parameters.bottomStripMetrics
+
         func rect(_ step: S2TutorialStep) -> CGRect {
             S2TutorialSpotlight.targetRect(
                 step: step,
@@ -1085,7 +1199,10 @@ final class S2ActionBarWiringTests: XCTestCase {
                 safeAreaInsets: insets,
                 photoSize: photoSize,
                 photoCenterY: photoCenterY,
-                bottomStripHeight: stripHeight
+                bottomStripHeight: stripHeight,
+                stripMetrics: stripMetrics,
+                currentIndex: 1,
+                showsRecentAlbumCapsule: true
             )
         }
 
@@ -1244,12 +1361,12 @@ final class S2ActionBarWiringTests: XCTestCase {
         tutorial.assetDidBecomeUnmarked(assetID: "asset-9")
         XCTAssertEqual(tutorial.activeStep, .swipeDownToCancel)
         tutorial.assetDidBecomeUnmarked(assetID: "asset-2")
-        XCTAssertEqual(tutorial.activeStep, .favoriteGuide)
+        XCTAssertEqual(tutorial.activeStep, .albumGuide)
 
         // IC-112 C 第 5 步只认「真实收藏成功」；点击无效。
         tutorial.acknowledge()
-        XCTAssertEqual(tutorial.activeStep, .favoriteGuide)
-        tutorial.assetDidBecomeFavorited(assetID: "asset-2")
+        XCTAssertEqual(tutorial.activeStep, .albumGuide)
+        tutorial.assetDidJoinAlbum(assetID: "asset-2")
         XCTAssertEqual(tutorial.activeStep, .confirmEntry)
 
         // 第 6 步点击任意处结束——完成，并落盘。

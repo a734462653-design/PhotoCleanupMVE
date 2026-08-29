@@ -543,10 +543,16 @@ struct S2View: View {
                             photoSize: viewportMetrics.oneXDisplaySize,
                             photoCenterY: viewportMetrics.oneXDisplayCenterY,
                             bottomStripHeight: viewportMetrics
-                                .bottomStripHeight
+                                .bottomStripHeight,
+                            stripMetrics: machine.parameters
+                                .bottomStripMetrics,
+                            currentIndex: machine.currentIndex,
+                            showsRecentAlbumCapsule:
+                                machine.recentAlbum != nil
                         ),
                         spotlightCornerRadius:
                             S2TutorialSpotlight.cornerRadius(for: step),
+                        photoCenterY: viewportMetrics.oneXDisplayCenterY,
                         cardBottomInset: S2TutorialCardLayout.bottomInset(
                             safeAreaBottom: safeAreaInsets.bottom,
                             bottomStripHeight: viewportMetrics
@@ -642,15 +648,9 @@ struct S2View: View {
                 refreshCenterIndicator(animated: true)
             }
         }
-        // IC-113 B：♡ **不再触发中央指示**（④ 第二态改挂相簿）。
-        // 这里只保留教程的收藏步接线，指示接线已移除。
-        .onChange(of: machine.currentIsFavorite) { _, isFavorite in
-            if isFavorite {
-                tutorial.assetDidBecomeFavorited(
-                    assetID: machine.currentAssetID
-                )
-            }
-        }
+        // IC-113 B：♡ **不再触发中央指示**（④ 第二态改挂相簿）；
+        // IC-113 C：教程第 5 步也改由「加入相簿成功」推进，
+        // 故这里对 ♡ 已无任何接线，只余按钮自身状态变化。
         // IC-113 B：加入相簿**成功**后出现「已加入「名」」。
         // 时机＝残影落入中胶囊回弹后（卡内取定，见
         // `albumIndicatorDelaySeconds`），故这里延时再落指示。
@@ -659,6 +659,10 @@ struct S2View: View {
                 // 撤回成功清了记录：立即复算，指示随之退场。
                 refreshCenterIndicator(animated: true)
                 return
+            }
+            // IC-113 C 第 5 步：等的就是这次真实加入相簿成功。
+            if let record {
+                tutorial.assetDidJoinAlbum(assetID: record.assetID)
             }
             Task { @MainActor in
                 try? await Task.sleep(
@@ -2366,7 +2370,7 @@ extension S2TutorialStep {
             return .right
         case .swipeDownToCancel:
             return .down
-        case .favoriteGuide:
+        case .albumGuide:
             // 箭头自上而下指向左下角的 ♡ 圆钮＝「点这里」。
             return .down
         case .seeStripMark, .confirmEntry:
@@ -2386,13 +2390,32 @@ enum S2TutorialSpotlight {
     /// 圆钮那一步用正圆挖孔。
     static let circleCornerRadius: CGFloat = 999
 
+    /// IC-113 C：第 2 步聚光相对缩略图的放大倍数。
+    ///
+    /// 卡内写「放大 1.3 → 1.6 倍」，但**代码里此前没有任何放大**（全仓无 1.3），
+    /// 聚光只是按原尺寸挖孔。故按目标值直接取 1.6 并登记该前提更正。
+    static let stripItemMagnification: CGFloat = 1.6
+
+    /// 以中心为基准放大矩形。
+    static func magnified(_ rect: CGRect, by factor: CGFloat) -> CGRect {
+        CGRect(
+            x: rect.midX - rect.width * factor / 2,
+            y: rect.midY - rect.height * factor / 2,
+            width: rect.width * factor,
+            height: rect.height * factor
+        )
+    }
+
     static func targetRect(
         step: S2TutorialStep,
         viewportSize: CGSize,
         safeAreaInsets: S2OverlaySafeAreaInsets,
         photoSize: CGSize,
         photoCenterY: CGFloat,
-        bottomStripHeight: CGFloat
+        bottomStripHeight: CGFloat,
+        stripMetrics: S2BottomStripMetrics,
+        currentIndex: Int,
+        showsRecentAlbumCapsule: Bool
     ) -> CGRect {
         switch step {
         case .swipeUpToMark, .returnToMarked, .swipeDownToCancel:
@@ -2403,30 +2426,63 @@ enum S2TutorialSpotlight {
                 height: photoSize.height
             ).insetBy(dx: -padding, dy: -padding)
         case .seeStripMark:
+            // IC-113 C：聚光**收紧到那一枚缩略图**（不再套整条横栏），
+            // 并以中心为基准放大 `stripItemMagnification` 倍，让角标一眼可见。
             let bottom = S2OverlayLayout.stripBottomFromViewportBottom(
                 safeAreaBottom: safeAreaInsets.bottom
             )
-            return CGRect(
-                x: safeAreaInsets.leading,
-                y: viewportSize.height - bottom - bottomStripHeight,
-                width: max(
-                    0,
-                    viewportSize.width - safeAreaInsets.leading -
-                        safeAreaInsets.trailing
-                ),
-                height: bottomStripHeight
-            ).insetBy(dx: -padding, dy: -padding)
-        case .favoriteGuide:
-            // IC-112 C：左下 ♡ 圆钮。与 chrome 底排同一套表达式取位。
+            let stripOriginY = viewportSize.height - bottom - bottomStripHeight
+            let stripWidth = max(
+                0,
+                viewportSize.width - safeAreaInsets.leading -
+                    safeAreaInsets.trailing
+            )
+            let layout = S2BottomStripLayout(metrics: stripMetrics)
+            let cell = layout.frame(
+                at: currentIndex,
+                currentIndex: currentIndex,
+                expansion: 1,
+                contentX: layout.contentCenterX(of: currentIndex),
+                viewportSize: CGSize(
+                    width: stripWidth,
+                    height: bottomStripHeight
+                )
+            )
+            let item = CGRect(
+                x: safeAreaInsets.leading + cell.minX,
+                y: stripOriginY + cell.minY,
+                width: cell.width,
+                height: cell.height
+            )
+            return magnified(item, by: stripItemMagnification)
+        case .albumGuide:
+            // IC-113 C：套底部**中胶囊**；中位为空（无最近相簿）时改套
+            // **右圆钮选择器**。两者都与 chrome 底排同一套表达式取位。
             let actionTop = S2OverlayLayout.actionBandTopFromViewportBottom(
                 safeAreaBottom: safeAreaInsets.bottom
             )
+            let rowY = viewportSize.height - actionTop
+            let rowHeight = S2OverlayLayout.chromeRowHeight
+            let margin = S2OverlayLayout.chromeHorizontalMargin
+            if showsRecentAlbumCapsule {
+                // 中胶囊：夹在左右圆钮之间，两侧各留一个间隔。
+                let leading = safeAreaInsets.leading + margin + rowHeight +
+                    S2OverlayLayout.minimumSpacing
+                let trailing = viewportSize.width - safeAreaInsets.trailing -
+                    margin - rowHeight - S2OverlayLayout.minimumSpacing
+                return CGRect(
+                    x: leading,
+                    y: rowY,
+                    width: max(0, trailing - leading),
+                    height: rowHeight
+                ).insetBy(dx: -padding, dy: -padding)
+            }
             return CGRect(
-                x: safeAreaInsets.leading +
-                    S2OverlayLayout.chromeHorizontalMargin,
-                y: viewportSize.height - actionTop,
-                width: S2OverlayLayout.chromeRowHeight,
-                height: S2OverlayLayout.chromeRowHeight
+                x: viewportSize.width - safeAreaInsets.trailing -
+                    margin - rowHeight,
+                y: rowY,
+                width: rowHeight,
+                height: rowHeight
             ).insetBy(dx: -padding, dy: -padding)
         case .confirmEntry:
             let frames = S2OverlayLayout.topElementFrames(
@@ -2447,7 +2503,7 @@ enum S2TutorialSpotlight {
     /// 套圆钮的两步用正圆挖孔，其余用圆角矩形。
     static func cornerRadius(for step: S2TutorialStep) -> CGFloat {
         switch step {
-        case .favoriteGuide, .confirmEntry:
+        case .albumGuide, .confirmEntry:
             return circleCornerRadius
         case .swipeUpToMark, .seeStripMark, .returnToMarked,
              .swipeDownToCancel:
@@ -2529,10 +2585,23 @@ struct S2TutorialGestureHint: View {
     static let arrowLength: CGFloat = 64
     static let arrowLineWidth: CGFloat = 2.6
 
+    /// IC-113 C：圆与箭头的间距。10 → **2**——两者本就共用同一个 `.offset`
+    /// 同步平移，H49 观感上的「各动各的」来自这道过大的空隙，收紧后读作一个单元。
+    static let unitSpacing: CGFloat = 2
+
+    /// IC-113 C：白底可见性——整个单元统一加黑投影，白色照片上仍可辨。
+    static let contrastShadowOpacity: Double = 0.35
+    static let contrastShadowRadius: CGFloat = 3
+
+    /// 单元总高（箭头 + 间距 + 触点圆），供步 4 避让中央指示块时算落位。
+    static var unitHeight: CGFloat {
+        arrowLength + unitSpacing + ringDiameter
+    }
+
     @State private var looping = false
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Self.unitSpacing) {
             if direction == .down {
                 arrow
             }
@@ -2541,6 +2610,14 @@ struct S2TutorialGestureHint: View {
                 arrow
             }
         }
+        // IC-113 C：整个单元一层投影——白填充在白照片上不可辨，加黑影即可。
+        .shadow(
+            color: Color.black.opacity(Self.contrastShadowOpacity),
+            radius: Self.contrastShadowRadius,
+            x: 0,
+            y: 1
+        )
+        // 圆与箭头共用**同一个** offset，故始终作为一个整体平移。
         .offset(
             x: looping ? direction.offset.width : 0,
             y: looping ? direction.offset.height : 0
@@ -2589,6 +2666,46 @@ struct S2TutorialGestureHint: View {
                 )
             )
             .frame(width: Self.arrowLength, height: Self.arrowLength)
+    }
+}
+
+/// IC-113 C：手势图示单元的落位。
+///
+/// 步 4（下滑撤回）时中央指示块正好占着主图中心，图示压在它上面既挡视线、
+/// 又会「穿过」它。故步 4 把整个单元挪到**指示块下方**起跳、向下平移，
+/// 全程不与指示块相交；其余步骤仍以聚光中心为锚。
+enum S2TutorialHintAnchor {
+    /// 单元顶缘与指示块底缘的净空（卡内取定）。
+    static let indicatorClearance: CGFloat = 16
+
+    static func point(
+        step: S2TutorialStep,
+        spotlight: CGRect,
+        photoCenterY: CGFloat
+    ) -> CGPoint {
+        guard step == .swipeDownToCancel else {
+            return CGPoint(x: spotlight.midX, y: spotlight.midY)
+        }
+        let indicatorBottom = photoCenterY +
+            S2CenterIndicatorView.containerHeight / 2
+        return CGPoint(
+            x: spotlight.midX,
+            y: indicatorBottom + indicatorClearance +
+                S2TutorialGestureHint.unitHeight / 2
+        )
+    }
+
+    /// 步 4 的单元顶缘——测试据此核验「不穿过指示块」。
+    static func unitTop(
+        step: S2TutorialStep,
+        spotlight: CGRect,
+        photoCenterY: CGFloat
+    ) -> CGFloat {
+        point(
+            step: step,
+            spotlight: spotlight,
+            photoCenterY: photoCenterY
+        ).y - S2TutorialGestureHint.unitHeight / 2
     }
 }
 
@@ -2648,11 +2765,16 @@ struct S2TutorialOverlay: View {
     let spotlightCornerRadius: CGFloat
     /// IC-112 C：提示卡底缘距视口底。六步同值 ⟹ 底缘对齐同一水平线。
     let cardBottomInset: CGFloat
+    /// IC-113 C：主图显示帧竖直中心——步 4 据此把图示挪到中央指示块下方。
+    let photoCenterY: CGFloat
     let onAcknowledge: () -> Void
     let onSkip: () -> Void
 
     /// 遮罩黑度（卡内 ④）。
     static let dimOpacity: Double = 0.55
+
+    /// IC-113 C 步 2：指向角标的小箭头长度。
+    static let badgeArrowLength: CGFloat = 28
 
     var body: some View {
         ZStack {
@@ -2662,7 +2784,44 @@ struct S2TutorialOverlay: View {
 
             if let direction = step.gestureDirection {
                 S2TutorialGestureHint(direction: direction)
-                    .position(x: spotlight.midX, y: spotlight.midY)
+                    .position(
+                        S2TutorialHintAnchor.point(
+                            step: step,
+                            spotlight: spotlight,
+                            photoCenterY: photoCenterY
+                        )
+                    )
+            }
+
+            // IC-113 C 步 2：一枚小箭头直指角标（角标在该缩略图右上角）。
+            if step == .seeStripMark {
+                S2TutorialArrowShape(direction: .down)
+                    .stroke(
+                        Color.white,
+                        style: StrokeStyle(
+                            lineWidth: S2TutorialGestureHint.arrowLineWidth,
+                            lineCap: .round,
+                            lineJoin: .round
+                        )
+                    )
+                    .frame(
+                        width: Self.badgeArrowLength,
+                        height: Self.badgeArrowLength
+                    )
+                    .shadow(
+                        color: Color.black.opacity(
+                            S2TutorialGestureHint.contrastShadowOpacity
+                        ),
+                        radius: S2TutorialGestureHint.contrastShadowRadius,
+                        x: 0,
+                        y: 1
+                    )
+                    .position(
+                        x: spotlight.maxX - Self.badgeArrowLength / 2,
+                        y: spotlight.minY - Self.badgeArrowLength / 2
+                    )
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
 
             // IC-112 C 第 6 步：弧形箭头从提示卡方向兜向右上确认入口。
@@ -2801,8 +2960,9 @@ enum S2TutorialStep: Int, CaseIterable, Equatable {
     case returnToMarked = 3
     /// 下滑手势示意 → 等用户**真实下滑取消**。
     case swipeDownToCancel = 4
-    /// IC-112 C 新增：聚光套左下 ♡ 圆钮 → 等用户**真实收藏成功**。
-    case favoriteGuide = 5
+    /// IC-112 C 新增、IC-113 C 改挂：聚光套底部中胶囊（无最近相簿则套右圆钮
+    /// 选择器）→ 等用户**真实加入相簿成功**。
+    case albumGuide = 5
     /// 指向右上角确认入口 → 点击任意处结束。原第 5 步，IC-112 C 顺延为第 6 步。
     case confirmEntry = 6
 
@@ -2820,7 +2980,7 @@ enum S2TutorialStep: Int, CaseIterable, Equatable {
             return L10n.text("s2.tutorial.step3")
         case .swipeDownToCancel:
             return L10n.text("s2.tutorial.step4")
-        case .favoriteGuide:
+        case .albumGuide:
             return L10n.text("s2.tutorial.step5")
         case .confirmEntry:
             return L10n.text("s2.tutorial.step6")
@@ -2831,7 +2991,7 @@ enum S2TutorialStep: Int, CaseIterable, Equatable {
     var waitsForRealGesture: Bool {
         switch self {
         case .swipeUpToMark, .returnToMarked, .swipeDownToCancel,
-             .favoriteGuide:
+             .albumGuide:
             // IC-112 C：第 5 步等的是**真实收藏成功**，点击任意处不推进；
             // 同时整层不吃点击，用户才点得到底部的 ♡ 圆钮。
             return true
@@ -2913,13 +3073,13 @@ final class S2TutorialCoordinator: ObservableObject {
               assetID == markedAssetID else {
             return
         }
-        activeStep = .favoriteGuide
+        activeStep = .albumGuide
     }
 
-    /// IC-112 C 第 5 步：等用户**真实收藏成功**（中央指示随之出现收藏态）。
+    /// IC-113 C 第 5 步：等用户**真实加入相簿成功**（中央指示随之出现该态）。
     /// 与前四步同源——只读已发布状态，不接触手势识别器。
-    func assetDidBecomeFavorited(assetID _: String) {
-        guard activeStep == .favoriteGuide else {
+    func assetDidJoinAlbum(assetID _: String) {
+        guard activeStep == .albumGuide else {
             return
         }
         activeStep = .confirmEntry
