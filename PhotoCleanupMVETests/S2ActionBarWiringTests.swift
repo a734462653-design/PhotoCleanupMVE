@@ -1159,10 +1159,29 @@ final class S2ActionBarWiringTests: XCTestCase {
             accuracy: 0.000_001
         )
 
-        // 带高本身不受本项影响
+        // 陷阱 14 的两套几何在此显影，本项一个都没动：
+        // 视觉带高 = 原始 30（渲染容器用的就是它，故视觉顶缘 = 140）；
+        // resolvedStripHeight 含 44 pt 触控带下限，是给**手指**的，
+        // 30 会被抬到 44——视觉锚绝不能复用它。
         XCTAssertEqual(
             S2OverlayLayout.resolvedStripHeight(stripHeight),
+            S2OverlayLayout.minimumTouchTarget,
+            accuracy: 0.000_001
+        )
+        XCTAssertGreaterThan(
+            S2OverlayLayout.resolvedStripHeight(stripHeight),
             stripHeight,
+            "触控带下限必须确实抬高了 30，否则这条区分就失效了"
+        )
+        // 子项 C 的提示卡锚的是**视觉**顶缘：110 + 30 + 8 = 148，
+        // 而非触控口径的 110 + 44 + 8 = 162。两者不得混用。
+        XCTAssertEqual(
+            S2TutorialCardLayout.bottomInset(
+                safeAreaBottom: safeBottom,
+                bottomStripHeight: stripHeight
+            ),
+            stripBottom + stripHeight +
+                S2TutorialCardLayout.stripClearance,
             accuracy: 0.000_001
         )
 
