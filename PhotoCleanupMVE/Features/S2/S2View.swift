@@ -1967,10 +1967,66 @@ enum S2ChromePillMetrics {
     static let bottomCapsuleTextFontSize: CGFloat = 15
 }
 
+/// IC-112 A：chrome 玻璃配方与高光描边（画布第三轮定稿 ④）。
+///
+/// **勘查结论（报告详录）**：不是层级问题——药丸材质本就位于照片层之上，
+/// 且 chrome 祖先链上唯一的 `.opacity()` 在 `V=显示` 时恒为 1.0，
+/// 而离屏合成组只在 opacity < 1 时产生，故稳定显示态下不抑制背景采样。
+/// 真正要改的是**配方**：单用 `.ultraThinMaterial` 在深色环境下偏暗去饱和，
+/// 读起来像实心块。故在材质之上补一层白色薄底并加高光描边。
+///
+/// 画布配方基准：底色白 ~6% + blur ~22 + 饱和 ~1.7 + 提亮 ~1.12。
+/// blur 与饱和/提亮沿用系统材质自带的（卡内明示「系统材质能达到同观感即可，
+/// 不强求逐参数复刻」）；**未叠加 `.saturation()` / `.brightness()`**——
+/// 这两个滤镜会把子树推进离屏合成，反而会打掉材质的背景采样，得不偿失。
+enum S2ChromeGlass {
+    /// 材质之上的白色薄底（画布「底色白 ~6%」）。
+    static let tintOpacity: Double = 0.06
+
+    /// 内描边：顶缘内侧白 55%，渐弱至底缘 12%（画布 ④）。
+    static let innerHighlightTop: Double = 0.55
+    static let innerHighlightBottom: Double = 0.12
+    static let innerStrokeWidth: CGFloat = 1
+
+    /// 外圈细环白 22%（画布 ④）。
+    static let outerRingOpacity: Double = 0.22
+    static let outerStrokeWidth: CGFloat = 0.5
+}
+
 private extension View {
-    /// 玻璃圆钮：定尺 Ø44 + 系统深色毛玻璃裁成正圆。
+    /// IC-112 A：统一的玻璃底 + 高光描边。顶/底六件与中央指示容器共用同一族。
     ///
-    /// 材质取 `.ultraThinMaterial`（画布 ④ 指定），不是半透明色块。
+    /// 截图显示态下 chrome 背后为黑、透光弱是预期；**描边不依赖背景**，
+    /// 故那种情形下描边仍在（卡内明示要求）。
+    func s2ChromeGlassBackground<S: InsettableShape>(
+        in shape: S
+    ) -> some View {
+        background {
+            shape.fill(.ultraThinMaterial)
+            shape.fill(Color.white.opacity(S2ChromeGlass.tintOpacity))
+        }
+        .overlay {
+            shape.strokeBorder(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(S2ChromeGlass.innerHighlightTop),
+                        Color.white.opacity(S2ChromeGlass.innerHighlightBottom)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                lineWidth: S2ChromeGlass.innerStrokeWidth
+            )
+        }
+        .overlay {
+            shape.strokeBorder(
+                Color.white.opacity(S2ChromeGlass.outerRingOpacity),
+                lineWidth: S2ChromeGlass.outerStrokeWidth
+            )
+        }
+    }
+
+    /// 玻璃圆钮：定尺 Ø44 + 玻璃底 + 高光描边。
     func s2ChromeCircleGlass() -> some View {
         font(
             .system(
@@ -1982,17 +2038,17 @@ private extension View {
             width: S2ChromePillMetrics.pillHeight,
             height: S2ChromePillMetrics.pillHeight
         )
-        .background(.ultraThinMaterial, in: Circle())
+        .s2ChromeGlassBackground(in: Circle())
     }
 
-    /// 玻璃跑道胶囊：宽随内容 + 定高 44 + 同款毛玻璃。
+    /// 玻璃跑道胶囊：宽随内容 + 定高 44 + 同族玻璃底与描边。
     func s2ChromeCapsuleGlass() -> some View {
         padding(
             .horizontal,
             S2ChromePillMetrics.capsuleHorizontalPadding
         )
         .frame(height: S2ChromePillMetrics.pillHeight)
-        .background(.ultraThinMaterial, in: Capsule())
+        .s2ChromeGlassBackground(in: Capsule())
     }
 }
 

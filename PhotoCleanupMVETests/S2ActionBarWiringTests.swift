@@ -670,6 +670,41 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertTrue(withHistory.addAlbumEnabled)
     }
 
+    // MARK: - IC-112 A：玻璃配方与高光描边
+
+    // IC-112 A：玻璃配方落在画布取值——底色白 6%、内描边 55%→12%、外环 22%。
+    func testIC112AGlassRecipeMatchesCanvas() {
+        XCTAssertEqual(S2ChromeGlass.tintOpacity, 0.06, accuracy: 0.000_001)
+        XCTAssertEqual(
+            S2ChromeGlass.innerHighlightTop,
+            0.55,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2ChromeGlass.innerHighlightBottom,
+            0.12,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2ChromeGlass.outerRingOpacity,
+            0.22,
+            accuracy: 0.000_001
+        )
+        // 顶缘比底缘亮——「渐弱」的方向不能反
+        XCTAssertGreaterThan(
+            S2ChromeGlass.innerHighlightTop,
+            S2ChromeGlass.innerHighlightBottom
+        )
+        // 白底要薄，不能盖住透光
+        XCTAssertLessThan(
+            S2ChromeGlass.tintOpacity,
+            0.2,
+            "底色过实会把透光盖死，正是本卡要修的毛病"
+        )
+        XCTAssertGreaterThan(S2ChromeGlass.innerStrokeWidth, 0)
+        XCTAssertGreaterThan(S2ChromeGlass.outerStrokeWidth, 0)
+    }
+
     // MARK: - IC-111 B：标记残影飞入右上垃圾桶
 
     // IC-111 B：飞行参数落在卡内区间——总时长 300–340ms、
