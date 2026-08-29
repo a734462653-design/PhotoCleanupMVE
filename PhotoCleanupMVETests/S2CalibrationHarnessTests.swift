@@ -8976,8 +8976,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
     // MARK: - IC-100 v2：底部竖向排布互换（安全区 → 操作条 → 横栏）
 
-    /// IC-100 B1：触控带中心锚在安全区上沿 + 22；操作条同时满足 L2 与 L4；
-    /// 横栏在操作条上方，底缘按推导式落在「可见图标带顶缘 + 30.7」。
+    /// IC-100 B1（IC-111 A 改写）：底排中心锚在「安全区上沿 + 8 + 22」；
+    /// 同时满足 L2 与 L4；横栏在底排上方，底缘按推导式落在「底排上缘 + 24」。
     func testIC100B1BottomOverlayOrderAndAnchors() {
         let snapshot = overlaySnapshot()
         let frames = snapshot.bottomElementFrames
@@ -8988,14 +8988,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let safeBottom = viewportBottom - overlaySafeAreaInsets.bottom
 
         for frame in actionFrames {
-            // 触控带中心距视口底 = 安全区底 + 半个触控带（常规机型 34 + 22 = 56.0）
+            // IC-111 A：底排中心距视口底 = 安全区底 + 8 + 半个 chrome 行
+            // （常规机型 34 + 8 + 22 = 64.0）
             XCTAssertEqual(
                 viewportBottom - frame.midY,
                 overlaySafeAreaInsets.bottom +
-                    S2OverlayLayout.minimumTouchTarget / 2,
+                    S2OverlayLayout.bottomRowBottomInset +
+                    S2OverlayLayout.chromeRowHeight / 2,
                 accuracy: 0.5
             )
-            XCTAssertEqual(viewportBottom - frame.midY, 56, accuracy: 0.5)
+            XCTAssertEqual(viewportBottom - frame.midY, 64, accuracy: 0.5)
             // L2 / L4 判据原样，一行未改
             XCTAssertLessThanOrEqual(frame.maxY, safeBottom)
             XCTAssertGreaterThanOrEqual(
