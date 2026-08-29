@@ -96,6 +96,8 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
     var imageLoadStateRegistry: S2ImageLoadStateRegistry? = nil
     /// IC-108 B：双击丝滑度探针。nil = 关闭 = 埋点零开销。
     var doubleTapProbe: S2DoubleTapSmoothnessProbeCoordinator? = nil
+    /// IC-111 B：标记残影协调器。nil ⟹ 不放残影（几何诊断等宿主可不接）。
+    var markAfterimages: S2MarkAfterimageCoordinator? = nil
     /// IC-079 R2：按索引提供任意页内容，供分页控制器在滚动中按需创建页。
     var pageContentProvider: ((Int) -> S2NativePageContent?)? = nil
 
@@ -114,6 +116,7 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
         transitionDiagnosticsCoordinator.attach(controller)
         controller.imageLoadStateRegistry = imageLoadStateRegistry
         controller.doubleTapProbe = doubleTapProbe
+        controller.markAfterimages = markAfterimages
         let photoWriteCountBefore = transitionDiagnosticsCoordinator
             .photoGeometryWriteCount
         // IC-095 R1：本次重进是否落笔任何几何，取录制窗口内几何写入总数的差值。
@@ -1021,6 +1024,182 @@ enum S2DoubleTapTransitionTiming {
     }
 }
 
+// MARK: - IC-111 B：标记残影飞入右上垃圾桶
+
+/// 残影的飞行参数与几何。**纯常量 + 纯函数**：不入 `S2CalibrationConfiguration`、
+/// 不上参数面板、`schemaVersion` 不受影响；几何可被单测直接复算。
+///
+/// 与 IC-110 C 的区别不只是落点：那版由 SwiftUI `keyframeAnimator` 逐帧推进，
+/// H47 判为「跟卡机了一样」。本版整条位移/缩放/淡出交给 `CAAnimation` 族，
+/// 主线程不参与逐帧（陷阱 6）。
+enum S2MarkAfterimageFlight {
+    /// 总时长。卡内区间 300–340 ms，取中位 320 ms。
+    static let durationSeconds: CFTimeInterval = 0.32
+
+    /// 落点缩放与透明度（画布 ④）。
+    static let startScale: CGFloat = 1
+    static let endScale: CGFloat = 0.18
+    static let startOpacity: Float = 0.85
+    static let endOpacity: Float = 0
+
+    /// 控制点相对「落点与主图右缘中较靠右者」再向右外推的量，
+    /// 制造「先横后纵」的甩入感。
+    static let controlOvershoot: CGFloat = 28
+
+    /// 二次贝塞尔控制点：横坐标推到右外侧、纵坐标取**起点**高度。
+    /// 于是曲线离开起点时近乎水平向右甩出，再上扬收进落点，
+    /// 外鼓点落在主图右上外侧——即卡内「控制点在主图右上外侧」。
+    static func controlPoint(
+        from: CGPoint,
+        to: CGPoint,
+        photoMaxX: CGFloat
+    ) -> CGPoint {
+        CGPoint(
+            x: max(to.x, photoMaxX) + controlOvershoot,
+            y: from.y
+        )
+    }
+
+    /// 弧线上的点。端点恒等：0 → from，1 → to。
+    static func point(
+        from: CGPoint,
+        to: CGPoint,
+        photoMaxX: CGFloat,
+        progress: CGFloat
+    ) -> CGPoint {
+        let t = min(1, max(0, progress))
+        let control = controlPoint(from: from, to: to, photoMaxX: photoMaxX)
+        let inverse = 1 - t
+        return CGPoint(
+            x: inverse * inverse * from.x +
+                2 * inverse * t * control.x +
+                t * t * to.x,
+            y: inverse * inverse * from.y +
+                2 * inverse * t * control.y +
+                t * t * to.y
+        )
+    }
+
+    static func path(
+        from: CGPoint,
+        to: CGPoint,
+        photoMaxX: CGFloat
+    ) -> CGPath {
+        let path = CGMutablePath()
+        path.move(to: from)
+        path.addQuadCurve(
+            to: to,
+            control: controlPoint(from: from, to: to, photoMaxX: photoMaxX)
+        )
+        return path
+    }
+
+    /// 右上垃圾桶圆钮中心（视口坐标）。**与 chrome 渲染共用
+    /// `S2OverlayLayout.topElementFrames`**，不另起一套真相。
+    static func trashCenter(
+        viewportSize: CGSize,
+        safeAreaTop: CGFloat
+    ) -> CGPoint {
+        let bounds = CGRect(
+            x: 0,
+            y: safeAreaTop,
+            width: viewportSize.width,
+            height: S2OverlayLayout.topBarHeight
+        )
+        let frames = S2OverlayLayout.topElementFrames(in: bounds)
+        guard frames.count == 3 else {
+            return CGPoint(x: viewportSize.width, y: safeAreaTop)
+        }
+        return CGPoint(x: frames[2].midX, y: frames[2].midY)
+    }
+}
+
+/// IC-111 B：残影协调器。只做「在途计数」与「落点通知」，不碰几何也不碰动画。
+///
+/// 落点通知是 chrome 侧垃圾桶回弹与角标滚动的**唯一**触发源——
+/// 卡内要求两者与落点**同帧**，故角标显示值要压到落点才跟上模型值。
+final class S2MarkAfterimageCoordinator: ObservableObject {
+    /// 在途残影数。卡内允许多枚并发，**不设上限**（IC-110 C 的 3 枚上限
+    /// 随该版实现一并废止，本卡未要求）。
+    @Published private(set) var inFlightCount = 0
+
+    /// 落点计数。每落一枚 +1。
+    @Published private(set) var landedTick = 0
+
+    func willLaunch() {
+        inFlightCount += 1
+    }
+
+    func didLand() {
+        inFlightCount = max(0, inFlightCount - 1)
+        landedTick += 1
+    }
+}
+
+/// IC-111 B：残影图层动画器。整段位移/缩放/淡出交给渲染层，
+/// 主线程只在起飞与收口各参与一次。
+enum S2MarkAfterimagePresenter {
+    static func launch(
+        snapshot: UIView,
+        in container: UIView,
+        from: CGPoint,
+        to: CGPoint,
+        photoMaxX: CGFloat,
+        onLanded: @escaping () -> Void
+    ) {
+        snapshot.center = from
+        snapshot.isUserInteractionEnabled = false
+        container.addSubview(snapshot)
+
+        let layer = snapshot.layer
+        let duration = S2MarkAfterimageFlight.durationSeconds
+
+        let position = CAKeyframeAnimation(keyPath: "position")
+        position.path = S2MarkAfterimageFlight.path(
+            from: from,
+            to: to,
+            photoMaxX: photoMaxX
+        )
+        position.duration = duration
+        // 卡内：位移 easeIn
+        position.timingFunction = CAMediaTimingFunction(name: .easeIn)
+
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = S2MarkAfterimageFlight.startScale
+        scale.toValue = S2MarkAfterimageFlight.endScale
+        scale.duration = duration
+        scale.timingFunction = CAMediaTimingFunction(name: .easeIn)
+
+        let opacity = CABasicAnimation(keyPath: "opacity")
+        opacity.fromValue = S2MarkAfterimageFlight.startOpacity
+        opacity.toValue = S2MarkAfterimageFlight.endOpacity
+        opacity.duration = duration
+        // 卡内：淡出 linear
+        opacity.timingFunction = CAMediaTimingFunction(name: .linear)
+
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak snapshot] in
+            // 陷阱 8：动画就挂在这一层，收口时把这一层整个摘掉，不留残余。
+            snapshot?.layer.removeAllAnimations()
+            snapshot?.removeFromSuperview()
+            onLanded()
+        }
+        // 先把模型值落到终态，再叠动画：动画结束即模型态，无需
+        // `isRemovedOnCompletion = false` 撑住末帧，也就没有残留层要清。
+        layer.position = to
+        layer.opacity = S2MarkAfterimageFlight.endOpacity
+        layer.transform = CATransform3DMakeScale(
+            S2MarkAfterimageFlight.endScale,
+            S2MarkAfterimageFlight.endScale,
+            1
+        )
+        layer.add(position, forKey: "s2.markAfterimage.position")
+        layer.add(scale, forKey: "s2.markAfterimage.scale")
+        layer.add(opacity, forKey: "s2.markAfterimage.opacity")
+        CATransaction.commit()
+    }
+}
+
 struct S2DoubleTapTransition: Equatable {
     let sourceFrame: CGRect
     let targetFrame: CGRect
@@ -1716,6 +1895,27 @@ final class S2NativeZoomPageController: UIViewController,
         zoomScrollView.isUserInteractionEnabled = true
         owner?.doubleTapTransitionDidComplete(on: self)
         doubleTapTransitionObserver?(.completed(transition, reading))
+    }
+
+    /// IC-111 B：标记残影用的**当前已解码图快照**。
+    ///
+    /// `afterScreenUpdates: false` ⟹ 取渲染层现成内容，**不同步重读图**、
+    /// 不触发重新解码（卡内明令）。取不到就返回 nil，调用方跳过残影，
+    /// 绝不为了出动画而回退到同步读图。
+    func makeMarkAfterimageSnapshot(
+        in targetView: UIView
+    ) -> (view: UIView, frame: CGRect)? {
+        guard let content = zoomScrollView.presentationContentView,
+              let snapshot = content.snapshotView(afterScreenUpdates: false)
+        else {
+            return nil
+        }
+        let frame = content.convert(content.bounds, to: targetView)
+        guard frame.width > 0, frame.height > 0 else {
+            return nil
+        }
+        snapshot.frame = frame
+        return (snapshot, frame)
     }
 
     private func makeDoubleTapSnapshot() -> UIView {
@@ -2508,6 +2708,8 @@ final class S2NativePagerViewController: UIViewController,
     private var configuration = S2CalibrationConfiguration.factoryPlaceholder
     private var viewportSize = CGSize.zero
     private var onLongPress: (() -> Void)?
+    /// IC-111 B：标记残影协调器。nil ⟹ 不放残影。
+    var markAfterimages: S2MarkAfterimageCoordinator?
     private var isApplyingSnapshot = false
     private(set) var settledIndex = 0
     /// IC-079 R1：各资产图像加载态（只读埋点，来自 S2View 的加载态回调）。
@@ -3056,6 +3258,32 @@ final class S2NativePagerViewController: UIViewController,
         return true
     }
 
+    /// IC-111 B：起飞一枚残影。主图本体不参与位移——飞的是独立快照视图，
+    /// 故标记后立刻可以翻页。
+    private func launchMarkAfterimage(
+        snapshot: UIView,
+        photoFrame: CGRect
+    ) {
+        guard let markAfterimages else {
+            return
+        }
+        let target = S2MarkAfterimageFlight.trashCenter(
+            viewportSize: view.bounds.size,
+            safeAreaTop: view.safeAreaInsets.top
+        )
+        markAfterimages.willLaunch()
+        S2MarkAfterimagePresenter.launch(
+            snapshot: snapshot,
+            in: view,
+            from: CGPoint(x: photoFrame.midX, y: photoFrame.midY),
+            to: target,
+            photoMaxX: photoFrame.maxX,
+            onLanded: { [weak markAfterimages] in
+                markAfterimages?.didLand()
+            }
+        )
+    }
+
     func doubleTapTransitionDidComplete(
         on page: S2NativeZoomPageController
     ) {
@@ -3181,6 +3409,20 @@ final class S2NativePagerViewController: UIViewController,
             duration: duration
         ))
         let previousIndex = machine.currentIndex
+        // IC-111 B：残影快照必须取在状态变更**之前**——标记成功会立刻翻到下一张，
+        // 之后再快照就拍到别人了。只在「上滑且当前张尚未标记」时才预拍，
+        // 其余手势零开销。快照走 `afterScreenUpdates: false`，不重读图。
+        //
+        // G274：这里只在既有结算调用的前后读已发布状态，**不碰任何手势识别器、
+        // 不改手势判定**；标记与否仍全由 `completeMainDrag` 决定。
+        let pendingBefore = machine.pendingDeletionAssetIDs
+        let markCandidate = markAfterimages != nil &&
+            translation.height < 0 &&
+            !pendingBefore.contains(machine.currentAssetID)
+        let prelaunch = markCandidate
+            ? page.makeMarkAfterimageSnapshot(in: view)
+            : nil
+
         let handled = machine.completeMainDrag(
             translation: translation,
             duration: duration,
@@ -3191,6 +3433,14 @@ final class S2NativePagerViewController: UIViewController,
         if machine.currentIndex != previousIndex {
             settledIndex = machine.currentIndex
             synchronizeNativeStateToMachine(animatedPaging: false)
+        }
+        // 确有新增才起飞；没标记成功就把预拍的快照丢掉。
+        if let prelaunch,
+           machine.pendingDeletionAssetIDs.count > pendingBefore.count {
+            launchMarkAfterimage(
+                snapshot: prelaunch.view,
+                photoFrame: prelaunch.frame
+            )
         }
         return handled
     }

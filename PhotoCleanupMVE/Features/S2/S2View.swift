@@ -404,9 +404,12 @@ struct S2View: View {
         S2DoubleTapSmoothnessProbeCoordinator()
     /// IC-099 阶段二 R4：占用空间的会话级缓存与异步取数管线。随本视图释放。
     @StateObject private var assetVolumeStore = S2AssetVolumeStore()
-    /// IC-110 C：标记残影的在途集合（决策 32 ④）。
-    @StateObject private var markAfterimages =
-        S2MarkAfterimageCoordinator()
+    /// IC-111 B：标记残影协调器。飞行本身在 UIKit 侧由 CAAnimation 驱动，
+    /// 这里只接落点通知，用于垃圾桶回弹与角标滚动。
+    @StateObject private var markAfterimages = S2MarkAfterimageCoordinator()
+    /// IC-111 B：角标**显示值**。卡内要求「落点同帧 +1」，故显示值不跟随模型
+    /// 立即变化——有残影在途时压到落点再跟上。
+    @State private var displayedPendingCount = 0
     /// IC-110 D：首次引导教程（未定项 20 ④）。持久化走 `UserDefaults`，
     /// 不入标定出厂值、`schemaVersion` 不动。
     @StateObject private var tutorial = S2TutorialCoordinator(
@@ -500,13 +503,6 @@ struct S2View: View {
                 .allowsHitTesting(machine.interfaceVisibility == .visible)
                 .accessibilityHidden(machine.interfaceVisibility != .visible)
 
-                // IC-110 C：残影浮层压在 chrome 之上，才能盖过横栏落到格位。
-                markAfterimageOverlay(
-                    metrics: viewportMetrics,
-                    safeAreaInsets: safeAreaInsets,
-                    containerSize: geometry.size
-                )
-
                 primaryMarkOverlay(safeAreaInsets: safeAreaInsets)
 
                 calibrationOverlay(
@@ -553,6 +549,9 @@ struct S2View: View {
             .allowsHitTesting(machine.sheetState == .closed)
             .onAppear {
                 _ = machine.applyCalibration(calibration.configuration)
+                // IC-111 B：进场时显示值与模型值对齐（无残影在途）。
+                displayedPendingCount =
+                    machine.sessionMergedPendingDeletionCount
                 // IC-110 D：首次进入 S2 放一次；已完成/已跳过过不再放。
                 tutorial.startIfNeeded()
             }
@@ -594,13 +593,10 @@ struct S2View: View {
             let inserted = current.subtracting(previous)
             let removed = previous.subtracting(current)
             let ordered = machine.orderedAssetIDs
-            for (index, assetID) in ordered.enumerated()
-            where inserted.contains(assetID) {
-                markAfterimages.begin(
-                    assetID: assetID,
-                    targetIndex: index
-                )
+            for assetID in ordered where inserted.contains(assetID) {
                 // IC-110 D 第 1 步：等的就是这个真实上滑标记。
+                // IC-111 B：残影不再从这里起飞——改由 pager 在 UIKit 侧以
+                // CAAnimation 驱动（见 `S2MarkAfterimagePresenter`）。
                 tutorial.assetDidBecomeMarked(assetID: assetID)
             }
             // IC-110 D 第 4 步：真实下滑取消＝集合移除。
@@ -612,6 +608,21 @@ struct S2View: View {
         // IC-110 D 第 3 步：等用户真实翻回刚标记那张。
         .onChange(of: machine.currentAssetID) { _, assetID in
             tutorial.currentAssetDidChange(to: assetID)
+        }
+        // IC-111 B：模型值变化时——有残影在途就压住，等落点再跟上（卡内「同帧」）；
+        // 没有在途残影（取消标记、确认页回来等）就立即跟上，不留滞后。
+        .onChange(of: machine.sessionMergedPendingDeletionCount) { _, count in
+            guard markAfterimages.inFlightCount == 0 else {
+                return
+            }
+            displayedPendingCount = count
+        }
+        // IC-111 B：落点——同帧把角标滚到模型值。回弹由 landedTick 触发。
+        .onChange(of: markAfterimages.landedTick) { _, _ in
+            withAnimation(.snappy(duration: 0.2)) {
+                displayedPendingCount =
+                    machine.sessionMergedPendingDeletionCount
+            }
         }
         .onChange(of: machine.feedbackEvent) { _, event in
             guard event != nil,
@@ -709,6 +720,8 @@ struct S2View: View {
             // IC-108 B：只有录制中才把探针引用交给 pager；关闭态传 nil，
             // pager 侧埋点是可选链空调用，零开销。
             doubleTapProbe: doubleTapProbe.isRecording ? doubleTapProbe : nil,
+            // IC-111 B：标记残影由 pager 在 UIKit 侧起飞，这里只把协调器交过去。
+            markAfterimages: markAfterimages,
             // IC-079 R2：滚动中按需创建页时，分页控制器用同一构造取任意索引的页内容。
             pageContentProvider: { index in
                 guard machine.orderedAssetIDs.indices.contains(index) else {
@@ -900,69 +913,6 @@ struct S2View: View {
         .padding(.trailing, safeAreaInsets.trailing)
     }
 
-    /// IC-110 C：标记残影浮层。每枚在途残影从主图显示帧中心出发，
-    /// 沿二次贝塞尔弧线飞入横栏对应格位，落点交给格位角标与脉冲接手。
-    ///
-    /// 残影内容复用 `stripItemContent` 渲染的**已解码图**，不做图层快照——
-    /// 故不存在「同步读取主图层内容」这条路径，停线 C1 的前提结构上不成立。
-    /// 详见报告「C1 说明」。
-    @ViewBuilder
-    private func markAfterimageOverlay(
-        metrics: S2ViewportMetrics,
-        safeAreaInsets: S2OverlaySafeAreaInsets,
-        containerSize: CGSize
-    ) -> some View {
-        let layout = S2BottomStripLayout(
-            metrics: machine.parameters.bottomStripMetrics
-        )
-        let stripHeight = metrics.bottomStripHeight
-        let stripWidth = max(
-            0,
-            containerSize.width - safeAreaInsets.leading -
-                safeAreaInsets.trailing
-        )
-        let stripOriginY = containerSize.height -
-            S2OverlayLayout.stripBottomFromViewportBottom(
-                safeAreaBottom: safeAreaInsets.bottom
-            ) - stripHeight
-        let source = CGPoint(
-            x: containerSize.width / 2,
-            y: metrics.oneXDisplayCenterY
-        )
-        ForEach(markAfterimages.active) { item in
-            let slot = layout.frame(
-                at: item.targetIndex,
-                currentIndex: machine.currentIndex,
-                expansion: 1,
-                contentX: layout.contentCenterX(of: machine.currentIndex),
-                viewportSize: CGSize(
-                    width: stripWidth,
-                    height: stripHeight
-                )
-            )
-            S2MarkAfterimageView(
-                item: item,
-                source: source,
-                target: CGPoint(
-                    x: safeAreaInsets.leading + slot.midX,
-                    y: stripOriginY + slot.midY
-                ),
-                sourceSize: metrics.oneXDisplaySize,
-                content: stripItemContent(
-                    S2BottomStripItemPresentation(
-                        assetID: item.assetID,
-                        index: item.targetIndex,
-                        isCurrent: false,
-                        isMarked: true,
-                        stripState: machine.bottomStripState
-                    )
-                ),
-                onFinish: { markAfterimages.finish(id: item.id) }
-            )
-        }
-        .allowsHitTesting(false)
-    }
-
     /// 主图待删标记浮层。位置固定于视口右上角（顶部信息区下方，距安全区右侧与
     /// 顶部信息区底边各 `horizontalPadding`），`Nx` 下不随平移移动；不参与命中测试。
     @ViewBuilder
@@ -1046,10 +996,23 @@ struct S2View: View {
                 Image(systemName: "trash")
                     .s2ChromeCircleGlass()
                     .overlay(alignment: .topTrailing) {
-                        if let badgeText = confirmationEntry.badgeText {
+                        if let badgeText = displayedBadgeText {
                             Text(badgeText)
                                 .monospacedDigit()
+                                // IC-111 B：落点同帧的数字滚动。
+                                .contentTransition(.numericText())
                         }
+                    }
+                    // IC-111 B：落点同帧的 spring 回弹 1 → 1.15 → 1。
+                    // 触发源是残影落点计数，故与残影收口同帧。
+                    .keyframeAnimator(
+                        initialValue: CGFloat(1),
+                        trigger: markAfterimages.landedTick
+                    ) { content, scale in
+                        content.scaleEffect(scale)
+                    } keyframes: { _ in
+                        SpringKeyframe(1.15, duration: 0.12)
+                        SpringKeyframe(1.0, duration: 0.18)
                     }
             }
             .disabled(!machine.canEnterConfirmation)
@@ -1111,10 +1074,19 @@ struct S2View: View {
         }
     }
 
+    /// 确认页入口呈现。**仍读模型值**——启用与否、无障碍标签都不得因残影而滞后。
     private var confirmationEntry: S2ConfirmationEntryPresentation {
         S2ConfirmationEntryPresentation(
             sessionPendingCount: machine.sessionMergedPendingDeletionCount
         )
+    }
+
+    /// IC-111 B：角标**文案**单独走显示值——卡内要求数字与残影落点同帧 +1，
+    /// 故只有这一处被推迟，按钮启用与无障碍标签一律不受影响。
+    private var displayedBadgeText: String? {
+        S2ConfirmationEntryPresentation(
+            sessionPendingCount: displayedPendingCount
+        ).badgeText
     }
 
     /// IC-110 B：底部 chrome 换装为「左圆钮 + 中跑道胶囊 + 右圆钮」。
@@ -2353,178 +2325,6 @@ final class S2TutorialCoordinator: ObservableObject {
         activeStep = nil
         self.outcome = outcome
         store.markCompleted()
-    }
-}
-
-// MARK: - IC-110 C：标记残影飞入
-
-/// IC-110 C：单枚残影的呈现。进度由 `keyframeAnimator` 推进
-/// （沿用本文件既有脉冲动画的同款机制），位置/缩放/透明度都是进度的纯函数，
-/// 故任一时刻的几何可被 `S2MarkAfterimageFlight` 单测直接复算。
-///
-/// 收口（陷阱 8）：动画只挂在本视图这一层，`onFinish` 后视图整体从
-/// `ForEach` 中移除，不留任何残余层；被上限提前收尾的那枚同样直接消失。
-struct S2MarkAfterimageView: View {
-    let item: S2MarkAfterimage
-    let source: CGPoint
-    let target: CGPoint
-    let sourceSize: CGSize
-    let content: AnyView
-    let onFinish: () -> Void
-
-    var body: some View {
-        content
-            .frame(width: sourceSize.width, height: sourceSize.height)
-            .keyframeAnimator(
-                initialValue: CGFloat(0),
-                repeating: false
-            ) { view, progress in
-                let position = S2MarkAfterimageFlight.point(
-                    from: source,
-                    to: target,
-                    progress: progress
-                )
-                view
-                    .scaleEffect(
-                        S2MarkAfterimageFlight.scale(at: progress)
-                    )
-                    .opacity(
-                        Double(
-                            S2MarkAfterimageFlight.opacity(at: progress)
-                        )
-                    )
-                    .position(position)
-            } keyframes: { _ in
-                CubicKeyframe(
-                    1,
-                    duration: S2MarkAfterimageFlight.durationSeconds
-                )
-            }
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-            .task(id: item.id) {
-                try? await Task.sleep(
-                    nanoseconds: UInt64(
-                        S2MarkAfterimageFlight.durationSeconds * 1_000_000_000
-                    )
-                )
-                onFinish()
-            }
-    }
-}
-
-
-/// 一枚在途残影。`id` 单调递增，用于并存上限的「最旧者」判定。
-struct S2MarkAfterimage: Equatable, Identifiable {
-    let id: Int
-    let assetID: String
-    /// 目标格位在 `orderedAssetIDs` 中的下标。
-    let targetIndex: Int
-}
-
-/// IC-110 C：残影协调器。只管在途集合与并存上限，不碰任何几何或动画。
-///
-/// 决策 32（④）：上滑标记成功瞬间生成残影，飞入横栏对应格位。
-/// 并存上限 3（卡内取定）；超出时**最旧者立即收尾**——从在途集合移除即为收尾，
-/// 角标由 `pendingDeletionAssetIDs` 驱动、与动画无关，故提前收尾不丢角标。
-///
-/// 下滑取消标记不产生残影，也不做反向飞出（卡内取定）：取消只是集合中少一个元素，
-/// 本协调器不接收移除事件。
-final class S2MarkAfterimageCoordinator: ObservableObject {
-    /// 并存上限（卡内取定）。
-    static let maximumConcurrent = 3
-
-    @Published private(set) var active: [S2MarkAfterimage] = []
-
-    /// 因超出上限而被提前收尾的残影 id，按发生顺序记录，供断言与诊断。
-    private(set) var forcedCompletions: [Int] = []
-
-    private var nextID = 0
-
-    @discardableResult
-    func begin(assetID: String, targetIndex: Int) -> S2MarkAfterimage {
-        nextID += 1
-        let item = S2MarkAfterimage(
-            id: nextID,
-            assetID: assetID,
-            targetIndex: targetIndex
-        )
-        active.append(item)
-        // 快速连续标记时残影并行、互不阻塞；只有越过上限才收尾最旧的一枚。
-        while active.count > Self.maximumConcurrent {
-            let oldest = active.removeFirst()
-            forcedCompletions.append(oldest.id)
-        }
-        return item
-    }
-
-    /// 正常落点收尾。对已被提前收尾的 id 调用是幂等的空操作。
-    func finish(id: Int) {
-        active.removeAll { $0.id == id }
-    }
-}
-
-/// IC-110 C：残影飞行的几何与时长。纯函数 + 常量，
-/// 不入 `S2CalibrationConfiguration`、不上参数面板、`schemaVersion` 不动。
-enum S2MarkAfterimageFlight {
-    /// 飞行时长（卡内取定）。
-    static let durationSeconds: TimeInterval = 0.42
-
-    /// 落点缩放比——「缩小」的落值。
-    static let endScale: CGFloat = 0.18
-
-    /// 起始不透明度——「半透明」的起值。
-    static let startOpacity: CGFloat = 0.55
-
-    /// 落点不透明度：落地即隐去，交由格位角标接手。
-    static let endOpacity: CGFloat = 0
-
-    /// 弧线抬升系数：控制点相对弦长的抬升比例。
-    static let arcLiftRatio: CGFloat = 0.32
-
-    /// 二次贝塞尔的控制点：取弦中点再沿**屏幕向上**抬升，
-    /// 抬升量按弦长成比例，故长距离飞行弧更明显、短距离近乎直线。
-    static func controlPoint(from: CGPoint, to: CGPoint) -> CGPoint {
-        let midpoint = CGPoint(
-            x: (from.x + to.x) / 2,
-            y: (from.y + to.y) / 2
-        )
-        let chordLength = hypot(to.x - from.x, to.y - from.y)
-        return CGPoint(
-            x: midpoint.x,
-            y: midpoint.y - chordLength * arcLiftRatio
-        )
-    }
-
-    /// 弧线上的点。`progress` 端点恒等：0 → from，1 → to。
-    static func point(
-        from: CGPoint,
-        to: CGPoint,
-        progress: CGFloat
-    ) -> CGPoint {
-        let t = min(1, max(0, progress))
-        let control = controlPoint(from: from, to: to)
-        let inverse = 1 - t
-        return CGPoint(
-            x: inverse * inverse * from.x +
-                2 * inverse * t * control.x +
-                t * t * to.x,
-            y: inverse * inverse * from.y +
-                2 * inverse * t * control.y +
-                t * t * to.y
-        )
-    }
-
-    /// 缩放随进度线性收缩：1 → `endScale`。
-    static func scale(at progress: CGFloat) -> CGFloat {
-        let t = min(1, max(0, progress))
-        return 1 + (endScale - 1) * t
-    }
-
-    /// 不透明度随进度线性淡出：`startOpacity` → `endOpacity`。
-    static func opacity(at progress: CGFloat) -> CGFloat {
-        let t = min(1, max(0, progress))
-        return startOpacity + (endOpacity - startOpacity) * t
     }
 }
 

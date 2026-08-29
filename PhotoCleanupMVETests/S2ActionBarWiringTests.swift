@@ -670,162 +670,143 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertTrue(withHistory.addAlbumEnabled)
     }
 
-    // MARK: - IC-110 C：标记残影飞入
+    // MARK: - IC-111 B：标记残影飞入右上垃圾桶
 
-    // IC-110 C：并存上限 3——第 4 枚入场时最旧者立即收尾并被登记。
-    func testIC110CAfterimageCoordinatorCapsConcurrencyAtThree() {
-        let coordinator = S2MarkAfterimageCoordinator()
-        XCTAssertEqual(S2MarkAfterimageCoordinator.maximumConcurrent, 3)
-
-        let first = coordinator.begin(assetID: "a", targetIndex: 0)
-        let second = coordinator.begin(assetID: "b", targetIndex: 1)
-        let third = coordinator.begin(assetID: "c", targetIndex: 2)
-        XCTAssertEqual(coordinator.active.count, 3)
-        XCTAssertTrue(coordinator.forcedCompletions.isEmpty)
-
-        let fourth = coordinator.begin(assetID: "d", targetIndex: 3)
-        XCTAssertEqual(coordinator.active.count, 3)
-        XCTAssertEqual(coordinator.forcedCompletions, [first.id])
-        XCTAssertEqual(
-            coordinator.active.map(\.id),
-            [second.id, third.id, fourth.id],
-            "被收尾的必须是最旧的一枚，其余保持入场顺序"
+    // IC-111 B：飞行参数落在卡内区间——总时长 300–340ms、
+    // scale 1 → 0.18、opacity 0.85 → 0。
+    func testIC111BFlightParametersMatchCard() {
+        XCTAssertGreaterThanOrEqual(
+            S2MarkAfterimageFlight.durationSeconds,
+            0.30
         )
-
-        // 再来一枚，仍只挤掉当时最旧的。
-        let fifth = coordinator.begin(assetID: "e", targetIndex: 4)
-        XCTAssertEqual(coordinator.forcedCompletions, [first.id, second.id])
-        XCTAssertEqual(
-            coordinator.active.map(\.id),
-            [third.id, fourth.id, fifth.id]
+        XCTAssertLessThanOrEqual(
+            S2MarkAfterimageFlight.durationSeconds,
+            0.34
+        )
+        XCTAssertEqual(S2MarkAfterimageFlight.startScale, 1)
+        XCTAssertEqual(S2MarkAfterimageFlight.endScale, 0.18)
+        XCTAssertEqual(S2MarkAfterimageFlight.startOpacity, 0.85)
+        XCTAssertEqual(S2MarkAfterimageFlight.endOpacity, 0)
+        XCTAssertLessThan(
+            S2MarkAfterimageFlight.endScale,
+            S2MarkAfterimageFlight.startScale,
+            "必须是缩小"
         )
     }
 
-    // IC-110 C：正常落点收尾移除对应残影；对已被提前收尾的 id 再调用是幂等空操作。
-    func testIC110CAfterimageFinishIsIdempotent() {
-        let coordinator = S2MarkAfterimageCoordinator()
-        let first = coordinator.begin(assetID: "a", targetIndex: 0)
-        let second = coordinator.begin(assetID: "b", targetIndex: 1)
-
-        coordinator.finish(id: first.id)
-        XCTAssertEqual(coordinator.active.map(\.id), [second.id])
-
-        // 重复收尾不抛不改
-        coordinator.finish(id: first.id)
-        XCTAssertEqual(coordinator.active.map(\.id), [second.id])
-
-        coordinator.finish(id: second.id)
-        XCTAssertTrue(coordinator.active.isEmpty)
+    // IC-111 B：落点 = 右上垃圾桶圆钮中心，且与 chrome 渲染共用
+    // topElementFrames——换句话说，改了 chrome 几何，落点自动跟着走。
+    func testIC111BTrashCenterSharesChromeDerivation() {
+        let viewport = CGSize(width: 393, height: 852)
+        let safeTop: CGFloat = 59
+        let center = S2MarkAfterimageFlight.trashCenter(
+            viewportSize: viewport,
+            safeAreaTop: safeTop
+        )
+        let frames = S2OverlayLayout.topElementFrames(
+            in: CGRect(
+                x: 0,
+                y: safeTop,
+                width: viewport.width,
+                height: S2OverlayLayout.topBarHeight
+            )
+        )
+        XCTAssertEqual(center.x, frames[2].midX, accuracy: 0.000_001)
+        XCTAssertEqual(center.y, frames[2].midY, accuracy: 0.000_001)
+        // 画布落值：右圆钮贴 16 边距、Ø44 ⟹ 中心 x = 393 − 16 − 22 = 355
+        XCTAssertEqual(center.x, 355, accuracy: 0.000_001)
+        // 中心 y = 安全区顶 59 + 上留白 3 + 22 = 84
+        XCTAssertEqual(center.y, 84, accuracy: 0.000_001)
     }
 
-    // IC-110 C：飞行几何端点恒等——0 落在起点、1 落在终点，越界钳制。
-    func testIC110CFlightGeometryPreservesEndpoints() {
-        let from = CGPoint(x: 195, y: 400)
-        let to = CGPoint(x: 60, y: 760)
+    // IC-111 B：弧线端点恒等，且控制点在**右外侧、起点高度**——
+    // 由此得「先横后纵」的甩入感。
+    func testIC111BFlightIsRightSideQuadraticWithExactEndpoints() {
+        let from = CGPoint(x: 196, y: 430)
+        let to = CGPoint(x: 355, y: 84)
+        let photoMaxX: CGFloat = 360
 
         let start = S2MarkAfterimageFlight.point(
-            from: from,
-            to: to,
-            progress: 0
+            from: from, to: to, photoMaxX: photoMaxX, progress: 0
         )
         XCTAssertEqual(start.x, from.x, accuracy: 0.000_001)
         XCTAssertEqual(start.y, from.y, accuracy: 0.000_001)
-
         let end = S2MarkAfterimageFlight.point(
-            from: from,
-            to: to,
-            progress: 1
+            from: from, to: to, photoMaxX: photoMaxX, progress: 1
         )
         XCTAssertEqual(end.x, to.x, accuracy: 0.000_001)
         XCTAssertEqual(end.y, to.y, accuracy: 0.000_001)
 
-        // 越界钳制到端点
-        let below = S2MarkAfterimageFlight.point(
-            from: from,
-            to: to,
-            progress: -0.5
+        // 控制点：x 推到 max(落点, 主图右缘) 之外，y 取起点高度
+        let control = S2MarkAfterimageFlight.controlPoint(
+            from: from, to: to, photoMaxX: photoMaxX
         )
-        XCTAssertEqual(below.x, from.x, accuracy: 0.000_001)
-        let above = S2MarkAfterimageFlight.point(
-            from: from,
-            to: to,
-            progress: 1.5
+        XCTAssertEqual(control.y, from.y, accuracy: 0.000_001)
+        XCTAssertGreaterThan(control.x, to.x)
+        XCTAssertGreaterThan(control.x, photoMaxX)
+
+        // 先横后纵：早段几乎只走横向，纵向位移占比很小
+        let early = S2MarkAfterimageFlight.point(
+            from: from, to: to, photoMaxX: photoMaxX, progress: 0.2
         )
-        XCTAssertEqual(above.x, to.x, accuracy: 0.000_001)
+        let horizontal = abs(early.x - from.x)
+        let vertical = abs(early.y - from.y)
+        XCTAssertGreaterThan(
+            horizontal,
+            vertical,
+            "早段应以横向甩出为主，否则不是「先横后纵」"
+        )
+
+        // 曲线整体鼓向右外侧：中点比弦中点更靠右
+        let mid = S2MarkAfterimageFlight.point(
+            from: from, to: to, photoMaxX: photoMaxX, progress: 0.5
+        )
+        XCTAssertGreaterThan(mid.x, (from.x + to.x) / 2)
+
+        // 越界钳制
+        XCTAssertEqual(
+            S2MarkAfterimageFlight.point(
+                from: from, to: to, photoMaxX: photoMaxX, progress: -1
+            ).x,
+            from.x,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2MarkAfterimageFlight.point(
+                from: from, to: to, photoMaxX: photoMaxX, progress: 2
+            ).x,
+            to.x,
+            accuracy: 0.000_001
+        )
     }
 
-    // IC-110 C：确是弧线而非直线——曲线中点严格高于弦中点（屏幕坐标 y 更小）。
-    func testIC110CFlightIsAnArcAboveTheChord() {
-        let from = CGPoint(x: 195, y: 400)
-        let to = CGPoint(x: 60, y: 760)
-        let chordMidpoint = CGPoint(
-            x: (from.x + to.x) / 2,
-            y: (from.y + to.y) / 2
-        )
-        let curveMidpoint = S2MarkAfterimageFlight.point(
-            from: from,
-            to: to,
-            progress: 0.5
-        )
-        XCTAssertLessThan(
-            curveMidpoint.y,
-            chordMidpoint.y,
-            "曲线中点必须在弦中点上方，否则退化成直线"
-        )
-        // 控制点同样在弦中点上方，抬升量按弦长成比例
-        let control = S2MarkAfterimageFlight.controlPoint(from: from, to: to)
-        XCTAssertLessThan(control.y, chordMidpoint.y)
-        XCTAssertEqual(control.x, chordMidpoint.x, accuracy: 0.000_001)
+    // IC-111 B：协调器只做在途计数与落点通知；允许多枚并发，无上限。
+    func testIC111BCoordinatorTracksConcurrentFlightsAndLandings() {
+        let coordinator = S2MarkAfterimageCoordinator()
+        XCTAssertEqual(coordinator.inFlightCount, 0)
+        XCTAssertEqual(coordinator.landedTick, 0)
 
-        // 零距离时不产生抬升，弧退化为原点，不出现除零或 NaN
-        let degenerate = S2MarkAfterimageFlight.controlPoint(
-            from: from,
-            to: from
-        )
-        XCTAssertEqual(degenerate.x, from.x, accuracy: 0.000_001)
-        XCTAssertEqual(degenerate.y, from.y, accuracy: 0.000_001)
-    }
-
-    // IC-110 C：缩放与透明度端点——由 1 缩到 endScale、由半透明淡出到 0。
-    func testIC110CFlightScaleAndOpacityEndpoints() {
-        XCTAssertEqual(
-            S2MarkAfterimageFlight.scale(at: 0),
-            1,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S2MarkAfterimageFlight.scale(at: 1),
-            S2MarkAfterimageFlight.endScale,
-            accuracy: 0.000_001
-        )
-        XCTAssertLessThan(S2MarkAfterimageFlight.endScale, 1, "必须是缩小")
-
-        XCTAssertEqual(
-            S2MarkAfterimageFlight.opacity(at: 0),
-            S2MarkAfterimageFlight.startOpacity,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S2MarkAfterimageFlight.opacity(at: 1),
-            S2MarkAfterimageFlight.endOpacity,
-            accuracy: 0.000_001
-        )
-        XCTAssertLessThan(
-            S2MarkAfterimageFlight.startOpacity,
-            1,
-            "起始即为半透明"
-        )
-        XCTAssertGreaterThan(S2MarkAfterimageFlight.durationSeconds, 0)
-
-        // 单调收缩：全程不回弹
-        var previous = S2MarkAfterimageFlight.scale(at: 0)
-        for step in 1...50 {
-            let value = S2MarkAfterimageFlight.scale(
-                at: CGFloat(step) / 50
-            )
-            XCTAssertLessThan(value, previous)
-            previous = value
+        // 连续标记 5 张：五枚同时在途，互不阻塞、不设上限
+        for _ in 0..<5 {
+            coordinator.willLaunch()
         }
+        XCTAssertEqual(coordinator.inFlightCount, 5)
+        XCTAssertEqual(coordinator.landedTick, 0)
+
+        coordinator.didLand()
+        XCTAssertEqual(coordinator.inFlightCount, 4)
+        XCTAssertEqual(coordinator.landedTick, 1)
+
+        for _ in 0..<4 {
+            coordinator.didLand()
+        }
+        XCTAssertEqual(coordinator.inFlightCount, 0)
+        XCTAssertEqual(coordinator.landedTick, 5)
+
+        // 多余的落点通知不把在途数压成负数
+        coordinator.didLand()
+        XCTAssertEqual(coordinator.inFlightCount, 0)
+        XCTAssertEqual(coordinator.landedTick, 6)
     }
 
     // MARK: - IC-110 D：首次引导教程
