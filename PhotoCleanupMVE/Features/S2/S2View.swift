@@ -410,6 +410,9 @@ struct S2View: View {
     /// IC-111 B：角标**显示值**。卡内要求「落点同帧 +1」，故显示值不跟随模型
     /// 立即变化——有残影在途时压到落点再跟上。
     @State private var displayedPendingCount = 0
+    /// IC-112 B：中央状态指示——当前显示态与最近一次动作。
+    @State private var centerIndicatorState: S2CenterIndicatorState?
+    @State private var centerIndicatorLastAction: S2CenterIndicatorAction?
     /// IC-111 C：加入相簿残影的时序闸门与中胶囊入场进度。
     @State private var albumAfterimageGate = S2AlbumAfterimageGate()
     /// 0 = 未入场（透明、下沉 8pt），1 = 已就位。
@@ -507,7 +510,8 @@ struct S2View: View {
                 .allowsHitTesting(machine.interfaceVisibility == .visible)
                 .accessibilityHidden(machine.interfaceVisibility != .visible)
 
-                primaryMarkOverlay(safeAreaInsets: safeAreaInsets)
+                // IC-112 B：旧右上角角标移除，改为主图几何中心的状态指示。
+                centerIndicatorOverlay(metrics: viewportMetrics)
 
                 calibrationOverlay(
                     metrics: viewportMetrics,
@@ -567,6 +571,8 @@ struct S2View: View {
                 // IC-111 B：进场时显示值与模型值对齐（无残影在途）。
                 displayedPendingCount =
                     machine.sessionMergedPendingDeletionCount
+                // IC-112 B：进场即按当前页状态落一次指示，不带动画。
+                refreshCenterIndicator(animated: false)
                 // IC-110 D：首次进入 S2 放一次；已完成/已跳过过不再放。
                 tutorial.startIfNeeded()
             }
@@ -590,6 +596,8 @@ struct S2View: View {
         }
         .onChange(of: machine.interfaceVisibility) { _, visibility in
             applyStatusBarAppearance(for: visibility)
+            // IC-112 B：中央指示随 chrome 同显隐（V=隐藏 时不显示）。
+            refreshCenterIndicator(animated: true)
         }
         .onChange(of: machine.semanticNotice) { _, notice in
             guard notice != nil else {
@@ -619,10 +627,25 @@ struct S2View: View {
             for assetID in removed {
                 tutorial.assetDidBecomeUnmarked(assetID: assetID)
             }
+            // IC-112 B：标记/撤回都算一次「最近动作」，据此裁决两态并存时显示哪种。
+            if !inserted.isEmpty || !removed.isEmpty {
+                centerIndicatorLastAction = .mark
+                refreshCenterIndicator(animated: true)
+            }
         }
-        // IC-110 D 第 3 步：等用户真实翻回刚标记那张。
+        // IC-112 B：收藏态变化——同上记一次最近动作。
+        .onChange(of: machine.currentIsFavorite) { _, _ in
+            centerIndicatorLastAction = .favorite
+            refreshCenterIndicator(animated: true)
+        }
         .onChange(of: machine.currentAssetID) { _, assetID in
+            // IC-110 D 第 3 步：等用户真实翻回刚标记那张。
             tutorial.currentAssetDidChange(to: assetID)
+            // IC-112 B：翻页即随新页状态刷新，且**不带动画**（卡内 ④）。
+            // 新页的状态不是任何一次近期动作造成的，故清掉最近动作。
+            centerIndicatorLastAction = nil
+            centerIndicatorState = nil
+            refreshCenterIndicator(animated: false)
         }
         // IC-111 B：模型值变化时——有残影在途就压住，等落点再跟上（卡内「同帧」）；
         // 没有在途残影（取消标记、确认页回来等）就立即跟上，不留滞后。
@@ -931,47 +954,110 @@ struct S2View: View {
     /// 主图待删标记浮层。位置固定于视口右上角（顶部信息区下方，距安全区右侧与
     /// 顶部信息区底边各 `horizontalPadding`），`Nx` 下不随平移移动；不参与命中测试。
     @ViewBuilder
-    private func primaryMarkOverlay(
-        safeAreaInsets: S2OverlaySafeAreaInsets
+    /// IC-112 B：中央状态指示浮层。位置 = **主图几何中心**
+    /// （视口中心 X + `oneXDisplayCenterY`，故截图的适配带锚定同样正确）。
+    ///
+    /// 出现/消失 200 ms 淡入淡出 + scale 0.9→1 / 1→0.9；两者都是属性动画，
+    /// 由渲染层推进。翻页引起的刷新**不带动画**（见 `refreshCenterIndicator`
+    /// 的 `disablesAnimations` 事务）。
+    @ViewBuilder
+    private func centerIndicatorOverlay(
+        metrics: S2ViewportMetrics
     ) -> some View {
-        if S2PrimaryMarkPresenter.showsMark(
-            interfaceVisibility: machine.interfaceVisibility,
-            isMarked: machine.currentIsMarked
-        ) {
-            let size = S2PrimaryMarkPresenter.markSize(
-                bottomStripMarkSize: calibration.configuration.bottomStripMarkSize
+        if let state = centerIndicatorState {
+            S2CenterIndicatorView(state: state) {
+                undoFavoriteFromCenterIndicator()
+            }
+            .position(
+                x: metrics.viewportSize.width / 2,
+                y: metrics.oneXDisplayCenterY
             )
-            let halfPulse = max(
-                0.000_001,
-                calibration.configuration.markPulseDurationMilliseconds / 2_000
-            )
-            // IC-093 R2：渲染收敛到 `S2PendingDeletionMark`；脉冲、位置、显示条件不变。
-            S2PendingDeletionMark(size: size)
-                .keyframeAnimator(
-                    initialValue: CGFloat(1),
-                    trigger: primaryMark.pulseID
-                ) { content, scale in
-                    content.scaleEffect(scale)
-                } keyframes: { _ in
-                    CubicKeyframe(1.3, duration: halfPulse)
-                    CubicKeyframe(1.0, duration: halfPulse)
+            .task(id: state) {
+                // 短提示到时自行淡出，随后按模型态复算（此时已非收藏态，
+                // 故通常复算为 nil＝不显示）。
+                guard case .removed = state else {
+                    return
                 }
-                .accessibilityLabel(L10n.text("s2.mark.primary.accessibility"))
-                .padding(
-                    .top,
-                    safeAreaInsets.top + S2OverlayLayout.topBarHeight +
-                        S2OverlayLayout.horizontalPadding
+                try? await Task.sleep(
+                    nanoseconds: UInt64(
+                        S2CenterIndicatorResolver.removedNoticeSeconds *
+                            1_000_000_000
+                    )
                 )
-                .padding(
-                    .trailing,
-                    safeAreaInsets.trailing + S2OverlayLayout.horizontalPadding
+                withAnimation(
+                    .easeInOut(
+                        duration: S2CenterIndicatorResolver.transitionSeconds
+                    )
+                ) {
+                    centerIndicatorState = nil
+                }
+                refreshCenterIndicator(animated: true)
+            }
+            .transition(
+                .opacity.combined(
+                    with: .scale(
+                        scale: S2CenterIndicatorResolver.hiddenScale
+                    )
                 )
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .topTrailing
+            )
+        }
+    }
+
+    /// ♡ 所对应的系统「最爱」相簿名。
+    ///
+    /// 产品里 ♡ 是 `PHAsset` 收藏、没有相簿名概念（本卡登记的差异），
+    /// 故这里取一个可本地化的常量名，格式参数的形状与卡内一致。
+    private var favoritesAlbumName: String {
+        L10n.text("s2.center.favorites_album")
+    }
+
+    /// IC-112 B：点撤回 → 取消收藏，短提示「已从「名」移除」后整块淡出。
+    private func undoFavoriteFromCenterIndicator() {
+        guard let request = machine.makeFavoriteToggleRequest() else {
+            return
+        }
+        let albumName = favoritesAlbumName
+        onFavoriteRequest(request)
+        centerIndicatorLastAction = nil
+        withAnimation(
+            .easeInOut(duration: S2CenterIndicatorResolver.transitionSeconds)
+        ) {
+            centerIndicatorState = .removed(albumName: albumName)
+        }
+    }
+
+    /// IC-112 B：按当前模型态重算中央指示。`animated == false` 用于翻页刷新。
+    ///
+    /// `removed` 是撤回后的短提示过渡态，不由模型产出，故刷新时不覆盖它——
+    /// 它由自己的计时清掉。
+    private func refreshCenterIndicator(animated: Bool) {
+        if case .removed = centerIndicatorState {
+            return
+        }
+        let next = S2CenterIndicatorResolver.state(
+            interfaceVisibility: machine.interfaceVisibility,
+            isMarked: machine.currentIsMarked,
+            isFavorited: machine.currentIsFavorite,
+            favoritesAlbumName: favoritesAlbumName,
+            lastAction: centerIndicatorLastAction
+        )
+        guard next != centerIndicatorState else {
+            return
+        }
+        if animated {
+            withAnimation(
+                .easeInOut(
+                    duration: S2CenterIndicatorResolver.transitionSeconds
                 )
-                .allowsHitTesting(false)
+            ) {
+                centerIndicatorState = next
+            }
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                centerIndicatorState = next
+            }
         }
     }
 
@@ -2646,6 +2732,175 @@ final class S2TutorialCoordinator: ObservableObject {
         activeStep = nil
         self.outcome = outcome
         store.markCompleted()
+    }
+}
+
+/// IC-112 B：中央状态指示的视图。跑道圆框容器（玻璃 + 描边，与 chrome 同族），
+/// 内为方形倒角块。
+///
+/// **命中测试（硬闸门）**：整块视觉体 `allowsHitTesting(false)`，
+/// 只有撤回钮可点——它以 `overlay` 叠在**已禁用命中的子树之外**，
+/// 故不受那层禁用影响。翻页 / 缩放 / 标记 / 显隐手势一律从指示区域穿透过去。
+struct S2CenterIndicatorView: View {
+    let state: S2CenterIndicatorState
+    let onUndo: () -> Void
+
+    /// 内部方形倒角块与容器尺寸（卡内取定）。
+    static let blockSize: CGFloat = 30
+    static let blockCornerRadius: CGFloat = 9
+    static let containerHeight: CGFloat = 46
+    static let horizontalPadding: CGFloat = 12
+
+    /// 撤回钮是否存在（＝该状态下是否有可点元素）。
+    static func showsUndoControl(for state: S2CenterIndicatorState) -> Bool {
+        if case .favorited = state {
+            return true
+        }
+        return false
+    }
+
+    var body: some View {
+        content
+            .frame(height: Self.containerHeight)
+            .padding(.horizontal, Self.horizontalPadding)
+            .s2ChromeGlassBackground(in: Capsule())
+            // 视觉体整体不吃点击——手势穿透到主图。
+            .allowsHitTesting(false)
+            .overlay(alignment: .trailing) {
+                // 唯一可点的元素。它在被禁用命中的子树**之外**，故仍可点。
+                if Self.showsUndoControl(for: state) {
+                    Button(L10n.text("s2.center.undo")) {
+                        onUndo()
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, Self.horizontalPadding)
+                    .frame(height: Self.containerHeight)
+                    .contentShape(Rectangle())
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch state {
+        case .marked:
+            markedBlock
+                .accessibilityLabel(L10n.text("s2.mark.primary.accessibility"))
+        case let .favorited(albumName):
+            HStack(spacing: 10) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text(verbatim: L10n.text(
+                    "s2.center.favorited",
+                    replacing: ["album": albumName]
+                ))
+                .font(.system(size: 15))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                Divider()
+                    .frame(height: 22)
+                    .overlay(Color.white.opacity(0.35))
+                // 撤回钮的占位：真正可点的那个以 overlay 叠在外层，
+                // 这里只用等宽的隐形文本把版面撑出来。
+                Text(verbatim: L10n.text("s2.center.undo"))
+                    .font(.system(size: 15, weight: .semibold))
+                    .opacity(0)
+            }
+        case let .removed(albumName):
+            Text(verbatim: L10n.text(
+                "s2.center.removed",
+                replacing: ["album": albumName]
+            ))
+            .font(.system(size: 15))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+        }
+    }
+
+    /// 已标记：单块垃圾桶图标（方形倒角块）。
+    private var markedBlock: some View {
+        RoundedRectangle(
+            cornerRadius: Self.blockCornerRadius,
+            style: .continuous
+        )
+        .fill(Color.white.opacity(0.16))
+        .frame(width: Self.blockSize, height: Self.blockSize)
+        .overlay {
+            Image(systemName: "trash.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+    }
+}
+
+// MARK: - IC-112 B：中央状态指示
+
+/// 中央指示的最近一次动作。用于「两态并存时显示哪一种」的裁决（④）。
+enum S2CenterIndicatorAction: Equatable {
+    case mark
+    case favorite
+}
+
+/// 中央状态指示的四态之一（同一时刻只显示一种，④）。
+///
+/// - `marked`：已标记，单块垃圾桶图标。
+/// - `favorited`：已收藏，♡ + 收藏到「名」+ 分隔线 + 撤回钮。
+///
+/// 「下滑撤回」与「点撤回」都不是独立状态——它们的表现就是**整块消失**
+/// （消失即撤回成功的确认），故解析结果为 `nil`。
+enum S2CenterIndicatorState: Equatable {
+    case marked
+    case favorited(albumName: String)
+    /// 点撤回后的**短提示**过渡态：「已从「名」移除」，随后整块淡出。
+    /// 它不由 `resolver` 产出——模型里没有「刚移除」这回事，
+    /// 是撤回动作显式置入、到时自行清掉的呈现态。
+    case removed(albumName: String)
+}
+
+/// IC-112 B：中央指示的状态解析。**纯函数**，可被单测直接复算。
+enum S2CenterIndicatorResolver {
+    /// 出现/消失动画时长与缩放（画布 ④）。
+    static let transitionSeconds: TimeInterval = 0.2
+    static let hiddenScale: CGFloat = 0.9
+
+    /// 撤回后「已从「名」移除」短提示的停留时长（卡内取定）。
+    static let removedNoticeSeconds: TimeInterval = 1.2
+
+    /// 解析当前该显示哪一种；`nil` = 不显示（含整块淡出的两种撤回路径）。
+    ///
+    /// 规则（④）：
+    /// 1. `V=隐藏` 一律不显示——指示随 chrome 同显隐。
+    /// 2. 两态并存时显示**最近一次动作**对应的那种。
+    /// 3. 最近动作缺失（例如刚翻页到新的一张，本页的状态不是任何一次
+    ///    近期动作造成的）且两态并存时，取 `marked`——待删意图更需要被看见。
+    ///    这一条是卡内未覆盖的边角，**卡内取定并登记**。
+    static func state(
+        interfaceVisibility: S2InterfaceVisibility,
+        isMarked: Bool,
+        isFavorited: Bool,
+        favoritesAlbumName: String,
+        lastAction: S2CenterIndicatorAction?
+    ) -> S2CenterIndicatorState? {
+        guard interfaceVisibility == .visible else {
+            return nil
+        }
+        switch (isMarked, isFavorited) {
+        case (false, false):
+            return nil
+        case (true, false):
+            return .marked
+        case (false, true):
+            return .favorited(albumName: favoritesAlbumName)
+        case (true, true):
+            switch lastAction {
+            case .favorite:
+                return .favorited(albumName: favoritesAlbumName)
+            case .mark, .none:
+                return .marked
+            }
+        }
     }
 }
 

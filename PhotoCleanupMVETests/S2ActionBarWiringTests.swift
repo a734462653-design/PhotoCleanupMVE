@@ -705,6 +705,127 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertGreaterThan(S2ChromeGlass.outerStrokeWidth, 0)
     }
 
+    // MARK: - IC-112 B：中央状态指示
+
+    // IC-112 B：同一时刻只显示一种；两态并存时取最近一次动作对应的那种。
+    func testIC112BShowsExactlyOneStateAtATime() {
+        func resolve(
+            marked: Bool,
+            favorited: Bool,
+            last: S2CenterIndicatorAction?
+        ) -> S2CenterIndicatorState? {
+            S2CenterIndicatorResolver.state(
+                interfaceVisibility: .visible,
+                isMarked: marked,
+                isFavorited: favorited,
+                favoritesAlbumName: "最爱",
+                lastAction: last
+            )
+        }
+
+        // 两者都无 → 不显示
+        XCTAssertNil(resolve(marked: false, favorited: false, last: nil))
+        // 只有一种 → 就是那种
+        XCTAssertEqual(
+            resolve(marked: true, favorited: false, last: nil),
+            .marked
+        )
+        XCTAssertEqual(
+            resolve(marked: false, favorited: true, last: nil),
+            .favorited(albumName: "最爱")
+        )
+        // 并存 → 看最近一次动作
+        XCTAssertEqual(
+            resolve(marked: true, favorited: true, last: .mark),
+            .marked
+        )
+        XCTAssertEqual(
+            resolve(marked: true, favorited: true, last: .favorite),
+            .favorited(albumName: "最爱")
+        )
+        // 并存但无最近动作（刚翻页到新的一张）→ 取 marked（卡内取定并登记）
+        XCTAssertEqual(
+            resolve(marked: true, favorited: true, last: nil),
+            .marked
+        )
+    }
+
+    // IC-112 B：指示随 chrome 同显隐——V=隐藏 时一律不显示，
+    // 无论模型上是标记还是收藏、也无论最近动作是什么。
+    func testIC112BHiddenInterfaceShowsNothing() {
+        for marked in [true, false] {
+            for favorited in [true, false] {
+                for last in [
+                    S2CenterIndicatorAction.mark,
+                    .favorite,
+                    nil
+                ] as [S2CenterIndicatorAction?] {
+                    XCTAssertNil(
+                        S2CenterIndicatorResolver.state(
+                            interfaceVisibility: .hidden,
+                            isMarked: marked,
+                            isFavorited: favorited,
+                            favoritesAlbumName: "最爱",
+                            lastAction: last
+                        ),
+                        "V=隐藏 时不得显示（marked=\(marked) fav=\(favorited)）"
+                    )
+                }
+            }
+        }
+    }
+
+    // IC-112 B G279（硬闸门）：命中测试——**仅撤回钮可点**。
+    //
+    // 撤回钮只在「已收藏」态存在；「已标记」与撤回后的短提示态都没有任何
+    // 可点元素，整块纯展示、手势全部穿透。视觉体本身挂
+    // `allowsHitTesting(false)`，撤回钮以 overlay 叠在该子树之外，故仍可点。
+    func testIC112BOnlyUndoControlIsHittable() {
+        XCTAssertTrue(
+            S2CenterIndicatorView.showsUndoControl(
+                for: .favorited(albumName: "最爱")
+            ),
+            "已收藏态必须有撤回钮"
+        )
+        XCTAssertFalse(
+            S2CenterIndicatorView.showsUndoControl(for: .marked),
+            "已标记态不得有任何可点元素——手势必须穿透"
+        )
+        XCTAssertFalse(
+            S2CenterIndicatorView.showsUndoControl(
+                for: .removed(albumName: "最爱")
+            ),
+            "撤回后的短提示态不得有任何可点元素——手势必须穿透"
+        )
+    }
+
+    // IC-112 B：出现/消失参数（200ms、scale 0.9）与短提示停留时长。
+    func testIC112BTransitionParametersMatchCanvas() {
+        XCTAssertEqual(
+            S2CenterIndicatorResolver.transitionSeconds,
+            0.2,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2CenterIndicatorResolver.hiddenScale,
+            0.9,
+            accuracy: 0.000_001
+        )
+        XCTAssertGreaterThan(
+            S2CenterIndicatorResolver.removedNoticeSeconds,
+            S2CenterIndicatorResolver.transitionSeconds,
+            "短提示至少要停留到淡入结束之后才有意义"
+        )
+        // 容器内为方形倒角块
+        XCTAssertEqual(S2CenterIndicatorView.blockSize, 30)
+        XCTAssertGreaterThan(S2CenterIndicatorView.blockCornerRadius, 0)
+        XCTAssertLessThan(
+            S2CenterIndicatorView.blockSize,
+            S2CenterIndicatorView.containerHeight,
+            "方块必须落在跑道容器内"
+        )
+    }
+
     // MARK: - IC-111 B：标记残影飞入右上垃圾桶
 
     // IC-111 B：飞行参数落在卡内区间——总时长 300–340ms、

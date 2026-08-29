@@ -562,6 +562,50 @@
         }
       }
     },
+    "s2.center.favorited" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收藏到「{album}」"
+          }
+        }
+      }
+    },
+    "s2.center.favorites_album" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最爱"
+          }
+        }
+      }
+    },
+    "s2.center.removed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已从「{album}」移除"
+          }
+        }
+      }
+    },
+    "s2.center.undo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤回"
+          }
+        }
+      }
+    },
     "s2.tutorial.done" : {
       "extractionState" : "manual",
       "localizations" : {
