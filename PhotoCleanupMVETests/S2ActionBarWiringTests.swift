@@ -1135,6 +1135,156 @@ final class S2ActionBarWiringTests: XCTestCase {
         )
     }
 
+    // MARK: - IC-112 C：教程 v3
+
+    // IC-112 C：六步且顺序不变；新第 5 步是收藏引导，原第 5 步顺延为第 6 步。
+    func testIC112CTutorialHasSixStepsInOrder() {
+        XCTAssertEqual(S2TutorialStep.allCases.count, 6)
+        XCTAssertEqual(
+            S2TutorialStep.allCases.map(\.rawValue),
+            [1, 2, 3, 4, 5, 6]
+        )
+        XCTAssertEqual(S2TutorialStep.favoriteGuide.rawValue, 5)
+        XCTAssertEqual(S2TutorialStep.confirmEntry.rawValue, 6)
+        // 六步文案互不相同且非空
+        let texts = S2TutorialStep.allCases.map(\.text)
+        XCTAssertEqual(Set(texts).count, 6)
+        for text in texts {
+            XCTAssertFalse(text.isEmpty)
+        }
+    }
+
+    // IC-112 C：第 5 步只被**真实收藏成功**推动；点击任意处不推进。
+    func testIC112CFavoriteGuideAdvancesOnlyOnRealFavorite() {
+        let tutorial = S2TutorialCoordinator(
+            store: S2InMemoryTutorialCompletionStore()
+        )
+        tutorial.startIfNeeded()
+        tutorial.assetDidBecomeMarked(assetID: "asset-2")
+        tutorial.acknowledge()
+        tutorial.currentAssetDidChange(to: "asset-2")
+        tutorial.assetDidBecomeUnmarked(assetID: "asset-2")
+        // 第 4 步完成后进入新的第 5 步（收藏引导），而不是直接到确认入口
+        XCTAssertEqual(tutorial.activeStep, .favoriteGuide)
+        XCTAssertTrue(S2TutorialStep.favoriteGuide.waitsForRealGesture)
+
+        // 点击不推进
+        for _ in 0..<3 {
+            tutorial.acknowledge()
+        }
+        XCTAssertEqual(tutorial.activeStep, .favoriteGuide)
+
+        // 真实收藏成功才推进
+        tutorial.assetDidBecomeFavorited(assetID: "asset-2")
+        XCTAssertEqual(tutorial.activeStep, .confirmEntry)
+
+        // 第 6 步点击任意处结束
+        tutorial.acknowledge()
+        XCTAssertNil(tutorial.activeStep)
+        XCTAssertEqual(tutorial.outcome, .completed)
+    }
+
+    // IC-112 C：提示卡底缘 = 横栏顶缘 − 8，**六步同值**（对齐同一水平线），
+    // 且严格高于横栏顶缘——永不遮挡横栏。
+    func testIC112CCardBottomAlignsAboveStrip() {
+        let safeBottom: CGFloat = 34
+        let stripHeight: CGFloat = 30
+        let inset = S2TutorialCardLayout.bottomInset(
+            safeAreaBottom: safeBottom,
+            bottomStripHeight: stripHeight
+        )
+        // 横栏视觉顶缘距视口底
+        let stripVisualTop = S2OverlayLayout.stripBottomFromViewportBottom(
+            safeAreaBottom: safeBottom
+        ) + stripHeight
+        XCTAssertEqual(
+            inset - stripVisualTop,
+            S2TutorialCardLayout.stripClearance,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(S2TutorialCardLayout.stripClearance, 8)
+        // 卡底缘比横栏顶缘更高（距视口底更远）⟹ 不压横栏
+        XCTAssertGreaterThan(inset, stripVisualTop)
+        // 常规机型落值：110 + 30 + 8 = 148
+        XCTAssertEqual(inset, 148, accuracy: 0.000_001)
+    }
+
+    // IC-112 C：第 5 步聚光套**左下 ♡ 圆钮**，与 chrome 底排同一套表达式；
+    // 两个套圆钮的步骤都用正圆挖孔。
+    func testIC112CFavoriteGuideSpotlightTargetsBottomLeadingCircle() {
+        let viewport = CGSize(width: 393, height: 852)
+        let insets = S2OverlaySafeAreaInsets(
+            top: 59,
+            leading: 0,
+            bottom: 34,
+            trailing: 0
+        )
+        let rect = S2TutorialSpotlight.targetRect(
+            step: .favoriteGuide,
+            viewportSize: viewport,
+            safeAreaInsets: insets,
+            photoSize: CGSize(width: 393, height: 562),
+            photoCenterY: 409,
+            bottomStripHeight: 30
+        )
+        // 左边距 16、Ø44，故中心 x = 16 + 22 = 38
+        XCTAssertEqual(rect.midX, 38, accuracy: 0.000_001)
+        // 底排上缘距视口底 86 ⟹ 顶缘 y = 852 − 86 = 766，中心 y = 766 + 22 = 788
+        XCTAssertEqual(rect.midY, 788, accuracy: 0.000_001)
+        // 与右上确认入口不是同一个目标
+        let trash = S2TutorialSpotlight.targetRect(
+            step: .confirmEntry,
+            viewportSize: viewport,
+            safeAreaInsets: insets,
+            photoSize: CGSize(width: 393, height: 562),
+            photoCenterY: 409,
+            bottomStripHeight: 30
+        )
+        XCTAssertNotEqual(rect, trash)
+        // 两个圆钮步都用正圆挖孔
+        XCTAssertEqual(
+            S2TutorialSpotlight.cornerRadius(for: .favoriteGuide),
+            S2TutorialSpotlight.circleCornerRadius
+        )
+        XCTAssertEqual(
+            S2TutorialSpotlight.cornerRadius(for: .confirmEntry),
+            S2TutorialSpotlight.circleCornerRadius
+        )
+        XCTAssertEqual(
+            S2TutorialSpotlight.cornerRadius(for: .swipeUpToMark),
+            S2TutorialSpotlight.cornerRadius
+        )
+    }
+
+    // IC-112 C：手势图示按第三轮画布放大，循环周期不变。
+    func testIC112CGestureHintEnlarged() {
+        XCTAssertEqual(S2TutorialGestureHint.ringDiameter, 38)
+        XCTAssertEqual(S2TutorialGestureHint.ringLineWidth, 2)
+        XCTAssertEqual(S2TutorialGestureHint.coreDiameter, 21)
+        XCTAssertEqual(S2TutorialGestureHint.arrowLength, 64)
+        XCTAssertEqual(
+            S2TutorialGestureHint.arrowLineWidth,
+            2.6,
+            accuracy: 0.000_001
+        )
+        // 循环 0.9s/次不变、位移 40pt 不变
+        XCTAssertEqual(
+            S2TutorialGestureHint.cycleSeconds,
+            0.9,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(S2TutorialGestureHint.travel, 40)
+        // 芯必须小于环
+        XCTAssertLessThan(
+            S2TutorialGestureHint.coreDiameter,
+            S2TutorialGestureHint.ringDiameter
+        )
+        // 第 5 步给向下箭头（指向左下角的 ♡）
+        XCTAssertEqual(S2TutorialStep.favoriteGuide.gestureDirection, .down)
+        // 第 6 步只指向、无循环手势图示
+        XCTAssertNil(S2TutorialStep.confirmEntry.gestureDirection)
+    }
+
     // MARK: - IC-111 D：教程动效
 
     // IC-111 D：聚光挖孔按步套目标——步 1/3/4 套主图、步 2 套横栏、
@@ -1246,8 +1396,9 @@ final class S2ActionBarWiringTests: XCTestCase {
     // 循环 0.9s、位移 40pt。
     func testIC111DAnimationParametersMatchCard() {
         XCTAssertEqual(S2TutorialOverlay.dimOpacity, 0.55, accuracy: 0.000_001)
-        XCTAssertEqual(S2TutorialGestureHint.ringDiameter, 26)
-        XCTAssertEqual(S2TutorialGestureHint.coreDiameter, 14)
+        // IC-112 C：触点圆按第三轮画布放大（原 Ø26 / Ø14）。
+        XCTAssertEqual(S2TutorialGestureHint.ringDiameter, 38)
+        XCTAssertEqual(S2TutorialGestureHint.coreDiameter, 21)
         XCTAssertLessThan(
             S2TutorialGestureHint.coreDiameter,
             S2TutorialGestureHint.ringDiameter
@@ -1397,17 +1548,18 @@ final class S2ActionBarWiringTests: XCTestCase {
     }
 
     // IC-110 D：未完成时才放；步骤原始值与文案一一对应且互不相同。
+    // IC-112 C：由五步扩为六步（新增收藏引导）。
     func testIC110DStepCatalogIsWellFormed() {
-        XCTAssertEqual(S2TutorialStep.allCases.count, 5)
+        XCTAssertEqual(S2TutorialStep.allCases.count, 6)
         XCTAssertEqual(
             S2TutorialStep.allCases.map(\.rawValue),
-            [1, 2, 3, 4, 5]
+            [1, 2, 3, 4, 5, 6]
         )
         let texts = S2TutorialStep.allCases.map(\.text)
         XCTAssertEqual(
             Set(texts).count,
-            5,
-            "五步文案必须互不相同"
+            6,
+            "六步文案必须互不相同"
         )
         for text in texts {
             XCTAssertFalse(text.isEmpty)

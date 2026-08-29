@@ -543,6 +543,11 @@ struct S2View: View {
                         ),
                         spotlightCornerRadius:
                             S2TutorialSpotlight.cornerRadius(for: step),
+                        cardBottomInset: S2TutorialCardLayout.bottomInset(
+                            safeAreaBottom: safeAreaInsets.bottom,
+                            bottomStripHeight: viewportMetrics
+                                .bottomStripHeight
+                        ),
                         onAcknowledge: { tutorial.acknowledge() },
                         onSkip: { tutorial.skip() }
                     )
@@ -634,9 +639,15 @@ struct S2View: View {
             }
         }
         // IC-112 B：收藏态变化——同上记一次最近动作。
-        .onChange(of: machine.currentIsFavorite) { _, _ in
+        .onChange(of: machine.currentIsFavorite) { _, isFavorite in
             centerIndicatorLastAction = .favorite
             refreshCenterIndicator(animated: true)
+            // IC-112 C 第 5 步：等的就是这次真实收藏成功。
+            if isFavorite {
+                tutorial.assetDidBecomeFavorited(
+                    assetID: machine.currentAssetID
+                )
+            }
         }
         .onChange(of: machine.currentAssetID) { _, assetID in
             // IC-110 D 第 3 步：等用户真实翻回刚标记那张。
@@ -1092,7 +1103,31 @@ struct S2View: View {
                 }
             } label: {
                 Image(systemName: "trash")
+                    // IC-112 C 第 6 步：转白底深图标 + 外发光，一眼可见。
+                    .foregroundStyle(
+                        tutorial.activeStep == .confirmEntry
+                            ? Color.black
+                            : Color.accentColor
+                    )
                     .s2ChromeCircleGlass()
+                    .overlay {
+                        if tutorial.activeStep == .confirmEntry {
+                            Circle().fill(Color.white)
+                                .overlay {
+                                    Image(systemName: "trash")
+                                        .font(.system(
+                                            size: S2ChromePillMetrics
+                                                .circleIconPointSize,
+                                            weight: .semibold
+                                        ))
+                                        .foregroundStyle(Color.black)
+                                }
+                                .shadow(
+                                    color: Color.white.opacity(0.85),
+                                    radius: 12
+                                )
+                        }
+                    }
                     .overlay(alignment: .topTrailing) {
                         if let badgeText = displayedBadgeText {
                             Text(badgeText)
@@ -2303,6 +2338,9 @@ extension S2TutorialStep {
             return .right
         case .swipeDownToCancel:
             return .down
+        case .favoriteGuide:
+            // 箭头自上而下指向左下角的 ♡ 圆钮＝「点这里」。
+            return .down
         case .seeStripMark, .confirmEntry:
             return nil
         }
@@ -2350,6 +2388,18 @@ enum S2TutorialSpotlight {
                 ),
                 height: bottomStripHeight
             ).insetBy(dx: -padding, dy: -padding)
+        case .favoriteGuide:
+            // IC-112 C：左下 ♡ 圆钮。与 chrome 底排同一套表达式取位。
+            let actionTop = S2OverlayLayout.actionBandTopFromViewportBottom(
+                safeAreaBottom: safeAreaInsets.bottom
+            )
+            return CGRect(
+                x: safeAreaInsets.leading +
+                    S2OverlayLayout.chromeHorizontalMargin,
+                y: viewportSize.height - actionTop,
+                width: S2OverlayLayout.chromeRowHeight,
+                height: S2OverlayLayout.chromeRowHeight
+            ).insetBy(dx: -padding, dy: -padding)
         case .confirmEntry:
             let frames = S2OverlayLayout.topElementFrames(
                 in: CGRect(
@@ -2366,25 +2416,90 @@ enum S2TutorialSpotlight {
         }
     }
 
+    /// 套圆钮的两步用正圆挖孔，其余用圆角矩形。
     static func cornerRadius(for step: S2TutorialStep) -> CGFloat {
-        step == .confirmEntry ? circleCornerRadius : cornerRadius
+        switch step {
+        case .favoriteGuide, .confirmEntry:
+            return circleCornerRadius
+        case .swipeUpToMark, .seeStripMark, .returnToMarked,
+             .swipeDownToCancel:
+            return cornerRadius
+        }
     }
 }
 
-/// IC-111 D：手势图示——触点圆（Ø26 环 + Ø14 实心）+ 方向箭头，
-/// 循环 0.9 s/次：沿方向位移 40 pt + 渐隐。
+/// IC-112 C：提示卡的竖向落位。**六步全部底缘对齐同一水平线**
+/// ＝ 横栏顶缘 − 8 pt，故任何一步都不会压到横栏与新标记的缩略图（④）。
+enum S2TutorialCardLayout {
+    /// 卡片底缘与横栏顶缘的净空（卡内 ④）。
+    static let stripClearance: CGFloat = 8
+
+    /// 卡片底缘距**视口底**的距离。横栏顶缘取**视觉**顶缘（原始横栏高），
+    /// 与渲染同源，不用含触控带下限的推导式（陷阱 14）。
+    static func bottomInset(
+        safeAreaBottom: CGFloat,
+        bottomStripHeight: CGFloat
+    ) -> CGFloat {
+        S2OverlayLayout.stripBottomFromViewportBottom(
+            safeAreaBottom: safeAreaBottom
+        ) + bottomStripHeight + stripClearance
+    }
+}
+
+/// IC-112 C：方向箭头形状。**自绘**而非 SF Symbol——一来卡内给了明确的
+/// 长度与线宽，二来符号名从 helper 返回会被硬编码扫描器判成用户可见文案。
+struct S2TutorialArrowShape: Shape {
+    let direction: S2TutorialGestureDirection
+
+    /// 箭头头部的边长。
+    static let headLength: CGFloat = 16
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let head = Self.headLength
+        switch direction {
+        case .up:
+            path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.move(to: CGPoint(x: rect.midX - head, y: rect.minY + head))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.midX + head, y: rect.minY + head))
+        case .down:
+            path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.move(to: CGPoint(x: rect.midX - head, y: rect.maxY - head))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.midX + head, y: rect.maxY - head))
+        case .right:
+            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            path.move(to: CGPoint(x: rect.maxX - head, y: rect.midY - head))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX - head, y: rect.midY + head))
+        }
+        return path
+    }
+}
+
+/// IC-112 C：手势图示——触点圆（Ø38 环 2pt + 芯 Ø21）+ 自绘方向箭头
+/// （长 64、线宽 2.6），循环 0.9 s/次：沿方向位移 40 pt + 渐隐。
+/// 尺寸按第三轮画布放大（原 Ø26 / Ø14）。
 ///
 /// 用 `repeatForever` 的**属性动画**（位移与不透明度），由渲染层持续推进，
-/// 主线程不逐帧参与；不是 `keyframeAnimator` 那种主线程步进。
+/// 主线程不逐帧参与。
 struct S2TutorialGestureHint: View {
     let direction: S2TutorialGestureDirection
 
-    /// 单次循环的位移与周期（卡内 ④）。
+    /// 单次循环的位移与周期（卡内 ④，循环周期不变）。
     static let travel: CGFloat = 40
     static let cycleSeconds: TimeInterval = 0.9
-    /// 触点圆尺寸（卡内 ④）。
-    static let ringDiameter: CGFloat = 26
-    static let coreDiameter: CGFloat = 14
+    /// 触点圆尺寸（IC-112 C 放大）。
+    static let ringDiameter: CGFloat = 38
+    static let ringLineWidth: CGFloat = 2
+    static let coreDiameter: CGFloat = 21
+    /// 箭头长度与线宽（IC-112 C 新增）。
+    static let arrowLength: CGFloat = 64
+    static let arrowLineWidth: CGFloat = 2.6
 
     @State private var looping = false
 
@@ -2418,7 +2533,10 @@ struct S2TutorialGestureHint: View {
     private var touchPoint: some View {
         ZStack {
             Circle()
-                .strokeBorder(Color.white.opacity(0.9), lineWidth: 2)
+                .strokeBorder(
+                    Color.white.opacity(0.9),
+                    lineWidth: Self.ringLineWidth
+                )
                 .frame(
                     width: Self.ringDiameter,
                     height: Self.ringDiameter
@@ -2432,22 +2550,62 @@ struct S2TutorialGestureHint: View {
         }
     }
 
-    /// 方向箭头。符号名在调用点逐个内联——扫描器会把「返回字符串的展示
-    /// helper」当成用户可见文案抓走，图标名不能从 helper 里返回。
-    @ViewBuilder
     private var arrow: some View {
-        Group {
-            switch direction {
-            case .up:
-                Image(systemName: "arrow.up")
-            case .down:
-                Image(systemName: "arrow.down")
-            case .right:
-                Image(systemName: "arrow.right")
-            }
-        }
-        .font(.system(size: 22, weight: .semibold))
-        .foregroundStyle(.white)
+        S2TutorialArrowShape(direction: direction)
+            .stroke(
+                Color.white,
+                style: StrokeStyle(
+                    lineWidth: Self.arrowLineWidth,
+                    lineCap: .round,
+                    lineJoin: .round
+                )
+            )
+            .frame(width: Self.arrowLength, height: Self.arrowLength)
+    }
+}
+
+/// IC-112 C：第 6 步从提示卡指向右上确认入口的**弧形箭头**。
+struct S2TutorialArcArrowShape: Shape {
+    let start: CGPoint
+    let end: CGPoint
+
+    static let headLength: CGFloat = 14
+    static let bulge: CGFloat = 56
+
+    func path(in _: CGRect) -> Path {
+        var path = Path()
+        // 控制点推到两点右外侧，弧从卡片上方兜向右上角。
+        let control = CGPoint(
+            x: max(start.x, end.x) + Self.bulge,
+            y: (start.y + end.y) / 2
+        )
+        path.move(to: start)
+        path.addQuadCurve(to: end, control: control)
+
+        // 箭头头部：沿终点切线方向（end − control）张开两笔。
+        let dx = end.x - control.x
+        let dy = end.y - control.y
+        let length = max(0.000_1, (dx * dx + dy * dy).squareRoot())
+        let ux = dx / length
+        let uy = dy / length
+        let head = Self.headLength
+        // 切线的两侧各偏转约 30°
+        let cosA: CGFloat = 0.866
+        let sinA: CGFloat = 0.5
+        let leftX = -(ux * cosA - uy * sinA)
+        let leftY = -(ux * sinA + uy * cosA)
+        let rightX = -(ux * cosA + uy * sinA)
+        let rightY = -(-ux * sinA + uy * cosA)
+        path.move(to: CGPoint(
+            x: end.x + leftX * head,
+            y: end.y + leftY * head
+        ))
+        path.addLine(to: end)
+        path.addLine(to: CGPoint(
+            x: end.x + rightX * head,
+            y: end.y + rightY * head
+        ))
+        return path
     }
 }
 
@@ -2460,6 +2618,8 @@ struct S2TutorialOverlay: View {
     let step: S2TutorialStep
     let spotlight: CGRect
     let spotlightCornerRadius: CGFloat
+    /// IC-112 C：提示卡底缘距视口底。六步同值 ⟹ 底缘对齐同一水平线。
+    let cardBottomInset: CGFloat
     let onAcknowledge: () -> Void
     let onSkip: () -> Void
 
@@ -2477,12 +2637,38 @@ struct S2TutorialOverlay: View {
                     .position(x: spotlight.midX, y: spotlight.midY)
             }
 
+            // IC-112 C 第 6 步：弧形箭头从提示卡方向兜向右上确认入口。
+            if step == .confirmEntry {
+                GeometryReader { proxy in
+                    S2TutorialArcArrowShape(
+                        start: CGPoint(
+                            x: proxy.size.width / 2,
+                            y: proxy.size.height - cardBottomInset - 96
+                        ),
+                        end: CGPoint(
+                            x: spotlight.midX,
+                            y: spotlight.maxY + 6
+                        )
+                    )
+                    .stroke(
+                        Color.white.opacity(0.92),
+                        style: StrokeStyle(
+                            lineWidth: 2.6,
+                            lineCap: .round,
+                            lineJoin: .round
+                        )
+                    )
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+
             VStack {
                 Spacer()
                 hintCard
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
             }
+            .padding(.bottom, cardBottomInset)
         }
     }
 
@@ -2586,8 +2772,10 @@ enum S2TutorialStep: Int, CaseIterable, Equatable {
     case returnToMarked = 3
     /// 下滑手势示意 → 等用户**真实下滑取消**。
     case swipeDownToCancel = 4
-    /// 指向右上角确认入口 → 点击任意处结束。
-    case confirmEntry = 5
+    /// IC-112 C 新增：聚光套左下 ♡ 圆钮 → 等用户**真实收藏成功**。
+    case favoriteGuide = 5
+    /// 指向右上角确认入口 → 点击任意处结束。原第 5 步，IC-112 C 顺延为第 6 步。
+    case confirmEntry = 6
 
     /// 步骤文案。每个分支各自整句取文案，不拼 key、也不把 key 外传——
     /// 硬编码扫描器只认取文案调用里写死的字面量 key，拼出来的 key 它查不到，
@@ -2603,15 +2791,20 @@ enum S2TutorialStep: Int, CaseIterable, Equatable {
             return L10n.text("s2.tutorial.step3")
         case .swipeDownToCancel:
             return L10n.text("s2.tutorial.step4")
-        case .confirmEntry:
+        case .favoriteGuide:
             return L10n.text("s2.tutorial.step5")
+        case .confirmEntry:
+            return L10n.text("s2.tutorial.step6")
         }
     }
 
     /// 该步是否在等一个真实手势（等待期间不接受「点击推进」）。
     var waitsForRealGesture: Bool {
         switch self {
-        case .swipeUpToMark, .returnToMarked, .swipeDownToCancel:
+        case .swipeUpToMark, .returnToMarked, .swipeDownToCancel,
+             .favoriteGuide:
+            // IC-112 C：第 5 步等的是**真实收藏成功**，点击任意处不推进；
+            // 同时整层不吃点击，用户才点得到底部的 ♡ 圆钮。
             return true
         case .seeStripMark, .confirmEntry:
             return false
@@ -2689,6 +2882,15 @@ final class S2TutorialCoordinator: ObservableObject {
     func assetDidBecomeUnmarked(assetID: String) {
         guard activeStep == .swipeDownToCancel,
               assetID == markedAssetID else {
+            return
+        }
+        activeStep = .favoriteGuide
+    }
+
+    /// IC-112 C 第 5 步：等用户**真实收藏成功**（中央指示随之出现收藏态）。
+    /// 与前四步同源——只读已发布状态，不接触手势识别器。
+    func assetDidBecomeFavorited(assetID _: String) {
+        guard activeStep == .favoriteGuide else {
             return
         }
         activeStep = .confirmEntry
