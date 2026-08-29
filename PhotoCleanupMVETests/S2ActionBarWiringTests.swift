@@ -1135,6 +1135,53 @@ final class S2ActionBarWiringTests: XCTestCase {
         )
     }
 
+    // MARK: - IC-112 D：缩略栏去底色
+
+    // IC-112 D：去底色**只动材质**，横栏的位置与尺寸零变化——
+    // 这里把横栏带的三条推导（底缘、顶缘、带高）钉在画布落值上，
+    // 任何一处被动到都会红。
+    //
+    // 「无底色」本身是渲染观感，单测无法断言，留给 H49 第 4 项人工判定。
+    func testIC112DStripGeometryUnchangedByBackgroundRemoval() {
+        let safeBottom: CGFloat = 34
+        let stripHeight: CGFloat = 30
+
+        // 横栏底缘距视口底：常规机型 110
+        let stripBottom = S2OverlayLayout.stripBottomFromViewportBottom(
+            safeAreaBottom: safeBottom
+        )
+        XCTAssertEqual(stripBottom, 110, accuracy: 0.000_001)
+
+        // 横栏顶缘距视口底 = 底缘 + 带高 = 140
+        XCTAssertEqual(
+            stripBottom + stripHeight,
+            140,
+            accuracy: 0.000_001
+        )
+
+        // 带高本身不受本项影响
+        XCTAssertEqual(
+            S2OverlayLayout.resolvedStripHeight(stripHeight),
+            stripHeight,
+            accuracy: 0.000_001
+        )
+
+        // 与底排的净空（横栏底缘 ↔ 底排上缘）仍为画布的 24
+        let actionTop = S2OverlayLayout.actionBandTopFromViewportBottom(
+            safeAreaBottom: safeBottom
+        )
+        XCTAssertEqual(
+            stripBottom - actionTop,
+            S2OverlayLayout.stripToBottomRowSpacing,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2OverlayLayout.stripToBottomRowSpacing,
+            24,
+            accuracy: 0.000_001
+        )
+    }
+
     // MARK: - IC-112 C：教程 v3
 
     // IC-112 C：六步且顺序不变；新第 5 步是收藏引导，原第 5 步顺延为第 6 步。

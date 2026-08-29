@@ -934,7 +934,9 @@ struct S2View: View {
             )
             .frame(maxWidth: .infinity)
             .frame(height: bottomStripHeight)
-            .background(.ultraThinMaterial)
+            // IC-112 D：缩略横栏容器去底色，缩略图直接落在背景/照片上（④）。
+            // 只去掉这层材质——外框 .frame 与底缘 padding 一字未动，
+            // 故位置与尺寸零变化。
             .padding(
                 .bottom,
                 S2OverlayLayout.stripBottomFromViewportBottom(
