@@ -554,6 +554,96 @@ final class FakeAssetActionService: PhotoAssetActionServicing {
         }
         pendingAdditions.removeFirst()(outcome)
     }
+    // MARK: - IC-110 B：chrome 换装
+
+    // IC-110 B G269：布局锚零改动——换装只动容器样式，
+    // 顶栏高、左右控件宽、触控带、可见带高、横栏间距一律保持原值。
+    func testIC110BLayoutAnchorsAreUnchangedByChromeRestyle() {
+        XCTAssertEqual(S2OverlayLayout.topBarHeight, 48)
+        XCTAssertEqual(S2OverlayLayout.topLeadingControlWidth, 88)
+        XCTAssertEqual(S2OverlayLayout.minimumTouchTarget, 44)
+        XCTAssertEqual(S2OverlayLayout.minimumSpacing, 8)
+        XCTAssertEqual(S2OverlayLayout.horizontalPadding, 8)
+        XCTAssertEqual(S2OverlayLayout.actionBarVisibleBandHeight, 22)
+        XCTAssertEqual(
+            S2OverlayLayout.stripToActionVisibleBandSpacing,
+            30.7,
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-110 B：药丸取值自洽——圆钮与胶囊同高（视觉带对齐），
+    // 且完整落在 44 pt 触控带内，不撑高操作条外框。
+    func testIC110BChromePillMetricsFitInsideTouchTarget() {
+        XCTAssertEqual(S2ChromePillMetrics.circleDiameter, 36)
+        XCTAssertEqual(
+            S2ChromePillMetrics.capsuleMinHeight,
+            S2ChromePillMetrics.circleDiameter,
+            "圆钮与胶囊必须同高，否则底部视觉带不齐"
+        )
+        XCTAssertLessThanOrEqual(
+            S2ChromePillMetrics.circleDiameter,
+            S2OverlayLayout.minimumTouchTarget,
+            "圆钮不得超出 44 pt 触控带"
+        )
+        XCTAssertGreaterThan(S2ChromePillMetrics.capsuleHorizontalPadding, 0)
+        XCTAssertGreaterThan(S2ChromePillMetrics.iconPointSize, 0)
+        XCTAssertLessThan(
+            S2ChromePillMetrics.iconPointSize,
+            S2ChromePillMetrics.circleDiameter,
+            "图标必须小于圆钮直径"
+        )
+    }
+
+    // IC-110 B：顶栏三槽几何不因换装改变——仍是
+    // [左 88 宽, 中间剩余宽, 右 88 宽]，三者高度均为 topBarHeight。
+    func testIC110BTopElementFramesUnchangedByChromeRestyle() {
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 48)
+        let frames = S2OverlayLayout.topElementFrames(in: bounds)
+        XCTAssertEqual(frames.count, 3)
+        XCTAssertEqual(frames[0].minX, 8, accuracy: 0.000_001)
+        XCTAssertEqual(frames[0].width, 88, accuracy: 0.000_001)
+        XCTAssertEqual(frames[2].maxX, 390 - 8, accuracy: 0.000_001)
+        XCTAssertEqual(frames[2].width, 88, accuracy: 0.000_001)
+        // 中槽夹在两者之间、各留 8 pt 间隔
+        XCTAssertEqual(
+            frames[1].minX,
+            frames[0].maxX + 8,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            frames[1].maxX,
+            frames[2].minX - 8,
+            accuracy: 0.000_001
+        )
+        for frame in frames {
+            XCTAssertEqual(
+                frame.height,
+                S2OverlayLayout.topBarHeight,
+                accuracy: 0.000_001
+            )
+        }
+    }
+
+    // IC-110 B：中胶囊承载现有「加入最近相簿」按钮，沿用原条件显示语义——
+    // 有最近相簿才显示；启用/禁用规则零变化（另见 IC-076 R3 用例）。
+    func testIC110BCenterCapsuleFollowsExistingRecentAlbumVisibility() {
+        let withoutHistory = S2ActionBarPresentation(machine: makeMachine())
+        XCTAssertFalse(
+            withoutHistory.showsRecentAlbum,
+            "无最近相簿时中胶囊缺席，只余左右圆钮"
+        )
+
+        let album = S2AlbumReference(id: "album-110", name: "旅行")
+        let withHistory = S2ActionBarPresentation(
+            machine: makeMachine(recentAlbum: album)
+        )
+        XCTAssertTrue(withHistory.showsRecentAlbum)
+        // 换装不改启用规则：三者在空闲态均可用。
+        XCTAssertTrue(withHistory.favoriteEnabled)
+        XCTAssertTrue(withHistory.recentAlbumEnabled)
+        XCTAssertTrue(withHistory.addAlbumEnabled)
+    }
 }
 
 /// 测试用内存实现：与 `UserDefaults` 实现遵循同一协议，供协调器断言注入。

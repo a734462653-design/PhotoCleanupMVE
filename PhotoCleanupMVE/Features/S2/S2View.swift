@@ -772,9 +772,10 @@ struct S2View: View {
         ZStack(alignment: .bottom) {
             // 顶部信息区：几何与 IC-100 前逐字相同（只受顶部安全区约束）。
             VStack(spacing: 0) {
+                // IC-110 B：整条不再铺玻璃，改由三枚药丸各自承载材质。
+                // 帧高仍为 `topBarHeight`，几何模型与安全区推导不受影响。
                 topBar
                     .frame(height: S2OverlayLayout.topBarHeight)
-                    .background(.regularMaterial)
 
                 Spacer(minLength: S2OverlayLayout.minimumSpacing)
             }
@@ -808,13 +809,13 @@ struct S2View: View {
 
             // 触控带底缘恰为安全区上沿——「避让安全区贴近底缘」，
             // 且满足既有门禁 L2（底部元素不进入主屏幕指示条区域）。
+            // IC-110 B：同上，整条不再铺玻璃；触控带高与底缘锚点一字未动。
             actionBar
                 .padding(
                     .horizontal,
                     S2OverlayLayout.horizontalPadding
                 )
                 .frame(maxWidth: .infinity)
-                .background(.regularMaterial)
                 .padding(
                     .bottom,
                     S2OverlayLayout.actionBandBottomFromViewportBottom(
@@ -883,11 +884,10 @@ struct S2View: View {
                     onBack(payload)
                 }
             } label: {
-                Label(
-                    L10n.text("s2.action.back"),
-                    systemImage: "chevron.left"
-                )
+                Image(systemName: "chevron.left")
+                    .s2ChromeCircleGlass()
             }
+            .accessibilityLabel(L10n.text("s2.action.back"))
             .frame(
                 maxWidth: .infinity,
                 maxHeight: .infinity,
@@ -896,6 +896,7 @@ struct S2View: View {
             .contentShape(Rectangle())
 
             topInfoArea
+                .s2ChromeCapsuleGlass()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Button {
@@ -907,6 +908,7 @@ struct S2View: View {
                 }
             } label: {
                 Image(systemName: "trash")
+                    .s2ChromeCircleGlass()
                     .overlay(alignment: .topTrailing) {
                         if let badgeText = confirmationEntry.badgeText {
                             Text(badgeText)
@@ -916,7 +918,11 @@ struct S2View: View {
             }
             .disabled(!machine.canEnterConfirmation)
             .accessibilityLabel(confirmationEntry.accessibilityLabel)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .trailing
+            )
             .contentShape(Rectangle())
         }
         .disabled(machine.touchSequenceOwner != .none)
@@ -968,24 +974,34 @@ struct S2View: View {
         )
     }
 
+    /// IC-110 B：底部 chrome 换装为「左圆钮 + 中跑道胶囊 + 右圆钮」。
+    ///
+    /// 中胶囊承载**现有**「加入最近相簿」按钮（④ 2026-08-29 定案）：卡内 ④ 原写
+    /// 「加入微信」，但代码库、SPEC v17、Decision_log 三处均无微信实现或条款（①），
+    /// 新增该动作属按钮增删、不得自定，故按定案用现有按钮占位，微信另行立项。
+    /// 该按钮沿用原有条件显示（`machine.recentAlbum == nil` 时不显示），
+    /// 此时中位留空、只余左右圆钮。
+    ///
+    /// `S2ActionBarPresentation` 的启用/禁用规则与触控带高度零语义变化，只换容器样式。
     private var actionBar: some View {
         let presentation = S2ActionBarPresentation(machine: machine)
-        return HStack {
+        return HStack(spacing: S2OverlayLayout.minimumSpacing) {
             Button {
                 guard let request = machine.makeFavoriteToggleRequest() else {
                     return
                 }
                 onFavoriteRequest(request)
             } label: {
-                Label(
-                    favoriteActionTitle,
-                    systemImage: machine.currentIsFavorite
+                Image(
+                    systemName: machine.currentIsFavorite
                         ? "heart.fill"
                         : "heart"
                 )
+                .s2ChromeCircleGlass()
             }
             .disabled(!presentation.favoriteEnabled)
-            .s2MinimumTouchTarget(expandsHorizontally: true)
+            .accessibilityLabel(favoriteActionTitle)
+            .s2MinimumTouchTarget()
 
             if let album = machine.recentAlbum {
                 Button {
@@ -1001,9 +1017,13 @@ struct S2View: View {
                         ),
                         systemImage: "clock"
                     )
+                    .lineLimit(1)
+                    .s2ChromeCapsuleGlass()
                 }
                 .disabled(!presentation.recentAlbumEnabled)
                 .s2MinimumTouchTarget(expandsHorizontally: true)
+            } else {
+                Spacer(minLength: 0)
             }
 
             Button {
@@ -1011,13 +1031,12 @@ struct S2View: View {
                     _ = machine.presentAlbumPicker()
                 }
             } label: {
-                Label(
-                    L10n.text("s2.action.add_album"),
-                    systemImage: "rectangle.stack.badge.plus"
-                )
+                Image(systemName: "rectangle.stack.badge.plus")
+                    .s2ChromeCircleGlass()
             }
             .disabled(!presentation.addAlbumEnabled)
-            .s2MinimumTouchTarget(expandsHorizontally: true)
+            .accessibilityLabel(L10n.text("s2.action.add_album"))
+            .s2MinimumTouchTarget()
         }
         .frame(minHeight: S2OverlayLayout.minimumTouchTarget)
     }
@@ -1720,6 +1739,54 @@ struct S2View: View {
                 "s2.calibration.transition_diagnostics.scenario_e"
             )
         }
+    }
+}
+
+/// IC-110 B：chrome 换装的视觉微观取值。参照系统 Photos 的玻璃圆钮 + 跑道胶囊。
+///
+/// 这些是**视觉微观取定**（卡内取定 + 报告登记），不是布局锚：
+/// 不进 `S2CalibrationConfiguration`、不上参数面板、`schemaVersion` 不动。
+/// 布局锚（`topBarHeight` 48、`topLeadingControlWidth` 88、
+/// `minimumTouchTarget` 44、`stripToActionVisibleBandSpacing` 30.7、
+/// 安全区与截图等距带推导）本卡**零改动**。
+enum S2ChromePillMetrics {
+    /// 圆形按钮直径。取 36：贴近系统观感，且仍完整落在 44 pt 触控带内。
+    static let circleDiameter: CGFloat = 36
+
+    /// 跑道胶囊最小高度，与圆钮同高以对齐视觉带。
+    static let capsuleMinHeight: CGFloat = 36
+
+    /// 胶囊内水平留白。
+    static let capsuleHorizontalPadding: CGFloat = 12
+
+    /// 图标字号。
+    static let iconPointSize: CGFloat = 16
+}
+
+private extension View {
+    /// 玻璃圆钮：定尺 + `.regularMaterial` 裁成正圆。
+    func s2ChromeCircleGlass() -> some View {
+        font(
+            .system(
+                size: S2ChromePillMetrics.iconPointSize,
+                weight: .semibold
+            )
+        )
+        .frame(
+            width: S2ChromePillMetrics.circleDiameter,
+            height: S2ChromePillMetrics.circleDiameter
+        )
+        .background(.regularMaterial, in: Circle())
+    }
+
+    /// 玻璃跑道胶囊：水平留白 + 最小高度 + `.regularMaterial` 裁成胶囊。
+    func s2ChromeCapsuleGlass() -> some View {
+        padding(
+            .horizontal,
+            S2ChromePillMetrics.capsuleHorizontalPadding
+        )
+        .frame(minHeight: S2ChromePillMetrics.capsuleMinHeight)
+        .background(.regularMaterial, in: Capsule())
     }
 }
 
