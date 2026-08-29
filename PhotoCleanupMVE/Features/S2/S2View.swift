@@ -983,8 +983,8 @@ struct S2View: View {
                 spotlight: spotlight,
                 spotlightCornerRadius:
                     S2TutorialSpotlight.cornerRadius(for: step),
-                photoCenterY: metrics.oneXDisplayCenterY,
                 cardBottomInset: cardInset,
+                photoCenterY: metrics.oneXDisplayCenterY,
                 onAcknowledge: { tutorial.acknowledge() },
                 onSkip: { tutorial.skip() }
             )
