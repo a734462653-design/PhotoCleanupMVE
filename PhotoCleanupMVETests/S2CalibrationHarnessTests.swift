@@ -1178,6 +1178,123 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(probe.reportText.isEmpty)
     }
 
+    // IC-110 A：双击过渡时长为常量 ≈300ms（60fps 下约 18 帧），
+    // 且不再跟随可调参数 `animationDurationMilliseconds`（出厂 180）。
+    func testIC110ADoubleTapDurationIsThreeHundredMillisecondConstant() {
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.durationSeconds,
+            0.3,
+            accuracy: 0.000_001
+        )
+        // 与可调参数解耦：出厂 180ms 不等于本常量。
+        XCTAssertNotEqual(
+            S2CalibrationConfiguration.factoryPlaceholder
+                .animationDurationMilliseconds / 1_000,
+            S2DoubleTapTransitionTiming.durationSeconds,
+            accuracy: 0.000_001
+        )
+        // 60fps 下的整帧数：0.3 × 60 = 18。
+        XCTAssertEqual(
+            Int((S2DoubleTapTransitionTiming.durationSeconds * 60).rounded()),
+            18
+        )
+    }
+
+    // IC-110 A：缓动端点恒等——端点语义零变化的形式保证。
+    func testIC110AEasingPreservesEndpoints() {
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.easedProgress(0),
+            0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.easedProgress(1),
+            1,
+            accuracy: 0.000_001
+        )
+        // 越界输入按端点钳制，不外溢。
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.easedProgress(-0.5),
+            0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.easedProgress(1.5),
+            1,
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-110 A：缓动严格单调递增——过渡过程不得回退。
+    func testIC110AEasingIsStrictlyMonotonic() {
+        var previous = S2DoubleTapTransitionTiming.easedProgress(0)
+        for step in 1...200 {
+            let value = S2DoubleTapTransitionTiming.easedProgress(
+                CGFloat(step) / 200
+            )
+            XCTAssertGreaterThan(
+                value,
+                previous,
+                "步 \(step) 处缓动回退：\(previous) → \(value)"
+            )
+            previous = value
+        }
+    }
+
+    // IC-110 A：曲线为对称 S 形（UIKit `curveEaseInOut` 控制点 0.42/0.58），
+    // 前半慢于线性、后半快于线性，中点恒为 0.5——据此与线性区分开。
+    func testIC110AEasingIsSymmetricEaseInOutCurve() {
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.easedProgress(0.5),
+            0.5,
+            accuracy: 0.001
+        )
+        // 前半慢：缓动值低于线性值
+        XCTAssertLessThan(
+            S2DoubleTapTransitionTiming.easedProgress(0.25),
+            0.25
+        )
+        // 后半快：缓动值高于线性值
+        XCTAssertGreaterThan(
+            S2DoubleTapTransitionTiming.easedProgress(0.75),
+            0.75
+        )
+        // 关于中点对称：eased(x) + eased(1-x) == 1
+        for step in 0...100 {
+            let x = CGFloat(step) / 100
+            XCTAssertEqual(
+                S2DoubleTapTransitionTiming.easedProgress(x) +
+                    S2DoubleTapTransitionTiming.easedProgress(1 - x),
+                1,
+                accuracy: 0.001,
+                "x=\(x) 处不对称"
+            )
+        }
+    }
+
+    // IC-110 A：缓动值恒在 [0,1] 内，且**不退化**为 smoothstep——
+    // x(t) 非线性，若求解器没真正反解 x(t)，曲线会塌成 smoothstep(x)。
+    func testIC110AEasingStaysBoundedAndDoesNotDegenerateToSmoothstep() {
+        // y 与 x 同为贝塞尔分量，故用「单调 + 端点 + 对称」之外再加一条：
+        // 缓动值恒落在 [0, 1] 内，且与 smoothstep 近似但不相等
+        // （x(t) 非线性，故 y(x) ≠ smoothstep(x)）。
+        var sawDifference = false
+        for step in 0...100 {
+            let x = CGFloat(step) / 100
+            let eased = S2DoubleTapTransitionTiming.easedProgress(x)
+            XCTAssertGreaterThanOrEqual(eased, 0)
+            XCTAssertLessThanOrEqual(eased, 1)
+            let smoothstep = x * x * (3 - 2 * x)
+            if abs(eased - smoothstep) > 0.01 {
+                sawDifference = true
+            }
+        }
+        XCTAssertTrue(
+            sawDifference,
+            "曲线退化成 smoothstep，说明求解器未真正反解 x(t)"
+        )
+    }
+
     // L1：顶部三个元素全部从系统顶部安全区下沿开始布局（IC-075 起为三件）。
     func testL1TopOverlayFramesRespectSafeAreaTop() {
         let snapshot = overlaySnapshot()

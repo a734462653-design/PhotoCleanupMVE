@@ -940,6 +940,87 @@ final class S2SingleTapGestureRecognizer: UITapGestureRecognizer {
     }
 }
 
+// IC-110 A：双击缩放过渡的时长与缓动。上游 ④ 定案「≈300ms、缓动接近系统」，
+// IC-108 探针①已实证零丢帧满 60fps，故性能假设推翻、只改观感参数。
+// 两者均为**常量**：不入 `S2CalibrationConfiguration`、不上参数面板、
+// `schemaVersion` 不动（同 IC-091 `edgeTolerance`、IC-108 B 探针开关先例）。
+enum S2DoubleTapTransitionTiming {
+    /// 过渡时长。60fps 下约 18 帧，与 H47 复测的帧数预期一致。
+    static let durationSeconds: TimeInterval = 0.3
+
+    /// UIKit `curveEaseInOut` 的控制点。以三次贝塞尔原样求值，
+    /// 而非近似式——「接近系统」按系统曲线本身理解。
+    static let controlPoint1 = CGPoint(x: 0.42, y: 0)
+    static let controlPoint2 = CGPoint(x: 0.58, y: 1)
+
+    /// 线性进度 → 缓动后进度。端点恒等（0→0、1→1），故端点语义零变化。
+    static func easedProgress(_ progress: CGFloat) -> CGFloat {
+        let x = min(1, max(0, progress))
+        if x <= 0 || x >= 1 {
+            return x
+        }
+        return bezierValue(at: solveCurveTime(for: x))
+    }
+
+    // x(t) 的多项式系数：x(t) = ((ax·t + bx)·t + cx)·t
+    private static let cx = 3 * controlPoint1.x
+    private static let bx = 3 * (controlPoint2.x - controlPoint1.x) - cx
+    private static let ax = 1 - cx - bx
+
+    // y(t) 同构
+    private static let cy = 3 * controlPoint1.y
+    private static let by = 3 * (controlPoint2.y - controlPoint1.y) - cy
+    private static let ay = 1 - cy - by
+
+    private static func curveX(at t: CGFloat) -> CGFloat {
+        ((ax * t + bx) * t + cx) * t
+    }
+
+    private static func curveXSlope(at t: CGFloat) -> CGFloat {
+        (3 * ax * t + 2 * bx) * t + cx
+    }
+
+    private static func bezierValue(at t: CGFloat) -> CGFloat {
+        ((ay * t + by) * t + cy) * t
+    }
+
+    /// 先牛顿迭代；斜率过小或越界时退回二分，保证单调有界收敛。
+    private static func solveCurveTime(for x: CGFloat) -> CGFloat {
+        var t = x
+        for _ in 0..<8 {
+            let error = curveX(at: t) - x
+            if abs(error) < 0.000_001 {
+                return t
+            }
+            let slope = curveXSlope(at: t)
+            if abs(slope) < 0.000_001 {
+                break
+            }
+            let next = t - error / slope
+            if next < 0 || next > 1 {
+                break
+            }
+            t = next
+        }
+        var lower: CGFloat = 0
+        var upper: CGFloat = 1
+        t = x
+        while upper - lower > 0.000_001 {
+            let value = curveX(at: t)
+            if abs(value - x) < 0.000_001 {
+                return t
+            }
+            if value < x {
+                lower = t
+            } else {
+                upper = t
+            }
+            t = (upper + lower) / 2
+        }
+        return t
+    }
+}
+
 struct S2DoubleTapTransition: Equatable {
     let sourceFrame: CGRect
     let targetFrame: CGRect
@@ -1437,7 +1518,8 @@ final class S2NativeZoomPageController: UIViewController,
         enteringNx: Bool,
         targetScale: CGFloat,
         at focusPoint: CGPoint,
-        configuration: S2CalibrationConfiguration
+        configuration: S2CalibrationConfiguration,
+        durationOverrideSeconds: TimeInterval? = nil
     ) -> Bool {
         guard !isDoubleTapTransitionActive,
               !isPresentationTransitionActive,
@@ -1513,9 +1595,15 @@ final class S2NativeZoomPageController: UIViewController,
         activeDoubleTapTargetScale = targetScale
         doubleTapLatestPage = nil
         doubleTapTransitionStartTimestamp = nil
+        // IC-110 A：时长改常量（≈300ms）。`policy.shouldAnimate` 仍作为
+        // 「是否动画」的闸门保持不变——关动画、时长置 0 的既有测试路径照旧生效；
+        // 只有时长取值不再跟随 `animationDurationMilliseconds`。
+        // `durationOverrideSeconds` 仅供几何诊断显式加长以保证中间帧数，
+        // 产品路径永远走常量。
         let policy = S2AnimationPolicy(configuration: configuration)
         doubleTapTransitionDuration = policy.shouldAnimate
-            ? policy.durationSeconds
+            ? (durationOverrideSeconds
+                ?? S2DoubleTapTransitionTiming.durationSeconds)
             : 0
         isDoubleTapTransitionActive = true
         presentationContentView.isHidden = true
@@ -1671,11 +1759,15 @@ final class S2NativeZoomPageController: UIViewController,
         )
         let elapsed = displayLink.timestamp -
             (doubleTapTransitionStartTimestamp ?? displayLink.timestamp)
-        let progress = doubleTapTransitionDuration > 0
+        // IC-110 A：线性进度只用于计时与收口判定；落到几何上的是缓动后进度。
+        // 缓动端点恒等，故终点几何与既有契约一致。
+        let linearProgress = doubleTapTransitionDuration > 0
             ? CGFloat(elapsed / doubleTapTransitionDuration)
             : 1
-        applyDoubleTapTransitionProgress(progress)
-        if progress >= 1 {
+        applyDoubleTapTransitionProgress(
+            S2DoubleTapTransitionTiming.easedProgress(linearProgress)
+        )
+        if linearProgress >= 1 {
             finishActiveDoubleTapTransition()
         }
     }
@@ -2802,6 +2894,8 @@ final class S2NativePagerViewController: UIViewController,
             Double(max(1, minimumMiddleFrames) + 2) * 50
         )
         page.doubleTapTransitionObserver = observer
+        // IC-110 A：时长改常量后，诊断不能再靠改配置加长过渡；改为显式传时长，
+        // 取值与改动前完全一致，中间帧数保证不变。
         return page.startDoubleTapTransition(
             enteringNx: !wasZoomed,
             targetScale: wasZoomed ? 1 : machine.scale,
@@ -2809,7 +2903,9 @@ final class S2NativePagerViewController: UIViewController,
                 x: viewportSize.width / 2,
                 y: viewportSize.height / 2
             ),
-            configuration: diagnosticConfiguration
+            configuration: diagnosticConfiguration,
+            durationOverrideSeconds:
+                diagnosticConfiguration.animationDurationMilliseconds / 1_000
         )
     }
 
