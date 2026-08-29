@@ -2100,16 +2100,18 @@ enum S2ChromePillMetrics {
 /// 不强求逐参数复刻」）；**未叠加 `.saturation()` / `.brightness()`**——
 /// 这两个滤镜会把子树推进离屏合成，反而会打掉材质的背景采样，得不偿失。
 enum S2ChromeGlass {
-    /// 材质之上的白色薄底（画布「底色白 ~6%」）。
-    static let tintOpacity: Double = 0.06
+    /// 材质之上的白色薄底。IC-113 A：6% → **3%**（H49 第 1 条「更透」）。
+    /// 这层白veil 是「不透」的主要来源，减半后身后照片色彩明显更显。
+    static let tintOpacity: Double = 0.03
 
-    /// 内描边：顶缘内侧白 55%，渐弱至底缘 12%（画布 ④）。
-    static let innerHighlightTop: Double = 0.55
-    static let innerHighlightBottom: Double = 0.12
+    /// 内描边：顶缘内侧白，渐弱至底缘。
+    /// IC-113 A：55%/12% → **30%/6%**（H49 第 1 条「存在感减半」）。
+    static let innerHighlightTop: Double = 0.30
+    static let innerHighlightBottom: Double = 0.06
     static let innerStrokeWidth: CGFloat = 1
 
-    /// 外圈细环白 22%（画布 ④）。
-    static let outerRingOpacity: Double = 0.22
+    /// 外圈细环白。IC-113 A：22% → **12%**（同上）。
+    static let outerRingOpacity: Double = 0.12
     static let outerStrokeWidth: CGFloat = 0.5
 }
 
@@ -2726,10 +2728,11 @@ struct S2TutorialOverlay: View {
         }
         .padding(.vertical, 20)
         .padding(.horizontal, 24)
-        .background(.ultraThinMaterial, in: RoundedRectangle(
-            cornerRadius: 20,
-            style: .continuous
-        ))
+        // IC-113 A：提示卡并入共用玻璃组件——卡内要求全部玻璃件同步一套值，
+        // 不许各件各调。此前它单独写 .ultraThinMaterial、没有描边。
+        .s2ChromeGlassBackground(
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
         .overlay(alignment: .topTrailing) {
             // 「跳过」常驻——步 5 主按钮换成「完成」后，跳过仍在右上角。
             if step == .confirmEntry {

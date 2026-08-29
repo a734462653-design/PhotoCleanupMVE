@@ -672,30 +672,37 @@ final class S2ActionBarWiringTests: XCTestCase {
 
     // MARK: - IC-112 A：玻璃配方与高光描边
 
-    // IC-112 A：玻璃配方落在画布取值——底色白 6%、内描边 55%→12%、外环 22%。
-    func testIC112AGlassRecipeMatchesCanvas() {
-        XCTAssertEqual(S2ChromeGlass.tintOpacity, 0.06, accuracy: 0.000_001)
+    // IC-113 A：玻璃再透 + 描边收敛（H49 第 1 条）。
+    // 底色白 6%→3%、内描边 55%/12%→30%/6%、外环 22%→12%。
+    func testIC113AGlassRecipeIsMoreTransparentAndSubtler() {
+        XCTAssertEqual(S2ChromeGlass.tintOpacity, 0.03, accuracy: 0.000_001)
         XCTAssertEqual(
             S2ChromeGlass.innerHighlightTop,
-            0.55,
+            0.30,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
             S2ChromeGlass.innerHighlightBottom,
-            0.12,
+            0.06,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
             S2ChromeGlass.outerRingOpacity,
-            0.22,
+            0.12,
             accuracy: 0.000_001
         )
-        // 顶缘比底缘亮——「渐弱」的方向不能反
+
+        // 相对 IC-112 的旧值，三者都**至少减半**——这正是 H49 的诉求，
+        // 把「更透 / 存在感减半」钉成可回归的不变量，而不是只钉绝对值。
+        XCTAssertLessThanOrEqual(S2ChromeGlass.tintOpacity, 0.06 / 2)
+        XCTAssertLessThanOrEqual(S2ChromeGlass.innerHighlightTop, 0.55 / 1.8)
+        XCTAssertLessThanOrEqual(S2ChromeGlass.outerRingOpacity, 0.22 / 1.8)
+
+        // 结构性不变量保持：顶缘仍亮于底缘（渐弱方向不能反）、白底仍够薄。
         XCTAssertGreaterThan(
             S2ChromeGlass.innerHighlightTop,
             S2ChromeGlass.innerHighlightBottom
         )
-        // 白底要薄，不能盖住透光
         XCTAssertLessThan(
             S2ChromeGlass.tintOpacity,
             0.2,
