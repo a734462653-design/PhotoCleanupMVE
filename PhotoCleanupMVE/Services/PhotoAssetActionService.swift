@@ -40,6 +40,14 @@ protocol PhotoAssetActionServicing {
         completion: @escaping (S2AlbumAdditionOutcome) -> Void
     )
 
+    /// IC-113 B：把资产从相簿移除（中央指示的「撤回」）。
+    /// **本卡显式授权该写操作**。只动相簿成员关系，不删除资产本身。
+    func removeAsset(
+        assetID: String,
+        fromAlbumWithID albumID: String,
+        completion: @escaping (Bool) -> Void
+    )
+
     func userAlbums() -> [S2AlbumReference]
 
     func albumExists(id: String) -> Bool
@@ -108,6 +116,29 @@ struct PhotoKitAssetActionService: PhotoAssetActionServicing {
                     succeeded ? .success(alreadyContained: false) : .failure
                 )
             }
+        }
+    }
+
+    /// IC-113 B：从相簿移除。与 `addAsset` 同一套前置校验，
+    /// 只是把 `addAssets` 换成 `removeAssets`、能力位换成 `.removeContent`。
+    /// 资产本身不受影响——这不是删除。
+    func removeAsset(
+        assetID: String,
+        fromAlbumWithID albumID: String,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard isAuthorizedForWriting,
+              let album = fetchAlbum(albumID),
+              let asset = fetchAsset(assetID),
+              album.canPerform(.removeContent) else {
+            completion(false)
+            return
+        }
+        PHPhotoLibrary.shared().performChanges {
+            PHAssetCollectionChangeRequest(for: album)?
+                .removeAssets([asset] as NSArray)
+        } completionHandler: { succeeded, _ in
+            completion(succeeded)
         }
     }
 

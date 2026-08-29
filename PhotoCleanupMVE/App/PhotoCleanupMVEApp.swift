@@ -114,6 +114,9 @@ struct PhotoCleanupMVEApp: App {
                                     request
                                 )
                             },
+                            onAlbumRemovalRequest: { request in
+                                _ = coordinator.requestS2AlbumRemoval(request)
+                            },
                             onAlbumPickerSelection: { request, album in
                                 _ = coordinator.requestS2AlbumPickerSelection(
                                     request,

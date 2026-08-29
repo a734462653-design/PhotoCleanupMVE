@@ -374,6 +374,8 @@ struct S2View: View {
     private let onConfirmation: (S2ExitPayload) -> Void
     private let onFavoriteRequest: (S2AssetActionRequest) -> Void
     private let onRecentAlbumRequest: (S2AlbumActionRequest) -> Void
+    /// IC-113 B：中央指示「撤回」——把资产从相簿移除。
+    private let onAlbumRemovalRequest: (S2AlbumActionRequest) -> Void
     private let onAlbumPickerSelection: (
         S2AlbumPickerRequest,
         S2AlbumReference
@@ -440,6 +442,7 @@ struct S2View: View {
         onConfirmation: @escaping (S2ExitPayload) -> Void = { _ in },
         onFavoriteRequest: @escaping (S2AssetActionRequest) -> Void = { _ in },
         onRecentAlbumRequest: @escaping (S2AlbumActionRequest) -> Void = { _ in },
+        onAlbumRemovalRequest: @escaping (S2AlbumActionRequest) -> Void = { _ in },
         onAlbumPickerSelection: @escaping (
             S2AlbumPickerRequest,
             S2AlbumReference
@@ -465,6 +468,7 @@ struct S2View: View {
         self.onConfirmation = onConfirmation
         self.onFavoriteRequest = onFavoriteRequest
         self.onRecentAlbumRequest = onRecentAlbumRequest
+        self.onAlbumRemovalRequest = onAlbumRemovalRequest
         self.onAlbumPickerSelection = onAlbumPickerSelection
         self.photoSwitchHapticFeedback = photoSwitchHapticFeedback
         self.assetCreationDate = assetCreationDate
@@ -638,15 +642,33 @@ struct S2View: View {
                 refreshCenterIndicator(animated: true)
             }
         }
-        // IC-112 B：收藏态变化——同上记一次最近动作。
+        // IC-113 B：♡ **不再触发中央指示**（④ 第二态改挂相簿）。
+        // 这里只保留教程的收藏步接线，指示接线已移除。
         .onChange(of: machine.currentIsFavorite) { _, isFavorite in
-            centerIndicatorLastAction = .favorite
-            refreshCenterIndicator(animated: true)
-            // IC-112 C 第 5 步：等的就是这次真实收藏成功。
             if isFavorite {
                 tutorial.assetDidBecomeFavorited(
                     assetID: machine.currentAssetID
                 )
+            }
+        }
+        // IC-113 B：加入相簿**成功**后出现「已加入「名」」。
+        // 时机＝残影落入中胶囊回弹后（卡内取定，见
+        // `albumIndicatorDelaySeconds`），故这里延时再落指示。
+        .onChange(of: machine.lastAlbumAddition) { _, record in
+            guard record != nil else {
+                // 撤回成功清了记录：立即复算，指示随之退场。
+                refreshCenterIndicator(animated: true)
+                return
+            }
+            Task { @MainActor in
+                try? await Task.sleep(
+                    nanoseconds: UInt64(
+                        S2CenterIndicatorResolver
+                            .albumIndicatorDelaySeconds * 1_000_000_000
+                    )
+                )
+                centerIndicatorLastAction = .album
+                refreshCenterIndicator(animated: true)
             }
         }
         .onChange(of: machine.currentAssetID) { _, assetID in
@@ -976,7 +998,7 @@ struct S2View: View {
     ) -> some View {
         if let state = centerIndicatorState {
             S2CenterIndicatorView(state: state) {
-                undoFavoriteFromCenterIndicator()
+                undoAlbumAdditionFromCenterIndicator()
             }
             .position(
                 x: metrics.viewportSize.width / 2,
@@ -1013,21 +1035,24 @@ struct S2View: View {
         }
     }
 
-    /// ♡ 所对应的系统「最爱」相簿名。
-    ///
-    /// 产品里 ♡ 是 `PHAsset` 收藏、没有相簿名概念（本卡登记的差异），
-    /// 故这里取一个可本地化的常量名，格式参数的形状与卡内一致。
-    private var favoritesAlbumName: String {
-        L10n.text("s2.center.favorites_album")
+    /// IC-113 B：当前这张是否刚成功加入过某相簿（且未撤回）。
+    /// 取自状态机的成功记录——**只认当前这张**，翻页到别张自然为 nil。
+    private var addedAlbumNameForCurrentAsset: String? {
+        guard let record = machine.lastAlbumAddition,
+              record.assetID == machine.currentAssetID else {
+            return nil
+        }
+        return record.album.name
     }
 
-    /// IC-112 B：点撤回 → 取消收藏，短提示「已从「名」移除」后整块淡出。
-    private func undoFavoriteFromCenterIndicator() {
-        guard let request = machine.makeFavoriteToggleRequest() else {
+    /// IC-113 B：点撤回 → **把资产从该相簿移除**（真实写操作，本卡显式授权），
+    /// 短提示「已从「名」移除」后整块淡出。
+    private func undoAlbumAdditionFromCenterIndicator() {
+        guard let request = machine.makeAlbumRemovalRequest() else {
             return
         }
-        let albumName = favoritesAlbumName
-        onFavoriteRequest(request)
+        let albumName = request.album.name
+        onAlbumRemovalRequest(request)
         centerIndicatorLastAction = nil
         withAnimation(
             .easeInOut(duration: S2CenterIndicatorResolver.transitionSeconds)
@@ -1047,8 +1072,7 @@ struct S2View: View {
         let next = S2CenterIndicatorResolver.state(
             interfaceVisibility: machine.interfaceVisibility,
             isMarked: machine.currentIsMarked,
-            isFavorited: machine.currentIsFavorite,
-            favoritesAlbumName: favoritesAlbumName,
+            addedAlbumName: addedAlbumNameForCurrentAsset,
             lastAction: centerIndicatorLastAction
         )
         guard next != centerIndicatorState else {
@@ -2957,7 +2981,7 @@ struct S2CenterIndicatorView: View {
 
     /// 撤回钮是否存在（＝该状态下是否有可点元素）。
     static func showsUndoControl(for state: S2CenterIndicatorState) -> Bool {
-        if case .favorited = state {
+        if case .addedToAlbum = state {
             return true
         }
         return false
@@ -2991,13 +3015,13 @@ struct S2CenterIndicatorView: View {
         case .marked:
             markedBlock
                 .accessibilityLabel(L10n.text("s2.mark.primary.accessibility"))
-        case let .favorited(albumName):
+        case let .addedToAlbum(albumName):
             HStack(spacing: 10) {
-                Image(systemName: "heart.fill")
+                Image(systemName: "rectangle.stack.badge.plus")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(verbatim: L10n.text(
-                    "s2.center.favorited",
+                    "s2.center.added_to_album",
                     replacing: ["album": albumName]
                 ))
                 .font(.system(size: 15))
@@ -3023,13 +3047,10 @@ struct S2CenterIndicatorView: View {
         }
     }
 
-    /// 已标记：单块垃圾桶图标（方形倒角块）。
+    /// 已标记：单块垃圾桶图标。IC-113 B：方形倒角 → **圆形**（H49 第 2 条）。
     private var markedBlock: some View {
-        RoundedRectangle(
-            cornerRadius: Self.blockCornerRadius,
-            style: .continuous
-        )
-        .fill(Color.white.opacity(0.16))
+        Circle()
+            .fill(Color.white.opacity(0.16))
         .frame(width: Self.blockSize, height: Self.blockSize)
         .overlay {
             Image(systemName: "trash.fill")
@@ -3044,19 +3065,21 @@ struct S2CenterIndicatorView: View {
 /// 中央指示的最近一次动作。用于「两态并存时显示哪一种」的裁决（④）。
 enum S2CenterIndicatorAction: Equatable {
     case mark
-    case favorite
+    /// IC-113 B：第二态由 ♡ 系统最爱改挂**加入相簿**（④ 产品输入更新）。
+    case album
 }
 
 /// 中央状态指示的四态之一（同一时刻只显示一种，④）。
 ///
 /// - `marked`：已标记，单块垃圾桶图标。
-/// - `favorited`：已收藏，♡ + 收藏到「名」+ 分隔线 + 撤回钮。
+/// - `addedToAlbum`：已加入相簿，图标 + 已加入「名」+ 分隔线 + 撤回钮。
 ///
 /// 「下滑撤回」与「点撤回」都不是独立状态——它们的表现就是**整块消失**
 /// （消失即撤回成功的确认），故解析结果为 `nil`。
 enum S2CenterIndicatorState: Equatable {
     case marked
-    case favorited(albumName: String)
+    /// IC-113 B：已加入相簿。相簿名取**真实相簿**（动态）。
+    case addedToAlbum(albumName: String)
     /// 点撤回后的**短提示**过渡态：「已从「名」移除」，随后整块淡出。
     /// 它不由 `resolver` 产出——模型里没有「刚移除」这回事，
     /// 是撤回动作显式置入、到时自行清掉的呈现态。
@@ -3072,6 +3095,10 @@ enum S2CenterIndicatorResolver {
     /// 撤回后「已从「名」移除」短提示的停留时长（卡内取定）。
     static let removedNoticeSeconds: TimeInterval = 1.2
 
+    /// IC-113 B：加入相簿后指示的出现时机——**残影落入中胶囊回弹后**。
+    /// 取残影飞行时长 0.3 s 再加一段回弹余量（卡内取定并登记）。
+    static let albumIndicatorDelaySeconds: TimeInterval = 0.42
+
     /// 解析当前该显示哪一种；`nil` = 不显示（含整块淡出的两种撤回路径）。
     ///
     /// 规则（④）：
@@ -3080,27 +3107,27 @@ enum S2CenterIndicatorResolver {
     /// 3. 最近动作缺失（例如刚翻页到新的一张，本页的状态不是任何一次
     ///    近期动作造成的）且两态并存时，取 `marked`——待删意图更需要被看见。
     ///    这一条是卡内未覆盖的边角，**卡内取定并登记**。
+    /// `albumName` 非 nil 即表示**当前这张**刚成功加入过该相簿（且未撤回）。
     static func state(
         interfaceVisibility: S2InterfaceVisibility,
         isMarked: Bool,
-        isFavorited: Bool,
-        favoritesAlbumName: String,
+        addedAlbumName: String?,
         lastAction: S2CenterIndicatorAction?
     ) -> S2CenterIndicatorState? {
         guard interfaceVisibility == .visible else {
             return nil
         }
-        switch (isMarked, isFavorited) {
-        case (false, false):
+        switch (isMarked, addedAlbumName) {
+        case (false, .none):
             return nil
-        case (true, false):
+        case (true, .none):
             return .marked
-        case (false, true):
-            return .favorited(albumName: favoritesAlbumName)
-        case (true, true):
+        case let (false, .some(name)):
+            return .addedToAlbum(albumName: name)
+        case let (true, .some(name)):
             switch lastAction {
-            case .favorite:
-                return .favorited(albumName: favoritesAlbumName)
+            case .album:
+                return .addedToAlbum(albumName: name)
             case .mark, .none:
                 return .marked
             }

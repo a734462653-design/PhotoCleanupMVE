@@ -712,87 +712,78 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertGreaterThan(S2ChromeGlass.outerStrokeWidth, 0)
     }
 
-    // MARK: - IC-112 B：中央状态指示
+    // MARK: - IC-112 B / IC-113 B：中央状态指示
 
-    // IC-112 B：同一时刻只显示一种；两态并存时取最近一次动作对应的那种。
-    func testIC112BShowsExactlyOneStateAtATime() {
+    // IC-113 B：同一时刻只显示一种；两态并存时取最近一次动作对应的那种。
+    // 第二态由 ♡ 改挂**加入相簿**（④ 产品输入更新）。
+    func testIC113BShowsExactlyOneStateAtATime() {
         func resolve(
             marked: Bool,
-            favorited: Bool,
+            album: String?,
             last: S2CenterIndicatorAction?
         ) -> S2CenterIndicatorState? {
             S2CenterIndicatorResolver.state(
                 interfaceVisibility: .visible,
                 isMarked: marked,
-                isFavorited: favorited,
-                favoritesAlbumName: "最爱",
+                addedAlbumName: album,
                 lastAction: last
             )
         }
 
-        // 两者都无 → 不显示
-        XCTAssertNil(resolve(marked: false, favorited: false, last: nil))
-        // 只有一种 → 就是那种
+        XCTAssertNil(resolve(marked: false, album: nil, last: nil))
+        XCTAssertEqual(resolve(marked: true, album: nil, last: nil), .marked)
         XCTAssertEqual(
-            resolve(marked: true, favorited: false, last: nil),
-            .marked
-        )
-        XCTAssertEqual(
-            resolve(marked: false, favorited: true, last: nil),
-            .favorited(albumName: "最爱")
+            resolve(marked: false, album: "旅行", last: nil),
+            .addedToAlbum(albumName: "旅行")
         )
         // 并存 → 看最近一次动作
         XCTAssertEqual(
-            resolve(marked: true, favorited: true, last: .mark),
+            resolve(marked: true, album: "旅行", last: .mark),
             .marked
         )
         XCTAssertEqual(
-            resolve(marked: true, favorited: true, last: .favorite),
-            .favorited(albumName: "最爱")
+            resolve(marked: true, album: "旅行", last: .album),
+            .addedToAlbum(albumName: "旅行")
         )
-        // 并存但无最近动作（刚翻页到新的一张）→ 取 marked（卡内取定并登记）
+        // 并存但无最近动作 → 取 marked（沿用 IC-112 取定）
         XCTAssertEqual(
-            resolve(marked: true, favorited: true, last: nil),
+            resolve(marked: true, album: "旅行", last: nil),
             .marked
         )
     }
 
-    // IC-112 B：指示随 chrome 同显隐——V=隐藏 时一律不显示，
-    // 无论模型上是标记还是收藏、也无论最近动作是什么。
-    func testIC112BHiddenInterfaceShowsNothing() {
+    // IC-113 B：指示随 chrome 同显隐——V=隐藏 时一律不显示。
+    func testIC113BHiddenInterfaceShowsNothing() {
         for marked in [true, false] {
-            for favorited in [true, false] {
+            for album in ["旅行", nil] as [String?] {
                 for last in [
                     S2CenterIndicatorAction.mark,
-                    .favorite,
+                    .album,
                     nil
                 ] as [S2CenterIndicatorAction?] {
                     XCTAssertNil(
                         S2CenterIndicatorResolver.state(
                             interfaceVisibility: .hidden,
                             isMarked: marked,
-                            isFavorited: favorited,
-                            favoritesAlbumName: "最爱",
+                            addedAlbumName: album,
                             lastAction: last
                         ),
-                        "V=隐藏 时不得显示（marked=\(marked) fav=\(favorited)）"
+                        "V=隐藏 时不得显示（marked=\(marked)）"
                     )
                 }
             }
         }
     }
 
-    // IC-112 B G279（硬闸门）：命中测试——**仅撤回钮可点**。
-    //
-    // 撤回钮只在「已收藏」态存在；「已标记」与撤回后的短提示态都没有任何
-    // 可点元素，整块纯展示、手势全部穿透。视觉体本身挂
-    // `allowsHitTesting(false)`，撤回钮以 overlay 叠在该子树之外，故仍可点。
-    func testIC112BOnlyUndoControlIsHittable() {
+    // IC-113 B G284（硬闸门，语义不变）：命中测试——**仅撤回钮可点**。
+    // 撤回钮只在「已加入相簿」态存在；「已标记」与撤回后的短提示态
+    // 都没有任何可点元素，整块纯展示、手势全部穿透。
+    func testIC113BOnlyUndoControlIsHittable() {
         XCTAssertTrue(
             S2CenterIndicatorView.showsUndoControl(
-                for: .favorited(albumName: "最爱")
+                for: .addedToAlbum(albumName: "旅行")
             ),
-            "已收藏态必须有撤回钮"
+            "已加入相簿态必须有撤回钮"
         )
         XCTAssertFalse(
             S2CenterIndicatorView.showsUndoControl(for: .marked),
@@ -800,14 +791,14 @@ final class S2ActionBarWiringTests: XCTestCase {
         )
         XCTAssertFalse(
             S2CenterIndicatorView.showsUndoControl(
-                for: .removed(albumName: "最爱")
+                for: .removed(albumName: "旅行")
             ),
             "撤回后的短提示态不得有任何可点元素——手势必须穿透"
         )
     }
 
-    // IC-112 B：出现/消失参数（200ms、scale 0.9）与短提示停留时长。
-    func testIC112BTransitionParametersMatchCanvas() {
+    // IC-113 B：出现/消失参数不变；新增「残影落点后才出指示」的时机常量。
+    func testIC113BTransitionParametersMatchCanvas() {
         XCTAssertEqual(
             S2CenterIndicatorResolver.transitionSeconds,
             0.2,
@@ -820,391 +811,104 @@ final class S2ActionBarWiringTests: XCTestCase {
         )
         XCTAssertGreaterThan(
             S2CenterIndicatorResolver.removedNoticeSeconds,
-            S2CenterIndicatorResolver.transitionSeconds,
-            "短提示至少要停留到淡入结束之后才有意义"
+            S2CenterIndicatorResolver.transitionSeconds
         )
-        // 容器内为方形倒角块
+        // 指示必须**晚于**残影落点才出现（卡内时序）
+        XCTAssertGreaterThanOrEqual(
+            S2CenterIndicatorResolver.albumIndicatorDelaySeconds,
+            S2AlbumAfterimageFlight.durationSeconds,
+            "指示不得早于残影落点出现"
+        )
+        // 圆形标记块仍落在跑道容器内
         XCTAssertEqual(S2CenterIndicatorView.blockSize, 30)
-        XCTAssertGreaterThan(S2CenterIndicatorView.blockCornerRadius, 0)
         XCTAssertLessThan(
             S2CenterIndicatorView.blockSize,
-            S2CenterIndicatorView.containerHeight,
-            "方块必须落在跑道容器内"
+            S2CenterIndicatorView.containerHeight
         )
     }
 
-    // MARK: - IC-111 B：标记残影飞入右上垃圾桶
+    // IC-113 B：加入相簿成功后登记记录；撤回成功后清掉。
+    // 两条加入路径（中胶囊 / 选择器）都登记。
+    func testIC113BAlbumAdditionRecordPublishedAndClearedOnRemoval() {
+        let album = S2AlbumReference(id: "album-113", name: "旅行")
+        let machine = makeMachine(recentAlbum: album)
+        XCTAssertNil(machine.lastAlbumAddition)
 
-    // IC-111 B：飞行参数落在卡内区间——总时长 300–340ms、
-    // scale 1 → 0.18、opacity 0.85 → 0。
-    func testIC111BFlightParametersMatchCard() {
-        XCTAssertGreaterThanOrEqual(
-            S2MarkAfterimageFlight.durationSeconds,
-            0.30
-        )
-        XCTAssertLessThanOrEqual(
-            S2MarkAfterimageFlight.durationSeconds,
-            0.34
-        )
-        XCTAssertEqual(S2MarkAfterimageFlight.startScale, 1)
-        XCTAssertEqual(S2MarkAfterimageFlight.endScale, 0.18)
-        XCTAssertEqual(S2MarkAfterimageFlight.startOpacity, 0.85)
-        XCTAssertEqual(S2MarkAfterimageFlight.endOpacity, 0)
-        XCTAssertLessThan(
-            S2MarkAfterimageFlight.endScale,
-            S2MarkAfterimageFlight.startScale,
-            "必须是缩小"
-        )
+        // 路径一：中胶囊
+        let request = tryUnwrap(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertTrue(machine.beginRecentAlbumAddition(request))
+        XCTAssertTrue(machine.completeRecentAlbumAddition(
+            request,
+            outcome: .success(alreadyContained: false)
+        ))
+        let record = tryUnwrap(machine.lastAlbumAddition)
+        XCTAssertEqual(record.assetID, request.targetAssetID)
+        XCTAssertEqual(record.album, album)
+
+        // 撤回：取请求 → 在途 → 成功即清记录
+        let removal = tryUnwrap(machine.makeAlbumRemovalRequest())
+        XCTAssertEqual(removal.targetAssetID, record.assetID)
+        XCTAssertEqual(removal.album, album)
+        XCTAssertTrue(machine.beginAlbumRemoval(removal))
+        XCTAssertTrue(machine.isAlbumRemovalInFlight)
+        // 在途时不得再取一次撤回请求
+        XCTAssertNil(machine.makeAlbumRemovalRequest())
+        XCTAssertTrue(machine.completeAlbumRemoval(removal, succeeded: true))
+        XCTAssertFalse(machine.isAlbumRemovalInFlight)
+        XCTAssertNil(machine.lastAlbumAddition)
     }
 
-    // IC-111 B：落点 = 右上垃圾桶圆钮中心，且与 chrome 渲染共用
-    // topElementFrames——换句话说，改了 chrome 几何，落点自动跟着走。
-    func testIC111BTrashCenterSharesChromeDerivation() {
-        let viewport = CGSize(width: 393, height: 852)
-        let safeTop: CGFloat = 59
-        let center = S2MarkAfterimageFlight.trashCenter(
-            viewportSize: viewport,
-            safeAreaTop: safeTop
+    // IC-113 B：撤回失败不清记录（指示应留着让用户重试），并发一次反馈。
+    func testIC113BFailedRemovalKeepsRecord() {
+        let album = S2AlbumReference(id: "album-113", name: "旅行")
+        let machine = makeMachine(recentAlbum: album)
+        let request = tryUnwrap(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertTrue(machine.beginRecentAlbumAddition(request))
+        XCTAssertTrue(machine.completeRecentAlbumAddition(
+            request,
+            outcome: .success(alreadyContained: false)
+        ))
+        let removal = tryUnwrap(machine.makeAlbumRemovalRequest())
+        XCTAssertTrue(machine.beginAlbumRemoval(removal))
+        XCTAssertFalse(machine.completeAlbumRemoval(removal, succeeded: false))
+        XCTAssertNotNil(
+            machine.lastAlbumAddition,
+            "撤回失败必须保留记录，否则用户再也点不到撤回"
         )
-        let frames = S2OverlayLayout.topElementFrames(
-            in: CGRect(
-                x: 0,
-                y: safeTop,
-                width: viewport.width,
-                height: S2OverlayLayout.topBarHeight
-            )
-        )
-        XCTAssertEqual(center.x, frames[2].midX, accuracy: 0.000_001)
-        XCTAssertEqual(center.y, frames[2].midY, accuracy: 0.000_001)
-        // 画布落值：右圆钮贴 16 边距、Ø44 ⟹ 中心 x = 393 − 16 − 22 = 355
-        XCTAssertEqual(center.x, 355, accuracy: 0.000_001)
-        // 中心 y = 安全区顶 59 + 上留白 3 + 22 = 84
-        XCTAssertEqual(center.y, 84, accuracy: 0.000_001)
+        XCTAssertNotNil(machine.feedbackEvent)
     }
 
-    // IC-111 B：弧线端点恒等，且控制点在**右外侧、起点高度**——
-    // 由此得「先横后纵」的甩入感。
-    func testIC111BFlightIsRightSideQuadraticWithExactEndpoints() {
-        let from = CGPoint(x: 196, y: 430)
-        let to = CGPoint(x: 355, y: 84)
-        let photoMaxX: CGFloat = 360
-
-        let start = S2MarkAfterimageFlight.point(
-            from: from, to: to, photoMaxX: photoMaxX, progress: 0
+    // IC-113 B：协调器把撤回接到服务的 removeAsset 上，成功即从相簿移除。
+    func testIC113BCoordinatorRoutesRemovalToService() {
+        let album = S2AlbumReference(id: "album-113", name: "旅行")
+        let service = FakeAssetActionService(
+            albums: [album],
+            containedPairs: [FakeAssetActionService.pair(album.id, "asset-2")]
         )
-        XCTAssertEqual(start.x, from.x, accuracy: 0.000_001)
-        XCTAssertEqual(start.y, from.y, accuracy: 0.000_001)
-        let end = S2MarkAfterimageFlight.point(
-            from: from, to: to, photoMaxX: photoMaxX, progress: 1
+        let machine = makeMachine(recentAlbum: album)
+        let request = S2AlbumActionRequest(
+            targetAssetID: "asset-2",
+            album: album
         )
-        XCTAssertEqual(end.x, to.x, accuracy: 0.000_001)
-        XCTAssertEqual(end.y, to.y, accuracy: 0.000_001)
-
-        // 控制点：x 推到 max(落点, 主图右缘) 之外，y 取起点高度
-        let control = S2MarkAfterimageFlight.controlPoint(
-            from: from, to: to, photoMaxX: photoMaxX
-        )
-        XCTAssertEqual(control.y, from.y, accuracy: 0.000_001)
-        XCTAssertGreaterThan(control.x, to.x)
-        XCTAssertGreaterThan(control.x, photoMaxX)
-
-        // 先横后纵：早段几乎只走横向，纵向位移占比很小
-        let early = S2MarkAfterimageFlight.point(
-            from: from, to: to, photoMaxX: photoMaxX, progress: 0.2
-        )
-        let horizontal = abs(early.x - from.x)
-        let vertical = abs(early.y - from.y)
-        XCTAssertGreaterThan(
-            horizontal,
-            vertical,
-            "早段应以横向甩出为主，否则不是「先横后纵」"
-        )
-
-        // 曲线整体鼓向右外侧：中点比弦中点更靠右
-        let mid = S2MarkAfterimageFlight.point(
-            from: from, to: to, photoMaxX: photoMaxX, progress: 0.5
-        )
-        XCTAssertGreaterThan(mid.x, (from.x + to.x) / 2)
-
-        // 越界钳制
-        XCTAssertEqual(
-            S2MarkAfterimageFlight.point(
-                from: from, to: to, photoMaxX: photoMaxX, progress: -1
-            ).x,
-            from.x,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S2MarkAfterimageFlight.point(
-                from: from, to: to, photoMaxX: photoMaxX, progress: 2
-            ).x,
-            to.x,
-            accuracy: 0.000_001
-        )
-    }
-
-    // IC-111 B：协调器只做在途计数与落点通知；允许多枚并发，无上限。
-    func testIC111BCoordinatorTracksConcurrentFlightsAndLandings() {
-        let coordinator = S2MarkAfterimageCoordinator()
-        XCTAssertEqual(coordinator.inFlightCount, 0)
-        XCTAssertEqual(coordinator.landedTick, 0)
-
-        // 连续标记 5 张：五枚同时在途，互不阻塞、不设上限
-        for _ in 0..<5 {
-            coordinator.willLaunch()
+        XCTAssertTrue(machine.beginAlbumRemoval(request))
+        service.removeAsset(
+            assetID: request.targetAssetID,
+            fromAlbumWithID: request.album.id
+        ) { succeeded in
+            XCTAssertTrue(succeeded)
         }
-        XCTAssertEqual(coordinator.inFlightCount, 5)
-        XCTAssertEqual(coordinator.landedTick, 0)
-
-        coordinator.didLand()
-        XCTAssertEqual(coordinator.inFlightCount, 4)
-        XCTAssertEqual(coordinator.landedTick, 1)
-
-        for _ in 0..<4 {
-            coordinator.didLand()
-        }
-        XCTAssertEqual(coordinator.inFlightCount, 0)
-        XCTAssertEqual(coordinator.landedTick, 5)
-
-        // 多余的落点通知不把在途数压成负数
-        coordinator.didLand()
-        XCTAssertEqual(coordinator.inFlightCount, 0)
-        XCTAssertEqual(coordinator.landedTick, 6)
-    }
-
-    // MARK: - IC-111 C：加入相簿残影飞入底部中胶囊
-
-    // IC-111 C：飞行参数落在卡内区间——280–320ms、scale 1 → 0.15、
-    // opacity 0.85 → 0；且与 B 共用同一套参数形状。
-    func testIC111CAlbumFlightParametersMatchCard() {
-        XCTAssertGreaterThanOrEqual(
-            S2AlbumAfterimageFlight.durationSeconds,
-            0.28
-        )
-        XCTAssertLessThanOrEqual(
-            S2AlbumAfterimageFlight.durationSeconds,
-            0.32
-        )
-        XCTAssertEqual(S2AlbumAfterimageFlight.endScale, 0.15)
-        XCTAssertEqual(S2AlbumAfterimageFlight.startOpacity, 0.85)
-        XCTAssertEqual(S2AlbumAfterimageFlight.endOpacity, 0)
-        // 入场参数（④）：120ms、上浮 8pt
+        XCTAssertEqual(service.removalRequests.count, 1)
         XCTAssertEqual(
-            S2AlbumCapsuleEntrance.durationSeconds,
-            0.12,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(S2AlbumCapsuleEntrance.rise, 8)
-    }
-
-    // IC-111 C：路径是**向下**弧线——曲线中点低于弦中点（屏幕坐标 y 更大），
-    // 与 B 的右鼓弧线方向不同。端点恒等、越界钳制。
-    func testIC111CAlbumFlightIsDownwardArc() {
-        let from = CGPoint(x: 196, y: 420)
-        let to = CGPoint(x: 196, y: 788)
-
-        let start = S2AlbumAfterimageFlight.point(
-            from: from, to: to, progress: 0
-        )
-        XCTAssertEqual(start.y, from.y, accuracy: 0.000_001)
-        let end = S2AlbumAfterimageFlight.point(
-            from: from, to: to, progress: 1
-        )
-        XCTAssertEqual(end.y, to.y, accuracy: 0.000_001)
-
-        let chordMid = CGPoint(
-            x: (from.x + to.x) / 2,
-            y: (from.y + to.y) / 2
-        )
-        let control = S2AlbumAfterimageFlight.controlPoint(
-            from: from, to: to
-        )
-        XCTAssertGreaterThan(
-            control.y,
-            chordMid.y,
-            "控制点必须在弦中点下方，否则不是向下弧线"
-        )
-        let curveMid = S2AlbumAfterimageFlight.point(
-            from: from, to: to, progress: 0.5
-        )
-        XCTAssertGreaterThan(curveMid.y, chordMid.y)
-
-        // 零距离不产生 NaN
-        let degenerate = S2AlbumAfterimageFlight.controlPoint(
-            from: from, to: from
-        )
-        XCTAssertEqual(degenerate.x, from.x, accuracy: 0.000_001)
-        XCTAssertEqual(degenerate.y, from.y, accuracy: 0.000_001)
-
-        // 越界钳制
-        XCTAssertEqual(
-            S2AlbumAfterimageFlight.point(
-                from: from, to: to, progress: -1
-            ).y,
-            from.y,
-            accuracy: 0.000_001
+            service.removalRequests.first?.assetID,
+            "asset-2"
         )
         XCTAssertEqual(
-            S2AlbumAfterimageFlight.point(
-                from: from, to: to, progress: 2
-            ).y,
-            to.y,
-            accuracy: 0.000_001
+            service.removalRequests.first?.albumID,
+            album.id
         )
-    }
-
-    // IC-111 C：落点 = 底部中胶囊中心，与 chrome 底排同一套表达式；
-    // 左右边距对称 ⟹ 落点水平居中。
-    func testIC111CBottomCapsuleCenterSharesChromeDerivation() {
-        let viewport = CGSize(width: 393, height: 852)
-        let insets = S2OverlaySafeAreaInsets(
-            top: 59,
-            leading: 0,
-            bottom: 34,
-            trailing: 0
-        )
-        let center = S2AlbumAfterimageFlight.bottomCapsuleCenter(
-            viewportSize: viewport,
-            safeAreaInsets: insets
-        )
-        // 水平居中
-        XCTAssertEqual(center.x, viewport.width / 2, accuracy: 0.000_001)
-        // 竖向 = 视口高 − 底排中心距视口底（常规机型 852 − 64 = 788）
-        XCTAssertEqual(
-            center.y,
-            viewport.height -
-                S2OverlayLayout.actionBandCenterFromViewportBottom(
-                    safeAreaBottom: insets.bottom
-                ),
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(center.y, 788, accuracy: 0.000_001)
-    }
-
-    // IC-111 C（④ 时序）：首次经选择器换新相簿要先入场、残影推迟；
-    // 同一相簿再来立即起飞；直接点中胶囊也是立即。
-    func testIC111CEntranceGateSequencing() {
-        var gate = S2AlbumAfterimageGate()
-
-        // 直接点：立即放行
-        XCTAssertTrue(gate.requestDirectLaunch())
-
-        // 首次选中相簿 A：需要先入场，且此刻不放行
-        XCTAssertTrue(gate.albumSelected(id: "album-A"))
-        XCTAssertTrue(gate.isEntering)
-        XCTAssertTrue(gate.hasDeferredLaunch)
         XCTAssertFalse(
-            gate.requestDirectLaunch(),
-            "入场中不得放飞残影"
-        )
-
-        // 入场完成：把推迟的那一枚放飞
-        XCTAssertTrue(gate.entranceDidFinish())
-        XCTAssertFalse(gate.isEntering)
-        XCTAssertFalse(gate.hasDeferredLaunch)
-        XCTAssertTrue(gate.requestDirectLaunch())
-
-        // 再次选中同一相簿 A：不再入场，走立即路径
-        XCTAssertFalse(gate.albumSelected(id: "album-A"))
-        XCTAssertFalse(gate.isEntering)
-
-        // 换到新相簿 B：又要入场一次
-        XCTAssertTrue(gate.albumSelected(id: "album-B"))
-        XCTAssertTrue(gate.isEntering)
-        XCTAssertTrue(gate.entranceDidFinish())
-
-        // 没有待放飞时，入场完成不凭空放飞
-        XCTAssertFalse(gate.entranceDidFinish())
-    }
-
-    // IC-111 C：两种残影的落点计数各自独立——同屏并存、互不阻塞。
-    func testIC111CAlbumAndMarkLandingsAreIndependent() {
-        let coordinator = S2MarkAfterimageCoordinator()
-        XCTAssertEqual(coordinator.landedTick, 0)
-        XCTAssertEqual(coordinator.albumLandedTick, 0)
-
-        coordinator.willLaunch()
-        coordinator.didLand()
-        XCTAssertEqual(coordinator.landedTick, 1)
-        XCTAssertEqual(
-            coordinator.albumLandedTick,
-            0,
-            "标记残影落点不得触发中胶囊回弹"
-        )
-
-        coordinator.albumDidLand()
-        coordinator.albumDidLand()
-        XCTAssertEqual(coordinator.albumLandedTick, 2)
-        XCTAssertEqual(
-            coordinator.landedTick,
-            1,
-            "相簿残影落点不得触发垃圾桶回弹"
-        )
-    }
-
-    // MARK: - IC-112 D：缩略栏去底色
-
-    // IC-112 D：去底色**只动材质**，横栏的位置与尺寸零变化——
-    // 这里把横栏带的三条推导（底缘、顶缘、带高）钉在画布落值上，
-    // 任何一处被动到都会红。
-    //
-    // 「无底色」本身是渲染观感，单测无法断言，留给 H49 第 4 项人工判定。
-    func testIC112DStripGeometryUnchangedByBackgroundRemoval() {
-        let safeBottom: CGFloat = 34
-        let stripHeight: CGFloat = 30
-
-        // 横栏底缘距视口底：常规机型 110
-        let stripBottom = S2OverlayLayout.stripBottomFromViewportBottom(
-            safeAreaBottom: safeBottom
-        )
-        XCTAssertEqual(stripBottom, 110, accuracy: 0.000_001)
-
-        // 横栏顶缘距视口底 = 底缘 + 带高 = 140
-        XCTAssertEqual(
-            stripBottom + stripHeight,
-            140,
-            accuracy: 0.000_001
-        )
-
-        // 陷阱 14 的两套几何在此显影，本项一个都没动：
-        // 视觉带高 = 原始 30（渲染容器用的就是它，故视觉顶缘 = 140）；
-        // resolvedStripHeight 含 44 pt 触控带下限，是给**手指**的，
-        // 30 会被抬到 44——视觉锚绝不能复用它。
-        XCTAssertEqual(
-            S2OverlayLayout.resolvedStripHeight(stripHeight),
-            S2OverlayLayout.minimumTouchTarget,
-            accuracy: 0.000_001
-        )
-        XCTAssertGreaterThan(
-            S2OverlayLayout.resolvedStripHeight(stripHeight),
-            stripHeight,
-            "触控带下限必须确实抬高了 30，否则这条区分就失效了"
-        )
-        // 子项 C 的提示卡锚的是**视觉**顶缘：110 + 30 + 8 = 148，
-        // 而非触控口径的 110 + 44 + 8 = 162。两者不得混用。
-        XCTAssertEqual(
-            S2TutorialCardLayout.bottomInset(
-                safeAreaBottom: safeBottom,
-                bottomStripHeight: stripHeight
-            ),
-            stripBottom + stripHeight +
-                S2TutorialCardLayout.stripClearance,
-            accuracy: 0.000_001
-        )
-
-        // 与底排的净空（横栏底缘 ↔ 底排上缘）仍为画布的 24
-        let actionTop = S2OverlayLayout.actionBandTopFromViewportBottom(
-            safeAreaBottom: safeBottom
-        )
-        XCTAssertEqual(
-            stripBottom - actionTop,
-            S2OverlayLayout.stripToBottomRowSpacing,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S2OverlayLayout.stripToBottomRowSpacing,
-            24,
-            accuracy: 0.000_001
+            service.containsPair(albumID: album.id, assetID: "asset-2"),
+            "移除成功后该资产不应再属于该相簿"
         )
     }
 
@@ -1670,13 +1374,18 @@ final class S2InMemoryTutorialCompletionStore: S2TutorialCompletionStoring {
 /// 测试用假写入服务：记录请求、延迟完成；加入相册沿用生产的 `PhotoAlbumAdditionPlan`，
 /// 已包含时不计写入。完成回调在调用方线程（主线程）同步触发。
 final class FakeAssetActionService: PhotoAssetActionServicing {
+    /// IC-113 B：移除请求记录与结果开关。
+    var removalRequests: [AdditionRequest] = []
+    var removalSucceeds = true
+
     struct AdditionRequest: Equatable {
         let assetID: String
         let albumID: String
     }
 
     private let albums: [S2AlbumReference]
-    private let containedPairs: Set<String>
+    /// IC-113 B：移除会改变成员关系，故由 `let` 改 `var`。
+    private var containedPairs: Set<String>
     private(set) var favoriteRequests: [String] = []
     private(set) var additionRequests: [AdditionRequest] = []
     private(set) var albumExistsQueries: [String] = []
@@ -1696,12 +1405,33 @@ final class FakeAssetActionService: PhotoAssetActionServicing {
         "\(albumID)|\(assetID)"
     }
 
+    /// IC-113 B：断言用的成员关系查询。
+    func containsPair(albumID: String, assetID: String) -> Bool {
+        containedPairs.contains(Self.pair(albumID, assetID))
+    }
+
     func toggleFavorite(
         assetID: String,
         completion: @escaping (Bool) -> Void
     ) {
         favoriteRequests.append(assetID)
         pendingFavorites.append(completion)
+    }
+
+    /// IC-113 B：从相簿移除。记录请求并按 `removalSucceeds` 回结果；
+    /// 成功时把该对从 `containedPairs` 里去掉，与真实语义一致。
+    func removeAsset(
+        assetID: String,
+        fromAlbumWithID albumID: String,
+        completion: @escaping (Bool) -> Void
+    ) {
+        removalRequests.append(
+            AdditionRequest(assetID: assetID, albumID: albumID)
+        )
+        if removalSucceeds {
+            containedPairs.remove(Self.pair(albumID, assetID))
+        }
+        completion(removalSucceeds)
     }
 
     func addAsset(

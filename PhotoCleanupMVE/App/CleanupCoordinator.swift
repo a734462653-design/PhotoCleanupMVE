@@ -312,6 +312,32 @@ final class CleanupCoordinator: ObservableObject {
         return true
     }
 
+    /// IC-113 B：中央指示「撤回」——把资产从相簿移除。
+    /// 与加入同构：状态机登记在途 → 服务写入 → 主线程回结果。
+    @discardableResult
+    func requestS2AlbumRemoval(_ request: S2AlbumActionRequest) -> Bool {
+        guard route == .s2,
+              let machine = s2Machine,
+              machine.beginAlbumRemoval(request) else {
+            return false
+        }
+        assetActionService.removeAsset(
+            assetID: request.targetAssetID,
+            fromAlbumWithID: request.album.id
+        ) { [weak self] succeeded in
+            Self.deliverOnMain {
+                guard let self, self.s2Machine === machine else {
+                    return
+                }
+                _ = machine.completeAlbumRemoval(
+                    request,
+                    succeeded: succeeded
+                )
+            }
+        }
+        return true
+    }
+
     @discardableResult
     func requestS2AlbumPickerSelection(
         _ request: S2AlbumPickerRequest,

@@ -307,6 +307,15 @@ struct S2AlbumActionRequest: Equatable {
     let album: S2AlbumReference
 }
 
+/// IC-113 B：最近一次**成功**加入相簿的记录。中央指示据此显示
+/// 「已加入「名」」并提供撤回；`id` 单调递增，供视图识别「又发生了一次」
+/// （同一资产重复加入同一相簿时，`assetID` 与 `album` 都不变）。
+struct S2AlbumAdditionRecord: Equatable {
+    let id: Int
+    let assetID: String
+    let album: S2AlbumReference
+}
+
 struct S2AlbumPickerRequest: Equatable {
     let targetAssetID: String
 }
@@ -634,6 +643,14 @@ final class S2StateMachine: ObservableObject {
     private var inFlightFavoriteRequest: S2AssetActionRequest?
     private var inFlightRecentAlbumRequest: S2AlbumActionRequest?
     private var inFlightAlbumPickerSelection: S2AlbumPickerSelection?
+
+    /// IC-113 B：最近一次成功加入相簿。撤回成功后清空。
+    @Published private(set) var lastAlbumAddition: S2AlbumAdditionRecord?
+    private var albumAdditionCount = 0
+    /// 撤回（从相簿移除）是否在途。**不进 `inFlightActions`**——
+    /// 那个集合驱动操作条三按钮的启用规则，撤回钮不在其列，
+    /// 混进去会连带改变操作条语义（G284 要求手势与操作条语义不变）。
+    private(set) var isAlbumRemovalInFlight = false
 
     init?(
         entry: S2EntryContext,
@@ -1629,6 +1646,11 @@ final class S2StateMachine: ObservableObject {
             // v15 未定项 16 定案：已包含与首次加入不区分，均走完整成功路径。
             setRecentAlbum(request.album)
             removeFromPendingAfterAlbumAddition(request.targetAssetID)
+            // IC-113 B：登记成功，供中央指示显示「已加入「名」」。
+            publishAlbumAddition(
+                assetID: request.targetAssetID,
+                album: request.album
+            )
             return true
         case .failure:
             publishFeedback(.albumAdditionFailed)
@@ -1690,6 +1712,11 @@ final class S2StateMachine: ObservableObject {
         case .success:
             setRecentAlbum(album)
             removeFromPendingAfterAlbumAddition(request.targetAssetID)
+            // IC-113 B：选择器路径同样登记成功。
+            publishAlbumAddition(
+                assetID: request.targetAssetID,
+                album: album
+            )
             if sheetState == .presented,
                albumPickerTargetAssetID == request.targetAssetID {
                 sheetState = .closed
@@ -1896,6 +1923,61 @@ final class S2StateMachine: ObservableObject {
         if recentAlbum?.id == album.id {
             setRecentAlbum(nil)
         }
+    }
+
+    /// IC-113 B：中央指示「撤回」——把资产从刚加入的相簿移除。
+    /// 三段式与相簿加入同构：取请求 → 登记在途 → 结果。
+    func makeAlbumRemovalRequest() -> S2AlbumActionRequest? {
+        guard let record = lastAlbumAddition,
+              !isAlbumRemovalInFlight,
+              orderedAssetIDs.contains(record.assetID) else {
+            return nil
+        }
+        return S2AlbumActionRequest(
+            targetAssetID: record.assetID,
+            album: record.album
+        )
+    }
+
+    @discardableResult
+    func beginAlbumRemoval(_ request: S2AlbumActionRequest) -> Bool {
+        guard !isAlbumRemovalInFlight,
+              orderedAssetIDs.contains(request.targetAssetID) else {
+            return false
+        }
+        isAlbumRemovalInFlight = true
+        return true
+    }
+
+    /// 成功即清掉加入记录——中央指示随之失去「已加入」这一态。
+    /// 失败沿用既有反馈通道，不新增分支。
+    @discardableResult
+    func completeAlbumRemoval(
+        _ request: S2AlbumActionRequest,
+        succeeded: Bool
+    ) -> Bool {
+        isAlbumRemovalInFlight = false
+        guard succeeded else {
+            publishFeedback(.albumAdditionFailed)
+            return false
+        }
+        if lastAlbumAddition?.assetID == request.targetAssetID,
+           lastAlbumAddition?.album == request.album {
+            lastAlbumAddition = nil
+        }
+        return true
+    }
+
+    private func publishAlbumAddition(
+        assetID: String,
+        album: S2AlbumReference
+    ) {
+        albumAdditionCount += 1
+        lastAlbumAddition = S2AlbumAdditionRecord(
+            id: albumAdditionCount,
+            assetID: assetID,
+            album: album
+        )
     }
 
     private func setRecentAlbum(_ album: S2AlbumReference?) {
