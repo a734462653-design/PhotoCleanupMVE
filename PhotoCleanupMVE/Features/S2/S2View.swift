@@ -951,9 +951,6 @@ struct S2View: View {
         .padding(.trailing, safeAreaInsets.trailing)
     }
 
-    /// 主图待删标记浮层。位置固定于视口右上角（顶部信息区下方，距安全区右侧与
-    /// 顶部信息区底边各 `horizontalPadding`），`Nx` 下不随平移移动；不参与命中测试。
-    @ViewBuilder
     /// IC-112 B：中央状态指示浮层。位置 = **主图几何中心**
     /// （视口中心 X + `oneXDisplayCenterY`，故截图的适配带锚定同样正确）。
     ///
