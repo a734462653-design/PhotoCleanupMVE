@@ -809,6 +809,176 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertEqual(coordinator.landedTick, 6)
     }
 
+    // MARK: - IC-111 C：加入相簿残影飞入底部中胶囊
+
+    // IC-111 C：飞行参数落在卡内区间——280–320ms、scale 1 → 0.15、
+    // opacity 0.85 → 0；且与 B 共用同一套参数形状。
+    func testIC111CAlbumFlightParametersMatchCard() {
+        XCTAssertGreaterThanOrEqual(
+            S2AlbumAfterimageFlight.durationSeconds,
+            0.28
+        )
+        XCTAssertLessThanOrEqual(
+            S2AlbumAfterimageFlight.durationSeconds,
+            0.32
+        )
+        XCTAssertEqual(S2AlbumAfterimageFlight.endScale, 0.15)
+        XCTAssertEqual(S2AlbumAfterimageFlight.startOpacity, 0.85)
+        XCTAssertEqual(S2AlbumAfterimageFlight.endOpacity, 0)
+        // 入场参数（④）：120ms、上浮 8pt
+        XCTAssertEqual(
+            S2AlbumCapsuleEntrance.durationSeconds,
+            0.12,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(S2AlbumCapsuleEntrance.rise, 8)
+    }
+
+    // IC-111 C：路径是**向下**弧线——曲线中点低于弦中点（屏幕坐标 y 更大），
+    // 与 B 的右鼓弧线方向不同。端点恒等、越界钳制。
+    func testIC111CAlbumFlightIsDownwardArc() {
+        let from = CGPoint(x: 196, y: 420)
+        let to = CGPoint(x: 196, y: 788)
+
+        let start = S2AlbumAfterimageFlight.point(
+            from: from, to: to, progress: 0
+        )
+        XCTAssertEqual(start.y, from.y, accuracy: 0.000_001)
+        let end = S2AlbumAfterimageFlight.point(
+            from: from, to: to, progress: 1
+        )
+        XCTAssertEqual(end.y, to.y, accuracy: 0.000_001)
+
+        let chordMid = CGPoint(
+            x: (from.x + to.x) / 2,
+            y: (from.y + to.y) / 2
+        )
+        let control = S2AlbumAfterimageFlight.controlPoint(
+            from: from, to: to
+        )
+        XCTAssertGreaterThan(
+            control.y,
+            chordMid.y,
+            "控制点必须在弦中点下方，否则不是向下弧线"
+        )
+        let curveMid = S2AlbumAfterimageFlight.point(
+            from: from, to: to, progress: 0.5
+        )
+        XCTAssertGreaterThan(curveMid.y, chordMid.y)
+
+        // 零距离不产生 NaN
+        let degenerate = S2AlbumAfterimageFlight.controlPoint(
+            from: from, to: from
+        )
+        XCTAssertEqual(degenerate.x, from.x, accuracy: 0.000_001)
+        XCTAssertEqual(degenerate.y, from.y, accuracy: 0.000_001)
+
+        // 越界钳制
+        XCTAssertEqual(
+            S2AlbumAfterimageFlight.point(
+                from: from, to: to, progress: -1
+            ).y,
+            from.y,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2AlbumAfterimageFlight.point(
+                from: from, to: to, progress: 2
+            ).y,
+            to.y,
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-111 C：落点 = 底部中胶囊中心，与 chrome 底排同一套表达式；
+    // 左右边距对称 ⟹ 落点水平居中。
+    func testIC111CBottomCapsuleCenterSharesChromeDerivation() {
+        let viewport = CGSize(width: 393, height: 852)
+        let insets = S2OverlaySafeAreaInsets(
+            top: 59,
+            leading: 0,
+            bottom: 34,
+            trailing: 0
+        )
+        let center = S2AlbumAfterimageFlight.bottomCapsuleCenter(
+            viewportSize: viewport,
+            safeAreaInsets: insets
+        )
+        // 水平居中
+        XCTAssertEqual(center.x, viewport.width / 2, accuracy: 0.000_001)
+        // 竖向 = 视口高 − 底排中心距视口底（常规机型 852 − 64 = 788）
+        XCTAssertEqual(
+            center.y,
+            viewport.height -
+                S2OverlayLayout.actionBandCenterFromViewportBottom(
+                    safeAreaBottom: insets.bottom
+                ),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(center.y, 788, accuracy: 0.000_001)
+    }
+
+    // IC-111 C（④ 时序）：首次经选择器换新相簿要先入场、残影推迟；
+    // 同一相簿再来立即起飞；直接点中胶囊也是立即。
+    func testIC111CEntranceGateSequencing() {
+        var gate = S2AlbumAfterimageGate()
+
+        // 直接点：立即放行
+        XCTAssertTrue(gate.requestDirectLaunch())
+
+        // 首次选中相簿 A：需要先入场，且此刻不放行
+        XCTAssertTrue(gate.albumSelected(id: "album-A"))
+        XCTAssertTrue(gate.isEntering)
+        XCTAssertTrue(gate.hasDeferredLaunch)
+        XCTAssertFalse(
+            gate.requestDirectLaunch(),
+            "入场中不得放飞残影"
+        )
+
+        // 入场完成：把推迟的那一枚放飞
+        XCTAssertTrue(gate.entranceDidFinish())
+        XCTAssertFalse(gate.isEntering)
+        XCTAssertFalse(gate.hasDeferredLaunch)
+        XCTAssertTrue(gate.requestDirectLaunch())
+
+        // 再次选中同一相簿 A：不再入场，走立即路径
+        XCTAssertFalse(gate.albumSelected(id: "album-A"))
+        XCTAssertFalse(gate.isEntering)
+
+        // 换到新相簿 B：又要入场一次
+        XCTAssertTrue(gate.albumSelected(id: "album-B"))
+        XCTAssertTrue(gate.isEntering)
+        XCTAssertTrue(gate.entranceDidFinish())
+
+        // 没有待放飞时，入场完成不凭空放飞
+        XCTAssertFalse(gate.entranceDidFinish())
+    }
+
+    // IC-111 C：两种残影的落点计数各自独立——同屏并存、互不阻塞。
+    func testIC111CAlbumAndMarkLandingsAreIndependent() {
+        let coordinator = S2MarkAfterimageCoordinator()
+        XCTAssertEqual(coordinator.landedTick, 0)
+        XCTAssertEqual(coordinator.albumLandedTick, 0)
+
+        coordinator.willLaunch()
+        coordinator.didLand()
+        XCTAssertEqual(coordinator.landedTick, 1)
+        XCTAssertEqual(
+            coordinator.albumLandedTick,
+            0,
+            "标记残影落点不得触发中胶囊回弹"
+        )
+
+        coordinator.albumDidLand()
+        coordinator.albumDidLand()
+        XCTAssertEqual(coordinator.albumLandedTick, 2)
+        XCTAssertEqual(
+            coordinator.landedTick,
+            1,
+            "相簿残影落点不得触发垃圾桶回弹"
+        )
+    }
+
     // MARK: - IC-110 D：首次引导教程
     //
     // 以下均为**夹具驱动**的状态机断言，真机走查由 H47 兜底（陷阱 1）。

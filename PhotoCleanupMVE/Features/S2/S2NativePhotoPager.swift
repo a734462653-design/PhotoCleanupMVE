@@ -117,6 +117,7 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
         controller.imageLoadStateRegistry = imageLoadStateRegistry
         controller.doubleTapProbe = doubleTapProbe
         controller.markAfterimages = markAfterimages
+        controller.installAlbumAfterimageHook()
         let photoWriteCountBefore = transitionDiagnosticsCoordinator
             .photoGeometryWriteCount
         // IC-095 R1：本次重进是否落笔任何几何，取录制窗口内几何写入总数的差值。
@@ -1114,6 +1115,93 @@ enum S2MarkAfterimageFlight {
     }
 }
 
+/// IC-111 C：加入相簿残影的飞行参数与几何。与 B 同一套机制、同一 spring 家族，
+/// 只在路径方向（向下弧线）与落点（底部中胶囊）上不同。
+enum S2AlbumAfterimageFlight {
+    /// 总时长。卡内区间 280–320 ms，取中位 300 ms。
+    static let durationSeconds: CFTimeInterval = 0.3
+
+    static let endScale: CGFloat = 0.15
+    static let startOpacity: Float = 0.85
+    static let endOpacity: Float = 0
+
+    /// 弧线下垂系数：控制点自弦中点向**屏幕下方**推的比例。
+    static let arcDropRatio: CGFloat = 0.28
+
+    /// 二次贝塞尔控制点：弦中点再向下推，得到卡内的「向下弧线」。
+    static func controlPoint(from: CGPoint, to: CGPoint) -> CGPoint {
+        let midpoint = CGPoint(
+            x: (from.x + to.x) / 2,
+            y: (from.y + to.y) / 2
+        )
+        let chordLength = hypot(to.x - from.x, to.y - from.y)
+        return CGPoint(
+            x: midpoint.x,
+            y: midpoint.y + chordLength * arcDropRatio
+        )
+    }
+
+    /// 弧线上的点。端点恒等：0 → from，1 → to。
+    static func point(
+        from: CGPoint,
+        to: CGPoint,
+        progress: CGFloat
+    ) -> CGPoint {
+        let t = min(1, max(0, progress))
+        let control = controlPoint(from: from, to: to)
+        let inverse = 1 - t
+        return CGPoint(
+            x: inverse * inverse * from.x +
+                2 * inverse * t * control.x +
+                t * t * to.x,
+            y: inverse * inverse * from.y +
+                2 * inverse * t * control.y +
+                t * t * to.y
+        )
+    }
+
+    static func path(from: CGPoint, to: CGPoint) -> CGPath {
+        let path = CGMutablePath()
+        path.move(to: from)
+        path.addQuadCurve(to: to, control: controlPoint(from: from, to: to))
+        return path
+    }
+
+    /// 底部中胶囊中心（视口坐标）。与 `S2OverlayLayout.snapshot` 的底排构造
+    /// **同一套表达式**：左右各 Ø`chromeRowHeight` 圆钮贴 `chromeHorizontalMargin`，
+    /// 胶囊占两者之间、各留 `minimumSpacing`。
+    static func bottomCapsuleCenter(
+        viewportSize: CGSize,
+        safeAreaInsets: S2OverlaySafeAreaInsets
+    ) -> CGPoint {
+        let minX = safeAreaInsets.leading
+        let maxX = viewportSize.width - safeAreaInsets.trailing
+        let leadingMaxX = minX + S2OverlayLayout.chromeHorizontalMargin +
+            S2OverlayLayout.chromeRowHeight
+        let trailingMinX = maxX - S2OverlayLayout.chromeHorizontalMargin -
+            S2OverlayLayout.chromeRowHeight
+        let capsuleMinX = leadingMaxX + S2OverlayLayout.minimumSpacing
+        let capsuleMaxX = trailingMinX - S2OverlayLayout.minimumSpacing
+        let centerY = viewportSize.height -
+            S2OverlayLayout.actionBandCenterFromViewportBottom(
+                safeAreaBottom: safeAreaInsets.bottom
+            )
+        return CGPoint(
+            x: (capsuleMinX + capsuleMaxX) / 2,
+            y: centerY
+        )
+    }
+}
+
+/// IC-111 C：中胶囊入场（淡入 + 上浮）的参数。首次经选择器换新相簿时先播它，
+/// 播完才允许残影起飞（④ 时序规则）。
+enum S2AlbumCapsuleEntrance {
+    /// 入场时长（卡内 ④）。
+    static let durationSeconds: TimeInterval = 0.12
+    /// 上浮距离（卡内 ④）。
+    static let rise: CGFloat = 8
+}
+
 /// IC-111 B：残影协调器。只做「在途计数」与「落点通知」，不碰几何也不碰动画。
 ///
 /// 落点通知是 chrome 侧垃圾桶回弹与角标滚动的**唯一**触发源——
@@ -1134,17 +1222,39 @@ final class S2MarkAfterimageCoordinator: ObservableObject {
         inFlightCount = max(0, inFlightCount - 1)
         landedTick += 1
     }
+
+    // MARK: IC-111 C：加入相簿残影
+
+    /// 由 pager 安装的起飞入口。chrome 侧（SwiftUI）请求起飞时调它——
+    /// 快照与 `CAAnimation` 都在 UIKit 侧，与 B 同一套机制。
+    var launchAlbumAfterimage: (() -> Void)?
+
+    /// 加入相簿残影的落点计数，触发中胶囊回弹。与 B 的 `landedTick` 分开，
+    /// 两种残影可同屏并存、互不阻塞。
+    @Published private(set) var albumLandedTick = 0
+
+    func albumDidLand() {
+        albumLandedTick += 1
+    }
 }
 
 /// IC-111 B：残影图层动画器。整段位移/缩放/淡出交给渲染层，
 /// 主线程只在起飞与收口各参与一次。
 enum S2MarkAfterimagePresenter {
+    /// IC-111 B/C 共用。两种残影（标记飞垃圾桶、加入相簿飞中胶囊）只在
+    /// 路径与参数上不同，机制完全同一套：路径走 `CAKeyframeAnimation`，
+    /// 缩放与淡出各一条 `CABasicAnimation`，主线程不逐帧参与。
     static func launch(
         snapshot: UIView,
         in container: UIView,
         from: CGPoint,
         to: CGPoint,
-        photoMaxX: CGFloat,
+        path: CGPath,
+        duration: CFTimeInterval,
+        endScale: CGFloat,
+        startOpacity: Float,
+        endOpacity: Float,
+        keyPrefix: String,
         onLanded: @escaping () -> Void
     ) {
         snapshot.center = from
@@ -1152,27 +1262,22 @@ enum S2MarkAfterimagePresenter {
         container.addSubview(snapshot)
 
         let layer = snapshot.layer
-        let duration = S2MarkAfterimageFlight.durationSeconds
 
         let position = CAKeyframeAnimation(keyPath: "position")
-        position.path = S2MarkAfterimageFlight.path(
-            from: from,
-            to: to,
-            photoMaxX: photoMaxX
-        )
+        position.path = path
         position.duration = duration
         // 卡内：位移 easeIn
         position.timingFunction = CAMediaTimingFunction(name: .easeIn)
 
         let scale = CABasicAnimation(keyPath: "transform.scale")
-        scale.fromValue = S2MarkAfterimageFlight.startScale
-        scale.toValue = S2MarkAfterimageFlight.endScale
+        scale.fromValue = 1
+        scale.toValue = endScale
         scale.duration = duration
         scale.timingFunction = CAMediaTimingFunction(name: .easeIn)
 
         let opacity = CABasicAnimation(keyPath: "opacity")
-        opacity.fromValue = S2MarkAfterimageFlight.startOpacity
-        opacity.toValue = S2MarkAfterimageFlight.endOpacity
+        opacity.fromValue = startOpacity
+        opacity.toValue = endOpacity
         opacity.duration = duration
         // 卡内：淡出 linear
         opacity.timingFunction = CAMediaTimingFunction(name: .linear)
@@ -1187,15 +1292,11 @@ enum S2MarkAfterimagePresenter {
         // 先把模型值落到终态，再叠动画：动画结束即模型态，无需
         // `isRemovedOnCompletion = false` 撑住末帧，也就没有残留层要清。
         layer.position = to
-        layer.opacity = S2MarkAfterimageFlight.endOpacity
-        layer.transform = CATransform3DMakeScale(
-            S2MarkAfterimageFlight.endScale,
-            S2MarkAfterimageFlight.endScale,
-            1
-        )
-        layer.add(position, forKey: "s2.markAfterimage.position")
-        layer.add(scale, forKey: "s2.markAfterimage.scale")
-        layer.add(opacity, forKey: "s2.markAfterimage.opacity")
+        layer.opacity = endOpacity
+        layer.transform = CATransform3DMakeScale(endScale, endScale, 1)
+        layer.add(position, forKey: keyPrefix + ".position")
+        layer.add(scale, forKey: keyPrefix + ".scale")
+        layer.add(opacity, forKey: keyPrefix + ".opacity")
         CATransaction.commit()
     }
 }
@@ -3258,6 +3359,13 @@ final class S2NativePagerViewController: UIViewController,
         return true
     }
 
+    /// IC-111 C：把「起飞加入相簿残影」的入口装到协调器上，供 chrome 侧调用。
+    func installAlbumAfterimageHook() {
+        markAfterimages?.launchAlbumAfterimage = { [weak self] in
+            self?.launchAlbumAfterimage()
+        }
+    }
+
     /// IC-111 B：起飞一枚残影。主图本体不参与位移——飞的是独立快照视图，
     /// 故标记后立刻可以翻页。
     private func launchMarkAfterimage(
@@ -3271,15 +3379,67 @@ final class S2NativePagerViewController: UIViewController,
             viewportSize: view.bounds.size,
             safeAreaTop: view.safeAreaInsets.top
         )
+        let from = CGPoint(x: photoFrame.midX, y: photoFrame.midY)
         markAfterimages.willLaunch()
         S2MarkAfterimagePresenter.launch(
             snapshot: snapshot,
             in: view,
-            from: CGPoint(x: photoFrame.midX, y: photoFrame.midY),
+            from: from,
             to: target,
-            photoMaxX: photoFrame.maxX,
+            path: S2MarkAfterimageFlight.path(
+                from: from,
+                to: target,
+                photoMaxX: photoFrame.maxX
+            ),
+            duration: S2MarkAfterimageFlight.durationSeconds,
+            endScale: S2MarkAfterimageFlight.endScale,
+            startOpacity: S2MarkAfterimageFlight.startOpacity,
+            endOpacity: S2MarkAfterimageFlight.endOpacity,
+            keyPrefix: "s2.markAfterimage",
             onLanded: { [weak markAfterimages] in
                 markAfterimages?.didLand()
+            }
+        )
+    }
+
+    /// IC-111 C：起飞一枚「加入相簿」残影——当前已解码图快照沿向下弧线飞入
+    /// 底部中胶囊。与 B 同一套机制，可同屏并存、互不阻塞。
+    private func launchAlbumAfterimage() {
+        // 加入相簿针对的是**当前**这张，故取当前页快照。
+        guard let markAfterimages,
+              let index = machine?.currentIndex,
+              let page = pageControllers[index],
+              let prelaunch = page.makeMarkAfterimageSnapshot(in: view)
+        else {
+            return
+        }
+        let insets = S2OverlaySafeAreaInsets(
+            top: view.safeAreaInsets.top,
+            leading: view.safeAreaInsets.left,
+            bottom: view.safeAreaInsets.bottom,
+            trailing: view.safeAreaInsets.right
+        )
+        let target = S2AlbumAfterimageFlight.bottomCapsuleCenter(
+            viewportSize: view.bounds.size,
+            safeAreaInsets: insets
+        )
+        let from = CGPoint(
+            x: prelaunch.frame.midX,
+            y: prelaunch.frame.midY
+        )
+        S2MarkAfterimagePresenter.launch(
+            snapshot: prelaunch.view,
+            in: view,
+            from: from,
+            to: target,
+            path: S2AlbumAfterimageFlight.path(from: from, to: target),
+            duration: S2AlbumAfterimageFlight.durationSeconds,
+            endScale: S2AlbumAfterimageFlight.endScale,
+            startOpacity: S2AlbumAfterimageFlight.startOpacity,
+            endOpacity: S2AlbumAfterimageFlight.endOpacity,
+            keyPrefix: "s2.albumAfterimage",
+            onLanded: { [weak markAfterimages] in
+                markAfterimages?.albumDidLand()
             }
         )
     }

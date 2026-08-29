@@ -410,6 +410,10 @@ struct S2View: View {
     /// IC-111 B：角标**显示值**。卡内要求「落点同帧 +1」，故显示值不跟随模型
     /// 立即变化——有残影在途时压到落点再跟上。
     @State private var displayedPendingCount = 0
+    /// IC-111 C：加入相簿残影的时序闸门与中胶囊入场进度。
+    @State private var albumAfterimageGate = S2AlbumAfterimageGate()
+    /// 0 = 未入场（透明、下沉 8pt），1 = 已就位。
+    @State private var albumCapsuleEntrance: CGFloat = 1
     /// IC-110 D：首次引导教程（未定项 20 ④）。持久化走 `UserDefaults`，
     /// 不入标定出厂值、`schemaVersion` 不动。
     @StateObject private var tutorial = S2TutorialCoordinator(
@@ -1127,6 +1131,10 @@ struct S2View: View {
                         return
                     }
                     onRecentAlbumRequest(request)
+                    // IC-111 C：直接点中胶囊加入 → 立即起飞（入场中则不放行）。
+                    if albumAfterimageGate.requestDirectLaunch() {
+                        markAfterimages.launchAlbumAfterimage?()
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "clock")
@@ -1148,6 +1156,22 @@ struct S2View: View {
                     .s2ChromeCapsuleGlass()
                 }
                 .disabled(!presentation.recentAlbumEnabled)
+                // IC-111 C：落点同帧的回弹 1 → 1.12 → 1。
+                .keyframeAnimator(
+                    initialValue: CGFloat(1),
+                    trigger: markAfterimages.albumLandedTick
+                ) { content, scale in
+                    content.scaleEffect(scale)
+                } keyframes: { _ in
+                    SpringKeyframe(1.12, duration: 0.12)
+                    SpringKeyframe(1.0, duration: 0.18)
+                }
+                // IC-111 C：入场＝淡入 + 上浮 8pt（未入场时下沉且透明）。
+                .opacity(Double(albumCapsuleEntrance))
+                .offset(
+                    y: (1 - albumCapsuleEntrance) *
+                        S2AlbumCapsuleEntrance.rise
+                )
 
                 Spacer(minLength: 0)
             }
@@ -1193,6 +1217,33 @@ struct S2View: View {
                 S2AlbumPickerActions(
                     select: { album in
                         onAlbumPickerSelection(request, album)
+                        // IC-111 C（④ 时序）：首次换新相簿——选择器收起后
+                        // 中胶囊先入场（淡入 + 上浮 8pt，120ms），
+                        // **入场完成才允许残影起飞**；同一相簿再来走立即路径。
+                        if albumAfterimageGate.albumSelected(id: album.id) {
+                            albumCapsuleEntrance = 0
+                            withAnimation(
+                                .easeOut(
+                                    duration: S2AlbumCapsuleEntrance
+                                        .durationSeconds
+                                )
+                            ) {
+                                albumCapsuleEntrance = 1
+                            }
+                            Task { @MainActor in
+                                try? await Task.sleep(
+                                    nanoseconds: UInt64(
+                                        S2AlbumCapsuleEntrance
+                                            .durationSeconds * 1_000_000_000
+                                    )
+                                )
+                                if albumAfterimageGate.entranceDidFinish() {
+                                    markAfterimages.launchAlbumAfterimage?()
+                                }
+                            }
+                        } else {
+                            markAfterimages.launchAlbumAfterimage?()
+                        }
                     },
                     cancel: {
                         performCalibratedAnimation {
@@ -2325,6 +2376,50 @@ final class S2TutorialCoordinator: ObservableObject {
         activeStep = nil
         self.outcome = outcome
         store.markCompleted()
+    }
+}
+
+// MARK: - IC-111 C：加入相簿残影的时序闸门
+
+/// 中胶囊入场闸门（④ 时序规则）。
+///
+/// - 直接点中胶囊加入 → **立即**起飞。
+/// - **首次**经右侧选择器换新相簿 → 选择器收起后中胶囊先入场，
+///   **入场完成才允许残影起飞**。
+/// - 此后再加入**同一**相簿 → 走立即路径。
+///
+/// 「首次」按**相簿**计：每个相簿各有一次入场，故 `seenAlbumIDs` 记的是
+/// 已经入过场的相簿。纯状态机，不碰动画也不碰几何。
+struct S2AlbumAfterimageGate: Equatable {
+    private(set) var seenAlbumIDs: Set<String> = []
+    private(set) var isEntering = false
+    private(set) var hasDeferredLaunch = false
+
+    /// 直接点中胶囊。返回是否可以立即起飞（入场中则不放行，等入场完成）。
+    mutating func requestDirectLaunch() -> Bool {
+        !isEntering
+    }
+
+    /// 经选择器选定相簿。返回 true 表示**需要先播入场**、残影推迟到入场完成。
+    mutating func albumSelected(id: String) -> Bool {
+        guard !seenAlbumIDs.contains(id) else {
+            // 同一相簿再来一次：不再入场，走立即路径。
+            return false
+        }
+        seenAlbumIDs.insert(id)
+        isEntering = true
+        hasDeferredLaunch = true
+        return true
+    }
+
+    /// 入场播完。返回 true 表示此刻应把推迟的那一枚残影放飞。
+    mutating func entranceDidFinish() -> Bool {
+        isEntering = false
+        guard hasDeferredLaunch else {
+            return false
+        }
+        hasDeferredLaunch = false
+        return true
     }
 }
 
