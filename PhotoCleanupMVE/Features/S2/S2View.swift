@@ -528,6 +528,17 @@ struct S2View: View {
                 if let step = tutorial.activeStep {
                     S2TutorialOverlay(
                         step: step,
+                        spotlight: S2TutorialSpotlight.targetRect(
+                            step: step,
+                            viewportSize: geometry.size,
+                            safeAreaInsets: safeAreaInsets,
+                            photoSize: viewportMetrics.oneXDisplaySize,
+                            photoCenterY: viewportMetrics.oneXDisplayCenterY,
+                            bottomStripHeight: viewportMetrics
+                                .bottomStripHeight
+                        ),
+                        spotlightCornerRadius:
+                            S2TutorialSpotlight.cornerRadius(for: step),
                         onAcknowledge: { tutorial.acknowledge() },
                         onSkip: { tutorial.skip() }
                     )
@@ -1019,7 +1030,8 @@ struct S2View: View {
                         SpringKeyframe(1.0, duration: 0.18)
                     }
             }
-            .disabled(!machine.canEnterConfirmation)
+            // IC-111 D：教程态下确认删除**不可真实触发**——步 5 只指向入口。
+            .disabled(!machine.canEnterConfirmation || tutorial.isRunning)
             .accessibilityLabel(confirmationEntry.accessibilityLabel)
             .frame(
                 maxWidth: .infinity,
@@ -2122,104 +2134,306 @@ private struct S2CalibrationSliderRow: View {
 /// （1 = 静止态方形放大 + 两侧间隙；0 = 滑动态全部等距矩形）。
 // MARK: - IC-110 D：首次引导教程
 
-/// IC-110 D：教程浮层。半透明遮罩 + 步骤文案 + 手势示意 + 常驻「跳过」。
+/// IC-111 D：教程手势图示的方向。
+enum S2TutorialGestureDirection: Equatable {
+    case up
+    case down
+    case right
+
+    /// 单次循环的位移向量（沿方向走 `S2TutorialGestureHint.travel`）。
+    var offset: CGSize {
+        switch self {
+        case .up:
+            return CGSize(width: 0, height: -S2TutorialGestureHint.travel)
+        case .down:
+            return CGSize(width: 0, height: S2TutorialGestureHint.travel)
+        case .right:
+            return CGSize(width: S2TutorialGestureHint.travel, height: 0)
+        }
+    }
+}
+
+extension S2TutorialStep {
+    /// 该步要示意的手势方向。观察/点击类步骤没有手势图示。
+    var gestureDirection: S2TutorialGestureDirection? {
+        switch self {
+        case .swipeUpToMark:
+            return .up
+        case .returnToMarked:
+            // 标记会前进一张，故「回到刚才那张」是向右拖回。
+            return .right
+        case .swipeDownToCancel:
+            return .down
+        case .seeStripMark, .confirmEntry:
+            return nil
+        }
+    }
+}
+
+/// IC-111 D：聚光挖孔的目标矩形。**纯函数**，可被单测直接复算。
 ///
-/// 遮罩**不吞真实手势**：等真实手势的三步（1/3/4）把点击穿透下去，
-/// 用户要能真的上滑、翻页、下滑；只有不等手势的两步（2/5）吃点击用于推进。
+/// 步 1/3/4 套主图、步 2 套横栏、步 5 套右上垃圾桶圆钮（④）。
+/// 横栏与圆钮都用 chrome 自己的推导式取，不另起一套真相。
+enum S2TutorialSpotlight {
+    /// 挖孔相对目标的外扩留白与圆角（卡内取定）。
+    static let padding: CGFloat = 8
+    static let cornerRadius: CGFloat = 18
+    /// 圆钮那一步用正圆挖孔。
+    static let circleCornerRadius: CGFloat = 999
+
+    static func targetRect(
+        step: S2TutorialStep,
+        viewportSize: CGSize,
+        safeAreaInsets: S2OverlaySafeAreaInsets,
+        photoSize: CGSize,
+        photoCenterY: CGFloat,
+        bottomStripHeight: CGFloat
+    ) -> CGRect {
+        switch step {
+        case .swipeUpToMark, .returnToMarked, .swipeDownToCancel:
+            return CGRect(
+                x: (viewportSize.width - photoSize.width) / 2,
+                y: photoCenterY - photoSize.height / 2,
+                width: photoSize.width,
+                height: photoSize.height
+            ).insetBy(dx: -padding, dy: -padding)
+        case .seeStripMark:
+            let bottom = S2OverlayLayout.stripBottomFromViewportBottom(
+                safeAreaBottom: safeAreaInsets.bottom
+            )
+            return CGRect(
+                x: safeAreaInsets.leading,
+                y: viewportSize.height - bottom - bottomStripHeight,
+                width: max(
+                    0,
+                    viewportSize.width - safeAreaInsets.leading -
+                        safeAreaInsets.trailing
+                ),
+                height: bottomStripHeight
+            ).insetBy(dx: -padding, dy: -padding)
+        case .confirmEntry:
+            let frames = S2OverlayLayout.topElementFrames(
+                in: CGRect(
+                    x: 0,
+                    y: safeAreaInsets.top,
+                    width: viewportSize.width,
+                    height: S2OverlayLayout.topBarHeight
+                )
+            )
+            guard frames.count == 3 else {
+                return .zero
+            }
+            return frames[2].insetBy(dx: -padding, dy: -padding)
+        }
+    }
+
+    static func cornerRadius(for step: S2TutorialStep) -> CGFloat {
+        step == .confirmEntry ? circleCornerRadius : cornerRadius
+    }
+}
+
+/// IC-111 D：手势图示——触点圆（Ø26 环 + Ø14 实心）+ 方向箭头，
+/// 循环 0.9 s/次：沿方向位移 40 pt + 渐隐。
+///
+/// 用 `repeatForever` 的**属性动画**（位移与不透明度），由渲染层持续推进，
+/// 主线程不逐帧参与；不是 `keyframeAnimator` 那种主线程步进。
+struct S2TutorialGestureHint: View {
+    let direction: S2TutorialGestureDirection
+
+    /// 单次循环的位移与周期（卡内 ④）。
+    static let travel: CGFloat = 40
+    static let cycleSeconds: TimeInterval = 0.9
+    /// 触点圆尺寸（卡内 ④）。
+    static let ringDiameter: CGFloat = 26
+    static let coreDiameter: CGFloat = 14
+
+    @State private var looping = false
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if direction == .down {
+                arrow
+            }
+            touchPoint
+            if direction != .down {
+                arrow
+            }
+        }
+        .offset(
+            x: looping ? direction.offset.width : 0,
+            y: looping ? direction.offset.height : 0
+        )
+        .opacity(looping ? 0 : 1)
+        .onAppear {
+            withAnimation(
+                .linear(duration: Self.cycleSeconds)
+                    .repeatForever(autoreverses: false)
+            ) {
+                looping = true
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var touchPoint: some View {
+        ZStack {
+            Circle()
+                .strokeBorder(Color.white.opacity(0.9), lineWidth: 2)
+                .frame(
+                    width: Self.ringDiameter,
+                    height: Self.ringDiameter
+                )
+            Circle()
+                .fill(Color.white)
+                .frame(
+                    width: Self.coreDiameter,
+                    height: Self.coreDiameter
+                )
+        }
+    }
+
+    /// 方向箭头。符号名在调用点逐个内联——扫描器会把「返回字符串的展示
+    /// helper」当成用户可见文案抓走，图标名不能从 helper 里返回。
+    @ViewBuilder
+    private var arrow: some View {
+        Group {
+            switch direction {
+            case .up:
+                Image(systemName: "arrow.up")
+            case .down:
+                Image(systemName: "arrow.down")
+            case .right:
+                Image(systemName: "arrow.right")
+            }
+        }
+        .font(.system(size: 22, weight: .semibold))
+        .foregroundStyle(.white)
+    }
+}
+
+/// IC-111 D：教程浮层。55% 黑遮罩 + 聚光挖孔 + 手势图示 + 玻璃提示卡。
+///
+/// 遮罩**不吞真实手势**：等真实手势的三步（1/3/4）整层不参与命中测试，
+/// 手势原样落到主图；只有不等手势的两步（2/5）吃点击用于推进。
+/// 挖孔在步骤间以 spring 移动变形，不闪切。
 struct S2TutorialOverlay: View {
     let step: S2TutorialStep
+    let spotlight: CGRect
+    let spotlightCornerRadius: CGFloat
     let onAcknowledge: () -> Void
     let onSkip: () -> Void
 
+    /// 遮罩黑度（卡内 ④）。
+    static let dimOpacity: Double = 0.55
+
     var body: some View {
         ZStack {
-            Color.black
-                .opacity(0.45)
-                .ignoresSafeArea()
-                // 等真实手势时整层不参与命中测试，手势原样落到下面的主图。
+            dimmedMask
                 .allowsHitTesting(!step.waitsForRealGesture)
                 .onTapGesture { onAcknowledge() }
 
-            VStack(spacing: 16) {
-                Spacer()
-
-                gestureHint
-                    .allowsHitTesting(false)
-
-                Text(step.text)
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                    .allowsHitTesting(false)
-
-                Spacer()
+            if let direction = step.gestureDirection {
+                S2TutorialGestureHint(direction: direction)
+                    .position(x: spotlight.midX, y: spotlight.midY)
             }
 
             VStack {
-                HStack {
-                    Spacer()
-                    Button(L10n.text("s2.tutorial.skip")) {
-                        onSkip()
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.trailing, 16)
-                }
                 Spacer()
+                hintCard
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
             }
-            .padding(.top, 8)
         }
     }
 
-    /// 手势示意：上滑/下滑步给箭头，其余步给指示符号。纯装饰，不参与命中测试。
-    @ViewBuilder
-    private var gestureHint: some View {
-        switch step {
-        case .swipeUpToMark:
-            S2TutorialArrow(systemName: "arrow.up")
-        case .swipeDownToCancel:
-            S2TutorialArrow(systemName: "arrow.down")
-        case .seeStripMark, .returnToMarked:
-            S2TutorialArrow(systemName: "arrow.down.to.line")
-        case .confirmEntry:
-            S2TutorialArrow(systemName: "arrow.up.right")
+    /// 55% 黑，按聚光矩形挖孔；孔随步骤 spring 移动变形。
+    private var dimmedMask: some View {
+        Rectangle()
+            .fill(Color.black.opacity(Self.dimOpacity))
+            .mask {
+                Rectangle()
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: spotlightCornerRadius,
+                            style: .continuous
+                        )
+                        .frame(
+                            width: spotlight.width,
+                            height: spotlight.height
+                        )
+                        .position(x: spotlight.midX, y: spotlight.midY)
+                        .blendMode(.destinationOut)
+                    }
+                    .compositingGroup()
+            }
+            .animation(.spring(response: 0.42, dampingFraction: 0.82), value: step)
+            .ignoresSafeArea()
+    }
+
+    private var hintCard: some View {
+        VStack(spacing: 14) {
+            Text(step.text)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+
+            progressDots
+
+            if step == .confirmEntry {
+                Button(L10n.text("s2.tutorial.done")) {
+                    onAcknowledge()
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 10)
+                .background(Color.accentColor, in: Capsule())
+            } else {
+                Button(L10n.text("s2.tutorial.skip")) {
+                    onSkip()
+                }
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 20)
+        .padding(.horizontal, 24)
+        .background(.ultraThinMaterial, in: RoundedRectangle(
+            cornerRadius: 20,
+            style: .continuous
+        ))
+        .overlay(alignment: .topTrailing) {
+            // 「跳过」常驻——步 5 主按钮换成「完成」后，跳过仍在右上角。
+            if step == .confirmEntry {
+                Button(L10n.text("s2.tutorial.skip")) {
+                    onSkip()
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .padding(10)
+            }
         }
     }
-}
 
-/// IC-110 D：手势示意箭头。往复位移由 `keyframeAnimator` 驱动，
-/// 沿用本文件既有脉冲动画的同款机制；教程结束即整层移除，不留残余层（陷阱 8）。
-struct S2TutorialArrow: View {
-    let systemName: String
-
-    /// 往复位移幅度与单程时长（卡内取定，常量）。
-    static let travel: CGFloat = 18
-    static let halfCycleSeconds: TimeInterval = 0.6
-
-    var body: some View {
-        Image(systemName: systemName)
-            .font(.system(size: 34, weight: .semibold))
-            .foregroundStyle(.white)
-            .keyframeAnimator(
-                initialValue: CGFloat(0),
-                repeating: true
-            ) { view, offset in
-                view.offset(y: offset)
-            } keyframes: { _ in
-                CubicKeyframe(
-                    -Self.travel,
-                    duration: Self.halfCycleSeconds
-                )
-                CubicKeyframe(0, duration: Self.halfCycleSeconds)
+    /// 五点进度。
+    private var progressDots: some View {
+        HStack(spacing: 7) {
+            ForEach(S2TutorialStep.allCases, id: \.rawValue) { item in
+                Circle()
+                    .fill(
+                        item.rawValue <= step.rawValue
+                            ? Color.primary
+                            : Color.secondary.opacity(0.3)
+                    )
+                    .frame(width: 6, height: 6)
             }
-            .accessibilityHidden(true)
+        }
+        .accessibilityHidden(true)
     }
 }
 
+// MARK: - IC-110 D：首次引导教程
 
 /// 五步脚本（未定项 20，④ 流程 + 决策会话补充）。全程显示态、1x，
 /// 用用户当前真实照片，**不发生任何真实删除**——第 5 步只指向确认入口并结束，

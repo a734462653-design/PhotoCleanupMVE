@@ -979,6 +979,154 @@ final class S2ActionBarWiringTests: XCTestCase {
         )
     }
 
+    // MARK: - IC-111 D：教程动效
+
+    // IC-111 D：聚光挖孔按步套目标——步 1/3/4 套主图、步 2 套横栏、
+    // 步 5 套右上垃圾桶圆钮；后两者与 chrome 自己的推导式同源。
+    func testIC111DSpotlightTargetsPerStep() {
+        let viewport = CGSize(width: 393, height: 852)
+        let insets = S2OverlaySafeAreaInsets(
+            top: 59,
+            leading: 0,
+            bottom: 34,
+            trailing: 0
+        )
+        let photoSize = CGSize(width: 393, height: 562)
+        let photoCenterY: CGFloat = 409
+        let stripHeight: CGFloat = 30
+
+        func rect(_ step: S2TutorialStep) -> CGRect {
+            S2TutorialSpotlight.targetRect(
+                step: step,
+                viewportSize: viewport,
+                safeAreaInsets: insets,
+                photoSize: photoSize,
+                photoCenterY: photoCenterY,
+                bottomStripHeight: stripHeight
+            )
+        }
+
+        // 步 1/3/4 同套主图，三者逐值相同
+        let photoRect = rect(.swipeUpToMark)
+        XCTAssertEqual(rect(.returnToMarked), photoRect)
+        XCTAssertEqual(rect(.swipeDownToCancel), photoRect)
+        XCTAssertEqual(photoRect.midY, photoCenterY, accuracy: 0.000_001)
+        XCTAssertEqual(
+            photoRect.height,
+            photoSize.height + 2 * S2TutorialSpotlight.padding,
+            accuracy: 0.000_001
+        )
+
+        // 步 2 套横栏：底缘与 chrome 推导式一致
+        let stripRect = rect(.seeStripMark)
+        let stripBottom = viewport.height -
+            S2OverlayLayout.stripBottomFromViewportBottom(
+                safeAreaBottom: insets.bottom
+            )
+        XCTAssertEqual(
+            stripRect.maxY,
+            stripBottom + S2TutorialSpotlight.padding,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            stripRect.height,
+            stripHeight + 2 * S2TutorialSpotlight.padding,
+            accuracy: 0.000_001
+        )
+
+        // 步 5 套右上圆钮：与 topElementFrames 的右槽同源
+        let trashRect = rect(.confirmEntry)
+        let frames = S2OverlayLayout.topElementFrames(
+            in: CGRect(
+                x: 0,
+                y: insets.top,
+                width: viewport.width,
+                height: S2OverlayLayout.topBarHeight
+            )
+        )
+        XCTAssertEqual(trashRect.midX, frames[2].midX, accuracy: 0.000_001)
+        XCTAssertEqual(trashRect.midY, frames[2].midY, accuracy: 0.000_001)
+        // 圆钮那一步用正圆挖孔
+        XCTAssertGreaterThan(
+            S2TutorialSpotlight.cornerRadius(for: .confirmEntry),
+            S2TutorialSpotlight.cornerRadius(for: .swipeUpToMark)
+        )
+
+        // 三个目标互不相同——挖孔确实在步骤间移动
+        XCTAssertNotEqual(photoRect, stripRect)
+        XCTAssertNotEqual(stripRect, trashRect)
+        XCTAssertNotEqual(photoRect, trashRect)
+    }
+
+    // IC-111 D：手势图示只出现在有手势的步；方向与该步语义一致。
+    func testIC111DGestureDirectionPerStep() {
+        XCTAssertEqual(S2TutorialStep.swipeUpToMark.gestureDirection, .up)
+        XCTAssertEqual(S2TutorialStep.swipeDownToCancel.gestureDirection, .down)
+        // 标记会前进一张，故「回到刚才那张」是向右拖回
+        XCTAssertEqual(S2TutorialStep.returnToMarked.gestureDirection, .right)
+        // 观察/点击步没有手势图示
+        XCTAssertNil(S2TutorialStep.seeStripMark.gestureDirection)
+        XCTAssertNil(S2TutorialStep.confirmEntry.gestureDirection)
+
+        // 位移向量沿方向、幅度为卡内的 40pt
+        XCTAssertEqual(
+            S2TutorialGestureDirection.up.offset.height,
+            -S2TutorialGestureHint.travel,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2TutorialGestureDirection.down.offset.height,
+            S2TutorialGestureHint.travel,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2TutorialGestureDirection.right.offset.width,
+            S2TutorialGestureHint.travel,
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-111 D：动效参数落在卡内取值——遮罩 55%、触点圆 Ø26 环 + Ø14 实心、
+    // 循环 0.9s、位移 40pt。
+    func testIC111DAnimationParametersMatchCard() {
+        XCTAssertEqual(S2TutorialOverlay.dimOpacity, 0.55, accuracy: 0.000_001)
+        XCTAssertEqual(S2TutorialGestureHint.ringDiameter, 26)
+        XCTAssertEqual(S2TutorialGestureHint.coreDiameter, 14)
+        XCTAssertLessThan(
+            S2TutorialGestureHint.coreDiameter,
+            S2TutorialGestureHint.ringDiameter
+        )
+        XCTAssertEqual(
+            S2TutorialGestureHint.cycleSeconds,
+            0.9,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(S2TutorialGestureHint.travel, 40)
+    }
+
+    // IC-111 D：步进逻辑沿用 IC-110 D，一字未改——本卡只重做表现层。
+    // 这里复核「等真实手势的三步不接受点击推进」这条不变量仍然成立。
+    func testIC111DStepAdvanceLogicUnchanged() {
+        let tutorial = S2TutorialCoordinator(
+            store: S2InMemoryTutorialCompletionStore()
+        )
+        tutorial.startIfNeeded()
+        XCTAssertEqual(tutorial.activeStep, .swipeUpToMark)
+        for _ in 0..<3 {
+            tutorial.acknowledge()
+        }
+        XCTAssertEqual(
+            tutorial.activeStep,
+            .swipeUpToMark,
+            "表现层重做不得改变步进条件"
+        )
+        tutorial.assetDidBecomeMarked(assetID: "asset-2")
+        XCTAssertEqual(tutorial.activeStep, .seeStripMark)
+        // 步 2 不等手势，点击即进
+        tutorial.acknowledge()
+        XCTAssertEqual(tutorial.activeStep, .returnToMarked)
+    }
+
     // MARK: - IC-110 D：首次引导教程
     //
     // 以下均为**夹具驱动**的状态机断言，真机走查由 H47 兜底（陷阱 1）。

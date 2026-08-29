@@ -562,6 +562,17 @@
         }
       }
     },
+    "s2.tutorial.done" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成"
+          }
+        }
+      }
+    },
     "s2.tutorial.replay" : {
       "extractionState" : "manual",
       "localizations" : {
