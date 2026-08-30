@@ -712,6 +712,77 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertGreaterThan(S2ChromeGlass.outerStrokeWidth, 0)
     }
 
+    // MARK: - IC-114 A3：chrome 显隐过渡
+
+    // IC-114 A3（⑤b ④）：显→隐 scale 1→1.06、模糊 0→8pt、淡出；隐→显反向。
+    // **夹具驱动，真机未覆盖**（陷阱 1）——真机观感由 H51 第 2 项判。
+    func testIC114A3VisibilityTransitionEndpoints() {
+        // 显示端：三项均为恒等值，静止态不产生任何视觉偏移
+        XCTAssertEqual(
+            S2ChromeVisibilityTransition.scale(isVisible: true),
+            1,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2ChromeVisibilityTransition.blurRadius(isVisible: true),
+            0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2ChromeVisibilityTransition.opacity(isVisible: true),
+            1,
+            accuracy: 0.000_001
+        )
+
+        // 隐藏端：按卡内落值
+        XCTAssertEqual(
+            S2ChromeVisibilityTransition.scale(isVisible: false),
+            1.06,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2ChromeVisibilityTransition.blurRadius(isVisible: false),
+            8,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2ChromeVisibilityTransition.opacity(isVisible: false),
+            0,
+            accuracy: 0.000_001
+        )
+
+        XCTAssertEqual(
+            S2ChromeVisibilityTransition.durationSeconds,
+            0.2,
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-114 A3：方向自洽——隐藏端必须是**放大**且**更模糊**，
+    // 写反了观感就成了「缩回去」，这条断言把方向钉死。
+    func testIC114A3HiddenEndIsLargerAndBlurrier() {
+        XCTAssertGreaterThan(
+            S2ChromeVisibilityTransition.scale(isVisible: false),
+            S2ChromeVisibilityTransition.scale(isVisible: true),
+            "隐藏端应放大，不是缩小"
+        )
+        XCTAssertGreaterThan(
+            S2ChromeVisibilityTransition.blurRadius(isVisible: false),
+            S2ChromeVisibilityTransition.blurRadius(isVisible: true)
+        )
+        XCTAssertLessThan(
+            S2ChromeVisibilityTransition.opacity(isVisible: false),
+            S2ChromeVisibilityTransition.opacity(isVisible: true)
+        )
+        // 进出对称：同一组取值按 isVisible 取反，故隐→显即显→隐的逆
+        XCTAssertEqual(
+            S2ChromeVisibilityTransition.scale(isVisible: true),
+            1,
+            accuracy: 0.000_001
+        )
+        XCTAssertGreaterThan(S2ChromeVisibilityTransition.durationSeconds, 0)
+    }
+
     // MARK: - IC-112 B / IC-113 B：中央状态指示
 
     // IC-113 B：同一时刻只显示一种；两态并存时取最近一次动作对应的那种。

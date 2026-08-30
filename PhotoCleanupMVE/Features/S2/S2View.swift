@@ -510,9 +510,11 @@ struct S2View: View {
                     bottomStripHeight: viewportMetrics.bottomStripHeight,
                     safeAreaInsets: safeAreaInsets
                 )
-                .opacity(machine.interfaceVisibility == .visible ? 1 : 0)
-                .allowsHitTesting(machine.interfaceVisibility == .visible)
-                .accessibilityHidden(machine.interfaceVisibility != .visible)
+                // IC-114 A3：显隐过渡改走统一修饰符（scale + 模糊 + 淡出），
+                // 命中测试与无障碍隐藏语义原样包含在内，未改变。
+                .s2ChromeVisibilityTransition(
+                    isVisible: machine.interfaceVisibility == .visible
+                )
 
                 // IC-112 B：旧右上角角标移除，改为主图几何中心的状态指示。
                 centerIndicatorOverlay(metrics: viewportMetrics)
@@ -2157,7 +2159,59 @@ enum S2ChromeGlass {
     static let outerStrokeWidth: CGFloat = 0.5
 }
 
+/// IC-114 A3（⑤b ④）：chrome 显隐过渡。
+///
+/// V 显→隐：整体 scale 1 → 1.06 + 高斯模糊 0 → 8pt + opacity → 0，约 200ms easeOut；
+/// 隐→显反向进场（同一组修饰符按 `isVisible` 取反，故进出天然对称）。
+///
+/// 这三项都是 Core Animation 支持的属性动画，由渲染层推进，主线程不逐帧参与。
+enum S2ChromeVisibilityTransition {
+    static let durationSeconds: TimeInterval = 0.2
+    /// 隐藏端的放大倍数（「向外退开」的观感）。
+    static let hiddenScale: CGFloat = 1.06
+    /// 隐藏端的高斯模糊半径（pt）。
+    static let hiddenBlurRadius: CGFloat = 8
+
+    static func scale(isVisible: Bool) -> CGFloat {
+        isVisible ? 1 : hiddenScale
+    }
+
+    static func blurRadius(isVisible: Bool) -> CGFloat {
+        isVisible ? 0 : hiddenBlurRadius
+    }
+
+    static func opacity(isVisible: Bool) -> Double {
+        isVisible ? 1 : 0
+    }
+}
+
 private extension View {
+    /// IC-114 A3：chrome 显隐过渡。三项属性一起动，200ms easeOut。
+    ///
+    /// 静止显示态下三项均为恒等值（scale 1 / blur 0 / opacity 1）——
+    /// 理论上被 SwiftUI 视作无操作而不额外插入滤镜层；但**本机无法验证**，
+    /// 若 H51 判定玻璃透光较上一包变差，首选回退方案是把 blur 改为
+    /// 仅在非显示态才挂（代价是模糊不再逐帧动，只在边界跳变）。
+    func s2ChromeVisibilityTransition(isVisible: Bool) -> some View {
+        scaleEffect(S2ChromeVisibilityTransition.scale(isVisible: isVisible))
+            .blur(
+                radius: S2ChromeVisibilityTransition.blurRadius(
+                    isVisible: isVisible
+                )
+            )
+            .opacity(
+                S2ChromeVisibilityTransition.opacity(isVisible: isVisible)
+            )
+            .animation(
+                .easeOut(
+                    duration: S2ChromeVisibilityTransition.durationSeconds
+                ),
+                value: isVisible
+            )
+            .allowsHitTesting(isVisible)
+            .accessibilityHidden(!isVisible)
+    }
+
     /// IC-112 A：统一的玻璃底 + 高光描边。顶/底六件与中央指示容器共用同一族。
     ///
     /// 截图显示态下 chrome 背后为黑、透光弱是预期；**描边不依赖背景**，
