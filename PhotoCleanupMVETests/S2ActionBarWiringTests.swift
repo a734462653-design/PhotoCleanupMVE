@@ -610,6 +610,25 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertEqual(S2ChromeForeground.onGlassSecondary, Color.secondary)
     }
 
+    // IC-121 B：角标通知徽标样式取值——红底白字恒定（深浅同款）、
+    // 1.5pt 协调描边、单数字正圆最小径容得下数字。渲染观感真机未覆盖，
+    // H55 第 2 项兜底。
+    func testIC121BBadgeMatchesNotificationStyle() {
+        XCTAssertEqual(S2ConfirmationBadgeStyle.fill, Color.red)
+        XCTAssertEqual(S2ConfirmationBadgeStyle.digitColor, Color.white)
+        XCTAssertEqual(
+            S2ConfirmationBadgeStyle.ringWidth,
+            1.5,
+            accuracy: 0.000_001
+        )
+        XCTAssertGreaterThan(
+            S2ConfirmationBadgeStyle.minDiameter,
+            S2ConfirmationBadgeStyle.fontSize,
+            "正圆最小径必须容得下数字"
+        )
+        XCTAssertGreaterThan(S2ConfirmationBadgeStyle.horizontalPadding, 0)
+    }
+
     // IC-120 B：角标锚点几何与顶排右上圆钮同源——badge overlay 的
     // 顶/右内边距（topRowTopInset / chromeHorizontalMargin）恰为
     // 圆钮 topTrailing 角在顶排坐标系里的两侧留白。渲染层序

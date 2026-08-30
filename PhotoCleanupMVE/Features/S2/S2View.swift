@@ -1280,16 +1280,37 @@ struct S2View: View {
 
     /// IC-120 B：右上垃圾桶角标。锚在顶排右上圆钮的 topTrailing 角
     /// （内边距取自 `S2OverlayLayout` 顶排几何，与圆钮同源）；
-    /// IC-120 A 例外条款：数字**恒红**，两种外观模式同。
     /// 不吃点击——命中仍全落在下方的垃圾桶按钮上。
+    ///
+    /// IC-121 B（④）：通知徽标样式——红底白字圆形（两位数自然成胶囊）+
+    /// 与背景协调的描边；深浅模式同款。IC-120「裸红数字」口径由此取代。
     @ViewBuilder
     private var confirmationBadge: some View {
         if let badgeText = displayedBadgeText {
             Text(badgeText)
+                .font(.system(
+                    size: S2ConfirmationBadgeStyle.fontSize,
+                    weight: .semibold
+                ))
                 .monospacedDigit()
-                .foregroundStyle(Color.red)
+                .foregroundStyle(S2ConfirmationBadgeStyle.digitColor)
                 // IC-111 B：落点同帧的数字滚动。
                 .contentTransition(.numericText())
+                .padding(
+                    .horizontal,
+                    S2ConfirmationBadgeStyle.horizontalPadding
+                )
+                .frame(
+                    minWidth: S2ConfirmationBadgeStyle.minDiameter,
+                    minHeight: S2ConfirmationBadgeStyle.minDiameter
+                )
+                .background(S2ConfirmationBadgeStyle.fill, in: Capsule())
+                .overlay {
+                    Capsule().strokeBorder(
+                        S2ConfirmationBadgeStyle.ring,
+                        lineWidth: S2ConfirmationBadgeStyle.ringWidth
+                    )
+                }
                 .padding(.top, S2OverlayLayout.topRowTopInset)
                 .padding(.trailing, S2OverlayLayout.chromeHorizontalMargin)
                 .allowsHitTesting(false)
@@ -2374,6 +2395,23 @@ enum S2ChromeForeground {
 
     /// 副行级前景（系统次级色，与主行区分层次——卡内取定并登记）。
     static let onGlassSecondary = Color.secondary
+}
+
+/// IC-121 B（④）：垃圾桶角标的通知徽标样式——红底白字、单个数字为正圆
+/// （最小径），两位以上自然成胶囊；外圈描边与所处背景协调（取系统底色，
+/// 深浅自适应——取定登记）。深浅模式同款（红底白字恒定）。
+enum S2ConfirmationBadgeStyle {
+    static let fontSize: CGFloat = 12
+    /// 单数字时的正圆直径下限。
+    static let minDiameter: CGFloat = 18
+    static let horizontalPadding: CGFloat = 5
+    static let ringWidth: CGFloat = 1.5
+    static let fill = Color.red
+    static let digitColor = Color.white
+    /// 描边取系统底色：浅色白圈、深色黑圈，与 chrome 环境协调。
+    static var ring: Color {
+        Color(uiColor: .systemBackground)
+    }
 }
 
 /// IC-114 A3（⑤b ④）：chrome 显隐过渡。
