@@ -1308,12 +1308,9 @@ final class S2ActionBarWiringTests: XCTestCase {
             S2AlbumAfterimageFlight.durationSeconds,
             "指示不得早于残影落点出现"
         )
-        // 圆形标记块仍落在跑道容器内
-        XCTAssertEqual(S2CenterIndicatorView.blockSize, 30)
-        XCTAssertLessThan(
-            S2CenterIndicatorView.blockSize,
-            S2CenterIndicatorView.containerHeight
-        )
+        // IC-118 C（④）：内层小方块删除，单层玻璃正圆直接承载图标——
+        // 容器高度即圆直径，取值沿用 46，教程步 4 的避让锚点因此不变。
+        XCTAssertEqual(S2CenterIndicatorView.containerHeight, 46)
     }
 
     // IC-113 B：加入相簿成功后登记记录；撤回成功后清掉。

@@ -349,7 +349,8 @@ struct S2AlbumPickerListView: View {
                     } icon: {
                         Image(systemName: "plus")
                     }
-                    .foregroundStyle(Color.accentColor)
+                    // IC-118 C（④）：蓝色强调改黑。
+                    .foregroundStyle(Color.black)
                     .frame(
                         maxWidth: .infinity,
                         minHeight: S2OverlayLayout.minimumTouchTarget,
@@ -377,6 +378,9 @@ struct S2AlbumPickerListView: View {
                     }
                 }
             }
+            // IC-118 C（④）：系统蓝 tint 一并改黑（取消钮、行内按钮文字；
+            // alert 按钮是否随 tint 由系统决定，真机核对留 H53）。
+            .tint(Color.black)
             .alert(
                 L10n.text("s2.album_picker.new_album.title"),
                 isPresented: $isNamingAlbum
@@ -1287,12 +1291,9 @@ struct S2View: View {
                 }
             } label: {
                 Image(systemName: "trash")
-                    // IC-112 C 第 6 步：转白底深图标 + 外发光，一眼可见。
-                    .foregroundStyle(
-                        tutorial.activeStep == .confirmEntry
-                            ? Color.black
-                            : Color.accentColor
-                    )
+                    // IC-112 C 第 6 步：教程态转白底深图标 + 外发光。
+                    // IC-118 C（④）：非教程态的蓝色强调改黑，两态同色。
+                    .foregroundStyle(Color.black)
                     .s2ChromeCircleGlass()
                     .overlay {
                         if tutorial.activeStep == .confirmEntry {
@@ -1312,14 +1313,6 @@ struct S2View: View {
                                 )
                         }
                     }
-                    .overlay(alignment: .topTrailing) {
-                        if let badgeText = displayedBadgeText {
-                            Text(badgeText)
-                                .monospacedDigit()
-                                // IC-111 B：落点同帧的数字滚动。
-                                .contentTransition(.numericText())
-                        }
-                    }
                     // IC-111 B：落点同帧的 spring 回弹 1 → 1.15 → 1。
                     // 触发源是残影落点计数，故与残影收口同帧。
                     .keyframeAnimator(
@@ -1330,6 +1323,18 @@ struct S2View: View {
                     } keyframes: { _ in
                         SpringKeyframe(1.15, duration: 0.12)
                         SpringKeyframe(1.0, duration: 0.18)
+                    }
+                    // IC-118 C（④）：角标**盖在圆钮之上**——移到标签链最外层，
+                    // 不再被玻璃形状裁切；数字改红。代价：回弹只弹圆钮、
+                    // 角标不随缩放（登记）。
+                    .overlay(alignment: .topTrailing) {
+                        if let badgeText = displayedBadgeText {
+                            Text(badgeText)
+                                .monospacedDigit()
+                                .foregroundStyle(Color.red)
+                                // IC-111 B：落点同帧的数字滚动。
+                                .contentTransition(.numericText())
+                        }
                     }
             }
             // IC-111 D：教程态下确认删除**不可真实触发**——步 5 只指向入口。
@@ -3180,7 +3185,8 @@ struct S2TutorialOverlay: View {
                 .foregroundStyle(Color.white)
                 .padding(.horizontal, 28)
                 .padding(.vertical, 10)
-                .background(Color.accentColor, in: Capsule())
+                // IC-118 C（④）：蓝色强调改黑。
+                .background(Color.black, in: Capsule())
             } else {
                 Button(L10n.text("s2.tutorial.skip")) {
                     onSkip()
@@ -3427,8 +3433,11 @@ final class S2TutorialCoordinator: ObservableObject {
     }
 }
 
-/// IC-112 B：中央状态指示的视图。跑道圆框容器（玻璃 + 描边，与 chrome 同族），
-/// 内为方形倒角块。
+/// IC-112 B / IC-118 C：中央状态指示的视图。
+///
+/// IC-118 C（④）：跑道圆 → **正圆**，内层小方块删除——单层系统玻璃圆框
+/// 直接承载图标。已加入态的实际布局方案（登记）：左侧玻璃正圆承载图标，
+/// 右侧同族玻璃胶囊旁挂文字与撤回钮；撤回后的短提示保持胶囊。
 ///
 /// **命中测试（硬闸门）**：整块视觉体 `allowsHitTesting(false)`，
 /// 只有撤回钮可点——它以 `overlay` 叠在**已禁用命中的子树之外**，
@@ -3437,9 +3446,7 @@ struct S2CenterIndicatorView: View {
     let state: S2CenterIndicatorState
     let onUndo: () -> Void
 
-    /// 内部方形倒角块与容器尺寸（卡内取定）。
-    static let blockSize: CGFloat = 30
-    static let blockCornerRadius: CGFloat = 9
+    /// 容器高度 = 玻璃正圆直径（卡内取定，IC-118 C 沿用）。
     static let containerHeight: CGFloat = 46
     static let horizontalPadding: CGFloat = 12
 
@@ -3453,9 +3460,6 @@ struct S2CenterIndicatorView: View {
 
     var body: some View {
         content
-            .frame(height: Self.containerHeight)
-            .padding(.horizontal, Self.horizontalPadding)
-            .s2ChromeGlassBackground(in: Capsule())
             // 视觉体整体不吃点击——手势穿透到主图。
             .allowsHitTesting(false)
             .overlay(alignment: .trailing) {
@@ -3465,7 +3469,8 @@ struct S2CenterIndicatorView: View {
                         onUndo()
                     }
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    // IC-118 C（④）：蓝色强调改黑。
+                    .foregroundStyle(Color.black)
                     .padding(.horizontal, Self.horizontalPadding)
                     .frame(height: Self.containerHeight)
                     .contentShape(Rectangle())
@@ -3473,33 +3478,48 @@ struct S2CenterIndicatorView: View {
             }
     }
 
+    /// 玻璃正圆：图标直接落在单层系统玻璃圆框内（IC-118 C）。
+    private func glassCircle(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 17, weight: .semibold))
+            // IC-117：iOS 26 玻璃上交系统 vibrancy；回落纯白。
+            .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+            .frame(
+                width: Self.containerHeight,
+                height: Self.containerHeight
+            )
+            .s2ChromeGlassBackground(in: Circle())
+    }
+
     @ViewBuilder
     private var content: some View {
         switch state {
         case .marked:
-            markedBlock
+            glassCircle(systemName: "trash.fill")
                 .accessibilityLabel(L10n.text("s2.mark.primary.accessibility"))
         case let .addedToAlbum(albumName):
-            HStack(spacing: 10) {
-                Image(systemName: "rectangle.stack.badge.plus")
-                    .font(.system(size: 17, weight: .semibold))
-                    // IC-117：iOS 26 玻璃上交系统 vibrancy；回落纯白。
+            HStack(spacing: 8) {
+                glassCircle(systemName: "rectangle.stack.badge.plus")
+                HStack(spacing: 10) {
+                    Text(verbatim: L10n.text(
+                        "s2.center.added_to_album",
+                        replacing: ["album": albumName]
+                    ))
+                    .font(.system(size: 15))
                     .foregroundStyle(S2ChromeForeground.onGlassPrimary)
-                Text(verbatim: L10n.text(
-                    "s2.center.added_to_album",
-                    replacing: ["album": albumName]
-                ))
-                .font(.system(size: 15))
-                .foregroundStyle(S2ChromeForeground.onGlassPrimary)
-                .lineLimit(1)
-                Divider()
-                    .frame(height: 22)
-                    .overlay(Color.white.opacity(0.35))
-                // 撤回钮的占位：真正可点的那个以 overlay 叠在外层，
-                // 这里只用等宽的隐形文本把版面撑出来。
-                Text(verbatim: L10n.text("s2.center.undo"))
-                    .font(.system(size: 15, weight: .semibold))
-                    .opacity(0)
+                    .lineLimit(1)
+                    Divider()
+                        .frame(height: 22)
+                        .overlay(Color.white.opacity(0.35))
+                    // 撤回钮的占位：真正可点的那个以 overlay 叠在外层，
+                    // 这里只用等宽的隐形文本把版面撑出来。
+                    Text(verbatim: L10n.text("s2.center.undo"))
+                        .font(.system(size: 15, weight: .semibold))
+                        .opacity(0)
+                }
+                .padding(.horizontal, Self.horizontalPadding)
+                .frame(height: Self.containerHeight)
+                .s2ChromeGlassBackground(in: Capsule())
             }
         case let .removed(albumName):
             Text(verbatim: L10n.text(
@@ -3509,18 +3529,9 @@ struct S2CenterIndicatorView: View {
             .font(.system(size: 15))
             .foregroundStyle(S2ChromeForeground.onGlassPrimary)
             .lineLimit(1)
-        }
-    }
-
-    /// 已标记：单块垃圾桶图标。IC-113 B：方形倒角 → **圆形**（H49 第 2 条）。
-    private var markedBlock: some View {
-        Circle()
-            .fill(Color.white.opacity(0.16))
-        .frame(width: Self.blockSize, height: Self.blockSize)
-        .overlay {
-            Image(systemName: "trash.fill")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+            .padding(.horizontal, Self.horizontalPadding)
+            .frame(height: Self.containerHeight)
+            .s2ChromeGlassBackground(in: Capsule())
         }
     }
 }
