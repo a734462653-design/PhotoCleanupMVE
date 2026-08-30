@@ -3637,6 +3637,115 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.presentationGeometryCommitCount, 1)
     }
 
+    // IC-118 B：⑤a 下截图双击退出——进入时被推迟的隐藏态目标已被退出恢复
+    // 取代，退出过渡必须瞄准恢复后 V（显示态）对应的 1x 几何，过期推迟清算。
+    // 帧序列复现：改动前 targetFrame 取自推迟目标（隐藏全幅），过渡落基准位后
+    // 显示态等距带另行落一步，即 H52 第 6 项的「1x 卡一下」。
+    func testIC118BDoubleTapExitTargetsRestoredVisibilityGeometry() {
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let visible = metrics(visibility: .visible)
+        let center = CGPoint(
+            x: physicalSize.width / 2,
+            y: physicalSize.height / 2
+        )
+
+        // 进入：⑤a 自动隐藏；隐藏态页在 Nx 被推迟
+        XCTAssertTrue(page.applyRecognizedDoubleTap(at: center))
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        XCTAssertTrue(page.hasDeferredPresentation)
+
+        var exitTransition: S2DoubleTapTransition?
+        page.doubleTapTransitionObserver = { event in
+            if case let .started(transition) = event,
+               !transition.isEnteringNx {
+                exitTransition = transition
+            }
+        }
+
+        // 退出：V 恢复显示；过渡落点 = 显示态等距带，过期推迟被清算
+        XCTAssertTrue(page.applyRecognizedDoubleTap(at: center))
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        let transition = tryUnwrap(exitTransition)
+        XCTAssertEqual(transition.targetFrame.size, visible.oneXDisplaySize)
+        XCTAssertEqual(
+            transition.targetFrame.midY,
+            visible.oneXDisplayCenterY,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            transition.targetCornerRadius,
+            visible.oneXCornerRadius
+        )
+        XCTAssertFalse(page.hasDeferredPresentation)
+        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
+        XCTAssertEqual(page.cornerRadius, visible.oneXCornerRadius)
+        XCTAssertFalse(page.isPresentationTransitionActive)
+    }
+
+    // IC-118 B：清算语义——与当前 V 一致的推迟保留（G6 语义不变），
+    // 不一致的丢弃。
+    func testIC118BReconcileKeepsMatchingDropsStaleDeferredTarget() {
+        let machine = makeMachine(scale: 2)
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        XCTAssertTrue(page.hasDeferredPresentation)
+
+        // 与推迟目标一致 → 保留
+        page.reconcileDeferredPresentation(currentVisibility: .hidden)
+        XCTAssertTrue(page.hasDeferredPresentation)
+
+        // 与推迟目标不一致 → 丢弃
+        page.reconcileDeferredPresentation(currentVisibility: .visible)
+        XCTAssertFalse(page.hasDeferredPresentation)
+    }
+
+    // IC-118 B：捏合归位路径同一清算（A 修复让捏合入口产生推迟记录后，
+    // 归位若不清算会先提交过期几何再跳回）。真机 scroll view 接线本身
+    // 夹具未覆盖，由 H53 兜底。
+    func testIC118BPinchReturnDropsStaleDeferredTarget() {
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let visible = metrics(visibility: .visible)
+
+        XCTAssertTrue(machine.beginPinch())
+        machine.reportNativeViewport(scale: 2, viewportOffset: .zero)
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        XCTAssertTrue(page.hasDeferredPresentation)
+
+        controller.finishNativePinch(
+            on: page,
+            scale: 1,
+            displacement: 0.5,
+            peakVelocity: 1,
+            duration: 0.2
+        )
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertFalse(page.hasDeferredPresentation)
+        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
+        XCTAssertEqual(page.presentationGeometryCommitCount, 0)
+    }
+
     // IC-063 G7：内外滚动视图运行时均明确关闭安全区自动 inset。
     func testIC063G7AllPhotoScrollViewsReadBackNeverAdjustment() {
         let machine = makeMachine()

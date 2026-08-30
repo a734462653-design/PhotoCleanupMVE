@@ -1820,6 +1820,7 @@ final class S2NativeZoomPageController: UIViewController,
         )
         let targetFrame: CGRect
         let targetCornerRadius: CGFloat
+        var exitUsedDeferredTarget = false
         if enteringNx {
             guard let target = zoomScrollView.doubleTapTarget(
                 scale: targetScale,
@@ -1831,7 +1832,11 @@ final class S2NativeZoomPageController: UIViewController,
             targetCornerRadius = 0
             doubleTapTargetPage = nil
         } else {
+            // IC-118 B：调用方须先经 `reconcileDeferredPresentation` 清算——
+            // 此处仍存的推迟目标即与当前 V 一致，按决策 40 作为落点；
+            // 已被清算时落点回到本页已提交几何（= 当前 V 对应 1x 几何）。
             let page = pendingPresentationPage
+            exitUsedDeferredTarget = page != nil
             let targetSize = page?.fittedSize ?? fittedSize
             // IC-104 C v3：回 1x 的竖直中心同样取适配带中心（显示态截图）。
             let targetCenterY = page?.fittedCenterY ?? fittedCenterY
@@ -1902,6 +1907,15 @@ final class S2NativeZoomPageController: UIViewController,
             startScale: zoomScrollView.zoomScale,
             timestamp: CACurrentMediaTime()
         )
+        if !enteringNx {
+            // IC-118 B：退出阶段采样（探针基建，登记进报告）——记录过渡瞄准的
+            // 落点与其来源，供真机时间线核对「一气呵成」。
+            doubleTapProbe?.recordDoubleTapExitTarget(
+                targetFrame: targetFrame,
+                usedDeferredPresentation: exitUsedDeferredTarget,
+                timestamp: CACurrentMediaTime()
+            )
+        }
         doubleTapTransitionObserver?(.started(transition))
 
         guard doubleTapTransitionDuration > 0,
@@ -1963,6 +1977,13 @@ final class S2NativeZoomPageController: UIViewController,
                 viewportOffset: .zero
             )
             applyCornerMask()
+            // IC-118 B：退出阶段采样——记录几何最终落地的时刻与取值，
+            // 与 recordDoubleTapEnded 的时间差即「过渡结束 → 落地」间隙。
+            doubleTapProbe?.recordDoubleTapExitCommit(
+                fittedSize: fittedSize,
+                cornerRadius: cornerRadius,
+                timestamp: CACurrentMediaTime()
+            )
         }
 
         if transition.isEnteringNx,
@@ -2378,6 +2399,23 @@ final class S2NativeZoomPageController: UIViewController,
             configuration: latestConfiguration,
             viewportSize: latestViewportSize
         )
+    }
+
+    /// IC-118 B：清算过期的推迟呈现目标。
+    ///
+    /// ⑤a 的退出恢复把 V 落回记录值；Nx 期间被推迟的 V 呈现目标若与
+    /// 当前 V 不一致，即已被退出恢复取代——决策 20 要求归位落点 =
+    /// 当前 V 对应 1x 几何，提交过期目标反而制造「先落基准、再跳
+    /// 显示态」的中间停顿（H52 第 6 项缺陷）。只丢弃已过期的记录；
+    /// 与当前 V 一致的推迟仍按决策 40 在回 1x 时应用（IC-063 G6 语义）。
+    func reconcileDeferredPresentation(
+        currentVisibility: S2InterfaceVisibility
+    ) {
+        guard let pending = pendingPresentationPage,
+              pending.interfaceVisibility != currentVisibility else {
+            return
+        }
+        pendingPresentationPage = nil
     }
 
     private func pendingPresentationMatches(
@@ -3196,6 +3234,12 @@ final class S2NativePagerViewController: UIViewController,
         ) else {
             return false
         }
+        if wasZoomed {
+            // IC-118 B：与产品双击路径同一清算，诊断过渡端点与真机为同一套。
+            page.reconcileDeferredPresentation(
+                currentVisibility: machine.interfaceVisibility
+            )
+        }
         var diagnosticConfiguration = configuration
         diagnosticConfiguration.animationsEnabled = true
         diagnosticConfiguration.animationDurationMilliseconds = max(
@@ -3358,6 +3402,13 @@ final class S2NativePagerViewController: UIViewController,
         ) else {
             return false
         }
+        if wasZoomed {
+            // IC-118 B：退出恢复已把 V 落回记录值，先清算过期的推迟呈现
+            // 目标，退出过渡才会瞄准当前 V 对应的 1x 几何（决策 20）。
+            page.reconcileDeferredPresentation(
+                currentVisibility: machine.interfaceVisibility
+            )
+        }
         let targetScale = wasZoomed ? CGFloat(1) : machine.scale
         if !page.startDoubleTapTransition(
             enteringNx: !wasZoomed,
@@ -3514,6 +3565,13 @@ final class S2NativePagerViewController: UIViewController,
             viewportOffset: page.zoomScrollView.reportedViewportOffset(),
             accepted: true
         )
+        if targetScale != nil {
+            // IC-118 B：捏合结束若已恢复 V（归位路径），同样先清算过期的
+            // 推迟呈现目标，避免回 1x 时先提交过期几何再跳回当前 V 几何。
+            page.reconcileDeferredPresentation(
+                currentVisibility: machine.interfaceVisibility
+            )
+        }
         // IC-090 R2：先判定走哪条分支再记录，随后按原逻辑执行；判定与执行都不变。
         let path: String
         if let targetScale {
@@ -5928,6 +5986,14 @@ struct S2DoubleTapProbeEvent: Equatable {
     var nominalFrameInterval: CFTimeInterval = 0
     var imageRequestScaleChanges: [S2DoubleTapProbeScaleChange] = []
     var imageRequests: [S2DoubleTapProbeImageRequest] = []
+    /// IC-118 B：退出阶段采样。过渡瞄准的落点帧与其来源（是否取自推迟目标）。
+    var exitTargetFrame: CGRect?
+    var exitTargetUsedDeferredPresentation: Bool?
+    /// IC-118 B：退出完成时几何落地的取值与时刻；与 `endedAt` 之差即
+    /// 「过渡结束 → 几何落地」间隙。
+    var exitCommitFittedSize: CGSize?
+    var exitCommitCornerRadius: CGFloat?
+    var exitCommitAt: CFTimeInterval?
 
     var frameIntervals: [CFTimeInterval] {
         guard frameTimestamps.count >= 2 else {
@@ -6053,6 +6119,36 @@ final class S2DoubleTapSmoothnessProbeCoordinator: ObservableObject {
         activeEventIndex = nil
     }
 
+    /// IC-118 B：退出阶段采样——过渡瞄准的落点。事件仍在途，走 activeEventIndex。
+    func recordDoubleTapExitTarget(
+        targetFrame: CGRect,
+        usedDeferredPresentation: Bool,
+        timestamp _: CFTimeInterval
+    ) {
+        guard isRecording, let index = activeEventIndex else {
+            return
+        }
+        events[index].exitTargetFrame = targetFrame
+        events[index].exitTargetUsedDeferredPresentation =
+            usedDeferredPresentation
+    }
+
+    /// IC-118 B：退出完成时几何落地。在 `recordDoubleTapEnded` 之后同步调用，
+    /// activeEventIndex 已清，落到最后一个事件上。
+    func recordDoubleTapExitCommit(
+        fittedSize: CGSize,
+        cornerRadius: CGFloat,
+        timestamp: CFTimeInterval
+    ) {
+        guard isRecording,
+              let index = activeEventIndex ?? events.indices.last else {
+            return
+        }
+        events[index].exitCommitFittedSize = fittedSize
+        events[index].exitCommitCornerRadius = cornerRadius
+        events[index].exitCommitAt = timestamp
+    }
+
     func recordImageRequestScaleChange(
         scale: CGFloat,
         timestamp: CFTimeInterval
@@ -6138,6 +6234,44 @@ enum S2DoubleTapProbeText {
         ].joined(separator: "｜")
     }
 
+    /// IC-118 B：退出阶段子行。仅退出事件且有采样时输出。
+    static func exitStageLines(
+        _ event: S2DoubleTapProbeEvent
+    ) -> [String] {
+        guard !event.enteringNx else {
+            return []
+        }
+        var lines: [String] = []
+        if let frame = event.exitTargetFrame {
+            let source = event.exitTargetUsedDeferredPresentation == true
+                ? "推迟目标"
+                : "当前V已提交几何"
+            lines.append(
+                "  退出落点｜目标帧=(x=" +
+                    S2OnDeviceTransitionText.number(frame.minX) +
+                    ",y=" + S2OnDeviceTransitionText.number(frame.minY) +
+                    ",w=" + S2OnDeviceTransitionText.number(frame.width) +
+                    ",h=" + S2OnDeviceTransitionText.number(frame.height) +
+                    ")｜落点来源=" + source
+            )
+        }
+        if let fittedSize = event.exitCommitFittedSize,
+           let commitAt = event.exitCommitAt {
+            let gap = event.endedAt.map {
+                milliseconds(commitAt - $0)
+            } ?? "无结束时刻"
+            lines.append(
+                "  退出落地｜提交尺寸=(w=" +
+                    S2OnDeviceTransitionText.number(fittedSize.width) +
+                    ",h=" + S2OnDeviceTransitionText.number(fittedSize.height) +
+                    ")｜提交圆角=" +
+                    (event.exitCommitCornerRadius.map(decimal) ?? "无") +
+                    "｜距过渡结束ms=" + gap
+            )
+        }
+        return lines
+    }
+
     static func scaleChangeLines(
         _ event: S2DoubleTapProbeEvent
     ) -> [String] {
@@ -6190,6 +6324,7 @@ enum S2DoubleTapProbeText {
         ]
         for (index, event) in events.enumerated() {
             lines.append(row(index: index, event: event))
+            lines.append(contentsOf: exitStageLines(event))
             lines.append(contentsOf: scaleChangeLines(event))
             lines.append(contentsOf: imageRequestLines(event))
         }
