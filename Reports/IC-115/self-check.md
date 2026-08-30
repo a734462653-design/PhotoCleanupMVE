@@ -1,126 +1,85 @@
-# IC-115 自验报告：放大自动隐藏续做——**停线，链条中止**
+# IC-115 自验报告（v2 终版）：放大自动隐藏续做——**已转绿**
 
 ## 结论（先行）
 
-**IC-115 未绿，触发「两者都不是 → 停」。IC-116、IC-117 未开工。**
+**IC-115 绿。** 分支 tip = `d1fbad6234c792149b53dafca8c5ddd15596d32a`（IC-115 v2 唯一改动），
+CI **#223**（run 33306565181）success，**XCTest 575 项 0 失败**，真实退出码 0，
+IPA 991043 字节，SHA-256 `7bfce132468cf9d18efe5752845efdd595f2ffebdc2d58e8c34ee8c40ea1bb92`。
 
-- **当时最新绿 tip** = `7fa94b1`（IC-114 子项 C），CI **#220**，**570 项 0 失败**，IPA 990596 字节，SHA-256 `3b4328024d1b4c263f609cb36991197120682fb7e055d5fcc92c64aa867deeb9`。
-- **分支当前 tip** = `ba3213b`（IC-115，**红**，CI #222）。
-- 进展：#221 的 **30 失败 / 8 用例** → #222 的 **21 失败 / 1 用例**。**七条已按裁定改写或修复并绿**，只剩 `testIC063AutomaticGeometryDiagnosticsExportsAllRequiredStages`。
-- 停线成因**不是测试问题**：⑤a 与既有「截图沉浸推迟应用」（IC-104 C / v17 决策 40，177/180 行族）**在 Nx 截图上互相矛盾**，该诊断阶段**在构造上不可达**，改任何期望值都救不了。**这正是卡内 D2 预核第 3 条断言「不受影响」的那条机制——预核在此处被推翻。**
-- CI 用 **1/2**（余 1 未用——因为剩下的不是能靠再试一次解决的问题）。
-- `schemaVersion == 7`、登记值、冻结三链、`ci.yml`、`Scripts/` **零改动**；未合并 `main`。
+- v1 停线成因（⑤a 与截图沉浸推迟应用在 Nx 截图上判据互斥）已由决策会话裁定：
+  推迟应用属规格时序（v17 决策 20/40），**被推翻的是诊断判据"V 变化时双侧须即时一致"的隐含假设**。
+  按 `DISPATCH-20260830-115v2-117.md` 把该用例的稳定判据按规格时序分段改写，一个 commit，测试/诊断侧。
+- 三条否决全部维持：`applyDeferredPresentationIfPossible` 的 `zoomScale ≤ 1` 守卫未动、
+  未改成只看机器侧的半判据、⑤a 未修订。
+- **卡面第 3 条核查：Nx 期间无可见几何异常**（①实测，见下节），"无可见效应"裁定未被推翻。
+- v2 预算 CI 用 **1/2**（#223）。绿后按联动单进 IC-116。
 
----
+## 输入与范围
 
-## #221 八个失败用例的逐一归类（卡内要求）
+- 输入：`DISPATCH-20260830-115v2-117.md`（IC-115 v2 条款）+ 原单 `DISPATCH-20260830-115-117.md`。
+- 继承提交：`e3bbfc2`（IC-115 v1 停线报告；工作树开工时净，短 SHA 与提交身份比对通过）。
+- 目标分支：`feature/ic-110-visual-batch`。
+- 范围边界：唯一改动为诊断稳定判据分段（`S2NativePhotoPager.swift` 诊断侧）；
+  产品行为路径、守卫、⑤a、132 条隐藏态断言、冻结三链、`ci.yml`、`Scripts/` 零改动。
 
-### 旧契约 → 授权改写（6 条，**均已改写并在 #222 转绿**）
+## v2 唯一改动（commit `d1fbad6`，测试/诊断侧）
 
-| 用例 | 处置 |
-|---|---|
-| `testK2DoubleTapNeverChangesInterfaceVisibilityAndReachesTargetScale` | 更名 `testK2DoubleTapAutoHidesOnEnterAndRestoresOnExit`，按新契约改写；「到达目标倍率」那一半未动 |
-| `testIC047_004TransitionRowDoubleTap` | 转移表双击行按新契约 |
-| `testIC047_037DoubleTapEnterAndExitRestoresVisibility` | 恢复语义现在非平凡（此前进出都不改 V，断言是恒等式），并补「记录值不被 Nx 单击改写」 |
-| `testE2ReplacementDoubleTapSuppressesSingleTapAction` | 同属「双击后 V 不变」旧契约。改用**隐藏态起手**区分「单击动作误触发」与「⑤a 自动隐藏」——本意保留且更锋利 |
-| `testG3ReplacementNativeDoubleTapDoesNotApplyOrRevertSingleTap` | 同上 |
-| `testIC047_035PinchExclusivelyOwnsTouchSequence` | 落点 `visibleNx` → `hiddenNx`；该用例考的「捏合独占触摸序列」语义未变 |
+1. 新增诊断只读访问器 `diagnosticDeferredInterfaceVisibility`：暴露
+   `pendingPresentationPage?.interfaceVisibility`（推迟记录携带的目标 V），产品不读。
+2. `waitForDiagnosticStableState` 稳定判据按规格时序分段：
+   - `zoomState == .nX`（`s > 1` 窗口）：页面侧条件 = `diagnosticInterfaceVisibility == 期望`
+     **或** `diagnosticDeferredInterfaceVisibility == 期望`（推迟记录在案且携带目标态）。
+     机器侧 V/缩放态、`!isPresentationTransitionActive`、`!isDoubleTapTransitionActive`、
+     原生缩放匹配等其余条件原样，**不要求双侧相等**。
+   - `zoomState == .oneX`（退出回 `s = 1`）：判据一字未改，双侧收敛照旧。
+   - 非截图资产路径零改动：无推迟记录时访问器为 nil，页面侧仍须即时一致。
+3. `stabilityDescription` 失败描述镜像同一分段逻辑，补印页面 V 与推迟目标 V。
 
-**转移表的处理**：产品侧 `transitionRule` 是**只被测试引用**的声明式镜像（唯一调用点在 `S2StateMachineTests`），不在运行时路径。新契约下两条进入行落点确定（一律 `hiddenNx`），但**两条退出行的落点取决于记录的进入前 V、不是原状态的函数**，故与捏合行一样标 `conditional(.dynamic)`。
+## 验收门禁逐条
 
-### D 自身缺陷 → 修 D（2 条）
-
-| 用例 | 处置 | 结果 |
+| 门禁 | 结果 | 依据 |
 |---|---|---|
-| `testIC114DScaleChangesWithinZoomDoNotTouchVisibility` | **本卡自己的用例有 bug**：捏合期间 `touchSequenceOwner == .pinch`，`handleSingleTap` 被 `receivesUnobscuredInput` 挡下（这是 IC047-035 的既有语义、非缺陷），是我在捏合未结束时就单击。改为先 `endPinch` 再单击 | **已绿** |
-| `testIC063AutomaticGeometryDiagnosticsExportsAllRequiredStages` | 首轮判为「诊断脚本把旧契约写死」，把 `startDoubleTapEntry` 的稳定态由 `(V=显示, Nx)` 改为 `(V=隐藏, Nx)` | **仍红——判断只对了一半，真因见下** |
+| `s > 1` 窗口：机器侧 `V == .hidden` 且页面侧推迟记录在案携带目标态 | ✅ | `testIC063AutomaticGeometryDiagnosticsExportsAllRequiredStages` 于 #223 绿；诊断样本"双击进入 Nx：动画结束稳定态"显示 V=隐藏、s=2 已达成稳定（判据放行即推迟记录在案） |
+| 退出回 `s = 1`：双侧收敛到记录恢复值 | ✅ | 同用例"双击退出 Nx：动画结束稳定态"样本 V=显示、s=1、zoomScale=1（收敛判据原样复用） |
+| 非截图资产路径零改动 | ✅ | 代码路径上仅当推迟记录非空才放宽；#223 全量 575 项 0 失败，无其他用例受扰 |
+| 三条否决未触碰 | ✅ | `git show d1fbad6` 仅改诊断判据与访问器；守卫、半判据、⑤a 零 diff |
 
-### 未触碰
+## 卡面第 3 条：Nx 期间可见几何核查（①实测，#223 诊断样本）
 
-132 条隐藏态手势断言、其他显隐断言、`testIC047_036`（捏合不越过 1x，故不触发 ⑤a）一律未改。
+"双击进入 Nx：动画结束稳定态"（V=隐藏、s=2、截图资产强制）：
 
----
+- 内层照片 `window.frame=(x=-196.67, y=-426, w=786, h=1704)` = 全视口 393×852 的 2x 基准；
+- `layer.cornerRadius=0`、`masksToBounds=false`；
+- 内层 transform 恒等，`contentSize=(786,1704)`，`zoomScale=2.000000`；
+- 中间帧门禁：通过；Q2 `s>1` 全部样本内层 transform 恒等=true；Q3 动画帧 contentOffset 无跳变=true。
 
-## 停线根因：⑤a 与「截图沉浸推迟应用」在 Nx 截图上互斥（①）
+与裁定"`s > 1` 期间截图可见几何恒为全视口基准、圆角为 0、与 V 无关"逐项一致，**无异常，不触发停线**。
+退出后样本回到带框几何（`w=259.42,h=562.40`、圆角 28）且 V=显示，与"退出落到记录恢复值的 1x 几何"一致。
 
-四条代码实据，逐条可核：
+## CI 与本地门禁（①）
 
-1. **`applyPage` 里 V 驱动的呈现变更在放大态被推迟**（`S2NativePhotoPager.swift`）：
-   ```swift
-   let presentationChanged = sameAsset &&
-       interfaceVisibility != page.interfaceVisibility &&
-       isFramedPhoto && page.isFramedPhoto &&
-       (fittedSize != page.fittedSize || cornerRadius != page.cornerRadius)
-   let nativeZoomIsAboveOne = isCurrent && zoomScrollView.zoomScale > 1.000_001
-   if scale > 1.000_001 || nativeZoomIsAboveOne {
-       if presentationChanged {
-           pendingPresentationPage = page
-           lastPresentationTransitionDuration = 0
-           return            // ← 直接返回，页面侧 interfaceVisibility 不落地
-       }
-   ```
-2. **推迟的呈现只在回到 1x 才应用**：`applyDeferredPresentationIfPossible` 的守卫含 `zoomScrollView.zoomScale <= 1.000_001`。
-3. **诊断的稳定判据要求机器侧与页面侧同时等于期望值**：
-   ```swift
-   if machine.interfaceVisibility == visibility,
-      machine.zoomState == zoomState,
-      page.diagnosticInterfaceVisibility == visibility,   // ← 页面侧
-      !page.isPresentationTransitionActive,
-      !page.isDoubleTapTransitionActive,
-      zoomMatches { completion(true) }
-   ```
-   而 `diagnosticInterfaceVisibility` 直接返回控制器自己的 `interfaceVisibility`。
-4. **该诊断用例强制截图**：`assetIsScreenshot: { _ in true }`，故 `isFramedPhoto` 成立；截图的显示态/隐藏态几何本就不同（v17 决策 40），故 `presentationChanged` 成立。
+- **CI #223**（run 33306565181，job "构建、XCTest 与未签名产物" success）：
+  被测提交 `d1fbad6234c792149b53dafca8c5ddd15596d32a`，**Executed 575 tests, with 0 failures (0 unexpected)**，
+  工作流以 `exit "$test_status"` 原样退出、job success ⇒ 真实退出码 0。
+  IPA 991043 字节，SHA-256 `7bfce132468cf9d18efe5752845efdd595f2ffebdc2d58e8c34ee8c40ea1bb92`；
+  artifact `PhotoCleanupMVE-unsigned-d1fbad6234c7`（id 9730778426）。
+  工具链仍为 Xcode 16.4（Build 16F6）——IC-116 待切。
+- 本地门禁（提交前，均退出码 0）：`git diff --check`、`Scripts/selfcheck.ps1`、
+  `Scripts/scan-hardcoded-user-visible-strings.ps1`（用户可见硬编码残留 0）。
 
-**合起来**：⑤a 让 V 在**进入放大的同一瞬间**变为隐藏；但第 1、2 条决定页面侧的隐藏态在 Nx 期间**永远不落地**。于是在 Nx 的截图上——
+## v1 停线历史（保留备查）
 
-> **机器侧说「隐藏」，页面侧说「显示」。**
+#221 八用例逐一归类与 #222 的 21 失败根因分析见本报告 v1 版（git 历史 `e3bbfc2`）。
+六条旧契约门禁改写与两处 D 修复（`ba3213b`）在 #223 下继续全绿，无需再动。
+v1 报告中"连带产品影响"（Nx 期间 chrome 隐藏但截图页面几何不变）已被裁定收编为规格时序：
+`s > 1` 期间页面侧显示态变量不落地**无可见效应**（本次实测印证），推迟应用决定的是退出时落到哪套 1x 几何。
 
-第 3 条要求两者同时等于同一个期望值，故：
-- 期望写 `.hidden`（新契约、机器侧为准）→ 页面侧不满足；
-- 期望写 `.visible`（页面侧为准）→ 机器侧不满足。
+## 人工判定项（保留给 Lynn 真机）
 
-**没有任何期望值能让这一阶段稳定**——它在构造上不可达。这不是断言写错，也不是我能在授权范围内修好的 D 缺陷。
+- 截图资产放大回归（联动单 H52 新增第 6 项）：进入放大瞬间跳基准、Nx 期间无异常残留、
+  退出后 chrome 与截图几何按恢复的 V 一致落地。夹具与诊断样本均为模拟器证据，真机未覆盖。
+- IC-114 遗留两项待补核仍有效（A3 静止态是否影响玻璃透光；Nx 期间手动切 V 后退出按记录值恢复的观感）。
 
-### 为什么按「两者都不是 → 停」
+## 发现但未处理的问题
 
-要让它可达，只有三条路，**每一条都是产品/规格决策**：
-
-- **(a)** 放宽 `applyDeferredPresentationIfPossible` 的 `zoomScale <= 1` 守卫，让「只改 V」的呈现变更在放大态也应用——直接动 IC-104 C / v17 决策 40 的推迟应用契约。
-- **(b)** 把诊断的稳定判据改为只看机器侧——**弱化一条门禁去凑绿**，与 IC-117「不得调探针阈值凑绿」同源，方法学决策。
-- **(c)** 修订 ⑤a 本身（例如改为退出时才切 V，或对截图豁免）。
-
-三者都超出执行端权限，故停，**未动上述任何一处**。
-
-### 连带的产品影响（非仅诊断，须决策会话知悉）
-
-这不是只在诊断里发作的现象。真机上对**截图**资产：进入放大后状态机 `V=隐藏`（chrome 浮层确实会隐藏，因为它由 `machine.interfaceVisibility` 直接驱动），但**页面侧仍按显示态的截图几何渲染**，直到退出放大才应用隐藏态几何。是否可接受，属产品判定。非截图资产不受影响（`presentationChanged` 要求 `isFramedPhoto`）。
-
----
-
-## 本地门禁（①）
-
-提交前三门禁全部退出码 0：`git diff --check`、`Scripts/selfcheck.ps1`、`Scripts/scan-hardcoded-user-visible-strings.ps1`。
-
----
-
-## 后续卡状态
-
-- **IC-116（Xcode 26 工具链）**：**未开工**（开工条件是 IC-115 绿）。
-- **IC-117（Liquid Glass）**：**未开工**。
-- 顺带留一条 IC-116 的备料（本次为定位 A1 而实证，①，可直接用）：runner `macos-15` 上 `xcodebuild -version` 为 **Xcode 16.4（Build 16F6）**，而 `simctl` 列出 **iOS 26.0 / 26.1 / 26.2** 运行时——镜像上存在 Xcode 26，只是未被选中。IC-116 写路径前仍应按卡内要求先 `ls /Applications | grep Xcode` 实证。
-
----
-
-## 停线 / 偏差 / 待补核
-
-### 停线
-- **IC-115「两者都不是 → 停」**：**已触发**，成因如上。CI 用 1/2，余 1 未用——剩下的不是靠再试一次能解决的问题。
-
-### 偏差
-- 首轮把 IC-063 判为「诊断脚本写死旧契约」并改了稳定态期望。**该判断只对了一半**：脚本确实写着旧契约，但改对之后仍不可达，真因在推迟应用机制。该改动已保留在提交里（新契约下它本就该是 `.hidden`），不影响后续处置。
-
-### 待补核
-1. **D2 预核第 3 条被推翻**：「截图沉浸推迟应用（177/180 行族）不受影响」不成立。
-2. 上述 (a)/(b)/(c) 三条路线需决策会话择一；选定后 IC-115 只差把该阶段改到可达即可转绿，六条已改写门禁无需再动。
-3. IC-114 遗留的两项待补核仍有效（A3 静止态是否影响玻璃透光；Nx 期间手动切 V 后退出是否应按记录值恢复）。
+- 无新增。测试计数由 #220 的 570 → #223 的 575（+5 为 v1 `ba3213b` 改写/新增所致，#222 红时未能登记绿计数）。
