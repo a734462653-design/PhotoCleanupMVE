@@ -37,20 +37,27 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertEqual(zoomed.state, .hiddenNx)
     }
 
-    // IC047-004：迁移表的双击事件逐格进入或退出对应显隐层。
+    // IC047-004：迁移表的双击事件。
+    // IC-115（⑤a ④）按新契约改写：进入放大自动隐藏，故两条进入行的落点
+    // 都是隐藏 Nx；两条退出行的落点取决于记录的进入前 V，
+    // **不是原状态的函数**，与捏合行同样是 conditionalDynamic。
     func testIC047_004TransitionRowDoubleTap() {
         assertTransitionRow(
             .doubleTapMainImage,
-            [unavailable, availableState(.visibleNxIdle), unavailable,
-             availableState(.hiddenNx), availableState(.visibleOneXIdle),
-             unavailable, availableState(.hiddenOneX)]
+            [unavailable, availableState(.hiddenNx), unavailable,
+             availableState(.hiddenNx), conditionalDynamic,
+             unavailable, conditionalDynamic]
         )
 
         let machine = makeMachine(state: .visibleOneXIdle)
         XCTAssertTrue(doubleTap(machine))
-        XCTAssertEqual(machine.state, .visibleNxIdle)
+        XCTAssertEqual(machine.state, .hiddenNx, "进入放大即自动隐藏")
         XCTAssertTrue(doubleTap(machine))
-        XCTAssertEqual(machine.state, .visibleOneXIdle)
+        XCTAssertEqual(
+            machine.state,
+            .visibleOneXIdle,
+            "退出恢复进入前的显示"
+        )
     }
 
     // IC047-005：迁移表的捏合事件在四个非横栏状态按结束倍数动态迁移。
@@ -651,7 +658,9 @@ final class S2StateMachineTests: XCTestCase {
             fittedSize: fittedSize
         ))
         XCTAssertEqual(machine.touchSequenceOwner, .none)
-        XCTAssertEqual(machine.state, .visibleNxIdle)
+        // IC-115（⑤a ④）：捏合放大同样自动隐藏，故落点由 visibleNx 改为 hiddenNx。
+        // 本用例考的是「捏合独占触摸序列」，该语义未变。
+        XCTAssertEqual(machine.state, .hiddenNx)
     }
 
     // IC047-036：捏合连续调节受上下限约束，松手吸附到严格 1 且不改变 V。
@@ -768,21 +777,46 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertEqual(machine.scale, 5)
     }
 
-    // IC047-037：双击从 1x 进入并从 Nx 退出时恢复进入前的显示或隐藏状态。
+    // IC047-037：双击进入放大自动隐藏，退出恢复**进入前**的显隐。
+    //
+    // IC-115（⑤a ④）：恢复语义现在**非平凡**——此前进出都不改 V，
+    // 这条断言是恒等式；现在进入会强制隐藏，退出必须把记录值放回去。
     func testIC047_037DoubleTapEnterAndExitRestoresVisibility() {
+        // 进入前是显示：进入即隐藏，退出恢复显示
         let visible = makeMachine(state: .visibleOneXIdle)
         XCTAssertTrue(doubleTap(visible))
-        XCTAssertEqual(visible.state, .visibleNxIdle)
+        XCTAssertEqual(visible.state, .hiddenNx, "进入放大即自动隐藏")
+        XCTAssertEqual(visible.recordedVisibilityBeforeZoom, .visible)
         XCTAssertTrue(doubleTap(visible))
         XCTAssertEqual(visible.scale, 1)
         XCTAssertEqual(visible.state, .visibleOneXIdle)
+        XCTAssertNil(
+            visible.recordedVisibilityBeforeZoom,
+            "退出后记录值应清空"
+        )
 
+        // 进入前是隐藏：记录隐藏、无额外动作，退出仍隐藏
         let hidden = makeMachine(state: .hiddenOneX)
         XCTAssertTrue(doubleTap(hidden))
         XCTAssertEqual(hidden.state, .hiddenNx)
+        XCTAssertEqual(hidden.recordedVisibilityBeforeZoom, .hidden)
         XCTAssertTrue(doubleTap(hidden))
         XCTAssertEqual(hidden.scale, 1)
         XCTAssertEqual(hidden.state, .hiddenOneX)
+
+        // 新契约第 4 条：Nx 期间单击仍切 V，但**不改写记录值**
+        let toggled = makeMachine(state: .visibleOneXIdle)
+        XCTAssertTrue(doubleTap(toggled))
+        XCTAssertEqual(toggled.state, .hiddenNx)
+        XCTAssertTrue(toggled.handleSingleTap())
+        XCTAssertEqual(toggled.state, .visibleNxIdle, "Nx 下单击仍切 V")
+        XCTAssertEqual(
+            toggled.recordedVisibilityBeforeZoom,
+            .visible,
+            "记录值不被 Nx 期间的单击改写"
+        )
+        XCTAssertTrue(doubleTap(toggled))
+        XCTAssertEqual(toggled.state, .visibleOneXIdle)
     }
 
     // IC047-038：普通翻页、Nx 贴边翻页与横栏换片均把新照片 s 重置为 1。

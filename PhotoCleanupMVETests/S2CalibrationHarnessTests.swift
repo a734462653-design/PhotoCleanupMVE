@@ -2954,11 +2954,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // E2 再替代断言：双击识别成功时不产生单击显隐动作。
+    //
+    // IC-115（⑤a ④）改写：「双击后 V 不变」不再成立（进入放大会自动隐藏），
+    // 原来的写法已无法区分「单击动作误触发」与「⑤a 的自动隐藏」。
+    // 改用**隐藏态起手**来区分：若单击显隐动作误触发，V 会变成显示；
+    // 而按 ⑤a，自隐藏态进入放大只记录隐藏、不改 V。本用例的本意
+    //（双击不产生单击动作）因此得以保留且更锋利。
     func testE2ReplacementDoubleTapSuppressesSingleTapAction() {
-        let machine = makeMachine()
+        let machine = makeMachine(interfaceVisibility: .hidden)
         let controller = makeNativePagerController(machine: machine)
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        let initialVisibility = machine.interfaceVisibility
 
         XCTAssertEqual(page.doubleTapRecognizer.numberOfTapsRequired, 2)
         XCTAssertTrue(page.applyRecognizedDoubleTap(
@@ -2969,7 +2974,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             metrics().doubleTapTargetScale,
             accuracy: 0.000_001
         )
-        XCTAssertEqual(machine.interfaceVisibility, initialVisibility)
+        XCTAssertEqual(
+            machine.interfaceVisibility,
+            .hidden,
+            "单击显隐动作若被误触发，V 会变成显示"
+        )
     }
 
     // E3 再替代断言：两次分别被 UIKit 裁决的单击各生效一次。
@@ -3761,12 +3770,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // G3 替代断言：原生双击不执行也不撤销任何单击显隐动作。
+    //
+    // IC-115（⑤a ④）改写：同 E2，改用隐藏态起手来区分「单击动作」与
+    // 「⑤a 的自动隐藏」。识别器接线断言一字未动。
     func testG3ReplacementNativeDoubleTapDoesNotApplyOrRevertSingleTap() {
         let targetScale = metrics().doubleTapTargetScale
-        let machine = makeMachine()
+        let machine = makeMachine(interfaceVisibility: .hidden)
         let controller = makeNativePagerController(machine: machine)
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        let initialVisibility = machine.interfaceVisibility
 
         XCTAssertEqual(page.singleTapRecognizer.numberOfTapsRequired, 1)
         XCTAssertEqual(page.doubleTapRecognizer.numberOfTapsRequired, 2)
@@ -3778,7 +3789,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             at: CGPoint(x: 150, y: 300)
         ))
         XCTAssertEqual(machine.scale, targetScale, accuracy: 0.000_001)
-        XCTAssertEqual(machine.interfaceVisibility, initialVisibility)
+        XCTAssertEqual(
+            machine.interfaceVisibility,
+            .hidden,
+            "单击显隐动作若被误触发或被撤销，V 会变成显示"
+        )
     }
 
     // G4 替代断言：两次由 UIKit 分别裁决的单击切换两次且不改倍率。
@@ -4336,8 +4351,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.doubleTapRecognizer.numberOfTapsRequired, 2)
     }
 
-    // K2：双击全程不切换显隐，最终倍率等于分类后的目标倍数。
-    func testK2DoubleTapNeverChangesInterfaceVisibilityAndReachesTargetScale() {
+    // K2：双击进入放大自动隐藏、退出恢复进入前的显隐，且到达分类后的目标倍数。
+    //
+    // IC-115（⑤a ④）按新契约改写并随语义更名（原名
+    // `testK2DoubleTapNeverChangesInterfaceVisibilityAndReachesTargetScale`
+    // 载的是「双击永不改变显隐」的旧契约）。「到达目标倍率」这一半未变。
+    func testK2DoubleTapAutoHidesOnEnterAndRestoresOnExit() {
         for visibility in [
             S2InterfaceVisibility.visible,
             S2InterfaceVisibility.hidden
@@ -4353,29 +4372,32 @@ final class S2CalibrationHarnessTests: XCTestCase {
             XCTAssertTrue(page.applyRecognizedDoubleTap(
                 at: CGPoint(x: 150, y: 300)
             ))
-            XCTAssertEqual(machine.interfaceVisibility, visibility)
+            // 进入放大后一律隐藏：自显示进入是「自动隐藏」，
+            // 自隐藏进入是「记录隐藏、无额外动作」。
+            XCTAssertEqual(
+                machine.interfaceVisibility,
+                .hidden,
+                "进入放大后 V 一律为隐藏"
+            )
+            XCTAssertEqual(
+                machine.recordedVisibilityBeforeZoom,
+                visibility,
+                "记录的应是进入前的 V"
+            )
+            // 目标倍率这一半未变
             XCTAssertEqual(machine.scale, targetScale, accuracy: 0.000_001)
 
-            let exitMachine = makeMachine(
-                scale: targetScale,
-                interfaceVisibility: visibility
-            )
-            let exitController = makeNativePagerController(
-                machine: exitMachine
-            )
-            let exitPage = tryUnwrap(
-                exitController.pageControllers[exitMachine.currentIndex]
-            )
-            XCTAssertTrue(exitMachine.handleSingleTap())
-            let visibilityBeforeExit = exitMachine.interfaceVisibility
-            XCTAssertTrue(exitPage.applyRecognizedDoubleTap(
+            // 退出：恢复进入前的 V
+            XCTAssertTrue(page.applyRecognizedDoubleTap(
                 at: CGPoint(x: 150, y: 300)
             ))
+            XCTAssertEqual(machine.scale, 1)
             XCTAssertEqual(
-                exitMachine.interfaceVisibility,
-                visibilityBeforeExit
+                machine.interfaceVisibility,
+                visibility,
+                "退出应恢复进入前的 V"
             )
-            XCTAssertEqual(exitMachine.scale, 1)
+            XCTAssertNil(machine.recordedVisibilityBeforeZoom)
         }
     }
 

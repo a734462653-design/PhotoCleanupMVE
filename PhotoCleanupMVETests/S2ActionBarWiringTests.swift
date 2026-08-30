@@ -813,11 +813,27 @@ final class S2ActionBarWiringTests: XCTestCase {
         ))
         XCTAssertEqual(machine.interfaceVisibility, .hidden)
 
-        // Nx 下单击仍切 V（既有语义不变，卡内 D2 预核第 1 条）
+        // IC-115 修 D：捏合期间 touchSequenceOwner == .pinch，
+        // handleSingleTap 会被 receivesUnobscuredInput 挡下（这是 IC047-035
+        // 的既有语义，非缺陷）。原用例在捏合未结束时就单击，故必然失败。
+        // 改为先结束捏合再单击。
+        XCTAssertTrue(machine.endPinch(
+            viewportSize: viewportSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(machine.zoomState, .nX)
+
+        // Nx 下单击仍切 V（既有语义不变，新契约第 4 条）
         XCTAssertTrue(machine.handleSingleTap())
         XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertEqual(
+            machine.recordedVisibilityBeforeZoom,
+            .visible,
+            "Nx 期间的单击不得改写记录值"
+        )
 
-        // 继续放大：V 不因倍率变化而变
+        // 再捏一次继续放大：V 不因倍率变化而变
+        XCTAssertTrue(machine.beginPinch())
         XCTAssertTrue(machine.updatePinch(
             magnification: 3,
             viewportSize: viewportSize,

@@ -815,20 +815,22 @@ final class S2StateMachine: ObservableObject {
             }
 
         case .doubleTapMainImage:
+            // IC-115（⑤a ④）：进入放大自动隐藏，退出恢复**进入前**的 V。
+            // 进入两行是确定的（无论从显示还是隐藏进入，落点都是隐藏 Nx）；
+            // 退出两行的落点取决于记录值，**不是原状态的函数**，
+            // 故与捏合行同样标 `conditional(.dynamic)`。
             switch origin {
             case .pageOutside:
                 return .unavailable
             case .state(.visibleOneXIdle):
-                return .available(.state(.visibleNxIdle))
+                return .available(.state(.hiddenNx))
             case .state(.visibleOneXStripDragging),
                  .state(.visibleNxStripDragging):
                 return .unavailable
             case .state(.hiddenOneX):
                 return .available(.state(.hiddenNx))
-            case .state(.visibleNxIdle):
-                return .available(.state(.visibleOneXIdle))
-            case .state(.hiddenNx):
-                return .available(.state(.hiddenOneX))
+            case .state(.visibleNxIdle), .state(.hiddenNx):
+                return .conditional(.dynamic)
             }
 
         case .pinchMainImage:

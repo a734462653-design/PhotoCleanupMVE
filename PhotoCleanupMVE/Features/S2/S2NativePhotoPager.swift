@@ -4140,10 +4140,13 @@ final class S2GeometryDiagnosticsRun {
 
     private func startDoubleTapEntry() {
         capture("双击进入 Nx：动画开始前一帧")
+        // IC-115（⑤a ④）：进入放大会自动隐藏 chrome，故这一阶段的稳定态
+        // 由 `(V=显示, Nx)` 改为 `(V=隐藏, Nx)`。**若不改，该状态不可达，
+        // 整轮诊断会卡在等待并以失败收场**——#221 的 IC-063 用例正是栽在这里。
         startDoubleTap(
             minimumMiddleFrames: 3,
             middlePrefix: "双击进入 Nx：动画中间帧",
-            stableVisibility: .visible,
+            stableVisibility: .hidden,
             stableZoomState: .nX,
             completionLabel: "双击进入 Nx：动画结束稳定态"
         ) { [weak self] in
