@@ -349,8 +349,9 @@ struct S2AlbumPickerListView: View {
                     } icon: {
                         Image(systemName: "plus")
                     }
-                    // IC-120 A：系统自适应主色（118 C 一刀切黑废止）。
-                    .foregroundStyle(.primary)
+                    // IC-120 A：系统自适应主色。IC-121 A：改具体动态色——
+                    // 层级 .primary 在启用态 Button 内会解析为 tint（蓝）。
+                    .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                     .frame(
                         maxWidth: .infinity,
                         minHeight: S2OverlayLayout.minimumTouchTarget,
@@ -2356,20 +2357,23 @@ enum S2ChromeGlass {
 }
 
 /// IC-120 A（④ H53 规则全文）：chrome 前景一律**系统自适应主色**——
-/// 浅色模式全黑、深色模式全白。iOS 26 玻璃分支与 17–25 回落分支同一取值：
-/// `.primary` / `.secondary` 在两分支下都随系统外观自适应，玻璃分支同时
-/// 获得 vibrancy。IC-117 的回落定值（纯白 / 白 62%）与 IC-118 C 的一刀切
-/// 黑口径随本卡废止；唯一例外为垃圾桶角标数字恒红（见 `confirmationBadge`）。
+/// 浅色模式全黑、深色模式全白。iOS 26 玻璃分支与 17–25 回落分支同一取值，
+/// 玻璃分支同时获得 vibrancy。唯一例外为垃圾桶角标（通知徽标样式，
+/// 见 `S2ConfirmationBadgeStyle`）。
+///
+/// IC-121 A（H54 蓝色泄漏真因）：此前 `AnyShapeStyle(.primary)` 的 `.primary`
+/// 经静态成员推断落到**层级样式** `HierarchicalShapeStyle.primary`（相对
+/// 当前前景层级解析）——在**启用态 Button** 标签内解析为按钮 tint（accent
+/// 蓝），禁用态解析为禁用前景（深色下白），故「静止蓝、拖横栏白」
+/// （拖动时 `touchSequenceOwner != .none` 使顶/底排按钮全部禁用）。
+/// 改用**具体动态色** `Color.primary/.secondary`：不参与 tint/层级解析，
+/// 启用/禁用/交互全状态恒定，深浅自适应语义不变。
 enum S2ChromeForeground {
-    /// 正文级前景。
-    static var onGlassPrimary: AnyShapeStyle {
-        AnyShapeStyle(.primary)
-    }
+    /// 正文级前景（具体动态色，测试可断言）。
+    static let onGlassPrimary = Color.primary
 
     /// 副行级前景（系统次级色，与主行区分层次——卡内取定并登记）。
-    static var onGlassSecondary: AnyShapeStyle {
-        AnyShapeStyle(.secondary)
-    }
+    static let onGlassSecondary = Color.secondary
 }
 
 /// IC-114 A3（⑤b ④）：chrome 显隐过渡。

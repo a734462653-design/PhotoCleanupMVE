@@ -601,6 +601,15 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertEqual(S2ChromePillMetrics.bottomCapsuleTextFontSize, 15)
     }
 
+    // IC-121 A：chrome 前景必须是**具体动态色**（Color.primary/.secondary），
+    // 不得回退为层级样式——层级 .primary 在启用态 Button 标签内解析为
+    // tint（accent 蓝），即 H54 蓝色泄漏的真因；具体色不参与 tint/层级
+    // 解析。启用/禁用态下的运行时解析行为夹具无法覆盖，真机 H55 兜底。
+    func testIC121AChromeForegroundIsConcreteAdaptiveColor() {
+        XCTAssertEqual(S2ChromeForeground.onGlassPrimary, Color.primary)
+        XCTAssertEqual(S2ChromeForeground.onGlassSecondary, Color.secondary)
+    }
+
     // IC-120 B：角标锚点几何与顶排右上圆钮同源——badge overlay 的
     // 顶/右内边距（topRowTopInset / chromeHorizontalMargin）恰为
     // 圆钮 topTrailing 角在顶排坐标系里的两侧留白。渲染层序
