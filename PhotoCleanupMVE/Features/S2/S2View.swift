@@ -511,7 +511,11 @@ struct S2View: View {
     @State private var displayedPendingCount = 0
     /// IC-112 B：中央状态指示——当前显示态与最近一次动作。
     @State private var centerIndicatorState: S2CenterIndicatorState?
-    @State private var centerIndicatorLastAction: S2CenterIndicatorAction?
+    /// IC-118 D（⑤9 ④）：「最近一次动作」按**张**记忆（会话内），
+    /// 原全局 lastAction 口径废止——每张照片按自己最近一次动作
+    /// 裁决两态并存时显示哪种。
+    @State private var centerIndicatorLastActionByAsset:
+        [String: S2CenterIndicatorAction] = [:]
     /// IC-111 C：加入相簿残影的时序闸门与中胶囊入场进度。
     @State private var albumAfterimageGate = S2AlbumAfterimageGate()
     /// 0 = 未入场（透明、下沉 8pt），1 = 已就位。
@@ -709,8 +713,11 @@ struct S2View: View {
                 tutorial.assetDidBecomeUnmarked(assetID: assetID)
             }
             // IC-112 B：标记/撤回都算一次「最近动作」，据此裁决两态并存时显示哪种。
+            // IC-118 D：按张登记——只记到被操作那几张头上。
             if !inserted.isEmpty || !removed.isEmpty {
-                centerIndicatorLastAction = .mark
+                for assetID in inserted.union(removed) {
+                    centerIndicatorLastActionByAsset[assetID] = .mark
+                }
                 refreshCenterIndicator(animated: true)
             }
         }
@@ -737,7 +744,10 @@ struct S2View: View {
                             .albumIndicatorDelaySeconds * 1_000_000_000
                     )
                 )
-                centerIndicatorLastAction = .album
+                // IC-118 D：动作记到加入那张头上（延时期间可能已翻页）。
+                if let record {
+                    centerIndicatorLastActionByAsset[record.assetID] = .album
+                }
                 refreshCenterIndicator(animated: true)
             }
         }
@@ -745,8 +755,8 @@ struct S2View: View {
             // IC-110 D 第 3 步：等用户真实翻回刚标记那张。
             tutorial.currentAssetDidChange(to: assetID)
             // IC-112 B：翻页即随新页状态刷新，且**不带动画**（卡内 ④）。
-            // 新页的状态不是任何一次近期动作造成的，故清掉最近动作。
-            centerIndicatorLastAction = nil
+            // IC-118 D：最近动作按张记忆，翻页**不再清**——新页用它自己的
+            // 记录重算（本会话加过相簿的照片翻回即显示已加入 + 撤回钮）。
             centerIndicatorState = nil
             refreshCenterIndicator(animated: false)
         }
@@ -1185,14 +1195,11 @@ struct S2View: View {
         }
     }
 
-    /// IC-113 B：当前这张是否刚成功加入过某相簿（且未撤回）。
-    /// 取自状态机的成功记录——**只认当前这张**，翻页到别张自然为 nil。
+    /// IC-113 B / IC-118 D：当前这张本会话是否加入过某相簿（且未撤回）。
+    /// IC-118 D 改读按张记录——不再只认全局最近一次加入，翻回任何
+    /// 本会话加过相簿的照片都显示。
     private var addedAlbumNameForCurrentAsset: String? {
-        guard let record = machine.lastAlbumAddition,
-              record.assetID == machine.currentAssetID else {
-            return nil
-        }
-        return record.album.name
+        machine.sessionAlbumAdditionsByAsset[machine.currentAssetID]?.name
     }
 
     /// IC-113 B：点撤回 → **把资产从该相簿移除**（真实写操作，本卡显式授权），
@@ -1203,7 +1210,8 @@ struct S2View: View {
         }
         let albumName = request.album.name
         onAlbumRemovalRequest(request)
-        centerIndicatorLastAction = nil
+        // IC-118 D：只清被撤回那张的动作记录。
+        centerIndicatorLastActionByAsset[request.targetAssetID] = nil
         withAnimation(
             .easeInOut(duration: S2CenterIndicatorResolver.transitionSeconds)
         ) {
@@ -1223,7 +1231,8 @@ struct S2View: View {
             interfaceVisibility: machine.interfaceVisibility,
             isMarked: machine.currentIsMarked,
             addedAlbumName: addedAlbumNameForCurrentAsset,
-            lastAction: centerIndicatorLastAction
+            // IC-118 D：按张取最近动作，解析规则本身零改动。
+            lastAction: centerIndicatorLastActionByAsset[machine.currentAssetID]
         )
         guard next != centerIndicatorState else {
             return

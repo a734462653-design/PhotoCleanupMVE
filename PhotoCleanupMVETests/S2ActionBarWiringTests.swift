@@ -1362,6 +1362,70 @@ final class S2ActionBarWiringTests: XCTestCase {
             "撤回失败必须保留记录，否则用户再也点不到撤回"
         )
         XCTAssertNotNil(machine.feedbackEvent)
+        // IC-118 D：按张记录同样保留。
+        XCTAssertNotNil(
+            machine.sessionAlbumAdditionsByAsset[machine.currentAssetID]
+        )
+    }
+
+    // MARK: - IC-118 D：相簿指示按张记忆（⑤9 ④，会话内口径）
+
+    // IC-118 D：每张各自记住本会话加入的相簿，翻页来回不丢。
+    func testIC118DSessionAlbumAdditionsRememberPerAsset() {
+        let album = S2AlbumReference(id: "album-118", name: "旅行")
+        let machine = makeMachine(recentAlbum: album)
+        XCTAssertTrue(machine.sessionAlbumAdditionsByAsset.isEmpty)
+
+        // 当前张（asset-2）加入
+        let first = tryUnwrap(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertTrue(machine.beginRecentAlbumAddition(first))
+        XCTAssertTrue(machine.completeRecentAlbumAddition(
+            first,
+            outcome: .success(alreadyContained: false)
+        ))
+        XCTAssertEqual(machine.sessionAlbumAdditionsByAsset["asset-2"], album)
+
+        // 翻到 asset-3 再加一张
+        XCTAssertTrue(machine.handleNativePageChange(to: 2))
+        let second = tryUnwrap(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertTrue(machine.beginRecentAlbumAddition(second))
+        XCTAssertTrue(machine.completeRecentAlbumAddition(
+            second,
+            outcome: .success(alreadyContained: false)
+        ))
+        XCTAssertEqual(machine.sessionAlbumAdditionsByAsset["asset-3"], album)
+
+        // 翻回 asset-2：记录仍在，撤回请求跟随当前张
+        XCTAssertTrue(machine.handleNativePageChange(to: 1))
+        XCTAssertEqual(machine.sessionAlbumAdditionsByAsset["asset-2"], album)
+        let removal = tryUnwrap(machine.makeAlbumRemovalRequest())
+        XCTAssertEqual(removal.targetAssetID, "asset-2")
+        XCTAssertEqual(removal.album, album)
+    }
+
+    // IC-118 D：撤回请求按当前张出——本会话没加过的张取不到请求
+    // （旧全局口径会把最近一次加入的请求错发到别张）；撤回成功只清该张。
+    func testIC118DRemovalFollowsCurrentAssetAndClearsOnlyIt() {
+        let album = S2AlbumReference(id: "album-118", name: "旅行")
+        let machine = makeMachine(recentAlbum: album)
+        let addition = tryUnwrap(machine.makeRecentAlbumAdditionRequest())
+        XCTAssertTrue(machine.beginRecentAlbumAddition(addition))
+        XCTAssertTrue(machine.completeRecentAlbumAddition(
+            addition,
+            outcome: .success(alreadyContained: false)
+        ))
+
+        // asset-3 本会话没加过 → 无撤回请求（全局记录仍存也不给）
+        XCTAssertTrue(machine.handleNativePageChange(to: 2))
+        XCTAssertNil(machine.makeAlbumRemovalRequest())
+
+        // 翻回撤回：成功后该张记录清空，撤回请求也随之取不到
+        XCTAssertTrue(machine.handleNativePageChange(to: 1))
+        let removal = tryUnwrap(machine.makeAlbumRemovalRequest())
+        XCTAssertTrue(machine.beginAlbumRemoval(removal))
+        XCTAssertTrue(machine.completeAlbumRemoval(removal, succeeded: true))
+        XCTAssertNil(machine.sessionAlbumAdditionsByAsset["asset-2"])
+        XCTAssertNil(machine.makeAlbumRemovalRequest())
     }
 
     // IC-113 B：协调器把撤回接到服务的 removeAsset 上，成功即从相簿移除。

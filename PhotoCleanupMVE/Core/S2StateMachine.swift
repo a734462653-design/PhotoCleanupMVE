@@ -666,6 +666,11 @@ final class S2StateMachine: ObservableObject {
 
     /// IC-113 B：最近一次成功加入相簿。撤回成功后清空。
     @Published private(set) var lastAlbumAddition: S2AlbumAdditionRecord?
+    /// IC-118 D（⑤9 ④，会话内口径）：资产 → 本会话最近一次成功加入的相簿。
+    /// 内存记录、不持久化；撤回成功即清该张。**不查询历史相簿成员关系**
+    /// （明确范围外）——翻到本会话没加过的照片即无记录。
+    @Published private(set) var sessionAlbumAdditionsByAsset:
+        [String: S2AlbumReference] = [:]
     private var albumAdditionCount = 0
     /// 撤回（从相簿移除）是否在途。**不进 `inFlightActions`**——
     /// 那个集合驱动操作条三按钮的启用规则，撤回钮不在其列，
@@ -1959,15 +1964,18 @@ final class S2StateMachine: ObservableObject {
 
     /// IC-113 B：中央指示「撤回」——把资产从刚加入的相簿移除。
     /// 三段式与相簿加入同构：取请求 → 登记在途 → 结果。
+    ///
+    /// IC-118 D：改按**当前张**的会话记录出请求（原先取全局最近一次加入；
+    /// 指示本就只在当前张显示，按张化后翻回任何加过的照片都能撤回）。
     func makeAlbumRemovalRequest() -> S2AlbumActionRequest? {
-        guard let record = lastAlbumAddition,
+        guard let album = sessionAlbumAdditionsByAsset[currentAssetID],
               !isAlbumRemovalInFlight,
-              orderedAssetIDs.contains(record.assetID) else {
+              orderedAssetIDs.contains(currentAssetID) else {
             return nil
         }
         return S2AlbumActionRequest(
-            targetAssetID: record.assetID,
-            album: record.album
+            targetAssetID: currentAssetID,
+            album: album
         )
     }
 
@@ -1997,6 +2005,11 @@ final class S2StateMachine: ObservableObject {
            lastAlbumAddition?.album == request.album {
             lastAlbumAddition = nil
         }
+        // IC-118 D：撤回成功清**该张**的会话记录，别张记录不受影响。
+        if sessionAlbumAdditionsByAsset[request.targetAssetID] ==
+            request.album {
+            sessionAlbumAdditionsByAsset[request.targetAssetID] = nil
+        }
         return true
     }
 
@@ -2015,6 +2028,9 @@ final class S2StateMachine: ObservableObject {
             assetID: assetID,
             album: album
         )
+        // IC-118 D：两条加入路径（中胶囊 / 选择器）都汇入本函数，
+        // 按张记录因此不可能漏登。
+        sessionAlbumAdditionsByAsset[assetID] = album
     }
 
     /// IC-114 D（⑤a ④）：**唯一的 `scale` 写入口**。
