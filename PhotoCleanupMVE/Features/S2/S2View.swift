@@ -233,6 +233,8 @@ final class S2FeedbackToastPresenter: ObservableObject {
             return L10n.text("s2.feedback.favorite_failed")
         case .albumAdditionFailed:
             return L10n.text("s2.feedback.album_addition_failed")
+        case .albumCreationFailed:
+            return L10n.text("s2.feedback.album_creation_failed")
         }
     }
 
@@ -281,6 +283,10 @@ struct S2ActionBarPresentation: Equatable {
 struct S2AlbumPickerActions {
     let select: (S2AlbumReference) -> Void
     let cancel: () -> Void
+    /// IC-114 C：新建相簿。创建成功后回调带回新相簿，
+    /// 由选择器**自行再走一次 `select`**——从而复用「加入 → 最近相簿更新 →
+    /// 首次入场时序 → 残影」全套既有路径，不另起一条。
+    let create: (String, @escaping (S2AlbumReference?) -> Void) -> Void
 }
 
 /// IC-076：相簿选择 sheet 的呈现——用户相册列表按系统返回顺序、每项显示相册名；
@@ -305,47 +311,129 @@ struct S2AlbumPickerListPresentation: Equatable {
     }
 }
 
+/// IC-114 C：系统风格的相簿选择器。
+///
+/// 结构（画布 AlbumSheet 定稿）：grabber（由 `.presentationDragIndicator`
+/// 提供）、标题「添加到相簿」、**首行「新建相簿…」**（+ 图标、蓝色）、
+/// 其后是相簿行＝40pt 键图 + 名称 + 数量。
+/// 中等 detent 起、可拖全高、下拉即取消——三者都由 `S2View` 在 `.sheet`
+/// 上声明，本视图只管内容。
+///
+/// **写操作边界**：本视图只发起「新建」与「选择（＝加入）」，
+/// 不存在任何删除/移除路径。
 struct S2AlbumPickerListView: View {
-    let albums: [S2AlbumReference]
+    let items: [S2AlbumListItem]
     let actions: S2AlbumPickerActions
+    /// 键图渲染复用既有缩略管线（由 App 注入，与横栏同一条）。
+    let thumbnail: (String) -> AnyView
+
+    /// 行内键图边长（画布 ④）。
+    static let thumbnailSize: CGFloat = 40
+
+    @State private var isNamingAlbum = false
+    @State private var draftName = ""
 
     private var presentation: S2AlbumPickerListPresentation {
-        S2AlbumPickerListPresentation(albums: albums)
+        S2AlbumPickerListPresentation(albums: items.map(\.album))
     }
 
     var body: some View {
-        VStack(spacing: S2OverlayLayout.minimumSpacing) {
-            Text(presentation.title)
-                .font(.headline)
-                .padding(.top, S2OverlayLayout.minimumSpacing)
-            if presentation.showsEmptyPlaceholder {
-                Text(presentation.emptyPlaceholder)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(albums) { album in
-                    Button {
-                        actions.select(album)
-                    } label: {
-                        Text(verbatim: album.name)
-                            .frame(
-                                maxWidth: .infinity,
-                                minHeight: S2OverlayLayout.minimumTouchTarget,
-                                alignment: .leading
-                            )
+        NavigationStack {
+            List {
+                Button {
+                    draftName = ""
+                    isNamingAlbum = true
+                } label: {
+                    Label {
+                        Text(L10n.text("s2.album_picker.new_album"))
+                    } icon: {
+                        Image(systemName: "plus")
                     }
-                    .accessibilityLabel(Text(verbatim: album.name))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: S2OverlayLayout.minimumTouchTarget,
+                        alignment: .leading
+                    )
                 }
-                .listStyle(.plain)
+
+                // 无相簿时列表可以为空，但「新建相簿…」恒在（卡内 ④）。
+                ForEach(items) { item in
+                    Button {
+                        actions.select(item.album)
+                    } label: {
+                        albumRow(item)
+                    }
+                    .accessibilityLabel(Text(verbatim: item.album.name))
+                }
             }
-            Button(L10n.text("s2.action.cancel")) {
-                actions.cancel()
+            .listStyle(.plain)
+            .navigationTitle(Text(verbatim: presentation.title))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.text("s2.action.cancel")) {
+                        actions.cancel()
+                    }
+                }
+            }
+            .alert(
+                L10n.text("s2.album_picker.new_album.title"),
+                isPresented: $isNamingAlbum
+            ) {
+                TextField(
+                    L10n.text("s2.album_picker.new_album.placeholder"),
+                    text: $draftName
+                )
+                Button(L10n.text("s2.action.cancel"), role: .cancel) {}
+                Button(L10n.text("s2.album_picker.new_album.save")) {
+                    let name = draftName
+                    actions.create(name) { album in
+                        // 创建成功即当作「选中它」——加入、最近相簿更新、
+                        // 入场时序与残影全部沿用既有路径。失败时协调器已发反馈。
+                        if let album {
+                            actions.select(album)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func albumRow(_ item: S2AlbumListItem) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.secondary.opacity(0.18))
+                if let keyAssetID = item.keyAssetID {
+                    thumbnail(keyAssetID)
+                }
             }
             .frame(
-                maxWidth: .infinity,
-                minHeight: S2OverlayLayout.minimumTouchTarget
+                width: Self.thumbnailSize,
+                height: Self.thumbnailSize
             )
-            .padding(.bottom, S2OverlayLayout.minimumSpacing)
+            .clipShape(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+
+            Text(verbatim: item.album.name)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            Text(verbatim: L10n.text(
+                "s2.album_picker.count",
+                replacing: ["count": String(item.assetCount)]
+            ))
+            .foregroundStyle(.secondary)
         }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: S2OverlayLayout.minimumTouchTarget,
+            alignment: .leading
+        )
     }
 }
 
@@ -376,6 +464,11 @@ struct S2View: View {
     private let onRecentAlbumRequest: (S2AlbumActionRequest) -> Void
     /// IC-113 B：中央指示「撤回」——把资产从相簿移除。
     private let onAlbumRemovalRequest: (S2AlbumActionRequest) -> Void
+    /// IC-114 C：新建相簿（只创建，不加成员）。
+    private let onAlbumCreationRequest: (
+        String,
+        @escaping (S2AlbumReference?) -> Void
+    ) -> Void
     private let onAlbumPickerSelection: (
         S2AlbumPickerRequest,
         S2AlbumReference
@@ -443,6 +536,10 @@ struct S2View: View {
         onFavoriteRequest: @escaping (S2AssetActionRequest) -> Void = { _ in },
         onRecentAlbumRequest: @escaping (S2AlbumActionRequest) -> Void = { _ in },
         onAlbumRemovalRequest: @escaping (S2AlbumActionRequest) -> Void = { _ in },
+        onAlbumCreationRequest: @escaping (
+            String,
+            @escaping (S2AlbumReference?) -> Void
+        ) -> Void = { _, completion in completion(nil) },
         onAlbumPickerSelection: @escaping (
             S2AlbumPickerRequest,
             S2AlbumReference
@@ -469,6 +566,7 @@ struct S2View: View {
         self.onFavoriteRequest = onFavoriteRequest
         self.onRecentAlbumRequest = onRecentAlbumRequest
         self.onAlbumRemovalRequest = onAlbumRemovalRequest
+        self.onAlbumCreationRequest = onAlbumCreationRequest
         self.onAlbumPickerSelection = onAlbumPickerSelection
         self.photoSwitchHapticFeedback = photoSwitchHapticFeedback
         self.assetCreationDate = assetCreationDate
@@ -691,6 +789,10 @@ struct S2View: View {
         }
         .sheet(isPresented: albumSheetBinding) {
             albumSheet
+                // IC-114 C：中等 detent 起、可拖全高、grabber 可见；
+                // 下拉即取消由 `albumSheetBinding` 的 set 分支原样处理。
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
                 .disabled(machine.isActionInFlight(.albumPicker))
                 // IC-114 B3：教程步 5 期间在 sheet 之上压一条提示。
                 // **不禁用 sheet 内的真实操作**（卡内取定）：用户若真加入相簿，
@@ -1449,6 +1551,11 @@ struct S2View: View {
                         performCalibratedAnimation {
                             _ = machine.cancelAlbumPicker()
                         }
+                    },
+                    // IC-114 C：新建相簿只负责「创建」，创建成功后由选择器
+                    // 自行再走一次 select，从而复用既有加入路径。
+                    create: { name, completion in
+                        onAlbumCreationRequest(name, completion)
                     }
                 )
             )

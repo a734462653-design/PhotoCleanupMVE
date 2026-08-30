@@ -298,6 +298,20 @@ struct S2AlbumReference: Identifiable, Hashable {
     let name: String
 }
 
+/// IC-114 C：相簿选择器的一行。列表要显示键图、名称与数量，
+/// 但 `S2AlbumReference` 是持久化「最近相簿」用的最小模型，
+/// 不宜为了列表展示往里塞字段——故另立一个只服务于列表的类型。
+struct S2AlbumListItem: Identifiable, Equatable {
+    let album: S2AlbumReference
+    let assetCount: Int
+    /// 键图资产标识；相簿为空时为 nil，此时列表行显示占位底。
+    let keyAssetID: String?
+
+    var id: String {
+        album.id
+    }
+}
+
 struct S2AssetActionRequest: Equatable {
     let targetAssetID: String
 }
@@ -349,6 +363,8 @@ enum S2ActionBarButton: CaseIterable, Equatable, Hashable {
 enum S2FeedbackEventKind: Equatable {
     case favoriteWriteFailed
     case albumAdditionFailed
+    /// IC-114 C：新建相簿失败。沿用既有反馈通道，只多一个分支。
+    case albumCreationFailed
 }
 
 struct S2FeedbackEvent: Equatable, Identifiable {
@@ -1966,6 +1982,11 @@ final class S2StateMachine: ObservableObject {
             lastAlbumAddition = nil
         }
         return true
+    }
+
+    /// IC-114 C：新建相簿失败——只发一次反馈，不改任何状态。
+    func reportAlbumCreationFailure() {
+        publishFeedback(.albumCreationFailed)
     }
 
     private func publishAlbumAddition(

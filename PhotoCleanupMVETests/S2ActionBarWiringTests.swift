@@ -157,11 +157,15 @@ final class S2ActionBarWiringTests: XCTestCase {
         var selected: [S2AlbumReference] = []
         var cancelled = 0
         let listView = S2AlbumPickerListView(
-            albums: albums,
+            items: albums.map {
+                S2AlbumListItem(album: $0, assetCount: 0, keyAssetID: nil)
+            },
             actions: S2AlbumPickerActions(
                 select: { selected.append($0) },
-                cancel: { cancelled += 1 }
-            )
+                cancel: { cancelled += 1 },
+                create: { _, completion in completion(nil) }
+            ),
+            thumbnail: { _ in AnyView(EmptyView()) }
         )
         let controller = UIHostingController(rootView: listView)
         controller.view.frame = CGRect(origin: .zero, size: physicalSize)
@@ -710,6 +714,129 @@ final class S2ActionBarWiringTests: XCTestCase {
         )
         XCTAssertGreaterThan(S2ChromeGlass.innerStrokeWidth, 0)
         XCTAssertGreaterThan(S2ChromeGlass.outerStrokeWidth, 0)
+    }
+
+    // MARK: - IC-114 C：相簿选择器 + 新建相簿
+
+    // IC-114 C：新建相簿只创建、不加成员；成功后并入列表、可被随后的
+    // 「选择」路径加入。空名与失败开关都回 nil。
+    func testIC114CCreateAlbumOnlyCreates() {
+        let service = FakeAssetActionService(albums: [])
+        XCTAssertTrue(service.userAlbumItems().isEmpty)
+
+        var created: S2AlbumReference?
+        service.createAlbum(named: "旅行") { created = $0 }
+        let album = tryUnwrap(created)
+        XCTAssertEqual(album.name, "旅行")
+        XCTAssertEqual(service.creationRequests, ["旅行"])
+        // 只创建——**没有任何成员写入**
+        XCTAssertTrue(service.additionRequests.isEmpty)
+        XCTAssertEqual(service.writeCount, 0)
+        // 新相簿已并入列表，且数量为 0
+        let items = service.userAlbumItems()
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.album, album)
+        XCTAssertEqual(items.first?.assetCount, 0)
+
+        // 空名不创建
+        var blank: S2AlbumReference? = album
+        service.createAlbum(named: "   ") { blank = $0 }
+        XCTAssertNil(blank)
+
+        // 失败开关
+        service.creationSucceeds = false
+        var failed: S2AlbumReference? = album
+        service.createAlbum(named: "另一个") { failed = $0 }
+        XCTAssertNil(failed)
+    }
+
+    // IC-114 C：新建失败走既有反馈通道，只多一个分支，不改任何状态。
+    func testIC114CCreationFailurePublishesFeedback() {
+        let machine = makeMachine()
+        XCTAssertNil(machine.feedbackEvent)
+        let beforeRecent = machine.recentAlbum
+
+        machine.reportAlbumCreationFailure()
+
+        let event = tryUnwrap(machine.feedbackEvent)
+        XCTAssertEqual(event.kind, .albumCreationFailed)
+        // 状态不受影响
+        XCTAssertEqual(machine.recentAlbum, beforeRecent)
+        XCTAssertNil(machine.lastAlbumAddition)
+        // 文案接上了（三种失败各有各的）
+        XCTAssertFalse(
+            S2FeedbackToastPresenter.text(for: .albumCreationFailed).isEmpty
+        )
+        XCTAssertNotEqual(
+            S2FeedbackToastPresenter.text(for: .albumCreationFailed),
+            S2FeedbackToastPresenter.text(for: .albumAdditionFailed)
+        )
+    }
+
+    // IC-114 C：列表项模型——数量随成员关系走，键图可为空。
+    func testIC114CAlbumListItemsReportCounts() {
+        let album = S2AlbumReference(id: "album-1", name: "旅行")
+        let other = S2AlbumReference(id: "album-2", name: "家人")
+        let service = FakeAssetActionService(
+            albums: [album, other],
+            containedPairs: [
+                FakeAssetActionService.pair(album.id, "asset-1"),
+                FakeAssetActionService.pair(album.id, "asset-2")
+            ]
+        )
+        let items = service.userAlbumItems()
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(
+            items.first(where: { $0.album == album })?.assetCount,
+            2
+        )
+        XCTAssertEqual(
+            items.first(where: { $0.album == other })?.assetCount,
+            0
+        )
+        // Identifiable 用相簿 id
+        XCTAssertEqual(items.first?.id, items.first?.album.id)
+    }
+
+    // IC-114 C：选择器的三个动作齐备且各司其职——
+    // 新建回调带回相簿后由选择器再走 select，故加入路径只有一条。
+    func testIC114CPickerActionsRouteCreateThenSelect() {
+        var selected: [S2AlbumReference] = []
+        var cancelled = 0
+        var createNames: [String] = []
+        let created = S2AlbumReference(id: "created-新建", name: "新建")
+
+        let actions = S2AlbumPickerActions(
+            select: { selected.append($0) },
+            cancel: { cancelled += 1 },
+            create: { name, completion in
+                createNames.append(name)
+                completion(created)
+            }
+        )
+
+        // 模拟选择器在创建成功后自行再走一次 select
+        actions.create("新建") { album in
+            if let album {
+                actions.select(album)
+            }
+        }
+        XCTAssertEqual(createNames, ["新建"])
+        XCTAssertEqual(selected, [created])
+        XCTAssertEqual(cancelled, 0)
+
+        // 创建失败则不加入
+        let failing = S2AlbumPickerActions(
+            select: { selected.append($0) },
+            cancel: { cancelled += 1 },
+            create: { _, completion in completion(nil) }
+        )
+        failing.create("失败") { album in
+            if let album {
+                failing.select(album)
+            }
+        }
+        XCTAssertEqual(selected, [created], "创建失败时不得走加入")
     }
 
     // MARK: - IC-114 B2：手势图示方向
@@ -1756,13 +1883,18 @@ final class FakeAssetActionService: PhotoAssetActionServicing {
     /// IC-113 B：移除请求记录与结果开关。
     var removalRequests: [AdditionRequest] = []
     var removalSucceeds = true
+    /// IC-114 C：新建相簿的请求记录与结果开关。
+    var creationRequests: [String] = []
+    var creationSucceeds = true
+    private(set) var createdAlbums: [S2AlbumReference] = []
 
     struct AdditionRequest: Equatable {
         let assetID: String
         let albumID: String
     }
 
-    private let albums: [S2AlbumReference]
+    /// IC-114 C：新建相簿会并入，故由 `let` 改 `var`。
+    private var albums: [S2AlbumReference]
     /// IC-113 B：移除会改变成员关系，故由 `let` 改 `var`。
     private var containedPairs: Set<String>
     private(set) var favoriteRequests: [String] = []
@@ -1795,6 +1927,40 @@ final class FakeAssetActionService: PhotoAssetActionServicing {
     ) {
         favoriteRequests.append(assetID)
         pendingFavorites.append(completion)
+    }
+
+    /// IC-114 C：新建相簿。记录请求并按 `creationSucceeds` 回结果；
+    /// 成功时把新相簿并入 `albums`，与真实语义一致。
+    func createAlbum(
+        named name: String,
+        completion: @escaping (S2AlbumReference?) -> Void
+    ) {
+        creationRequests.append(name)
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard creationSucceeds, !trimmed.isEmpty else {
+            completion(nil)
+            return
+        }
+        let album = S2AlbumReference(
+            id: "created-\(trimmed)",
+            name: trimmed
+        )
+        createdAlbums.append(album)
+        albums.append(album)
+        completion(album)
+    }
+
+    /// IC-114 C：列表项。数量取已登记的成员对数，键图一律 nil（测试无需真图）。
+    func userAlbumItems() -> [S2AlbumListItem] {
+        userAlbums().map { album in
+            S2AlbumListItem(
+                album: album,
+                assetCount: containedPairs.filter {
+                    $0.hasPrefix("\(album.id)|")
+                }.count,
+                keyAssetID: nil
+            )
+        }
     }
 
     /// IC-113 B：从相簿移除。记录请求并按 `removalSucceeds` 回结果；

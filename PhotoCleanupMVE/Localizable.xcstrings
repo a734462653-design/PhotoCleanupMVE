@@ -595,6 +595,72 @@
         }
       }
     },
+    "s2.album_picker.new_album" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建相簿…"
+          }
+        }
+      }
+    },
+    "s2.album_picker.new_album.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建相簿"
+          }
+        }
+      }
+    },
+    "s2.album_picker.new_album.placeholder" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相簿名称"
+          }
+        }
+      }
+    },
+    "s2.album_picker.new_album.save" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储"
+          }
+        }
+      }
+    },
+    "s2.album_picker.count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张"
+          }
+        }
+      }
+    },
+    "s2.feedback.album_creation_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建相簿失败"
+          }
+        }
+      }
+    },
     "s2.tutorial.done" : {
       "extractionState" : "manual",
       "localizations" : {

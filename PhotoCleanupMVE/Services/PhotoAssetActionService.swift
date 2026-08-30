@@ -50,6 +50,16 @@ protocol PhotoAssetActionServicing {
 
     func userAlbums() -> [S2AlbumReference]
 
+    /// IC-114 C：相簿选择器列表用——在 `userAlbums` 基础上补数量与键图。
+    func userAlbumItems() -> [S2AlbumListItem]
+
+    /// IC-114 C：新建相簿。**本卡显式授权该写操作**。
+    /// 只创建集合，不动任何成员关系；失败时回 nil。
+    func createAlbum(
+        named name: String,
+        completion: @escaping (S2AlbumReference?) -> Void
+    )
+
     func albumExists(id: String) -> Bool
 }
 
@@ -139,6 +149,47 @@ struct PhotoKitAssetActionService: PhotoAssetActionServicing {
                 .removeAssets([asset] as NSArray)
         } completionHandler: { succeeded, _ in
             completion(succeeded)
+        }
+    }
+
+    /// IC-114 C：列表项。数量取相簿内资产数，键图取第一张；空相簿键图为 nil。
+    func userAlbumItems() -> [S2AlbumListItem] {
+        userAlbums().compactMap { reference in
+            guard let album = fetchAlbum(reference.id) else {
+                return nil
+            }
+            let assets = PHAsset.fetchAssets(in: album, options: nil)
+            return S2AlbumListItem(
+                album: reference,
+                assetCount: assets.count,
+                keyAssetID: assets.firstObject?.localIdentifier
+            )
+        }
+    }
+
+    /// IC-114 C：新建相簿。只创建集合——**不加成员、不移除任何东西**；
+    /// 加成员由调用方随后走既有的加入路径完成，故写操作边界清晰。
+    func createAlbum(
+        named name: String,
+        completion: @escaping (S2AlbumReference?) -> Void
+    ) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isAuthorizedForWriting, !trimmed.isEmpty else {
+            completion(nil)
+            return
+        }
+        var placeholder: PHObjectPlaceholder?
+        PHPhotoLibrary.shared().performChanges {
+            let request = PHAssetCollectionChangeRequest
+                .creationRequestForAssetCollection(withTitle: trimmed)
+            placeholder = request.placeholderForCreatedAssetCollection
+        } completionHandler: { succeeded, _ in
+            guard succeeded,
+                  let identifier = placeholder?.localIdentifier else {
+                completion(nil)
+                return
+            }
+            completion(S2AlbumReference(id: identifier, name: trimmed))
         }
     }
 
