@@ -628,6 +628,10 @@ final class S2StateMachine: ObservableObject {
 
     @Published private(set) var interfaceVisibility: S2InterfaceVisibility
     @Published private(set) var scale: CGFloat
+
+    /// IC-114 D（⑤a ④）：放大前的 `V`。`s` 由 1 进入 >1 时记下，
+    /// 回到 1 时据此恢复；不在放大中时为 nil。
+    private var visibilityBeforeZoom: S2InterfaceVisibility?
     @Published private(set) var viewportOffset: CGSize
     @Published private(set) var bottomStripState: S2BottomStripState = .idle
     @Published private(set) var sheetState: S2SheetState = .closed
@@ -1122,7 +1126,7 @@ final class S2StateMachine: ObservableObject {
         }
 
         if zoomState == .nX {
-            scale = 1
+            setScale(1)
             imageRequestScale = 1
             viewportOffset = .zero
             requestImageAfterScaleSettled()
@@ -1146,7 +1150,7 @@ final class S2StateMachine: ObservableObject {
             return false
         }
 
-        scale = nextScale
+        setScale(nextScale)
         imageRequestScale = nextScale
         let fittedSize = oneXDisplaySize ?? S2Geometry.aspectFitSize(
             viewportSize: viewportSize,
@@ -1177,7 +1181,7 @@ final class S2StateMachine: ObservableObject {
         }
 
         if zoomState == .nX {
-            scale = 1
+            setScale(1)
             imageRequestScale = 1
             viewportOffset = .zero
             requestImageAfterScaleSettled()
@@ -1191,7 +1195,7 @@ final class S2StateMachine: ObservableObject {
         guard resolvedScale > 1 else {
             return false
         }
-        scale = resolvedScale
+        setScale(resolvedScale)
         imageRequestScale = resolvedScale
         viewportOffset = .zero
         requestImageAfterScaleSettled()
@@ -1296,9 +1300,11 @@ final class S2StateMachine: ObservableObject {
               magnification > 0 else {
             return false
         }
-        scale = min(
-            pinchMaxScale(for: currentAssetID),
-            max(1, pinchStartScale * magnification)
+        setScale(
+            min(
+                pinchMaxScale(for: currentAssetID),
+                max(1, pinchStartScale * magnification)
+            )
         )
         if scale == 1 {
             viewportOffset = .zero
@@ -1322,7 +1328,7 @@ final class S2StateMachine: ObservableObject {
             return false
         }
         if scale < parameters.zoomSnapBackThreshold {
-            scale = 1
+            setScale(1)
             viewportOffset = .zero
         } else {
             viewportOffset = S2Geometry.clampedOffset(
@@ -1351,7 +1357,7 @@ final class S2StateMachine: ObservableObject {
               let pinchStartScale else {
             return false
         }
-        scale = pinchStartScale
+        setScale(pinchStartScale)
         viewportOffset = S2Geometry.clampedOffset(
             viewportOffset,
             viewportSize: viewportSize,
@@ -1851,7 +1857,7 @@ final class S2StateMachine: ObservableObject {
         imageRequestStrategy = configuration.imageRequestStrategy
         let currentPinchMaxScale = pinchMaxScale(for: currentAssetID)
         if scale > currentPinchMaxScale {
-            scale = currentPinchMaxScale
+            setScale(currentPinchMaxScale)
             imageRequestScale = scale
         }
         return true
@@ -1910,7 +1916,7 @@ final class S2StateMachine: ObservableObject {
     }
 
     private func resetZoomAfterPhotoChange() {
-        scale = 1
+        setScale(1)
         imageRequestScale = 1
         viewportOffset = .zero
     }
@@ -1999,6 +2005,40 @@ final class S2StateMachine: ObservableObject {
             assetID: assetID,
             album: album
         )
+    }
+
+    /// IC-114 D（⑤a ④）：**唯一的 `scale` 写入口**。
+    ///
+    /// 除构造时的初始赋值外，状态机内所有缩放写入都经此分派，
+    /// 「放大自动隐藏」因而不可能被旁路（B1 同族闸门）。
+    ///
+    /// 规则：
+    /// - `s` 由 1 进入 >1：记下进入前 `V`；若当时是显示态则自动置隐藏。
+    ///   进入时 `V` 已是隐藏 → 记录隐藏、无动作。
+    /// - 由 >1 回到 1：恢复进入前 `V`，并清空记录。
+    /// - 放大中的倍率变化（>1 → >1）：不触碰 `V`。
+    private func setScale(_ newValue: CGFloat) {
+        let previous = scale
+        scale = newValue
+        guard previous != newValue else {
+            return
+        }
+        if previous == 1, newValue > 1 {
+            visibilityBeforeZoom = interfaceVisibility
+            if interfaceVisibility == .visible {
+                interfaceVisibility = .hidden
+            }
+        } else if previous > 1, newValue == 1 {
+            if let remembered = visibilityBeforeZoom {
+                interfaceVisibility = remembered
+            }
+            visibilityBeforeZoom = nil
+        }
+    }
+
+    /// 测试可见：当前记下的「进入前 V」。
+    var recordedVisibilityBeforeZoom: S2InterfaceVisibility? {
+        visibilityBeforeZoom
     }
 
     private func setRecentAlbum(_ album: S2AlbumReference?) {

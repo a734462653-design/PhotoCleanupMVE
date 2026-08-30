@@ -716,6 +716,140 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertGreaterThan(S2ChromeGlass.outerStrokeWidth, 0)
     }
 
+    // MARK: - IC-114 D：放大自动进入隐藏态
+
+    // IC-114 D（⑤a ④）：双击进入放大 → 自动隐藏；退出 → 恢复进入前 V。
+    func testIC114DDoubleTapZoomAutoHidesAndRestores() {
+        let machine = makeMachine()
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertNil(machine.recordedVisibilityBeforeZoom)
+
+        // 进入放大：自动隐藏，并记下进入前的显示态
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.zoomState, .nX)
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        XCTAssertEqual(machine.recordedVisibilityBeforeZoom, .visible)
+
+        // 退出放大：恢复进入前 V，并清空记录
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertNil(machine.recordedVisibilityBeforeZoom)
+    }
+
+    // IC-114 D：进入时 V 已是隐藏 → 记录隐藏、无动作；退出后仍是隐藏。
+    func testIC114DZoomFromHiddenKeepsHidden() {
+        let machine = makeMachine()
+        // 单击切到隐藏
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        XCTAssertEqual(
+            machine.recordedVisibilityBeforeZoom,
+            .hidden,
+            "进入时已隐藏应记录隐藏"
+        )
+
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertEqual(
+            machine.interfaceVisibility,
+            .hidden,
+            "记录的是隐藏，恢复后仍应隐藏"
+        )
+        XCTAssertNil(machine.recordedVisibilityBeforeZoom)
+    }
+
+    // IC-114 D：捏合入口同样覆盖——卡内要求把双击的记录机制扩展到捏合。
+    func testIC114DPinchZoomAutoHidesAndRestores() {
+        let machine = makeMachine()
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+
+        let viewportSize = CGSize(width: 393, height: 852)
+        let fittedSize = CGSize(width: 393, height: 562)
+        XCTAssertTrue(machine.beginPinch())
+        XCTAssertTrue(machine.updatePinch(
+            magnification: 2,
+            viewportSize: viewportSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(machine.zoomState, .nX)
+        XCTAssertEqual(
+            machine.interfaceVisibility,
+            .hidden,
+            "捏合放大同样自动隐藏"
+        )
+        XCTAssertEqual(machine.recordedVisibilityBeforeZoom, .visible)
+
+        // 捏回 1x（低于回弹阈值即归位）
+        XCTAssertTrue(machine.updatePinch(
+            magnification: 0.1,
+            viewportSize: viewportSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertTrue(machine.endPinch(
+            viewportSize: viewportSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertNil(machine.recordedVisibilityBeforeZoom)
+    }
+
+    // IC-114 D：放大中的倍率变化（>1 → >1）不触碰 V——
+    // 否则捏合过程中会反复改显隐。
+    func testIC114DScaleChangesWithinZoomDoNotTouchVisibility() {
+        let machine = makeMachine()
+        let viewportSize = CGSize(width: 393, height: 852)
+        let fittedSize = CGSize(width: 393, height: 562)
+        XCTAssertTrue(machine.beginPinch())
+        XCTAssertTrue(machine.updatePinch(
+            magnification: 2,
+            viewportSize: viewportSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+
+        // Nx 下单击仍切 V（既有语义不变，卡内 D2 预核第 1 条）
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+
+        // 继续放大：V 不因倍率变化而变
+        XCTAssertTrue(machine.updatePinch(
+            magnification: 3,
+            viewportSize: viewportSize,
+            fittedSize: fittedSize
+        ))
+        XCTAssertEqual(
+            machine.interfaceVisibility,
+            .visible,
+            "放大中的倍率变化不得触碰 V"
+        )
+        XCTAssertEqual(machine.zoomState, .nX)
+    }
+
+    // IC-114 D：翻页复位到 1x 也走同一分派——恢复进入前 V 并清记录。
+    func testIC114DPhotoChangeResetRestoresVisibility() {
+        let machine = makeMachine()
+        XCTAssertTrue(machine.handleNativeDoubleTap(targetScale: 2))
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        XCTAssertEqual(machine.recordedVisibilityBeforeZoom, .visible)
+
+        // 翻页会把缩放复位（Nx 下贴边横滑即翻页，公开路径）
+        XCTAssertTrue(machine.handleHorizontalSwipe(
+            direction: .next,
+            startedAtPagingEdge: true,
+            distance: 400,
+            velocity: 4000
+        ))
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertNil(machine.recordedVisibilityBeforeZoom)
+    }
+
     // MARK: - IC-114 C：相簿选择器 + 新建相簿
 
     // IC-114 C：新建相簿只创建、不加成员；成功后并入列表、可被随后的
