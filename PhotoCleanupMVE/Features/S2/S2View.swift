@@ -1256,14 +1256,42 @@ struct S2View: View {
     }
 
     /// IC-117：同一排玻璃件放入 `GlassEffectContainer`（iOS 26）；17–25 原样。
+    ///
+    /// IC-120 B：角标以 overlay 叠在**容器之外**——玻璃效果把「玻璃 + 其内容」
+    /// 提升到容器的合成层，容器子树内的普通 overlay 会被盖住；提升到容器外
+    /// 后按兄弟层序恒在玻璃之上，两分支同一实现。
     @ViewBuilder
     private var topBar: some View {
         if #available(iOS 26.0, *) {
             GlassEffectContainer {
                 topBarRow
             }
+            .overlay(alignment: .topTrailing) {
+                confirmationBadge
+            }
         } else {
             topBarRow
+                .overlay(alignment: .topTrailing) {
+                    confirmationBadge
+                }
+        }
+    }
+
+    /// IC-120 B：右上垃圾桶角标。锚在顶排右上圆钮的 topTrailing 角
+    /// （内边距取自 `S2OverlayLayout` 顶排几何，与圆钮同源）；
+    /// IC-120 A 例外条款：数字**恒红**，两种外观模式同。
+    /// 不吃点击——命中仍全落在下方的垃圾桶按钮上。
+    @ViewBuilder
+    private var confirmationBadge: some View {
+        if let badgeText = displayedBadgeText {
+            Text(badgeText)
+                .monospacedDigit()
+                .foregroundStyle(Color.red)
+                // IC-111 B：落点同帧的数字滚动。
+                .contentTransition(.numericText())
+                .padding(.top, S2OverlayLayout.topRowTopInset)
+                .padding(.trailing, S2OverlayLayout.chromeHorizontalMargin)
+                .allowsHitTesting(false)
         }
     }
 
@@ -1337,18 +1365,9 @@ struct S2View: View {
                         SpringKeyframe(1.15, duration: 0.12)
                         SpringKeyframe(1.0, duration: 0.18)
                     }
-                    // IC-118 C（④）：角标**盖在圆钮之上**——移到标签链最外层，
-                    // 不再被玻璃形状裁切；数字改红。代价：回弹只弹圆钮、
-                    // 角标不随缩放（登记）。
-                    .overlay(alignment: .topTrailing) {
-                        if let badgeText = displayedBadgeText {
-                            Text(badgeText)
-                                .monospacedDigit()
-                                .foregroundStyle(Color.red)
-                                // IC-111 B：落点同帧的数字滚动。
-                                .contentTransition(.numericText())
-                        }
-                    }
+                    // IC-120 B：角标不再挂在标签链上（118 C 的最外层 overlay
+                    // 在 iOS 26 仍被玻璃合成盖住）——提升到 GlassEffectContainer
+                    // 之外，见 `topBar` 的 `confirmationBadge`。
             }
             // IC-111 D：教程态下确认删除**不可真实触发**——步 5 只指向入口。
             .disabled(!machine.canEnterConfirmation || tutorial.isRunning)

@@ -601,6 +601,33 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertEqual(S2ChromePillMetrics.bottomCapsuleTextFontSize, 15)
     }
 
+    // IC-120 B：角标锚点几何与顶排右上圆钮同源——badge overlay 的
+    // 顶/右内边距（topRowTopInset / chromeHorizontalMargin）恰为
+    // 圆钮 topTrailing 角在顶排坐标系里的两侧留白。渲染层序
+    // （容器外 overlay 恒在玻璃之上）SwiftUI 无法直接断言，真机未覆盖，
+    // H54 第 1 项兜底。
+    func testIC120BBadgeAnchorMatchesTrailingCircleTopCorner() {
+        let bounds = CGRect(
+            x: 0,
+            y: 0,
+            width: 393,
+            height: S2OverlayLayout.topBarHeight
+        )
+        let trailing = S2OverlayLayout.topElementFrames(in: bounds)[2]
+        XCTAssertEqual(
+            trailing.minY,
+            S2OverlayLayout.topRowTopInset,
+            accuracy: 0.000_001,
+            "角标顶内边距必须等于圆钮顶缘位置"
+        )
+        XCTAssertEqual(
+            bounds.maxX - trailing.maxX,
+            S2OverlayLayout.chromeHorizontalMargin,
+            accuracy: 0.000_001,
+            "角标右内边距必须等于圆钮右缘留白"
+        )
+    }
+
     // IC-111 A：顶排三槽改画布几何——左右 Ø44 圆钮、边距 16、行内下移 3。
     func testIC111ATopElementFramesMatchCanvas() {
         let bounds = CGRect(
