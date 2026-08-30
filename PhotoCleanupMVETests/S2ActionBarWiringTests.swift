@@ -866,6 +866,97 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertNil(machine.recordedVisibilityBeforeZoom)
     }
 
+    // MARK: - IC-118 A：真机捏合路径的自动隐藏
+
+    // IC-118 A：真机捏合的 `s` 走 beginPinch → reportNativeViewport（逐帧）→
+    // finishNativePinch，此前后两者直写 scale 绕过 setScale，⑤a 在该路径失效。
+    // 本组测试按真机调用序列在状态机层复刻；scroll view 接线本身仍为
+    // 夹具未覆盖，由 H53 第 1 项真机兜底。
+    func testIC118ANativePinchViewportReportAutoHidesAndRestores() {
+        let machine = makeMachine()
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+
+        XCTAssertTrue(machine.beginPinch())
+        machine.reportNativeViewport(scale: 2, viewportOffset: .zero)
+        XCTAssertEqual(machine.zoomState, .nX)
+        XCTAssertEqual(
+            machine.interfaceVisibility,
+            .hidden,
+            "真机捏合进入放大须自动隐藏"
+        )
+        XCTAssertEqual(machine.recordedVisibilityBeforeZoom, .visible)
+
+        // 捏回 1 后松手：finishNativePinch 内部回报 + 回弹归位
+        XCTAssertEqual(
+            machine.finishNativePinch(
+                scale: 1,
+                viewportOffset: .zero,
+                accepted: true
+            ),
+            1
+        )
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertNil(machine.recordedVisibilityBeforeZoom)
+    }
+
+    // IC-118 A：松手时低于回弹阈值（出厂 1.1）→ finishNativePinch 归位到 1，
+    // 同样恢复进入前 V。
+    func testIC118AFinishNativePinchSnapBackRestoresVisibility() {
+        let machine = makeMachine()
+        XCTAssertTrue(machine.beginPinch())
+        machine.reportNativeViewport(scale: 1.5, viewportOffset: .zero)
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+
+        XCTAssertEqual(
+            machine.finishNativePinch(
+                scale: 1.05,
+                viewportOffset: .zero,
+                accepted: true
+            ),
+            1
+        )
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertNil(machine.recordedVisibilityBeforeZoom)
+    }
+
+    // IC-118 A：无捏合在途的视口回声（回弹动画帧经 scrollViewDidZoom 回报）
+    // 只写倍率、不触碰 V——否则恢复后会被瞬时重隐藏一次（闪烁）。
+    func testIC118AViewportEchoWithoutPinchDoesNotTouchVisibility() {
+        let machine = makeMachine()
+        // 先经捏合进出一轮，回到 V=显示、s=1、记录已清
+        XCTAssertTrue(machine.beginPinch())
+        machine.reportNativeViewport(scale: 2, viewportOffset: .zero)
+        XCTAssertEqual(
+            machine.finishNativePinch(
+                scale: 1.05,
+                viewportOffset: .zero,
+                accepted: true
+            ),
+            1
+        )
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+
+        // 回弹动画帧的回声：owner 已是 .none
+        machine.reportNativeViewport(
+            scale: 1.04,
+            viewportOffset: .zero
+        )
+        XCTAssertEqual(
+            machine.interfaceVisibility,
+            .visible,
+            "回声不得重新触发自动隐藏"
+        )
+        XCTAssertNil(
+            machine.recordedVisibilityBeforeZoom,
+            "回声不得改写记录"
+        )
+        machine.reportNativeViewport(scale: 1, viewportOffset: .zero)
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+    }
+
     // MARK: - IC-114 C：相簿选择器 + 新建相簿
 
     // IC-114 C：新建相簿只创建、不加成员；成功后并入列表、可被随后的

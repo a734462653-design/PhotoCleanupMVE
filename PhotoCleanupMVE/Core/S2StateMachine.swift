@@ -1231,7 +1231,14 @@ final class S2StateMachine: ObservableObject {
         let nextScale = min(pinchMaxScale(for: currentAssetID), max(1, scale))
         let nextViewportOffset = nextScale == 1 ? .zero : viewportOffset
         if self.scale != nextScale {
-            self.scale = nextScale
+            // IC-118 A：真机捏合的 `s` 走这里（scrollViewDidZoom 逐帧回报），
+            // 此前直写绕过了 `setScale`，⑤a 自动隐藏因此在捏合入口失效。
+            // 改道后仅当捏合在途才应用显隐规则：捏合结束后的回弹动画帧同样
+            // 经此回报，若也应用规则会在恢复 V 后又瞬时重隐藏一次（闪烁）。
+            setScale(
+                nextScale,
+                appliesZoomVisibilityRule: touchSequenceOwner == .pinch
+            )
         }
         if self.viewportOffset != nextViewportOffset {
             self.viewportOffset = nextViewportOffset
@@ -1254,7 +1261,8 @@ final class S2StateMachine: ObservableObject {
             viewportOffset: viewportOffset
         )
         if self.scale < parameters.zoomSnapBackThreshold {
-            self.scale = 1
+            // IC-118 A：改道 `setScale`——回 1 时恢复进入前 V（此刻捏合仍在途）。
+            setScale(1)
             self.viewportOffset = .zero
         }
         imageRequestScale = self.scale
@@ -2013,16 +2021,24 @@ final class S2StateMachine: ObservableObject {
     ///
     /// 除构造时的初始赋值外，状态机内所有缩放写入都经此分派，
     /// 「放大自动隐藏」因而不可能被旁路（B1 同族闸门）。
+    /// IC-118 A：原声称「只剩两处直写」漏了 `reportNativeViewport` 与
+    /// `finishNativePinch` 两处（真机捏合路径），已一并改道。
     ///
     /// 规则：
     /// - `s` 由 1 进入 >1：记下进入前 `V`；若当时是显示态则自动置隐藏。
     ///   进入时 `V` 已是隐藏 → 记录隐藏、无动作。
     /// - 由 >1 回到 1：恢复进入前 `V`，并清空记录。
     /// - 放大中的倍率变化（>1 → >1）：不触碰 `V`。
-    private func setScale(_ newValue: CGFloat) {
+    /// - `appliesZoomVisibilityRule == false`（仅供无手势在途的视口回声，
+    ///   如捏合回弹动画帧）：只写倍率，不触碰 `V` 与记录。
+    private func setScale(
+        _ newValue: CGFloat,
+        appliesZoomVisibilityRule: Bool = true
+    ) {
         let previous = scale
         scale = newValue
-        guard previous != newValue else {
+        guard previous != newValue,
+              appliesZoomVisibilityRule else {
             return
         }
         if previous == 1, newValue > 1 {
