@@ -682,9 +682,31 @@ struct S2View: View {
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        // IC-114 B3：步 5 判定只读 `sheetState` 的已发布变化——
+        // 先开后关才算「看过一眼」。不接触任何手势识别器。
+        .onChange(of: machine.sheetState) { _, state in
+            tutorial.albumPickerVisibilityDidChange(
+                isPresented: state == .presented
+            )
+        }
         .sheet(isPresented: albumSheetBinding) {
             albumSheet
                 .disabled(machine.isActionInFlight(.albumPicker))
+                // IC-114 B3：教程步 5 期间在 sheet 之上压一条提示。
+                // **不禁用 sheet 内的真实操作**（卡内取定）：用户若真加入相簿，
+                // 走 assetDidJoinAlbum 那条通路照样推进。
+                .overlay(alignment: .top) {
+                    if tutorial.activeStep == .albumGuide {
+                        Text(L10n.text("s2.tutorial.sheet_hint"))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(.top, 10)
+                            .allowsHitTesting(false)
+                    }
+                }
                 .overlay(alignment: .bottom) {
                     feedbackToastOverlay(
                         bottomInset: S2OverlayLayout.minimumSpacing
@@ -974,7 +996,9 @@ struct S2View: View {
                 bottomStripHeight: metrics.bottomStripHeight,
                 stripMetrics: machine.parameters.bottomStripMetrics,
                 currentIndex: machine.currentIndex,
-                showsRecentAlbumCapsule: machine.recentAlbum != nil
+                markedIndex: tutorial.markedAssetID.flatMap {
+                    machine.orderedAssetIDs.firstIndex(of: $0)
+                }
             )
             let cardInset = S2TutorialCardLayout.bottomInset(
                 safeAreaBottom: safeAreaInsets.bottom,
@@ -2438,10 +2462,9 @@ extension S2TutorialStep {
             return .right
         case .swipeDownToCancel:
             return .down
-        case .albumGuide:
-            // 箭头自上而下指向左下角的 ♡ 圆钮＝「点这里」。
-            return .down
-        case .seeStripMark, .confirmEntry:
+        case .albumGuide, .seeStripMark, .confirmEntry:
+            // IC-114 B3（④）：步 5 改为**圈住右下角相簿选择器圆钮、无箭头**，
+            // 故不再给方向图示。
             return nil
         }
     }
@@ -2483,7 +2506,10 @@ enum S2TutorialSpotlight {
         bottomStripHeight: CGFloat,
         stripMetrics: S2BottomStripMetrics,
         currentIndex: Int,
-        showsRecentAlbumCapsule: Bool
+        /// IC-114 B1：步 2 要圈的**被标记那张**的格位下标。
+        /// 上滑标记成功后产品会自动翻到下一张，被标记的是**前一张**，
+        /// 故不能用 `currentIndex`。为 nil（未知）时退回当前张。
+        markedIndex: Int?
     ) -> CGRect {
         switch step {
         case .swipeUpToMark, .returnToMarked, .swipeDownToCancel:
@@ -2506,8 +2532,12 @@ enum S2TutorialSpotlight {
                     safeAreaInsets.trailing
             )
             let layout = S2BottomStripLayout(metrics: stripMetrics)
+            // IC-114 B1：圈的是**被标记那张**，不是当前张（H50 实测套错张）。
+            // 横栏几何仍以 `currentIndex` 为准（它决定哪一格放大、内容如何偏移），
+            // 只是取哪一格的 frame 改用 `markedIndex`。
+            let spotlightIndex = markedIndex ?? currentIndex
             let cell = layout.frame(
-                at: currentIndex,
+                at: spotlightIndex,
                 currentIndex: currentIndex,
                 expansion: 1,
                 contentX: layout.contentCenterX(of: currentIndex),
@@ -2524,31 +2554,18 @@ enum S2TutorialSpotlight {
             )
             return magnified(item, by: stripItemMagnification)
         case .albumGuide:
-            // IC-113 C：套底部**中胶囊**；中位为空（无最近相簿）时改套
-            // **右圆钮选择器**。两者都与 chrome 底排同一套表达式取位。
+            // IC-114 B3（④）：**恒定圈住右下角相簿选择器圆钮**——
+            // 不再按中位是否有最近相簿分流（IC-113 C 的中胶囊分支随本卡废止），
+            // 因为这一步要引导的就是「点开选择器看一眼」。
+            // 取位仍与 chrome 底排同一套表达式。
             let actionTop = S2OverlayLayout.actionBandTopFromViewportBottom(
                 safeAreaBottom: safeAreaInsets.bottom
             )
-            let rowY = viewportSize.height - actionTop
             let rowHeight = S2OverlayLayout.chromeRowHeight
-            let margin = S2OverlayLayout.chromeHorizontalMargin
-            if showsRecentAlbumCapsule {
-                // 中胶囊：夹在左右圆钮之间，两侧各留一个间隔。
-                let leading = safeAreaInsets.leading + margin + rowHeight +
-                    S2OverlayLayout.minimumSpacing
-                let trailing = viewportSize.width - safeAreaInsets.trailing -
-                    margin - rowHeight - S2OverlayLayout.minimumSpacing
-                return CGRect(
-                    x: leading,
-                    y: rowY,
-                    width: max(0, trailing - leading),
-                    height: rowHeight
-                ).insetBy(dx: -padding, dy: -padding)
-            }
             return CGRect(
                 x: viewportSize.width - safeAreaInsets.trailing -
-                    margin - rowHeight,
-                y: rowY,
+                    S2OverlayLayout.chromeHorizontalMargin - rowHeight,
+                y: viewportSize.height - actionTop,
                 width: rowHeight,
                 height: rowHeight
             ).insetBy(dx: -padding, dy: -padding)
@@ -2691,6 +2708,19 @@ struct S2TutorialGestureHint: View {
             y: looping ? direction.offset.height : 0
         )
         .opacity(looping ? 0 : 1)
+        // IC-114 B2 根因修复：**按方向重建整个单元**。
+        //
+        // H50 实测「箭头固定、圆点从左往右」的成因不在方向向量映射
+        // （`.down` 一直是 (0, +travel)，映射本身没错），而在**视图身份**：
+        // 此前本视图跨步复用同一实例，`@State looping` 保持 true、
+        // `onAppear` 只在第 1 步触发过一次，`repeatForever` 动画一直带着
+        // **安装时**的方向；同时 `if direction == .down` 会重排 VStack 子项，
+        // 箭头在步 3（.right）→ 步 4（.down）之间被销毁重建、丢掉动画而静止，
+        // 圆点则留着步 3 的横向动画——两个症状同源。
+        //
+        // 加 `.id(direction)` 后，方向一变整个单元连同 `@State` 一起重建，
+        // `onAppear` 重新触发，圆与箭头拿到同一份新动画，作为一体沿正确轴平移。
+        .id(direction)
         .onAppear {
             withAnimation(
                 .linear(duration: Self.cycleSeconds)
@@ -3094,8 +3124,11 @@ final class S2TutorialCoordinator: ObservableObject {
     @Published private(set) var activeStep: S2TutorialStep?
     @Published private(set) var outcome: S2TutorialOutcome?
 
-    /// 第 1 步标记下的那张，供第 3、4 步比对。
+    /// 第 1 步标记下的那张，供第 3、4 步比对；IC-114 B1 起也供步 2 定位格位。
     private(set) var markedAssetID: String?
+
+    /// IC-114 B3：步 5 期间是否已经打开过相簿选择器。
+    private(set) var didOpenAlbumPickerDuringGuide = false
 
     private let store: S2TutorialCompletionStoring
 
@@ -3122,6 +3155,7 @@ final class S2TutorialCoordinator: ObservableObject {
         store.reset()
         outcome = nil
         markedAssetID = nil
+        didOpenAlbumPickerDuringGuide = false
         activeStep = .swipeUpToMark
     }
 
@@ -3151,13 +3185,33 @@ final class S2TutorialCoordinator: ObservableObject {
         activeStep = .albumGuide
     }
 
-    /// IC-113 C 第 5 步：等用户**真实加入相簿成功**（中央指示随之出现该态）。
-    /// 与前四步同源——只读已发布状态，不接触手势识别器。
+    /// IC-113 C 第 5 步：真实加入相簿成功也推进。
+    ///
+    /// IC-114 B3（④）：步 5 的主路径改为「点开选择器看一眼再取消」，
+    /// 但教程态**不禁用 sheet 内的真实操作**——用户若真加入了相簿，
+    /// 照样推进（卡内取定并登记）。故这条通路保留。
     func assetDidJoinAlbum(assetID _: String) {
         guard activeStep == .albumGuide else {
             return
         }
         activeStep = .confirmEntry
+    }
+
+    /// IC-114 B3（④）：步 5 主路径——用户点开相簿选择器再关掉（取消或下拉）。
+    ///
+    /// 判定只读 `sheetState` 的已发布变化：必须**先见到打开**、再见到关闭，
+    /// 才算「看过一眼」；教程刚进步 5 时 sheet 本就是关的，不能直接算数。
+    func albumPickerVisibilityDidChange(isPresented: Bool) {
+        guard activeStep == .albumGuide else {
+            return
+        }
+        if isPresented {
+            didOpenAlbumPickerDuringGuide = true
+            return
+        }
+        if didOpenAlbumPickerDuringGuide {
+            activeStep = .confirmEntry
+        }
     }
 
     /// 点击任意处或第 2 步计时到点。等真实手势的步骤对此无反应。

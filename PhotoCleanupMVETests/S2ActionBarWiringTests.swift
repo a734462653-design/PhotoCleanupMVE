@@ -712,6 +712,56 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertGreaterThan(S2ChromeGlass.outerStrokeWidth, 0)
     }
 
+    // MARK: - IC-114 B2：手势图示方向
+
+    // IC-114 B2 防回退：**每步的方向向量必须与位移轴一致**。
+    //
+    // 竖直方向只许动 y、水平方向只许动 x，且符号与语义一致
+    // （上滑为负 y、下滑为正 y、右拖为正 x）。
+    //
+    // 注意：H50 那个「箭头固定、圆点从左往右」的真实成因是**视图身份**
+    // （图示跨步复用实例、动画不重装），本断言查的是映射表本身，
+    // **抓不到那类缺陷**——身份修复的效果由 H51 第 4 项真机判定。
+    func testIC114B2DirectionVectorMatchesAxis() {
+        let up = S2TutorialGestureDirection.up.offset
+        XCTAssertEqual(up.width, 0, accuracy: 0.000_001, "上滑不得有水平分量")
+        XCTAssertLessThan(up.height, 0, "上滑应为负 y")
+
+        let down = S2TutorialGestureDirection.down.offset
+        XCTAssertEqual(down.width, 0, accuracy: 0.000_001, "下滑不得有水平分量")
+        XCTAssertGreaterThan(down.height, 0, "下滑应为正 y")
+
+        let right = S2TutorialGestureDirection.right.offset
+        XCTAssertEqual(right.height, 0, accuracy: 0.000_001, "右拖不得有竖直分量")
+        XCTAssertGreaterThan(right.width, 0, "右拖应为正 x")
+
+        // 位移幅度统一取 travel
+        XCTAssertEqual(
+            abs(up.height),
+            S2TutorialGestureHint.travel,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            abs(down.height),
+            S2TutorialGestureHint.travel,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            abs(right.width),
+            S2TutorialGestureHint.travel,
+            accuracy: 0.000_001
+        )
+
+        // 逐步核对方向语义
+        XCTAssertEqual(S2TutorialStep.swipeUpToMark.gestureDirection, .up)
+        XCTAssertEqual(S2TutorialStep.returnToMarked.gestureDirection, .right)
+        XCTAssertEqual(S2TutorialStep.swipeDownToCancel.gestureDirection, .down)
+        // 观察/点击类步骤无图示
+        XCTAssertNil(S2TutorialStep.seeStripMark.gestureDirection)
+        XCTAssertNil(S2TutorialStep.albumGuide.gestureDirection)
+        XCTAssertNil(S2TutorialStep.confirmEntry.gestureDirection)
+    }
+
     // MARK: - IC-114 A3：chrome 显隐过渡
 
     // IC-114 A3（⑤b ④）：显→隐 scale 1→1.06、模糊 0→8pt、淡出；隐→显反向。
@@ -1003,6 +1053,52 @@ final class S2ActionBarWiringTests: XCTestCase {
     }
 
     // IC-112 C：第 5 步只被**真实收藏成功**推动；点击任意处不推进。
+    func testIC114B3AlbumGuideAdvancesOnPickerOpenThenClose() {
+        let tutorial = S2TutorialCoordinator(
+            store: S2InMemoryTutorialCompletionStore()
+        )
+        tutorial.startIfNeeded()
+        tutorial.assetDidBecomeMarked(assetID: "asset-2")
+        tutorial.acknowledge()
+        tutorial.currentAssetDidChange(to: "asset-2")
+        tutorial.assetDidBecomeUnmarked(assetID: "asset-2")
+        XCTAssertEqual(tutorial.activeStep, .albumGuide)
+
+        // 只见到「关」不算——教程刚进步 5 时 sheet 本就是关的
+        tutorial.albumPickerVisibilityDidChange(isPresented: false)
+        XCTAssertEqual(tutorial.activeStep, .albumGuide)
+
+        // 点击也不推进（等真实交互）
+        tutorial.acknowledge()
+        XCTAssertEqual(tutorial.activeStep, .albumGuide)
+
+        // 先开
+        tutorial.albumPickerVisibilityDidChange(isPresented: true)
+        XCTAssertEqual(tutorial.activeStep, .albumGuide)
+        XCTAssertTrue(tutorial.didOpenAlbumPickerDuringGuide)
+
+        // 再关 → 进步 6
+        tutorial.albumPickerVisibilityDidChange(isPresented: false)
+        XCTAssertEqual(tutorial.activeStep, .confirmEntry)
+    }
+
+    // IC-114 B3（④ 取定）：教程态**不禁用** sheet 内真实操作——
+    // 用户若真加入了相簿，照样推进。
+    func testIC114B3RealAlbumJoinAlsoAdvances() {
+        let tutorial = S2TutorialCoordinator(
+            store: S2InMemoryTutorialCompletionStore()
+        )
+        tutorial.startIfNeeded()
+        tutorial.assetDidBecomeMarked(assetID: "asset-2")
+        tutorial.acknowledge()
+        tutorial.currentAssetDidChange(to: "asset-2")
+        tutorial.assetDidBecomeUnmarked(assetID: "asset-2")
+        XCTAssertEqual(tutorial.activeStep, .albumGuide)
+
+        tutorial.assetDidJoinAlbum(assetID: "asset-2")
+        XCTAssertEqual(tutorial.activeStep, .confirmEntry)
+    }
+
     func testIC113CAlbumGuideAdvancesOnlyOnRealAlbumJoin() {
         let tutorial = S2TutorialCoordinator(
             store: S2InMemoryTutorialCompletionStore()
@@ -1058,8 +1154,9 @@ final class S2ActionBarWiringTests: XCTestCase {
     }
 
     // IC-112 C：第 5 步聚光套**左下 ♡ 圆钮**，与 chrome 底排同一套表达式；
-    // IC-113 C 第 5 步：聚光改套底部**中胶囊**；中位为空时改套右圆钮选择器。
-    func testIC113CAlbumGuideSpotlightTargetsBottomCapsuleOrPicker() {
+    // IC-114 B3（④）：步 5 改为**恒定圈住右下角相簿选择器圆钮、无箭头**。
+    // IC-113 C 的「中位为空才套选择器」分支随本卡废止。
+    func testIC114B3AlbumGuideSpotlightAlwaysTargetsPickerCircle() {
         let viewport = CGSize(width: 393, height: 852)
         let insets = S2OverlaySafeAreaInsets(
             top: 59,
@@ -1069,7 +1166,7 @@ final class S2ActionBarWiringTests: XCTestCase {
         )
         let stripMetrics = makeMachine().parameters.bottomStripMetrics
 
-        func rect(_ step: S2TutorialStep, capsule: Bool) -> CGRect {
+        func rect(_ step: S2TutorialStep, markedIndex: Int?) -> CGRect {
             S2TutorialSpotlight.targetRect(
                 step: step,
                 viewportSize: viewport,
@@ -1079,42 +1176,93 @@ final class S2ActionBarWiringTests: XCTestCase {
                 bottomStripHeight: 30,
                 stripMetrics: stripMetrics,
                 currentIndex: 1,
-                showsRecentAlbumCapsule: capsule
+                markedIndex: markedIndex
             )
         }
 
-        // 有最近相簿 → 套**中胶囊**：横跨左右圆钮之间，且水平居中。
-        let capsule = rect(.albumGuide, capsule: true)
-        XCTAssertGreaterThan(
-            capsule.width,
-            S2OverlayLayout.chromeRowHeight * 2,
-            "中胶囊应横跨左右圆钮之间，不该只有一个圆钮宽"
-        )
-        XCTAssertEqual(capsule.midX, viewport.width / 2, accuracy: 0.5)
-
-        // 无最近相簿 → 改套**右圆钮选择器**：正方、居右。
-        let picker = rect(.albumGuide, capsule: false)
+        // 有无最近相簿都圈同一个目标——不再分流
+        let withCapsule = rect(.albumGuide, markedIndex: 0)
+        let withoutCapsule = rect(.albumGuide, markedIndex: nil)
         XCTAssertEqual(
-            picker.width,
-            picker.height,
+            withCapsule,
+            withoutCapsule,
+            "步 5 聚光恒定圈右下圆钮，不随中位状态变化"
+        )
+
+        // 正方（圆钮）、居右下
+        XCTAssertEqual(
+            withCapsule.width,
+            withCapsule.height,
             accuracy: 0.000_001,
             "选择器是圆钮，聚光应为正方"
         )
-        XCTAssertGreaterThan(picker.midX, viewport.width / 2, "选择器在右侧")
-        XCTAssertNotEqual(capsule, picker)
+        XCTAssertGreaterThan(withCapsule.midX, viewport.width / 2, "在右侧")
+        XCTAssertGreaterThan(
+            withCapsule.midY,
+            viewport.height / 2,
+            "在下方"
+        )
 
         // 与右上确认入口不是同一个目标
-        XCTAssertNotEqual(capsule, rect(.confirmEntry, capsule: true))
+        XCTAssertNotEqual(withCapsule, rect(.confirmEntry, markedIndex: nil))
 
-        // 两步仍用正圆挖孔
+        // **无箭头**
+        XCTAssertNil(
+            S2TutorialStep.albumGuide.gestureDirection,
+            "步 5 不给方向图示（④：无箭头）"
+        )
+
+        // 仍用正圆挖孔
         XCTAssertEqual(
             S2TutorialSpotlight.cornerRadius(for: .albumGuide),
             S2TutorialSpotlight.circleCornerRadius
         )
-        XCTAssertEqual(
-            S2TutorialSpotlight.cornerRadius(for: .confirmEntry),
-            S2TutorialSpotlight.circleCornerRadius
+    }
+
+    // IC-114 B1：步 2 聚光圈的是**被标记那张**的格位，不是当前张。
+    // 上滑标记成功后产品自动翻下一张，被标记的是前一张（H50 实测套错张）。
+    func testIC114B1StripSpotlightTargetsMarkedItemNotCurrent() {
+        let viewport = CGSize(width: 393, height: 852)
+        let insets = S2OverlaySafeAreaInsets(
+            top: 59,
+            leading: 0,
+            bottom: 34,
+            trailing: 0
         )
+        let stripMetrics = makeMachine().parameters.bottomStripMetrics
+
+        func rect(markedIndex: Int?) -> CGRect {
+            S2TutorialSpotlight.targetRect(
+                step: .seeStripMark,
+                viewportSize: viewport,
+                safeAreaInsets: insets,
+                photoSize: CGSize(width: 393, height: 562),
+                photoCenterY: 409,
+                bottomStripHeight: 30,
+                stripMetrics: stripMetrics,
+                currentIndex: 1,
+                markedIndex: markedIndex
+            )
+        }
+
+        // 被标记的是前一张（下标 0），当前张是 1
+        let marked = rect(markedIndex: 0)
+        let current = rect(markedIndex: nil)
+        XCTAssertNotEqual(
+            marked,
+            current,
+            "圈被标记那张与圈当前张必须落在不同格位"
+        )
+        // 前一张在当前张**左侧**
+        XCTAssertLessThan(
+            marked.midX,
+            current.midX,
+            "被标记的是前一张，应在当前张左边"
+        )
+        // 竖直位置相同——同一条横栏
+        XCTAssertEqual(marked.midY, current.midY, accuracy: 0.000_001)
+        // 未知时退回当前张
+        XCTAssertEqual(rect(markedIndex: 1), current)
     }
 
     // IC-113 C 步 2：聚光收紧到**那一枚缩略图**并放大 1.6 倍，不再套整条横栏。
@@ -1135,7 +1283,7 @@ final class S2ActionBarWiringTests: XCTestCase {
             bottomStripHeight: 30,
             stripMetrics: makeMachine().parameters.bottomStripMetrics,
             currentIndex: 1,
-            showsRecentAlbumCapsule: true
+            markedIndex: nil
         )
         // 远窄于整条横栏——这正是「收紧」
         XCTAssertLessThan(
@@ -1240,7 +1388,8 @@ final class S2ActionBarWiringTests: XCTestCase {
                 S2TutorialGestureHint.ringDiameter,
             accuracy: 0.000_001
         )
-        XCTAssertEqual(S2TutorialStep.albumGuide.gestureDirection, .down)
+        // IC-114 B3：步 5 改为无箭头
+        XCTAssertNil(S2TutorialStep.albumGuide.gestureDirection)
         // 第 6 步只指向、无循环手势图示
         XCTAssertNil(S2TutorialStep.confirmEntry.gestureDirection)
     }
@@ -1275,7 +1424,7 @@ final class S2ActionBarWiringTests: XCTestCase {
                 bottomStripHeight: stripHeight,
                 stripMetrics: stripMetrics,
                 currentIndex: 1,
-                showsRecentAlbumCapsule: true
+                markedIndex: nil
             )
         }
 

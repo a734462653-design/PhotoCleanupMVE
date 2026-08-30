@@ -672,6 +672,17 @@
         }
       }
     },
+    "s2.tutorial.sheet_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "看一眼就好，点「取消」回来"
+          }
+        }
+      }
+    },
     "s2.tutorial.step6" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -689,7 +700,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "把想留的照片加入相簿；加入后中央会出现确认，可随时撤回"
+            "value" : "点这里打开相簿选择器看看"
           }
         }
       }
