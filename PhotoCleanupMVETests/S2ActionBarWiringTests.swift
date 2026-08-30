@@ -1176,8 +1176,10 @@ final class S2ActionBarWiringTests: XCTestCase {
 
     // MARK: - IC-111 D：教程动效
 
-    // IC-111 D：聚光挖孔按步套目标——步 1/3/4 套主图、步 2 套横栏、
-    // 步 5 套右上垃圾桶圆钮；后两者与 chrome 自己的推导式同源。
+    // IC-111 D：聚光挖孔按步套目标——步 1/3/4 套主图、步 5 套右上垃圾桶圆钮；
+    // 两者与 chrome 自己的推导式同源。
+    // IC-113 C 起步 2 不再套整条横栏，改**收紧到单枚缩略图并放大**，
+    // 故这一步的期望改按新推导式写（见下）。
     func testIC111DSpotlightTargetsPerStep() {
         let viewport = CGSize(width: 393, height: 852)
         let insets = S2OverlaySafeAreaInsets(
@@ -1217,18 +1219,58 @@ final class S2ActionBarWiringTests: XCTestCase {
             accuracy: 0.000_001
         )
 
-        // 步 2 套横栏：底缘与 chrome 推导式一致
+        // IC-113 C 步 2：收紧到**单枚缩略图**并以中心为基准放大。
+        // 期望值全部由推导式算出——格位取横栏渲染同一套
+        // `S2BottomStripLayout.frame`，倍数取 `stripItemMagnification`，
+        // 不写字面量。
+        //
+        // 注意：步 2 分支**不叠 padding**（放大本身已取代它），
+        // 与套主图/圆钮的几步不同。
         let stripRect = rect(.seeStripMark)
-        let stripBottom = viewport.height -
+        let stripLayout = S2BottomStripLayout(metrics: stripMetrics)
+        let stripWidth = viewport.width - insets.leading - insets.trailing
+        let stripOriginY = viewport.height -
             S2OverlayLayout.stripBottomFromViewportBottom(
                 safeAreaBottom: insets.bottom
-            )
+            ) - stripHeight
+        let cell = stripLayout.frame(
+            at: 1,
+            currentIndex: 1,
+            expansion: 1,
+            contentX: stripLayout.contentCenterX(of: 1),
+            viewportSize: CGSize(width: stripWidth, height: stripHeight)
+        )
+
+        // 尺寸：按倍数放大单枚格位
         XCTAssertEqual(
-            stripRect.maxY,
-            stripBottom + S2TutorialSpotlight.padding,
+            stripRect.width,
+            cell.width * S2TutorialSpotlight.stripItemMagnification,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
+            stripRect.height,
+            cell.height * S2TutorialSpotlight.stripItemMagnification,
+            accuracy: 0.000_001
+        )
+        // 摆放：中心与该格位中心重合（尺寸断言不等于摆放断言，陷阱 13）
+        XCTAssertEqual(
+            stripRect.midX,
+            insets.leading + cell.midX,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            stripRect.midY,
+            stripOriginY + cell.midY,
+            accuracy: 0.000_001
+        )
+        // 「收紧」本身：确实比整条横栏窄
+        XCTAssertLessThan(
+            stripRect.width,
+            stripWidth,
+            "步 2 聚光应收紧到单枚缩略图，不再横跨整条横栏"
+        )
+        // 旧行为（套整条横栏 + padding）已被 IC-113 C 正当作废
+        XCTAssertNotEqual(
             stripRect.height,
             stripHeight + 2 * S2TutorialSpotlight.padding,
             accuracy: 0.000_001
