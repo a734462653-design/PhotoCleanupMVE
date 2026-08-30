@@ -349,8 +349,8 @@ struct S2AlbumPickerListView: View {
                     } icon: {
                         Image(systemName: "plus")
                     }
-                    // IC-118 C（④）：蓝色强调改黑。
-                    .foregroundStyle(Color.black)
+                    // IC-120 A：系统自适应主色（118 C 一刀切黑废止）。
+                    .foregroundStyle(.primary)
                     .frame(
                         maxWidth: .infinity,
                         minHeight: S2OverlayLayout.minimumTouchTarget,
@@ -378,9 +378,9 @@ struct S2AlbumPickerListView: View {
                     }
                 }
             }
-            // IC-118 C（④）：系统蓝 tint 一并改黑（取消钮、行内按钮文字；
-            // alert 按钮是否随 tint 由系统决定，真机核对留 H53）。
-            .tint(Color.black)
+            // IC-120 A：tint 改系统自适应主色（取消钮、行内按钮文字、
+            // 命名弹窗按钮随 tint；alert 是否随由系统决定，真机核留 H54）。
+            .tint(Color.primary)
             .alert(
                 L10n.text("s2.album_picker.new_album.title"),
                 isPresented: $isNamingAlbum
@@ -815,7 +815,8 @@ struct S2View: View {
                     if tutorial.activeStep == .albumGuide {
                         Text(L10n.text("s2.tutorial.sheet_hint"))
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
+                            // IC-120 A：随规则去写死白，材质上自适应主色。
+                            .foregroundStyle(.primary)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
                             .background(.ultraThinMaterial, in: Capsule())
@@ -1277,6 +1278,8 @@ struct S2View: View {
                 }
             } label: {
                 Image(systemName: "chevron.backward")
+                    // IC-120 A：chrome 前景系统自适应（浅色黑 / 深色白）。
+                    .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                     .s2ChromeCircleGlass()
             }
             .accessibilityLabel(L10n.text("s2.action.back"))
@@ -1300,9 +1303,10 @@ struct S2View: View {
                 }
             } label: {
                 Image(systemName: "trash")
-                    // IC-112 C 第 6 步：教程态转白底深图标 + 外发光。
-                    // IC-118 C（④）：非教程态的蓝色强调改黑，两态同色。
-                    .foregroundStyle(Color.black)
+                    // IC-112 C 第 6 步：教程态转白底深图标 + 外发光（overlay
+                    // 承载，属强调态视觉，保留定值并登记）。
+                    // IC-120 A：常规态改系统自适应（118 C 一刀切黑废止）。
+                    .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                     .s2ChromeCircleGlass()
                     .overlay {
                         if tutorial.activeStep == .confirmEntry {
@@ -1388,8 +1392,7 @@ struct S2View: View {
                 )
             ))
             .font(.system(size: S2ChromePillMetrics.subtitleFontSize))
-            // 画布 ④：副行为白 62%（回落配方定值）。IC-117：iOS 26 玻璃上
-            // 改交系统 vibrancy（`.secondary`），不自设透明度。
+            // IC-120 A：副行系统次级色自适应，与主行区分层次（卡内取定）。
             .foregroundStyle(S2ChromeForeground.onGlassSecondary)
             .lineLimit(1)
         }
@@ -1457,6 +1460,8 @@ struct S2View: View {
                         ? "heart.fill"
                         : "heart"
                 )
+                // IC-120 A：chrome 前景系统自适应。
+                .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                 .s2ChromeCircleGlass()
             }
             .disabled(!presentation.favoriteEnabled)
@@ -1492,6 +1497,8 @@ struct S2View: View {
                         ))
                         .lineLimit(1)
                     }
+                    // IC-120 A：chrome 前景系统自适应（图标与文字一体）。
+                    .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                     .s2ChromeCapsuleGlass()
                 }
                 .disabled(!presentation.recentAlbumEnabled)
@@ -1521,6 +1528,8 @@ struct S2View: View {
                 }
             } label: {
                 Image(systemName: "plus.rectangle.on.rectangle")
+                    // IC-120 A：chrome 前景系统自适应。
+                    .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                     .s2ChromeCircleGlass()
             }
             .disabled(!presentation.addAlbumEnabled)
@@ -2290,9 +2299,9 @@ enum S2ChromePillMetrics {
     /// 顶部胶囊主行（日期）字号与字重（画布 ④）。
     static let titleFontSize: CGFloat = 15
 
-    /// 顶部胶囊副行（序号·大小）字号与不透明度（画布 ④：白 62%）。
+    /// 顶部胶囊副行（序号·大小）字号（画布 ④）。IC-120 A：副行改系统
+    /// 次级色自适应，白 62% 定值随一刀切口径废止，`subtitleOpacity` 删除。
     static let subtitleFontSize: CGFloat = 11.5
-    static let subtitleOpacity: Double = 0.62
 
     /// 底部胶囊：时钟图标 17pt + 文字 15pt（画布 ④）。
     static let bottomCapsuleIconPointSize: CGFloat = 17
@@ -2327,27 +2336,20 @@ enum S2ChromeGlass {
     static let outerStrokeWidth: CGFloat = 0.5
 }
 
-/// IC-117：玻璃件上的图标/文字前景。iOS 26 交系统前景样式（vibrancy），
-/// 不自设透明度；iOS 17–25 沿用画布定值（回落配方是深色 chrome，需固定白）。
+/// IC-120 A（④ H53 规则全文）：chrome 前景一律**系统自适应主色**——
+/// 浅色模式全黑、深色模式全白。iOS 26 玻璃分支与 17–25 回落分支同一取值：
+/// `.primary` / `.secondary` 在两分支下都随系统外观自适应，玻璃分支同时
+/// 获得 vibrancy。IC-117 的回落定值（纯白 / 白 62%）与 IC-118 C 的一刀切
+/// 黑口径随本卡废止；唯一例外为垃圾桶角标数字恒红（见 `confirmationBadge`）。
 enum S2ChromeForeground {
-    /// 正文级前景（回落：纯白）。
+    /// 正文级前景。
     static var onGlassPrimary: AnyShapeStyle {
-        if #available(iOS 26.0, *) {
-            return AnyShapeStyle(.primary)
-        } else {
-            return AnyShapeStyle(Color.white)
-        }
+        AnyShapeStyle(.primary)
     }
 
-    /// 副行级前景（回落：白 62%，画布 ④ 定值）。
+    /// 副行级前景（系统次级色，与主行区分层次——卡内取定并登记）。
     static var onGlassSecondary: AnyShapeStyle {
-        if #available(iOS 26.0, *) {
-            return AnyShapeStyle(.secondary)
-        } else {
-            return AnyShapeStyle(
-                Color.white.opacity(S2ChromePillMetrics.subtitleOpacity)
-            )
-        }
+        AnyShapeStyle(.secondary)
     }
 }
 
@@ -3191,11 +3193,12 @@ struct S2TutorialOverlay: View {
                     onAcknowledge()
                 }
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.white)
+                // IC-120 A：写死白/黑废止——底取自适应主色、字取系统底色
+                // （反相配对：浅色黑底白字、深色白底黑字，卡内取定并登记）。
+                .foregroundStyle(Color(uiColor: .systemBackground))
                 .padding(.horizontal, 28)
                 .padding(.vertical, 10)
-                // IC-118 C（④）：蓝色强调改黑。
-                .background(Color.black, in: Capsule())
+                .background(Color.primary, in: Capsule())
             } else {
                 Button(L10n.text("s2.tutorial.skip")) {
                     onSkip()
@@ -3478,8 +3481,9 @@ struct S2CenterIndicatorView: View {
                         onUndo()
                     }
                     .font(.system(size: 15, weight: .semibold))
-                    // IC-118 C（④）：蓝色强调改黑。
-                    .foregroundStyle(Color.black)
+                    // IC-120 A（H53 纠偏）：撤回钮回到系统自适应
+                    //（118 C 写死黑被 H53 判不合格，深色模式应为白）。
+                    .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                     .padding(.horizontal, Self.horizontalPadding)
                     .frame(height: Self.containerHeight)
                     .contentShape(Rectangle())
@@ -3517,9 +3521,9 @@ struct S2CenterIndicatorView: View {
                     .font(.system(size: 15))
                     .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                     .lineLimit(1)
+                    // IC-120 A：分隔线随规则去写死白，交系统自适应分隔色（登记）。
                     Divider()
                         .frame(height: 22)
-                        .overlay(Color.white.opacity(0.35))
                     // 撤回钮的占位：真正可点的那个以 overlay 叠在外层，
                     // 这里只用等宽的隐形文本把版面撑出来。
                     Text(verbatim: L10n.text("s2.center.undo"))

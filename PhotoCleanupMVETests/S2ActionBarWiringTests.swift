@@ -595,7 +595,8 @@ final class S2ActionBarWiringTests: XCTestCase {
         // 画布字号
         XCTAssertEqual(S2ChromePillMetrics.titleFontSize, 15)
         XCTAssertEqual(S2ChromePillMetrics.subtitleFontSize, 11.5)
-        XCTAssertEqual(S2ChromePillMetrics.subtitleOpacity, 0.62, accuracy: 0.000_001)
+        // IC-120 A：副行白 62% 定值随自适应规则废止（subtitleOpacity 已删），
+        // 副行改系统次级色，无可断言的固定不透明度。
         XCTAssertEqual(S2ChromePillMetrics.bottomCapsuleIconPointSize, 17)
         XCTAssertEqual(S2ChromePillMetrics.bottomCapsuleTextFontSize, 15)
     }
