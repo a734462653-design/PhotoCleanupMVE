@@ -1499,6 +1499,12 @@ final class S2NativeZoomPageController: UIViewController,
         interfaceVisibility
     }
 
+    /// IC-115 v2：推迟中的呈现目标 V（`s > 1` 截图推迟应用期间记录在案，
+    /// 供诊断稳定判据核对目标态）；无推迟记录时为 nil。
+    var diagnosticDeferredInterfaceVisibility: S2InterfaceVisibility? {
+        pendingPresentationPage?.interfaceVisibility
+    }
+
     var diagnosticAssetLocalIdentifier: String {
         assetID
     }
@@ -3272,9 +3278,17 @@ final class S2NativePagerViewController: UIViewController,
         let zoomMatches = zoomState == .oneX
             ? abs(page.zoomScrollView.zoomScale - 1) <= 0.000_001
             : page.zoomScrollView.zoomScale > 1
+        // IC-115 v2（④ 依 v17 决策 20/40）：`s > 1` 期间截图的 V 呈现变更被
+        // 推迟应用（IC-104 C），页面侧 V 不落地属规格时序而非异常。Nx 稳定
+        // 判据按时序分段：页面侧即时一致（非截图路径，无推迟）或推迟记录
+        // 在案且携带目标态，二者其一即稳定；回 1x 后仍要求双侧收敛（原判据）。
+        let pageVisibilityMatches = zoomState == .nX
+            ? page.diagnosticInterfaceVisibility == visibility ||
+                page.diagnosticDeferredInterfaceVisibility == visibility
+            : page.diagnosticInterfaceVisibility == visibility
         if machine.interfaceVisibility == visibility,
            machine.zoomState == zoomState,
-           page.diagnosticInterfaceVisibility == visibility,
+           pageVisibilityMatches,
            !page.isPresentationTransitionActive,
            !page.isDoubleTapTransitionActive,
            zoomMatches {
@@ -4067,10 +4081,17 @@ final class S2GeometryDiagnosticsRun {
         let zoomMatches = zoomState == .oneX
             ? abs(page.zoomScrollView.zoomScale - 1) <= 0.000_001
             : page.zoomScrollView.zoomScale > 1
+        // IC-115 v2：与 `waitForDiagnosticStableState` 的分段判据保持一致。
+        let pageVisibilityMatches = zoomState == .nX
+            ? page.diagnosticInterfaceVisibility == visibility ||
+                page.diagnosticDeferredInterfaceVisibility == visibility
+            : page.diagnosticInterfaceVisibility == visibility
         return [
             "状态机V匹配=\(machine.interfaceVisibility == visibility)",
             "状态机缩放态匹配=\(machine.zoomState == zoomState)",
-            "页面V匹配=\(page.diagnosticInterfaceVisibility == visibility)",
+            "页面V匹配=\(pageVisibilityMatches)",
+            "页面V=\(page.diagnosticInterfaceVisibility)",
+            "推迟目标V=\(String(describing: page.diagnosticDeferredInterfaceVisibility))",
             "显隐转场中=\(page.isPresentationTransitionActive)",
             "双击转场中=\(page.isDoubleTapTransitionActive)",
             "原生缩放匹配=\(zoomMatches)",
