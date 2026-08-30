@@ -1241,7 +1241,19 @@ struct S2View: View {
         }
     }
 
+    /// IC-117：同一排玻璃件放入 `GlassEffectContainer`（iOS 26）；17–25 原样。
+    @ViewBuilder
     private var topBar: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer {
+                topBarRow
+            }
+        } else {
+            topBarRow
+        }
+    }
+
+    private var topBarRow: some View {
         S2TopBarLayout {
             Button {
                 guard let payload = machine.makeExitPayload() else {
@@ -1362,11 +1374,9 @@ struct S2View: View {
                 )
             ))
             .font(.system(size: S2ChromePillMetrics.subtitleFontSize))
-            // 画布 ④：副行为白 62%。深色 chrome 上以 `.white` 加不透明度表达，
-            // 不用 `.secondary`——后者随环境浮动，对不上画布定值。
-            .foregroundStyle(
-                Color.white.opacity(S2ChromePillMetrics.subtitleOpacity)
-            )
+            // 画布 ④：副行为白 62%（回落配方定值）。IC-117：iOS 26 玻璃上
+            // 改交系统 vibrancy（`.secondary`），不自设透明度。
+            .foregroundStyle(S2ChromeForeground.onGlassSecondary)
             .lineLimit(1)
         }
         .task(id: machine.currentAssetID) {
@@ -1404,7 +1414,20 @@ struct S2View: View {
     /// 此时中位留空、只余左右圆钮。
     ///
     /// `S2ActionBarPresentation` 的启用/禁用规则与触控带高度零语义变化，只换容器样式。
+    ///
+    /// IC-117：同一排玻璃件放入 `GlassEffectContainer`（iOS 26）；17–25 原样。
+    @ViewBuilder
     private var actionBar: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer {
+                actionBarRow
+            }
+        } else {
+            actionBarRow
+        }
+    }
+
+    private var actionBarRow: some View {
         let presentation = S2ActionBarPresentation(machine: machine)
         // IC-111 A：左右圆钮贴边距 16，中胶囊被两侧 Spacer 夹住 ⟹ 宽随内容且
         // 水平居中（画布 ④）。无最近相簿时两个 Spacer 合并，只余左右圆钮。
@@ -2290,6 +2313,30 @@ enum S2ChromeGlass {
     static let outerStrokeWidth: CGFloat = 0.5
 }
 
+/// IC-117：玻璃件上的图标/文字前景。iOS 26 交系统前景样式（vibrancy），
+/// 不自设透明度；iOS 17–25 沿用画布定值（回落配方是深色 chrome，需固定白）。
+enum S2ChromeForeground {
+    /// 正文级前景（回落：纯白）。
+    static var onGlassPrimary: AnyShapeStyle {
+        if #available(iOS 26.0, *) {
+            return AnyShapeStyle(.primary)
+        } else {
+            return AnyShapeStyle(Color.white)
+        }
+    }
+
+    /// 副行级前景（回落：白 62%，画布 ④ 定值）。
+    static var onGlassSecondary: AnyShapeStyle {
+        if #available(iOS 26.0, *) {
+            return AnyShapeStyle(.secondary)
+        } else {
+            return AnyShapeStyle(
+                Color.white.opacity(S2ChromePillMetrics.subtitleOpacity)
+            )
+        }
+    }
+}
+
 /// IC-114 A3（⑤b ④）：chrome 显隐过渡。
 ///
 /// V 显→隐：整体 scale 1 → 1.06 + 高斯模糊 0 → 8pt + opacity → 0，约 200ms easeOut；
@@ -2343,11 +2390,32 @@ private extension View {
             .accessibilityHidden(!isVisible)
     }
 
-    /// IC-112 A：统一的玻璃底 + 高光描边。顶/底六件与中央指示容器共用同一族。
+    /// IC-112 A / IC-117：统一的玻璃族。顶/底六件与中央指示容器共用同一族
+    /// （IC-113 A 起教程提示卡亦并入，全族一套值不许各件各调）。
+    ///
+    /// IC-117（IC-114 A 第 1/2 条）：iOS 26+ 改系统原生 `glassEffect`（按形状；
+    /// 圆钮由调用方传 `interactive: true` 加交互变体），手写白底/描边/高光在该
+    /// 分支不再挂——质感交给系统。iOS 17–25 经 `#available` 回落现行配方。
+    @ViewBuilder
+    func s2ChromeGlassBackground<S: InsettableShape>(
+        in shape: S,
+        interactive: Bool = false
+    ) -> some View {
+        if #available(iOS 26.0, *) {
+            glassEffect(
+                interactive ? .regular.interactive() : .regular,
+                in: shape
+            )
+        } else {
+            s2LegacyChromeGlassBackground(in: shape)
+        }
+    }
+
+    /// iOS 17–25 回落配方（IC-112 A 定稿、IC-113 A 调透，本卡零改动）。
     ///
     /// 截图显示态下 chrome 背后为黑、透光弱是预期；**描边不依赖背景**，
     /// 故那种情形下描边仍在（卡内明示要求）。
-    func s2ChromeGlassBackground<S: InsettableShape>(
+    func s2LegacyChromeGlassBackground<S: InsettableShape>(
         in shape: S
     ) -> some View {
         background {
@@ -2375,7 +2443,7 @@ private extension View {
         }
     }
 
-    /// 玻璃圆钮：定尺 Ø44 + 玻璃底 + 高光描边。
+    /// 玻璃圆钮：定尺 Ø44 + 玻璃底。IC-117：圆钮走交互变体（iOS 26）。
     func s2ChromeCircleGlass() -> some View {
         font(
             .system(
@@ -2387,7 +2455,7 @@ private extension View {
             width: S2ChromePillMetrics.pillHeight,
             height: S2ChromePillMetrics.pillHeight
         )
-        .s2ChromeGlassBackground(in: Circle())
+        .s2ChromeGlassBackground(in: Circle(), interactive: true)
     }
 
     /// 玻璃跑道胶囊：宽随内容 + 定高 44 + 同族玻璃底与描边。
@@ -3415,13 +3483,14 @@ struct S2CenterIndicatorView: View {
             HStack(spacing: 10) {
                 Image(systemName: "rectangle.stack.badge.plus")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
+                    // IC-117：iOS 26 玻璃上交系统 vibrancy；回落纯白。
+                    .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                 Text(verbatim: L10n.text(
                     "s2.center.added_to_album",
                     replacing: ["album": albumName]
                 ))
                 .font(.system(size: 15))
-                .foregroundStyle(.white)
+                .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                 .lineLimit(1)
                 Divider()
                     .frame(height: 22)
@@ -3438,7 +3507,7 @@ struct S2CenterIndicatorView: View {
                 replacing: ["album": albumName]
             ))
             .font(.system(size: 15))
-            .foregroundStyle(.white)
+            .foregroundStyle(S2ChromeForeground.onGlassPrimary)
             .lineLimit(1)
         }
     }
@@ -3451,7 +3520,7 @@ struct S2CenterIndicatorView: View {
         .overlay {
             Image(systemName: "trash.fill")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(S2ChromeForeground.onGlassPrimary)
         }
     }
 }
