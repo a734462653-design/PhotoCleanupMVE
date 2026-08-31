@@ -562,6 +562,215 @@
         }
       }
     },
+    "s2.center.added_to_album" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已加入「{album}」"
+          }
+        }
+      }
+    },
+    "s2.center.removed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已从「{album}」移除"
+          }
+        }
+      }
+    },
+    "s2.center.undo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤回"
+          }
+        }
+      }
+    },
+    "s2.album_picker.new_album" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建相簿…"
+          }
+        }
+      }
+    },
+    "s2.album_picker.new_album.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建相簿"
+          }
+        }
+      }
+    },
+    "s2.album_picker.new_album.placeholder" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相簿名称"
+          }
+        }
+      }
+    },
+    "s2.album_picker.new_album.save" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储"
+          }
+        }
+      }
+    },
+    "s2.album_picker.count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张"
+          }
+        }
+      }
+    },
+    "s2.feedback.album_creation_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建相簿失败"
+          }
+        }
+      }
+    },
+    "s2.tutorial.done" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成"
+          }
+        }
+      }
+    },
+    "s2.tutorial.replay" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重看教程"
+          }
+        }
+      }
+    },
+    "s2.tutorial.skip" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳过"
+          }
+        }
+      }
+    },
+    "s2.tutorial.step1" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上滑标记要清理的照片"
+          }
+        }
+      }
+    },
+    "s2.tutorial.step2" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标记后可在缩略栏看到"
+          }
+        }
+      }
+    },
+    "s2.tutorial.step3" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向右划回刚才那张，中央会出现「已标记」"
+          }
+        }
+      }
+    },
+    "s2.tutorial.step4" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下滑撤回标记，中央的垃圾桶会消失"
+          }
+        }
+      }
+    },
+    "s2.tutorial.sheet_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "看一眼就好，点「取消」回来"
+          }
+        }
+      }
+    },
+    "s2.tutorial.step6" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整理完成后在这里确认删除"
+          }
+        }
+      }
+    },
+    "s2.tutorial.step5" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点这里打开相簿选择器看看"
+          }
+        }
+      }
+    },
     "s2.calibration.animation.enabled" : {
       "extractionState" : "manual",
       "localizations" : {

@@ -298,12 +298,35 @@ struct S2AlbumReference: Identifiable, Hashable {
     let name: String
 }
 
+/// IC-114 C：相簿选择器的一行。列表要显示键图、名称与数量，
+/// 但 `S2AlbumReference` 是持久化「最近相簿」用的最小模型，
+/// 不宜为了列表展示往里塞字段——故另立一个只服务于列表的类型。
+struct S2AlbumListItem: Identifiable, Equatable {
+    let album: S2AlbumReference
+    let assetCount: Int
+    /// 键图资产标识；相簿为空时为 nil，此时列表行显示占位底。
+    let keyAssetID: String?
+
+    var id: String {
+        album.id
+    }
+}
+
 struct S2AssetActionRequest: Equatable {
     let targetAssetID: String
 }
 
 struct S2AlbumActionRequest: Equatable {
     let targetAssetID: String
+    let album: S2AlbumReference
+}
+
+/// IC-113 B：最近一次**成功**加入相簿的记录。中央指示据此显示
+/// 「已加入「名」」并提供撤回；`id` 单调递增，供视图识别「又发生了一次」
+/// （同一资产重复加入同一相簿时，`assetID` 与 `album` 都不变）。
+struct S2AlbumAdditionRecord: Equatable {
+    let id: Int
+    let assetID: String
     let album: S2AlbumReference
 }
 
@@ -340,6 +363,8 @@ enum S2ActionBarButton: CaseIterable, Equatable, Hashable {
 enum S2FeedbackEventKind: Equatable {
     case favoriteWriteFailed
     case albumAdditionFailed
+    /// IC-114 C：新建相簿失败。沿用既有反馈通道，只多一个分支。
+    case albumCreationFailed
 }
 
 struct S2FeedbackEvent: Equatable, Identifiable {
@@ -603,6 +628,10 @@ final class S2StateMachine: ObservableObject {
 
     @Published private(set) var interfaceVisibility: S2InterfaceVisibility
     @Published private(set) var scale: CGFloat
+
+    /// IC-114 D（⑤a ④）：放大前的 `V`。`s` 由 1 进入 >1 时记下，
+    /// 回到 1 时据此恢复；不在放大中时为 nil。
+    private var visibilityBeforeZoom: S2InterfaceVisibility?
     @Published private(set) var viewportOffset: CGSize
     @Published private(set) var bottomStripState: S2BottomStripState = .idle
     @Published private(set) var sheetState: S2SheetState = .closed
@@ -634,6 +663,19 @@ final class S2StateMachine: ObservableObject {
     private var inFlightFavoriteRequest: S2AssetActionRequest?
     private var inFlightRecentAlbumRequest: S2AlbumActionRequest?
     private var inFlightAlbumPickerSelection: S2AlbumPickerSelection?
+
+    /// IC-113 B：最近一次成功加入相簿。撤回成功后清空。
+    @Published private(set) var lastAlbumAddition: S2AlbumAdditionRecord?
+    /// IC-118 D（⑤9 ④，会话内口径）：资产 → 本会话最近一次成功加入的相簿。
+    /// 内存记录、不持久化；撤回成功即清该张。**不查询历史相簿成员关系**
+    /// （明确范围外）——翻到本会话没加过的照片即无记录。
+    @Published private(set) var sessionAlbumAdditionsByAsset:
+        [String: S2AlbumReference] = [:]
+    private var albumAdditionCount = 0
+    /// 撤回（从相簿移除）是否在途。**不进 `inFlightActions`**——
+    /// 那个集合驱动操作条三按钮的启用规则，撤回钮不在其列，
+    /// 混进去会连带改变操作条语义（G284 要求手势与操作条语义不变）。
+    private(set) var isAlbumRemovalInFlight = false
 
     init?(
         entry: S2EntryContext,
@@ -778,20 +820,22 @@ final class S2StateMachine: ObservableObject {
             }
 
         case .doubleTapMainImage:
+            // IC-115（⑤a ④）：进入放大自动隐藏，退出恢复**进入前**的 V。
+            // 进入两行是确定的（无论从显示还是隐藏进入，落点都是隐藏 Nx）；
+            // 退出两行的落点取决于记录值，**不是原状态的函数**，
+            // 故与捏合行同样标 `conditional(.dynamic)`。
             switch origin {
             case .pageOutside:
                 return .unavailable
             case .state(.visibleOneXIdle):
-                return .available(.state(.visibleNxIdle))
+                return .available(.state(.hiddenNx))
             case .state(.visibleOneXStripDragging),
                  .state(.visibleNxStripDragging):
                 return .unavailable
             case .state(.hiddenOneX):
                 return .available(.state(.hiddenNx))
-            case .state(.visibleNxIdle):
-                return .available(.state(.visibleOneXIdle))
-            case .state(.hiddenNx):
-                return .available(.state(.hiddenOneX))
+            case .state(.visibleNxIdle), .state(.hiddenNx):
+                return .conditional(.dynamic)
             }
 
         case .pinchMainImage:
@@ -1089,7 +1133,7 @@ final class S2StateMachine: ObservableObject {
         }
 
         if zoomState == .nX {
-            scale = 1
+            setScale(1)
             imageRequestScale = 1
             viewportOffset = .zero
             requestImageAfterScaleSettled()
@@ -1113,7 +1157,7 @@ final class S2StateMachine: ObservableObject {
             return false
         }
 
-        scale = nextScale
+        setScale(nextScale)
         imageRequestScale = nextScale
         let fittedSize = oneXDisplaySize ?? S2Geometry.aspectFitSize(
             viewportSize: viewportSize,
@@ -1144,7 +1188,7 @@ final class S2StateMachine: ObservableObject {
         }
 
         if zoomState == .nX {
-            scale = 1
+            setScale(1)
             imageRequestScale = 1
             viewportOffset = .zero
             requestImageAfterScaleSettled()
@@ -1158,7 +1202,7 @@ final class S2StateMachine: ObservableObject {
         guard resolvedScale > 1 else {
             return false
         }
-        scale = resolvedScale
+        setScale(resolvedScale)
         imageRequestScale = resolvedScale
         viewportOffset = .zero
         requestImageAfterScaleSettled()
@@ -1192,7 +1236,14 @@ final class S2StateMachine: ObservableObject {
         let nextScale = min(pinchMaxScale(for: currentAssetID), max(1, scale))
         let nextViewportOffset = nextScale == 1 ? .zero : viewportOffset
         if self.scale != nextScale {
-            self.scale = nextScale
+            // IC-118 A：真机捏合的 `s` 走这里（scrollViewDidZoom 逐帧回报），
+            // 此前直写绕过了 `setScale`，⑤a 自动隐藏因此在捏合入口失效。
+            // 改道后仅当捏合在途才应用显隐规则：捏合结束后的回弹动画帧同样
+            // 经此回报，若也应用规则会在恢复 V 后又瞬时重隐藏一次（闪烁）。
+            setScale(
+                nextScale,
+                appliesZoomVisibilityRule: touchSequenceOwner == .pinch
+            )
         }
         if self.viewportOffset != nextViewportOffset {
             self.viewportOffset = nextViewportOffset
@@ -1215,7 +1266,8 @@ final class S2StateMachine: ObservableObject {
             viewportOffset: viewportOffset
         )
         if self.scale < parameters.zoomSnapBackThreshold {
-            self.scale = 1
+            // IC-118 A：改道 `setScale`——回 1 时恢复进入前 V（此刻捏合仍在途）。
+            setScale(1)
             self.viewportOffset = .zero
         }
         imageRequestScale = self.scale
@@ -1263,9 +1315,11 @@ final class S2StateMachine: ObservableObject {
               magnification > 0 else {
             return false
         }
-        scale = min(
-            pinchMaxScale(for: currentAssetID),
-            max(1, pinchStartScale * magnification)
+        setScale(
+            min(
+                pinchMaxScale(for: currentAssetID),
+                max(1, pinchStartScale * magnification)
+            )
         )
         if scale == 1 {
             viewportOffset = .zero
@@ -1289,7 +1343,7 @@ final class S2StateMachine: ObservableObject {
             return false
         }
         if scale < parameters.zoomSnapBackThreshold {
-            scale = 1
+            setScale(1)
             viewportOffset = .zero
         } else {
             viewportOffset = S2Geometry.clampedOffset(
@@ -1318,7 +1372,7 @@ final class S2StateMachine: ObservableObject {
               let pinchStartScale else {
             return false
         }
-        scale = pinchStartScale
+        setScale(pinchStartScale)
         viewportOffset = S2Geometry.clampedOffset(
             viewportOffset,
             viewportSize: viewportSize,
@@ -1629,6 +1683,11 @@ final class S2StateMachine: ObservableObject {
             // v15 未定项 16 定案：已包含与首次加入不区分，均走完整成功路径。
             setRecentAlbum(request.album)
             removeFromPendingAfterAlbumAddition(request.targetAssetID)
+            // IC-113 B：登记成功，供中央指示显示「已加入「名」」。
+            publishAlbumAddition(
+                assetID: request.targetAssetID,
+                album: request.album
+            )
             return true
         case .failure:
             publishFeedback(.albumAdditionFailed)
@@ -1690,6 +1749,11 @@ final class S2StateMachine: ObservableObject {
         case .success:
             setRecentAlbum(album)
             removeFromPendingAfterAlbumAddition(request.targetAssetID)
+            // IC-113 B：选择器路径同样登记成功。
+            publishAlbumAddition(
+                assetID: request.targetAssetID,
+                album: album
+            )
             if sheetState == .presented,
                albumPickerTargetAssetID == request.targetAssetID {
                 sheetState = .closed
@@ -1808,7 +1872,7 @@ final class S2StateMachine: ObservableObject {
         imageRequestStrategy = configuration.imageRequestStrategy
         let currentPinchMaxScale = pinchMaxScale(for: currentAssetID)
         if scale > currentPinchMaxScale {
-            scale = currentPinchMaxScale
+            setScale(currentPinchMaxScale)
             imageRequestScale = scale
         }
         return true
@@ -1867,7 +1931,7 @@ final class S2StateMachine: ObservableObject {
     }
 
     private func resetZoomAfterPhotoChange() {
-        scale = 1
+        setScale(1)
         imageRequestScale = 1
         viewportOffset = .zero
     }
@@ -1896,6 +1960,119 @@ final class S2StateMachine: ObservableObject {
         if recentAlbum?.id == album.id {
             setRecentAlbum(nil)
         }
+    }
+
+    /// IC-113 B：中央指示「撤回」——把资产从刚加入的相簿移除。
+    /// 三段式与相簿加入同构：取请求 → 登记在途 → 结果。
+    ///
+    /// IC-118 D：改按**当前张**的会话记录出请求（原先取全局最近一次加入；
+    /// 指示本就只在当前张显示，按张化后翻回任何加过的照片都能撤回）。
+    func makeAlbumRemovalRequest() -> S2AlbumActionRequest? {
+        guard let album = sessionAlbumAdditionsByAsset[currentAssetID],
+              !isAlbumRemovalInFlight,
+              orderedAssetIDs.contains(currentAssetID) else {
+            return nil
+        }
+        return S2AlbumActionRequest(
+            targetAssetID: currentAssetID,
+            album: album
+        )
+    }
+
+    @discardableResult
+    func beginAlbumRemoval(_ request: S2AlbumActionRequest) -> Bool {
+        guard !isAlbumRemovalInFlight,
+              orderedAssetIDs.contains(request.targetAssetID) else {
+            return false
+        }
+        isAlbumRemovalInFlight = true
+        return true
+    }
+
+    /// 成功即清掉加入记录——中央指示随之失去「已加入」这一态。
+    /// 失败沿用既有反馈通道，不新增分支。
+    @discardableResult
+    func completeAlbumRemoval(
+        _ request: S2AlbumActionRequest,
+        succeeded: Bool
+    ) -> Bool {
+        isAlbumRemovalInFlight = false
+        guard succeeded else {
+            publishFeedback(.albumAdditionFailed)
+            return false
+        }
+        if lastAlbumAddition?.assetID == request.targetAssetID,
+           lastAlbumAddition?.album == request.album {
+            lastAlbumAddition = nil
+        }
+        // IC-118 D：撤回成功清**该张**的会话记录，别张记录不受影响。
+        if sessionAlbumAdditionsByAsset[request.targetAssetID] ==
+            request.album {
+            sessionAlbumAdditionsByAsset[request.targetAssetID] = nil
+        }
+        return true
+    }
+
+    /// IC-114 C：新建相簿失败——只发一次反馈，不改任何状态。
+    func reportAlbumCreationFailure() {
+        publishFeedback(.albumCreationFailed)
+    }
+
+    private func publishAlbumAddition(
+        assetID: String,
+        album: S2AlbumReference
+    ) {
+        albumAdditionCount += 1
+        lastAlbumAddition = S2AlbumAdditionRecord(
+            id: albumAdditionCount,
+            assetID: assetID,
+            album: album
+        )
+        // IC-118 D：两条加入路径（中胶囊 / 选择器）都汇入本函数，
+        // 按张记录因此不可能漏登。
+        sessionAlbumAdditionsByAsset[assetID] = album
+    }
+
+    /// IC-114 D（⑤a ④）：**唯一的 `scale` 写入口**。
+    ///
+    /// 除构造时的初始赋值外，状态机内所有缩放写入都经此分派，
+    /// 「放大自动隐藏」因而不可能被旁路（B1 同族闸门）。
+    /// IC-118 A：原声称「只剩两处直写」漏了 `reportNativeViewport` 与
+    /// `finishNativePinch` 两处（真机捏合路径），已一并改道。
+    ///
+    /// 规则：
+    /// - `s` 由 1 进入 >1：记下进入前 `V`；若当时是显示态则自动置隐藏。
+    ///   进入时 `V` 已是隐藏 → 记录隐藏、无动作。
+    /// - 由 >1 回到 1：恢复进入前 `V`，并清空记录。
+    /// - 放大中的倍率变化（>1 → >1）：不触碰 `V`。
+    /// - `appliesZoomVisibilityRule == false`（仅供无手势在途的视口回声，
+    ///   如捏合回弹动画帧）：只写倍率，不触碰 `V` 与记录。
+    private func setScale(
+        _ newValue: CGFloat,
+        appliesZoomVisibilityRule: Bool = true
+    ) {
+        let previous = scale
+        scale = newValue
+        guard previous != newValue,
+              appliesZoomVisibilityRule else {
+            return
+        }
+        if previous == 1, newValue > 1 {
+            visibilityBeforeZoom = interfaceVisibility
+            if interfaceVisibility == .visible {
+                interfaceVisibility = .hidden
+            }
+        } else if previous > 1, newValue == 1 {
+            if let remembered = visibilityBeforeZoom {
+                interfaceVisibility = remembered
+            }
+            visibilityBeforeZoom = nil
+        }
+    }
+
+    /// 测试可见：当前记下的「进入前 V」。
+    var recordedVisibilityBeforeZoom: S2InterfaceVisibility? {
+        visibilityBeforeZoom
     }
 
     private func setRecentAlbum(_ album: S2AlbumReference?) {

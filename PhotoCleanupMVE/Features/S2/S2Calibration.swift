@@ -115,7 +115,7 @@ extension S2ResolvedParameters {
 struct S2CalibrationConfiguration: Codable, Equatable {
     /// IC-087：出厂值版本。持久化数据顶层写入 `schemaVersion`；加载时与本值不等即整套丢弃并删除条目。
     /// **纪律：任何改动 `factoryPlaceholder` 出厂值的卡必须同时递增本值。**
-    static let schemaVersion = 6
+    static let schemaVersion = 7
 
     var pinchMaxScaleFloor: Double
     var pinchMaxScaleCeiling: Double
@@ -872,72 +872,81 @@ struct S2OverlayLayoutSnapshot: Equatable {
 enum S2OverlayLayout {
     static let minimumTouchTarget: CGFloat = 44
     static let minimumSpacing: CGFloat = 8
+    /// 非 chrome 消费方的通用留白（主图待删角标、标定浮层）。chrome 自己走
+    /// `chromeHorizontalMargin`，两者本卡起分家。
     static let horizontalPadding: CGFloat = 8
-    static let topBarHeight: CGFloat = 48
-    static let topLeadingControlWidth: CGFloat = 88
     static let calibrationTopClearance: CGFloat = 108
 
-    // MARK: - IC-100 v2 R1/R2：底部竖向排布（自下而上 安全区 → 操作条 → 横栏）
+    // MARK: - IC-111 A：chrome 几何对齐 v18 画布（④ 2026-08-30 Lynn 拍板）
     //
-    // 以下三个是**登记制占位常量**（视觉稿前 ④ 可修订）：按 v16 回写决策 33 与
-    // 技术负责人 2026-08-28 系统录屏实测表落值，**不进 `S2CalibrationConfiguration`、
-    // 不上参数面板、`schemaVersion` 不动**（同 IC-091 `edgeTolerance` 先例）。
+    // 画布基准 393×852、安全区顶 59 / 底 34。以下为**登记制占位常量**，
+    // 不进 `S2CalibrationConfiguration`、不上参数面板。
+    //
+    // 取代 v17 的三个量：`topBarHeight = 48`（语义改为 3 + 44 = 47）、
+    // `actionBarVisibleBandHeight = 22`（**废止**——换装后可见带即 44 触控带本身，
+    // 该概念与 `chromeRowHeight` 重合，留着必然再次过时，故不改实而直接删）、
+    // `stripToActionVisibleBandSpacing = 30.7`（由 `stripToBottomRowSpacing = 24`
+    // 取代，锚点也从「可见图标带顶缘」改为「底排上缘」）。
+    // `topLeadingControlWidth = 88` 一并废止：左右已是 Ø44 圆钮，宽即行高。
 
-    /// 操作条**可见图标带**高。现行按钮是 `Label(标题, systemImage:)`、字体走 `.body`，
-    /// 可见带高由该文本样式的行高决定；默认动态字体（Large）下
-    /// `UIFont.preferredFont(forTextStyle: .body).lineHeight == 22`。
-    /// 本文件不引入 UIKit，故取该值为常量；真机观感由 H44 判。
-    /// 注意与系统工具条的纯图标带 24.3 pt 不同——我们的按钮是图标 + 文字。
-    static let actionBarVisibleBandHeight: CGFloat = 22
+    /// chrome 行高。圆钮直径与跑道胶囊高同取此值（画布 ④）。
+    static let chromeRowHeight: CGFloat = 44
 
-    /// 横栏底缘 → 操作条**可见图标带**顶缘的间距（系统实测 92 px @3x）。
-    static let stripToActionVisibleBandSpacing: CGFloat = 30.7
+    /// 顶排上缘距安全区顶（画布 ④）。
+    static let topRowTopInset: CGFloat = 3
+
+    /// 底排下缘距安全区底。画布 393×852 上底排上缘 y = 766、行高 44，
+    /// 故下缘距视口底 = 852 − 766 − 44 = 42；减去安全区底 34 得 8。
+    /// 锚安全区而非视口底，沿用 IC-100 v2 的选择，安全区变化时自适应。
+    static let bottomRowBottomInset: CGFloat = 8
+
+    /// chrome 左右边距（画布 ④）。
+    static let chromeHorizontalMargin: CGFloat = 16
+
+    /// 横栏底缘 → **底排上缘**的间距（画布 ④）。取代 v17 的 30.7。
+    static let stripToBottomRowSpacing: CGFloat = 24
+
+    /// 顶栏底缘距安全区顶 = 3 + 44 = 47。名称沿用（消费方与截图等距带公式
+    /// 均按「顶部栏底缘」语义读它），只换取值来源：由画布两量推导，不再是裸 48。
+    static let topBarHeight: CGFloat = topRowTopInset + chromeRowHeight
 
     /// 反馈 toast 底缘 → 底部横栏顶缘的间距（IC-100 v2 R2）。
     static let toastToStripSpacing: CGFloat = 8
 
-    /// 操作条 **44 pt 触控带**中心距视口底。
+    /// 底排**下缘**距视口底 = 安全区底 + 8（画布 ④，常规机型 34 + 8 = 42）。
     ///
-    /// IC-100 v1 实测①：把系统的「可见图标带中心距屏底 52.7 pt」直接套到我们的
-    /// 44 pt 触控带上，会让触控带 `maxY` 越过安全区 3.3 pt，与既有门禁 L2 冲突。
-    /// v2 定案（④）改锚安全区：中心 = 安全区底 + 半个触控带（常规机型 34 + 22 = 56.0），
-    /// L2 与 L4 同时满足，且安全区变化时自适应。与系统的 3.3 pt 观感差为有意为之。
-    static func actionBandCenterFromViewportBottom(
-        safeAreaBottom: CGFloat
-    ) -> CGFloat {
-        max(0, safeAreaBottom) + minimumTouchTarget / 2
-    }
-
-    /// 操作条触控带顶缘距视口底（常规机型 78.0）。
-    static func actionBandTopFromViewportBottom(
-        safeAreaBottom: CGFloat
-    ) -> CGFloat {
-        actionBandCenterFromViewportBottom(safeAreaBottom: safeAreaBottom) +
-            minimumTouchTarget / 2
-    }
-
-    /// 操作条触控带底缘距视口底（= 安全区底，即「避让安全区贴近底缘」）。
+    /// v17 此处为「= 安全区底」（触控带贴安全区上沿）；画布把整排抬起 8 pt。
+    /// 门禁 L2（底部元素不进入主屏幕指示条区域）由此更宽松地满足。
     static func actionBandBottomFromViewportBottom(
         safeAreaBottom: CGFloat
     ) -> CGFloat {
-        actionBandCenterFromViewportBottom(safeAreaBottom: safeAreaBottom) -
-            minimumTouchTarget / 2
+        max(0, safeAreaBottom) + bottomRowBottomInset
     }
 
-    /// 操作条**可见图标带**顶缘距视口底（常规机型 56.0 + 11 = 67.0）。
-    static func actionVisibleBandTopFromViewportBottom(
+    /// 底排**上缘**距视口底（常规机型 42 + 44 = 86，对应画布 y = 766）。
+    static func actionBandTopFromViewportBottom(
         safeAreaBottom: CGFloat
     ) -> CGFloat {
-        actionBandCenterFromViewportBottom(safeAreaBottom: safeAreaBottom) +
-            actionBarVisibleBandHeight / 2
+        actionBandBottomFromViewportBottom(safeAreaBottom: safeAreaBottom) +
+            chromeRowHeight
     }
 
-    /// 横栏底缘距视口底 = 可见图标带顶缘 + 30.7（常规机型 67.0 + 30.7 = 97.7）。
+    /// 底排中心距视口底（常规机型 64.0）。
+    static func actionBandCenterFromViewportBottom(
+        safeAreaBottom: CGFloat
+    ) -> CGFloat {
+        actionBandBottomFromViewportBottom(safeAreaBottom: safeAreaBottom) +
+            chromeRowHeight / 2
+    }
+
+    /// 横栏底缘距视口底 = **底排上缘** + 24（常规机型 86 + 24 = 110，
+    /// 对应画布 y = 742）。v17 为「可见图标带顶缘 + 30.7 = 97.7」，
+    /// 锚点与取值本卡一并由画布取代。
     static func stripBottomFromViewportBottom(
         safeAreaBottom: CGFloat
     ) -> CGFloat {
-        actionVisibleBandTopFromViewportBottom(safeAreaBottom: safeAreaBottom) +
-            stripToActionVisibleBandSpacing
+        actionBandTopFromViewportBottom(safeAreaBottom: safeAreaBottom) +
+            stripToBottomRowSpacing
     }
 
     /// 横栏顶缘距视口底 = 横栏底缘 + 横栏带高。
@@ -1007,29 +1016,35 @@ enum S2OverlayLayout {
             width: safeFrame.width,
             height: stripHeight
         )
-        let actionCount = showsRecentAlbumAction ? 3 : 2
-        let actionContentWidth = max(
-            0,
-            safeFrame.width - 2 * horizontalPadding
-        )
-        let actionWidth = max(
-            minimumTouchTarget,
-            (actionContentWidth -
-                CGFloat(actionCount - 1) * minimumSpacing) /
-                CGFloat(actionCount)
-        )
+        // IC-111 A：底排改画布几何——左右 Ø44 圆钮、边距 16，中间胶囊占两圆之间的
+        // 可用跨度。v17 的**等宽三列**假设本卡废止（IC-110 报告曾登记该背离）。
+        // 数组顺序保持「自左向右，横栏在末」，既有下标语义不变。
         let actionY = physicalSize.height - actionBandTopFromViewportBottom(
             safeAreaBottom: safeAreaInsets.bottom
         )
-        let actionFrames = (0..<actionCount).map { index in
-            CGRect(
-                x: safeFrame.minX + horizontalPadding +
-                    CGFloat(index) * (actionWidth + minimumSpacing),
+        let leadingAction = CGRect(
+            x: safeFrame.minX + chromeHorizontalMargin,
+            y: actionY,
+            width: chromeRowHeight,
+            height: chromeRowHeight
+        )
+        let trailingAction = CGRect(
+            x: safeFrame.maxX - chromeHorizontalMargin - chromeRowHeight,
+            y: actionY,
+            width: chromeRowHeight,
+            height: chromeRowHeight
+        )
+        var actionFrames = [leadingAction]
+        if showsRecentAlbumAction {
+            let capsuleX = leadingAction.maxX + minimumSpacing
+            actionFrames.append(CGRect(
+                x: capsuleX,
                 y: actionY,
-                width: actionWidth,
-                height: minimumTouchTarget
-            )
+                width: max(0, trailingAction.minX - minimumSpacing - capsuleX),
+                height: chromeRowHeight
+            ))
         }
+        actionFrames.append(trailingAction)
         let bottomFrames = actionFrames + [stripFrame]
 
         var clickableFrames = [topFrames[0], topFrames[2]] +
@@ -1065,20 +1080,28 @@ enum S2OverlayLayout {
     }
 
     /// IC-075（v15 回写决策 30）：顶部信息区只有三件——返回、序号、确认页入口。
-    /// 返回占左侧 `topLeadingControlWidth`，确认页入口占右侧同宽，序号居中占剩余
-    /// 宽度；三者高度均为 `topBarHeight`。返回值顺序：[返回, 序号, 确认页入口]。
+    /// IC-111 A 起：返回与确认页入口各占 Ø`chromeRowHeight` 圆钮、边距
+    /// `chromeHorizontalMargin`，序号胶囊占两者之间的可用跨度；三者高度均为
+    /// `chromeRowHeight`。返回值顺序：[返回, 序号, 确认页入口]。
+    /// IC-111 A：顶排三件套改画布几何——左右为 Ø44 圆钮、边距 16，
+    /// 中间跑道胶囊占两圆之间的可用跨度。行整体下移 `topRowTopInset`（3）。
+    ///
+    /// 胶囊**渲染**宽随内容且水平居中；因两侧边距对称，居中于该跨度即居中于屏。
+    /// 本模型给出的是**可用区域**而非渲染宽度——这是有意的边界，
+    /// 渲染侧只会更窄、不会更宽，重叠类门禁仍然成立。
     static func topElementFrames(in bounds: CGRect) -> [CGRect] {
+        let rowY = bounds.minY + topRowTopInset
         let leadingFrame = CGRect(
-            x: bounds.minX + horizontalPadding,
-            y: bounds.minY,
-            width: topLeadingControlWidth,
-            height: topBarHeight
+            x: bounds.minX + chromeHorizontalMargin,
+            y: rowY,
+            width: chromeRowHeight,
+            height: chromeRowHeight
         )
         let trailingFrame = CGRect(
-            x: bounds.maxX - horizontalPadding - topLeadingControlWidth,
-            y: bounds.minY,
-            width: topLeadingControlWidth,
-            height: topBarHeight
+            x: bounds.maxX - chromeHorizontalMargin - chromeRowHeight,
+            y: rowY,
+            width: chromeRowHeight,
+            height: chromeRowHeight
         )
         let positionX = leadingFrame.maxX + minimumSpacing
         let positionWidth = max(
@@ -1087,9 +1110,9 @@ enum S2OverlayLayout {
         )
         let positionFrame = CGRect(
             x: positionX,
-            y: bounds.minY,
+            y: rowY,
             width: positionWidth,
-            height: topBarHeight
+            height: chromeRowHeight
         )
         return [leadingFrame, positionFrame, trailingFrame]
     }
@@ -1133,9 +1156,10 @@ struct S2ViewportMetrics: Equatable {
 
 enum S2ViewportLayout {
     /// IC-104 C（④ 2026-08-29，待入 Decision_log 第 134 条）：截图内缩改锚上下
-    /// chrome，三段间距相等，等距值 = `S2OverlayLayout.stripToActionVisibleBandSpacing`
-    /// （30.7 pt）。`safeAreaInsets` 是为此新增的输入，默认 `.zero`——既有调用点
-    /// 语义不变，只有需要真实 chrome 几何的调用方才传。
+    /// chrome，三段间距相等。`safeAreaInsets` 是为此新增的输入，默认 `.zero`——
+    /// 既有调用点语义不变，只有需要真实 chrome 几何的调用方才传。
+    /// IC-111 A：**公式一字未动**，只因 `topBarHeight` 由 48 改为 47（3 + 44）、
+    /// 横栏位置改由画布推导，`g` 与带高随之自动重推。
     static func metrics(
         physicalSize: CGSize,
         presentationState: S2ViewportPresentationState,
@@ -1253,8 +1277,8 @@ enum S2ViewportLayout {
     ///
     /// 带顶缘 = `0.15 × 视口高`（旧位，v3 不变）；带底缘 = 横栏**视觉**顶缘 − `g`
     /// （v4 由触控锚改为视觉锚），即视觉底距 = 顶距。
-    /// 「横栏—操作条」间距（`stripToActionVisibleBandSpacing` = 30.7）
-    /// **不参与等距**（④ Lynn 明确选定），本卡对 chrome 布局零改动。
+    /// 「横栏—底排」间距（IC-111 A 起为 `stripToBottomRowSpacing` = 24）
+    /// **不参与等距**（④ Lynn 明确选定）。
     static func screenshotBandHeight(
         physicalSize: CGSize,
         safeAreaInsets: S2OverlaySafeAreaInsets,

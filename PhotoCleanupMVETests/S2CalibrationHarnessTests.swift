@@ -360,12 +360,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
 
     // IC-087 G171：持久化数据的 `schemaVersion` 与代码版本不等（或缺失）→ 整套丢弃、取出厂值并删除条目；
     // 相等 → 按现行逐字段解码。IC-104 C：删除 fitInsetRatio，出厂值集合变更，版本 4 → 6
-    // （5 已被冻结的 feature/ic-092-nx-window-follow 链占用），导出文本含 schemaVersion=6。
+    // （5 已被冻结的 feature/ic-092-nx-window-follow 链占用），导出文本含 schemaVersion=7
+    // （IC-111 A 随 chrome 画布几何由 6 升 7；7 未被任何链占用）。
     func testIC087G171SchemaVersionGateDiscardsStaleStoreAndDeletesEntry() throws {
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 7)
         XCTAssertTrue(
             S2CalibrationConfiguration.factoryPlaceholder.exportText()
-                .contains("schemaVersion=6")
+                .contains("schemaVersion=7")
         )
 
         // 1) schemaVersion=3（IC-087 旧版）且 ceiling=10 → 出厂 40，且存储被删除。
@@ -380,9 +381,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(stale.saveCount, 0)
         XCTAssertFalse(staleModel.persistenceFailed)
 
-        // 2) schemaVersion=6 且 ceiling=12 → 12，存储保留。
+        // 2) schemaVersion=7 且 ceiling=12 → 12，存储保留。
         let current = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 6, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 7, ceiling: 12)
         )
         let currentModel = S2CalibrationModel(persistence: current)
         XCTAssertEqual(currentModel.configuration.pinchMaxScaleCeiling, 12)
@@ -398,13 +399,13 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertNil(legacy.data)
         XCTAssertEqual(legacy.deleteCount, 1)
 
-        // 保存后的数据顶层带 schemaVersion=6，重新加载得同一配置。
+        // 保存后的数据顶层带 schemaVersion=7，重新加载得同一配置。
         XCTAssertTrue(currentModel.update { $0.pinchMaxScaleCeiling = 15 })
         let saved = try XCTUnwrap(current.data)
         let object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: saved) as? [String: Any]
         )
-        XCTAssertEqual(object["schemaVersion"] as? Int, 6)
+        XCTAssertEqual(object["schemaVersion"] as? Int, 7)
         XCTAssertEqual(
             S2CalibrationModel(persistence: current).configuration,
             currentModel.configuration
@@ -428,7 +429,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             L10n.text("s2.calibration.restore_factory").hasPrefix("【未定项 21 占位】")
         )
         let store = InMemoryCalibrationPersistence(
-            data: try makeStoredCalibration(schemaVersion: 6, ceiling: 12)
+            data: try makeStoredCalibration(schemaVersion: 7, ceiling: 12)
         )
         let model = S2CalibrationModel(persistence: store)
         XCTAssertEqual(model.configuration.pinchMaxScaleCeiling, 12)
@@ -629,7 +630,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let viewport = overlayPhysicalSize
         let aspect = viewport.width / viewport.height
         let insets = overlaySafeAreaInsets
-        let spacing = S2OverlayLayout.stripToActionVisibleBandSpacing
+        let spacing = S2OverlayLayout.stripToBottomRowSpacing
         let stripHeight = max(
             CGFloat(configuration.bottomStripCurrentItemSize),
             CGFloat(configuration.bottomStripNeighborItemHeight)
@@ -704,21 +705,21 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(photoTop - topBarBottom, g, accuracy: 0.000_001)
         XCTAssertEqual(stripTop - photoBottom, g, accuracy: 0.000_001)
 
-        // 「横栏—操作条」间距维持 30.7，不参与等距（④ Lynn 明确选定）
+        // IC-111 A：「横栏—底排」间距改为 24，仍**不参与等距**（④ Lynn 选定）
         let stripBottom = viewport.height -
             S2OverlayLayout.stripBottomFromViewportBottom(
                 safeAreaBottom: insets.bottom
             )
-        let actionVisibleBandTop = viewport.height -
-            S2OverlayLayout.actionVisibleBandTopFromViewportBottom(
+        let bottomRowTop = viewport.height -
+            S2OverlayLayout.actionBandTopFromViewportBottom(
                 safeAreaBottom: insets.bottom
             )
         XCTAssertEqual(
-            actionVisibleBandTop - stripBottom,
+            bottomRowTop - stripBottom,
             spacing,
             accuracy: 0.000_001
         )
-        XCTAssertEqual(spacing, 30.7, accuracy: 0.000_001)
+        XCTAssertEqual(spacing, 24, accuracy: 0.000_001)
 
         // 水平仍是等比适配 + 居中
         XCTAssertEqual(
@@ -1178,6 +1179,123 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertFalse(probe.reportText.isEmpty)
     }
 
+    // IC-110 A：双击过渡时长为常量 ≈300ms（60fps 下约 18 帧），
+    // 且不再跟随可调参数 `animationDurationMilliseconds`（出厂 180）。
+    func testIC110ADoubleTapDurationIsThreeHundredMillisecondConstant() {
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.durationSeconds,
+            0.3,
+            accuracy: 0.000_001
+        )
+        // 与可调参数解耦：出厂 180ms 不等于本常量。
+        XCTAssertNotEqual(
+            S2CalibrationConfiguration.factoryPlaceholder
+                .animationDurationMilliseconds / 1_000,
+            S2DoubleTapTransitionTiming.durationSeconds,
+            accuracy: 0.000_001
+        )
+        // 60fps 下的整帧数：0.3 × 60 = 18。
+        XCTAssertEqual(
+            Int((S2DoubleTapTransitionTiming.durationSeconds * 60).rounded()),
+            18
+        )
+    }
+
+    // IC-110 A：缓动端点恒等——端点语义零变化的形式保证。
+    func testIC110AEasingPreservesEndpoints() {
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.easedProgress(0),
+            0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.easedProgress(1),
+            1,
+            accuracy: 0.000_001
+        )
+        // 越界输入按端点钳制，不外溢。
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.easedProgress(-0.5),
+            0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.easedProgress(1.5),
+            1,
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-110 A：缓动严格单调递增——过渡过程不得回退。
+    func testIC110AEasingIsStrictlyMonotonic() {
+        var previous = S2DoubleTapTransitionTiming.easedProgress(0)
+        for step in 1...200 {
+            let value = S2DoubleTapTransitionTiming.easedProgress(
+                CGFloat(step) / 200
+            )
+            XCTAssertGreaterThan(
+                value,
+                previous,
+                "步 \(step) 处缓动回退：\(previous) → \(value)"
+            )
+            previous = value
+        }
+    }
+
+    // IC-110 A：曲线为对称 S 形（UIKit `curveEaseInOut` 控制点 0.42/0.58），
+    // 前半慢于线性、后半快于线性，中点恒为 0.5——据此与线性区分开。
+    func testIC110AEasingIsSymmetricEaseInOutCurve() {
+        XCTAssertEqual(
+            S2DoubleTapTransitionTiming.easedProgress(0.5),
+            0.5,
+            accuracy: 0.001
+        )
+        // 前半慢：缓动值低于线性值
+        XCTAssertLessThan(
+            S2DoubleTapTransitionTiming.easedProgress(0.25),
+            0.25
+        )
+        // 后半快：缓动值高于线性值
+        XCTAssertGreaterThan(
+            S2DoubleTapTransitionTiming.easedProgress(0.75),
+            0.75
+        )
+        // 关于中点对称：eased(x) + eased(1-x) == 1
+        for step in 0...100 {
+            let x = CGFloat(step) / 100
+            XCTAssertEqual(
+                S2DoubleTapTransitionTiming.easedProgress(x) +
+                    S2DoubleTapTransitionTiming.easedProgress(1 - x),
+                1,
+                accuracy: 0.001,
+                "x=\(x) 处不对称"
+            )
+        }
+    }
+
+    // IC-110 A：缓动值恒在 [0,1] 内，且**不退化**为 smoothstep——
+    // x(t) 非线性，若求解器没真正反解 x(t)，曲线会塌成 smoothstep(x)。
+    func testIC110AEasingStaysBoundedAndDoesNotDegenerateToSmoothstep() {
+        // y 与 x 同为贝塞尔分量，故用「单调 + 端点 + 对称」之外再加一条：
+        // 缓动值恒落在 [0, 1] 内，且与 smoothstep 近似但不相等
+        // （x(t) 非线性，故 y(x) ≠ smoothstep(x)）。
+        var sawDifference = false
+        for step in 0...100 {
+            let x = CGFloat(step) / 100
+            let eased = S2DoubleTapTransitionTiming.easedProgress(x)
+            XCTAssertGreaterThanOrEqual(eased, 0)
+            XCTAssertLessThanOrEqual(eased, 1)
+            let smoothstep = x * x * (3 - 2 * x)
+            if abs(eased - smoothstep) > 0.01 {
+                sawDifference = true
+            }
+        }
+        XCTAssertTrue(
+            sawDifference,
+            "曲线退化成 smoothstep，说明求解器未真正反解 x(t)"
+        )
+    }
+
     // L1：顶部三个元素全部从系统顶部安全区下沿开始布局（IC-075 起为三件）。
     func testL1TopOverlayFramesRespectSafeAreaTop() {
         let snapshot = overlaySnapshot()
@@ -1235,8 +1353,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 S2OverlayLayout.minimumTouchTarget
             )
         }
-        XCTAssertEqual(frames[0].width, S2OverlayLayout.topLeadingControlWidth)
-        XCTAssertEqual(frames[2].width, S2OverlayLayout.topLeadingControlWidth)
+        // IC-111 A：左右已是 Ø`chromeRowHeight` 圆钮（原 88 宽控件废止）
+        XCTAssertEqual(frames[0].width, S2OverlayLayout.chromeRowHeight)
+        XCTAssertEqual(frames[2].width, S2OverlayLayout.chromeRowHeight)
         XCTAssertLessThan(frames[0].maxX, frames[1].minX)
         XCTAssertLessThan(frames[1].maxX, frames[2].minX)
 
@@ -1462,6 +1581,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // IC-088 合并：+ IC-081 乘数 1 项 = 43，导出 43 + 4 = 47；IC-087：schemaVersion=3。
     // IC-090 R1：+ bottomStripCornerRadius 1 项 = 44，导出 44 + 4 = 48；schemaVersion=4。
     // IC-104 C：− fitInsetRatio 1 项 = 43，导出 43 + 4 = 47；出厂值集合变了，schemaVersion=6。
+    // IC-111 A：**字段数不变（仍 43）**，只因 chrome 布局常量整体改按 v18 画布
+    // 而升 schemaVersion=7——见报告「schemaVersion 说明」。
     func testIC074G96ConfigurationHasThirtyThreeFieldsAndV15Export() {
         let fieldNames = Mirror(
             reflecting: S2CalibrationConfiguration.factoryPlaceholder
@@ -1473,8 +1594,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
             .split(separator: "\n")
             .map(String.init)
         XCTAssertEqual(lines.count, 43 + 4)
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)
-        XCTAssertTrue(lines.contains("schemaVersion=6"))
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 7)
+        XCTAssertTrue(lines.contains("schemaVersion=7"))
         XCTAssertTrue(lines.contains(
             "taskID=IC-20260821-074-parameter-layer-v15-alignment"
         ))
@@ -2833,11 +2954,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // E2 再替代断言：双击识别成功时不产生单击显隐动作。
+    //
+    // IC-115（⑤a ④）改写：「双击后 V 不变」不再成立（进入放大会自动隐藏），
+    // 原来的写法已无法区分「单击动作误触发」与「⑤a 的自动隐藏」。
+    // 改用**隐藏态起手**来区分：若单击显隐动作误触发，V 会变成显示；
+    // 而按 ⑤a，自隐藏态进入放大只记录隐藏、不改 V。本用例的本意
+    //（双击不产生单击动作）因此得以保留且更锋利。
     func testE2ReplacementDoubleTapSuppressesSingleTapAction() {
-        let machine = makeMachine()
+        let machine = makeMachine(interfaceVisibility: .hidden)
         let controller = makeNativePagerController(machine: machine)
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        let initialVisibility = machine.interfaceVisibility
 
         XCTAssertEqual(page.doubleTapRecognizer.numberOfTapsRequired, 2)
         XCTAssertTrue(page.applyRecognizedDoubleTap(
@@ -2848,7 +2974,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             metrics().doubleTapTargetScale,
             accuracy: 0.000_001
         )
-        XCTAssertEqual(machine.interfaceVisibility, initialVisibility)
+        XCTAssertEqual(
+            machine.interfaceVisibility,
+            .hidden,
+            "单击显隐动作若被误触发，V 会变成显示"
+        )
     }
 
     // E3 再替代断言：两次分别被 UIKit 裁决的单击各生效一次。
@@ -3507,6 +3637,115 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.presentationGeometryCommitCount, 1)
     }
 
+    // IC-118 B：⑤a 下截图双击退出——进入时被推迟的隐藏态目标已被退出恢复
+    // 取代，退出过渡必须瞄准恢复后 V（显示态）对应的 1x 几何，过期推迟清算。
+    // 帧序列复现：改动前 targetFrame 取自推迟目标（隐藏全幅），过渡落基准位后
+    // 显示态等距带另行落一步，即 H52 第 6 项的「1x 卡一下」。
+    func testIC118BDoubleTapExitTargetsRestoredVisibilityGeometry() {
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let visible = metrics(visibility: .visible)
+        let center = CGPoint(
+            x: physicalSize.width / 2,
+            y: physicalSize.height / 2
+        )
+
+        // 进入：⑤a 自动隐藏；隐藏态页在 Nx 被推迟
+        XCTAssertTrue(page.applyRecognizedDoubleTap(at: center))
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        XCTAssertTrue(page.hasDeferredPresentation)
+
+        var exitTransition: S2DoubleTapTransition?
+        page.doubleTapTransitionObserver = { event in
+            if case let .started(transition) = event,
+               !transition.isEnteringNx {
+                exitTransition = transition
+            }
+        }
+
+        // 退出：V 恢复显示；过渡落点 = 显示态等距带，过期推迟被清算
+        XCTAssertTrue(page.applyRecognizedDoubleTap(at: center))
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        let transition = tryUnwrap(exitTransition)
+        XCTAssertEqual(transition.targetFrame.size, visible.oneXDisplaySize)
+        XCTAssertEqual(
+            transition.targetFrame.midY,
+            visible.oneXDisplayCenterY,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            transition.targetCornerRadius,
+            visible.oneXCornerRadius
+        )
+        XCTAssertFalse(page.hasDeferredPresentation)
+        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
+        XCTAssertEqual(page.cornerRadius, visible.oneXCornerRadius)
+        XCTAssertFalse(page.isPresentationTransitionActive)
+    }
+
+    // IC-118 B：清算语义——与当前 V 一致的推迟保留（G6 语义不变），
+    // 不一致的丢弃。
+    func testIC118BReconcileKeepsMatchingDropsStaleDeferredTarget() {
+        let machine = makeMachine(scale: 2)
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        XCTAssertTrue(machine.handleSingleTap())
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        XCTAssertTrue(page.hasDeferredPresentation)
+
+        // 与推迟目标一致 → 保留
+        page.reconcileDeferredPresentation(currentVisibility: .hidden)
+        XCTAssertTrue(page.hasDeferredPresentation)
+
+        // 与推迟目标不一致 → 丢弃
+        page.reconcileDeferredPresentation(currentVisibility: .visible)
+        XCTAssertFalse(page.hasDeferredPresentation)
+    }
+
+    // IC-118 B：捏合归位路径同一清算（A 修复让捏合入口产生推迟记录后，
+    // 归位若不清算会先提交过期几何再跳回）。真机 scroll view 接线本身
+    // 夹具未覆盖，由 H53 兜底。
+    func testIC118BPinchReturnDropsStaleDeferredTarget() {
+        let machine = makeMachine()
+        let controller = makeNativePagerController(machine: machine)
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let visible = metrics(visibility: .visible)
+
+        XCTAssertTrue(machine.beginPinch())
+        machine.reportNativeViewport(scale: 2, viewportOffset: .zero)
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: .factoryPlaceholder
+        )
+        XCTAssertTrue(page.hasDeferredPresentation)
+
+        controller.finishNativePinch(
+            on: page,
+            scale: 1,
+            displacement: 0.5,
+            peakVelocity: 1,
+            duration: 0.2
+        )
+        XCTAssertEqual(machine.zoomState, .oneX)
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertFalse(page.hasDeferredPresentation)
+        XCTAssertEqual(page.fittedSize, visible.oneXDisplaySize)
+        XCTAssertEqual(page.presentationGeometryCommitCount, 0)
+    }
+
     // IC-063 G7：内外滚动视图运行时均明确关闭安全区自动 inset。
     func testIC063G7AllPhotoScrollViewsReadBackNeverAdjustment() {
         let machine = makeMachine()
@@ -3640,12 +3879,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
 
     // G3 替代断言：原生双击不执行也不撤销任何单击显隐动作。
+    //
+    // IC-115（⑤a ④）改写：同 E2，改用隐藏态起手来区分「单击动作」与
+    // 「⑤a 的自动隐藏」。识别器接线断言一字未动。
     func testG3ReplacementNativeDoubleTapDoesNotApplyOrRevertSingleTap() {
         let targetScale = metrics().doubleTapTargetScale
-        let machine = makeMachine()
+        let machine = makeMachine(interfaceVisibility: .hidden)
         let controller = makeNativePagerController(machine: machine)
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
-        let initialVisibility = machine.interfaceVisibility
 
         XCTAssertEqual(page.singleTapRecognizer.numberOfTapsRequired, 1)
         XCTAssertEqual(page.doubleTapRecognizer.numberOfTapsRequired, 2)
@@ -3657,7 +3898,11 @@ final class S2CalibrationHarnessTests: XCTestCase {
             at: CGPoint(x: 150, y: 300)
         ))
         XCTAssertEqual(machine.scale, targetScale, accuracy: 0.000_001)
-        XCTAssertEqual(machine.interfaceVisibility, initialVisibility)
+        XCTAssertEqual(
+            machine.interfaceVisibility,
+            .hidden,
+            "单击显隐动作若被误触发或被撤销，V 会变成显示"
+        )
     }
 
     // G4 替代断言：两次由 UIKit 分别裁决的单击切换两次且不改倍率。
@@ -4215,8 +4460,12 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.doubleTapRecognizer.numberOfTapsRequired, 2)
     }
 
-    // K2：双击全程不切换显隐，最终倍率等于分类后的目标倍数。
-    func testK2DoubleTapNeverChangesInterfaceVisibilityAndReachesTargetScale() {
+    // K2：双击进入放大自动隐藏、退出恢复进入前的显隐，且到达分类后的目标倍数。
+    //
+    // IC-115（⑤a ④）按新契约改写并随语义更名（原名
+    // `testK2DoubleTapNeverChangesInterfaceVisibilityAndReachesTargetScale`
+    // 载的是「双击永不改变显隐」的旧契约）。「到达目标倍率」这一半未变。
+    func testK2DoubleTapAutoHidesOnEnterAndRestoresOnExit() {
         for visibility in [
             S2InterfaceVisibility.visible,
             S2InterfaceVisibility.hidden
@@ -4232,29 +4481,32 @@ final class S2CalibrationHarnessTests: XCTestCase {
             XCTAssertTrue(page.applyRecognizedDoubleTap(
                 at: CGPoint(x: 150, y: 300)
             ))
-            XCTAssertEqual(machine.interfaceVisibility, visibility)
+            // 进入放大后一律隐藏：自显示进入是「自动隐藏」，
+            // 自隐藏进入是「记录隐藏、无额外动作」。
+            XCTAssertEqual(
+                machine.interfaceVisibility,
+                .hidden,
+                "进入放大后 V 一律为隐藏"
+            )
+            XCTAssertEqual(
+                machine.recordedVisibilityBeforeZoom,
+                visibility,
+                "记录的应是进入前的 V"
+            )
+            // 目标倍率这一半未变
             XCTAssertEqual(machine.scale, targetScale, accuracy: 0.000_001)
 
-            let exitMachine = makeMachine(
-                scale: targetScale,
-                interfaceVisibility: visibility
-            )
-            let exitController = makeNativePagerController(
-                machine: exitMachine
-            )
-            let exitPage = tryUnwrap(
-                exitController.pageControllers[exitMachine.currentIndex]
-            )
-            XCTAssertTrue(exitMachine.handleSingleTap())
-            let visibilityBeforeExit = exitMachine.interfaceVisibility
-            XCTAssertTrue(exitPage.applyRecognizedDoubleTap(
+            // 退出：恢复进入前的 V
+            XCTAssertTrue(page.applyRecognizedDoubleTap(
                 at: CGPoint(x: 150, y: 300)
             ))
+            XCTAssertEqual(machine.scale, 1)
             XCTAssertEqual(
-                exitMachine.interfaceVisibility,
-                visibilityBeforeExit
+                machine.interfaceVisibility,
+                visibility,
+                "退出应恢复进入前的 V"
             )
-            XCTAssertEqual(exitMachine.scale, 1)
+            XCTAssertNil(machine.recordedVisibilityBeforeZoom)
         }
     }
 
@@ -8855,8 +9107,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     }
     // MARK: - IC-100 v2：底部竖向排布互换（安全区 → 操作条 → 横栏）
 
-    /// IC-100 B1：触控带中心锚在安全区上沿 + 22；操作条同时满足 L2 与 L4；
-    /// 横栏在操作条上方，底缘按推导式落在「可见图标带顶缘 + 30.7」。
+    /// IC-100 B1（IC-111 A 改写）：底排中心锚在「安全区上沿 + 8 + 22」；
+    /// 同时满足 L2 与 L4；横栏在底排上方，底缘按推导式落在「底排上缘 + 24」。
     func testIC100B1BottomOverlayOrderAndAnchors() {
         let snapshot = overlaySnapshot()
         let frames = snapshot.bottomElementFrames
@@ -8867,14 +9119,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let safeBottom = viewportBottom - overlaySafeAreaInsets.bottom
 
         for frame in actionFrames {
-            // 触控带中心距视口底 = 安全区底 + 半个触控带（常规机型 34 + 22 = 56.0）
+            // IC-111 A：底排中心距视口底 = 安全区底 + 8 + 半个 chrome 行
+            // （常规机型 34 + 8 + 22 = 64.0）
             XCTAssertEqual(
                 viewportBottom - frame.midY,
                 overlaySafeAreaInsets.bottom +
-                    S2OverlayLayout.minimumTouchTarget / 2,
+                    S2OverlayLayout.bottomRowBottomInset +
+                    S2OverlayLayout.chromeRowHeight / 2,
                 accuracy: 0.5
             )
-            XCTAssertEqual(viewportBottom - frame.midY, 56, accuracy: 0.5)
+            XCTAssertEqual(viewportBottom - frame.midY, 64, accuracy: 0.5)
             // L2 / L4 判据原样，一行未改
             XCTAssertLessThanOrEqual(frame.maxY, safeBottom)
             XCTAssertGreaterThanOrEqual(
@@ -8891,7 +9145,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertLessThan(stripFrame.maxY, actionFrames[0].minY)
         XCTAssertLessThanOrEqual(stripFrame.maxY, safeBottom)
 
-        // 横栏底缘距视口底 = 可见图标带顶缘 + 30.7（常规机型 67.0 + 30.7 = 97.7）
+        // IC-111 A：横栏底缘距视口底 = 底排上缘 + 24（常规机型 86 + 24 = 110）
         XCTAssertEqual(
             viewportBottom - stripFrame.maxY,
             S2OverlayLayout.stripBottomFromViewportBottom(
@@ -8899,7 +9153,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
             ),
             accuracy: 1
         )
-        XCTAssertEqual(viewportBottom - stripFrame.maxY, 97.7, accuracy: 1)
+        XCTAssertEqual(viewportBottom - stripFrame.maxY, 110, accuracy: 1)
 
         // 触控带顶缘与横栏底缘之间的净空（卡内要求 ≥ 15 pt）
         XCTAssertGreaterThanOrEqual(
@@ -8929,22 +9183,24 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let viewportBottom = overlayPhysicalSize.height
         let safeBottom = viewportBottom - tallInsets.bottom
 
+        // IC-111 A：底排中心 = 安全区底 + 8 + 22（tall 机型 60 + 30 = 90）
         XCTAssertEqual(
             viewportBottom - actionFrame.midY,
-            tallInsets.bottom + S2OverlayLayout.minimumTouchTarget / 2,
+            tallInsets.bottom + S2OverlayLayout.bottomRowBottomInset +
+                S2OverlayLayout.chromeRowHeight / 2,
             accuracy: 0.5
         )
-        XCTAssertEqual(viewportBottom - actionFrame.midY, 82, accuracy: 0.5)
+        XCTAssertEqual(viewportBottom - actionFrame.midY, 90, accuracy: 0.5)
         for frame in frames {
             XCTAssertLessThanOrEqual(frame.maxY, safeBottom)
         }
-        // 两间距语义保持：横栏底缘仍是「可见带顶缘 + 30.7」
+        // 间距语义保持：横栏底缘仍是「底排上缘 + 24」
         XCTAssertEqual(
             viewportBottom - stripFrame.maxY -
-                S2OverlayLayout.actionVisibleBandTopFromViewportBottom(
+                S2OverlayLayout.actionBandTopFromViewportBottom(
                     safeAreaBottom: tallInsets.bottom
                 ),
-            S2OverlayLayout.stripToActionVisibleBandSpacing,
+            S2OverlayLayout.stripToBottomRowSpacing,
             accuracy: 0.000_001
         )
     }
@@ -9033,15 +9289,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
             ),
             accuracy: 0.000_001
         )
-        // 「操作条避让安全区贴近底缘」＝触控带底缘恰为安全区上沿
+        // IC-111 A：底排下缘 = 安全区底 + 8（画布把整排抬起，L2 更宽松地满足）
         XCTAssertEqual(
             S2OverlayLayout.actionBandBottomFromViewportBottom(
                 safeAreaBottom: safeBottom
             ),
-            safeBottom,
+            safeBottom + S2OverlayLayout.bottomRowBottomInset,
             accuracy: 0.000_001
         )
-        // 推导式自洽：顶 − 底 = 触控带高；可见带顶 − 中心 = 半个可见带
+        // 推导式自洽：上缘 − 下缘 = chrome 行高；中心恰在两者之间
         XCTAssertEqual(
             S2OverlayLayout.actionBandTopFromViewportBottom(
                 safeAreaBottom: safeBottom
@@ -9049,17 +9305,17 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 S2OverlayLayout.actionBandBottomFromViewportBottom(
                     safeAreaBottom: safeBottom
                 ),
-            S2OverlayLayout.minimumTouchTarget,
+            S2OverlayLayout.chromeRowHeight,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
-            S2OverlayLayout.actionVisibleBandTopFromViewportBottom(
+            S2OverlayLayout.actionBandCenterFromViewportBottom(
                 safeAreaBottom: safeBottom
             ) -
-                S2OverlayLayout.actionBandCenterFromViewportBottom(
+                S2OverlayLayout.actionBandBottomFromViewportBottom(
                     safeAreaBottom: safeBottom
                 ),
-            S2OverlayLayout.actionBarVisibleBandHeight / 2,
+            S2OverlayLayout.chromeRowHeight / 2,
             accuracy: 0.000_001
         )
     }
@@ -10526,7 +10782,7 @@ extension S2CalibrationHarnessTests {
             Double(S2BottomStripSystemReference.cornerRadius),
             accuracy: 0.000_000_001
         )
-        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 6)
+        XCTAssertEqual(S2CalibrationConfiguration.schemaVersion, 7)
 
         let metrics = tryUnwrap(configuration.resolvedParameters).bottomStripMetrics
         XCTAssertEqual(
@@ -10574,7 +10830,7 @@ extension S2CalibrationHarnessTests {
         var json = try XCTUnwrap(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
-        XCTAssertEqual(json["schemaVersion"] as? Int, 6)
+        XCTAssertEqual(json["schemaVersion"] as? Int, 7)
         json.removeValue(forKey: "bottomStripCornerRadius")
         let legacy = try JSONSerialization.data(withJSONObject: json)
         let migrated = try JSONDecoder().decode(

@@ -96,6 +96,8 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
     var imageLoadStateRegistry: S2ImageLoadStateRegistry? = nil
     /// IC-108 B：双击丝滑度探针。nil = 关闭 = 埋点零开销。
     var doubleTapProbe: S2DoubleTapSmoothnessProbeCoordinator? = nil
+    /// IC-111 B：标记残影协调器。nil ⟹ 不放残影（几何诊断等宿主可不接）。
+    var markAfterimages: S2MarkAfterimageCoordinator? = nil
     /// IC-079 R2：按索引提供任意页内容，供分页控制器在滚动中按需创建页。
     var pageContentProvider: ((Int) -> S2NativePageContent?)? = nil
 
@@ -114,6 +116,8 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
         transitionDiagnosticsCoordinator.attach(controller)
         controller.imageLoadStateRegistry = imageLoadStateRegistry
         controller.doubleTapProbe = doubleTapProbe
+        controller.markAfterimages = markAfterimages
+        controller.installAlbumAfterimageHook()
         let photoWriteCountBefore = transitionDiagnosticsCoordinator
             .photoGeometryWriteCount
         // IC-095 R1：本次重进是否落笔任何几何，取录制窗口内几何写入总数的差值。
@@ -940,6 +944,363 @@ final class S2SingleTapGestureRecognizer: UITapGestureRecognizer {
     }
 }
 
+// IC-110 A：双击缩放过渡的时长与缓动。上游 ④ 定案「≈300ms、缓动接近系统」，
+// IC-108 探针①已实证零丢帧满 60fps，故性能假设推翻、只改观感参数。
+// 两者均为**常量**：不入 `S2CalibrationConfiguration`、不上参数面板、
+// `schemaVersion` 不动（同 IC-091 `edgeTolerance`、IC-108 B 探针开关先例）。
+enum S2DoubleTapTransitionTiming {
+    /// 过渡时长。60fps 下约 18 帧，与 H47 复测的帧数预期一致。
+    static let durationSeconds: TimeInterval = 0.3
+
+    /// UIKit `curveEaseInOut` 的控制点。以三次贝塞尔原样求值，
+    /// 而非近似式——「接近系统」按系统曲线本身理解。
+    static let controlPoint1 = CGPoint(x: 0.42, y: 0)
+    static let controlPoint2 = CGPoint(x: 0.58, y: 1)
+
+    /// 线性进度 → 缓动后进度。端点恒等（0→0、1→1），故端点语义零变化。
+    static func easedProgress(_ progress: CGFloat) -> CGFloat {
+        let x = min(1, max(0, progress))
+        if x <= 0 || x >= 1 {
+            return x
+        }
+        return bezierValue(at: solveCurveTime(for: x))
+    }
+
+    // x(t) 的多项式系数：x(t) = ((ax·t + bx)·t + cx)·t
+    private static let cx = 3 * controlPoint1.x
+    private static let bx = 3 * (controlPoint2.x - controlPoint1.x) - cx
+    private static let ax = 1 - cx - bx
+
+    // y(t) 同构
+    private static let cy = 3 * controlPoint1.y
+    private static let by = 3 * (controlPoint2.y - controlPoint1.y) - cy
+    private static let ay = 1 - cy - by
+
+    private static func curveX(at t: CGFloat) -> CGFloat {
+        ((ax * t + bx) * t + cx) * t
+    }
+
+    private static func curveXSlope(at t: CGFloat) -> CGFloat {
+        (3 * ax * t + 2 * bx) * t + cx
+    }
+
+    private static func bezierValue(at t: CGFloat) -> CGFloat {
+        ((ay * t + by) * t + cy) * t
+    }
+
+    /// 先牛顿迭代；斜率过小或越界时退回二分，保证单调有界收敛。
+    private static func solveCurveTime(for x: CGFloat) -> CGFloat {
+        var t = x
+        for _ in 0..<8 {
+            let error = curveX(at: t) - x
+            if abs(error) < 0.000_001 {
+                return t
+            }
+            let slope = curveXSlope(at: t)
+            if abs(slope) < 0.000_001 {
+                break
+            }
+            let next = t - error / slope
+            if next < 0 || next > 1 {
+                break
+            }
+            t = next
+        }
+        var lower: CGFloat = 0
+        var upper: CGFloat = 1
+        t = x
+        while upper - lower > 0.000_001 {
+            let value = curveX(at: t)
+            if abs(value - x) < 0.000_001 {
+                return t
+            }
+            if value < x {
+                lower = t
+            } else {
+                upper = t
+            }
+            t = (upper + lower) / 2
+        }
+        return t
+    }
+}
+
+// MARK: - IC-111 B：标记残影飞入右上垃圾桶
+
+/// 残影的飞行参数与几何。**纯常量 + 纯函数**：不入 `S2CalibrationConfiguration`、
+/// 不上参数面板、`schemaVersion` 不受影响；几何可被单测直接复算。
+///
+/// 与 IC-110 C 的区别不只是落点：那版由 SwiftUI `keyframeAnimator` 逐帧推进，
+/// H47 判为「跟卡机了一样」。本版整条位移/缩放/淡出交给 `CAAnimation` 族，
+/// 主线程不参与逐帧（陷阱 6）。
+enum S2MarkAfterimageFlight {
+    /// 总时长。卡内区间 300–340 ms，取中位 320 ms。
+    static let durationSeconds: CFTimeInterval = 0.32
+
+    /// 落点缩放与透明度（画布 ④）。
+    static let startScale: CGFloat = 1
+    static let endScale: CGFloat = 0.18
+    static let startOpacity: Float = 0.85
+    static let endOpacity: Float = 0
+
+    /// 控制点相对「落点与主图右缘中较靠右者」再向右外推的量，
+    /// 制造「先横后纵」的甩入感。
+    static let controlOvershoot: CGFloat = 28
+
+    /// 二次贝塞尔控制点：横坐标推到右外侧、纵坐标取**起点**高度。
+    /// 于是曲线离开起点时近乎水平向右甩出，再上扬收进落点，
+    /// 外鼓点落在主图右上外侧——即卡内「控制点在主图右上外侧」。
+    static func controlPoint(
+        from: CGPoint,
+        to: CGPoint,
+        photoMaxX: CGFloat
+    ) -> CGPoint {
+        CGPoint(
+            x: max(to.x, photoMaxX) + controlOvershoot,
+            y: from.y
+        )
+    }
+
+    /// 弧线上的点。端点恒等：0 → from，1 → to。
+    static func point(
+        from: CGPoint,
+        to: CGPoint,
+        photoMaxX: CGFloat,
+        progress: CGFloat
+    ) -> CGPoint {
+        let t = min(1, max(0, progress))
+        let control = controlPoint(from: from, to: to, photoMaxX: photoMaxX)
+        let inverse = 1 - t
+        return CGPoint(
+            x: inverse * inverse * from.x +
+                2 * inverse * t * control.x +
+                t * t * to.x,
+            y: inverse * inverse * from.y +
+                2 * inverse * t * control.y +
+                t * t * to.y
+        )
+    }
+
+    static func path(
+        from: CGPoint,
+        to: CGPoint,
+        photoMaxX: CGFloat
+    ) -> CGPath {
+        let path = CGMutablePath()
+        path.move(to: from)
+        path.addQuadCurve(
+            to: to,
+            control: controlPoint(from: from, to: to, photoMaxX: photoMaxX)
+        )
+        return path
+    }
+
+    /// 右上垃圾桶圆钮中心（视口坐标）。**与 chrome 渲染共用
+    /// `S2OverlayLayout.topElementFrames`**，不另起一套真相。
+    static func trashCenter(
+        viewportSize: CGSize,
+        safeAreaTop: CGFloat
+    ) -> CGPoint {
+        let bounds = CGRect(
+            x: 0,
+            y: safeAreaTop,
+            width: viewportSize.width,
+            height: S2OverlayLayout.topBarHeight
+        )
+        let frames = S2OverlayLayout.topElementFrames(in: bounds)
+        guard frames.count == 3 else {
+            return CGPoint(x: viewportSize.width, y: safeAreaTop)
+        }
+        return CGPoint(x: frames[2].midX, y: frames[2].midY)
+    }
+}
+
+/// IC-111 C：加入相簿残影的飞行参数与几何。与 B 同一套机制、同一 spring 家族，
+/// 只在路径方向（向下弧线）与落点（底部中胶囊）上不同。
+enum S2AlbumAfterimageFlight {
+    /// 总时长。卡内区间 280–320 ms，取中位 300 ms。
+    static let durationSeconds: CFTimeInterval = 0.3
+
+    static let endScale: CGFloat = 0.15
+    static let startOpacity: Float = 0.85
+    static let endOpacity: Float = 0
+
+    /// 弧线下垂系数：控制点自弦中点向**屏幕下方**推的比例。
+    static let arcDropRatio: CGFloat = 0.28
+
+    /// 二次贝塞尔控制点：弦中点再向下推，得到卡内的「向下弧线」。
+    static func controlPoint(from: CGPoint, to: CGPoint) -> CGPoint {
+        let midpoint = CGPoint(
+            x: (from.x + to.x) / 2,
+            y: (from.y + to.y) / 2
+        )
+        let chordLength = hypot(to.x - from.x, to.y - from.y)
+        return CGPoint(
+            x: midpoint.x,
+            y: midpoint.y + chordLength * arcDropRatio
+        )
+    }
+
+    /// 弧线上的点。端点恒等：0 → from，1 → to。
+    static func point(
+        from: CGPoint,
+        to: CGPoint,
+        progress: CGFloat
+    ) -> CGPoint {
+        let t = min(1, max(0, progress))
+        let control = controlPoint(from: from, to: to)
+        let inverse = 1 - t
+        return CGPoint(
+            x: inverse * inverse * from.x +
+                2 * inverse * t * control.x +
+                t * t * to.x,
+            y: inverse * inverse * from.y +
+                2 * inverse * t * control.y +
+                t * t * to.y
+        )
+    }
+
+    static func path(from: CGPoint, to: CGPoint) -> CGPath {
+        let path = CGMutablePath()
+        path.move(to: from)
+        path.addQuadCurve(to: to, control: controlPoint(from: from, to: to))
+        return path
+    }
+
+    /// 底部中胶囊中心（视口坐标）。与 `S2OverlayLayout.snapshot` 的底排构造
+    /// **同一套表达式**：左右各 Ø`chromeRowHeight` 圆钮贴 `chromeHorizontalMargin`，
+    /// 胶囊占两者之间、各留 `minimumSpacing`。
+    static func bottomCapsuleCenter(
+        viewportSize: CGSize,
+        safeAreaInsets: S2OverlaySafeAreaInsets
+    ) -> CGPoint {
+        let minX = safeAreaInsets.leading
+        let maxX = viewportSize.width - safeAreaInsets.trailing
+        let leadingMaxX = minX + S2OverlayLayout.chromeHorizontalMargin +
+            S2OverlayLayout.chromeRowHeight
+        let trailingMinX = maxX - S2OverlayLayout.chromeHorizontalMargin -
+            S2OverlayLayout.chromeRowHeight
+        let capsuleMinX = leadingMaxX + S2OverlayLayout.minimumSpacing
+        let capsuleMaxX = trailingMinX - S2OverlayLayout.minimumSpacing
+        let centerY = viewportSize.height -
+            S2OverlayLayout.actionBandCenterFromViewportBottom(
+                safeAreaBottom: safeAreaInsets.bottom
+            )
+        return CGPoint(
+            x: (capsuleMinX + capsuleMaxX) / 2,
+            y: centerY
+        )
+    }
+}
+
+/// IC-111 C：中胶囊入场（淡入 + 上浮）的参数。首次经选择器换新相簿时先播它，
+/// 播完才允许残影起飞（④ 时序规则）。
+enum S2AlbumCapsuleEntrance {
+    /// 入场时长（卡内 ④）。
+    static let durationSeconds: TimeInterval = 0.12
+    /// 上浮距离（卡内 ④）。
+    static let rise: CGFloat = 8
+}
+
+/// IC-111 B：残影协调器。只做「在途计数」与「落点通知」，不碰几何也不碰动画。
+///
+/// 落点通知是 chrome 侧垃圾桶回弹与角标滚动的**唯一**触发源——
+/// 卡内要求两者与落点**同帧**，故角标显示值要压到落点才跟上模型值。
+final class S2MarkAfterimageCoordinator: ObservableObject {
+    /// 在途残影数。卡内允许多枚并发，**不设上限**（IC-110 C 的 3 枚上限
+    /// 随该版实现一并废止，本卡未要求）。
+    @Published private(set) var inFlightCount = 0
+
+    /// 落点计数。每落一枚 +1。
+    @Published private(set) var landedTick = 0
+
+    func willLaunch() {
+        inFlightCount += 1
+    }
+
+    func didLand() {
+        inFlightCount = max(0, inFlightCount - 1)
+        landedTick += 1
+    }
+
+    // MARK: IC-111 C：加入相簿残影
+
+    /// 由 pager 安装的起飞入口。chrome 侧（SwiftUI）请求起飞时调它——
+    /// 快照与 `CAAnimation` 都在 UIKit 侧，与 B 同一套机制。
+    var launchAlbumAfterimage: (() -> Void)?
+
+    /// 加入相簿残影的落点计数，触发中胶囊回弹。与 B 的 `landedTick` 分开，
+    /// 两种残影可同屏并存、互不阻塞。
+    @Published private(set) var albumLandedTick = 0
+
+    func albumDidLand() {
+        albumLandedTick += 1
+    }
+}
+
+/// IC-111 B：残影图层动画器。整段位移/缩放/淡出交给渲染层，
+/// 主线程只在起飞与收口各参与一次。
+enum S2MarkAfterimagePresenter {
+    /// IC-111 B/C 共用。两种残影（标记飞垃圾桶、加入相簿飞中胶囊）只在
+    /// 路径与参数上不同，机制完全同一套：路径走 `CAKeyframeAnimation`，
+    /// 缩放与淡出各一条 `CABasicAnimation`，主线程不逐帧参与。
+    static func launch(
+        snapshot: UIView,
+        in container: UIView,
+        from: CGPoint,
+        to: CGPoint,
+        path: CGPath,
+        duration: CFTimeInterval,
+        endScale: CGFloat,
+        startOpacity: Float,
+        endOpacity: Float,
+        keyPrefix: String,
+        onLanded: @escaping () -> Void
+    ) {
+        snapshot.center = from
+        snapshot.isUserInteractionEnabled = false
+        container.addSubview(snapshot)
+
+        let layer = snapshot.layer
+
+        let position = CAKeyframeAnimation(keyPath: "position")
+        position.path = path
+        position.duration = duration
+        // 卡内：位移 easeIn
+        position.timingFunction = CAMediaTimingFunction(name: .easeIn)
+
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = 1
+        scale.toValue = endScale
+        scale.duration = duration
+        scale.timingFunction = CAMediaTimingFunction(name: .easeIn)
+
+        let opacity = CABasicAnimation(keyPath: "opacity")
+        opacity.fromValue = startOpacity
+        opacity.toValue = endOpacity
+        opacity.duration = duration
+        // 卡内：淡出 linear
+        opacity.timingFunction = CAMediaTimingFunction(name: .linear)
+
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak snapshot] in
+            // 陷阱 8：动画就挂在这一层，收口时把这一层整个摘掉，不留残余。
+            snapshot?.layer.removeAllAnimations()
+            snapshot?.removeFromSuperview()
+            onLanded()
+        }
+        // 先把模型值落到终态，再叠动画：动画结束即模型态，无需
+        // `isRemovedOnCompletion = false` 撑住末帧，也就没有残留层要清。
+        layer.position = to
+        layer.opacity = endOpacity
+        layer.transform = CATransform3DMakeScale(endScale, endScale, 1)
+        layer.add(position, forKey: keyPrefix + ".position")
+        layer.add(scale, forKey: keyPrefix + ".scale")
+        layer.add(opacity, forKey: keyPrefix + ".opacity")
+        CATransaction.commit()
+    }
+}
+
 struct S2DoubleTapTransition: Equatable {
     let sourceFrame: CGRect
     let targetFrame: CGRect
@@ -1136,6 +1497,12 @@ final class S2NativeZoomPageController: UIViewController,
 
     var diagnosticInterfaceVisibility: S2InterfaceVisibility {
         interfaceVisibility
+    }
+
+    /// IC-115 v2：推迟中的呈现目标 V（`s > 1` 截图推迟应用期间记录在案，
+    /// 供诊断稳定判据核对目标态）；无推迟记录时为 nil。
+    var diagnosticDeferredInterfaceVisibility: S2InterfaceVisibility? {
+        pendingPresentationPage?.interfaceVisibility
     }
 
     var diagnosticAssetLocalIdentifier: String {
@@ -1437,7 +1804,8 @@ final class S2NativeZoomPageController: UIViewController,
         enteringNx: Bool,
         targetScale: CGFloat,
         at focusPoint: CGPoint,
-        configuration: S2CalibrationConfiguration
+        configuration: S2CalibrationConfiguration,
+        durationOverrideSeconds: TimeInterval? = nil
     ) -> Bool {
         guard !isDoubleTapTransitionActive,
               !isPresentationTransitionActive,
@@ -1452,6 +1820,7 @@ final class S2NativeZoomPageController: UIViewController,
         )
         let targetFrame: CGRect
         let targetCornerRadius: CGFloat
+        var exitUsedDeferredTarget = false
         if enteringNx {
             guard let target = zoomScrollView.doubleTapTarget(
                 scale: targetScale,
@@ -1463,7 +1832,11 @@ final class S2NativeZoomPageController: UIViewController,
             targetCornerRadius = 0
             doubleTapTargetPage = nil
         } else {
+            // IC-118 B：调用方须先经 `reconcileDeferredPresentation` 清算——
+            // 此处仍存的推迟目标即与当前 V 一致，按决策 40 作为落点；
+            // 已被清算时落点回到本页已提交几何（= 当前 V 对应 1x 几何）。
             let page = pendingPresentationPage
+            exitUsedDeferredTarget = page != nil
             let targetSize = page?.fittedSize ?? fittedSize
             // IC-104 C v3：回 1x 的竖直中心同样取适配带中心（显示态截图）。
             let targetCenterY = page?.fittedCenterY ?? fittedCenterY
@@ -1513,9 +1886,15 @@ final class S2NativeZoomPageController: UIViewController,
         activeDoubleTapTargetScale = targetScale
         doubleTapLatestPage = nil
         doubleTapTransitionStartTimestamp = nil
+        // IC-110 A：时长改常量（≈300ms）。`policy.shouldAnimate` 仍作为
+        // 「是否动画」的闸门保持不变——关动画、时长置 0 的既有测试路径照旧生效；
+        // 只有时长取值不再跟随 `animationDurationMilliseconds`。
+        // `durationOverrideSeconds` 仅供几何诊断显式加长以保证中间帧数，
+        // 产品路径永远走常量。
         let policy = S2AnimationPolicy(configuration: configuration)
         doubleTapTransitionDuration = policy.shouldAnimate
-            ? policy.durationSeconds
+            ? (durationOverrideSeconds
+                ?? S2DoubleTapTransitionTiming.durationSeconds)
             : 0
         isDoubleTapTransitionActive = true
         presentationContentView.isHidden = true
@@ -1528,6 +1907,15 @@ final class S2NativeZoomPageController: UIViewController,
             startScale: zoomScrollView.zoomScale,
             timestamp: CACurrentMediaTime()
         )
+        if !enteringNx {
+            // IC-118 B：退出阶段采样（探针基建，登记进报告）——记录过渡瞄准的
+            // 落点与其来源，供真机时间线核对「一气呵成」。
+            doubleTapProbe?.recordDoubleTapExitTarget(
+                targetFrame: targetFrame,
+                usedDeferredPresentation: exitUsedDeferredTarget,
+                timestamp: CACurrentMediaTime()
+            )
+        }
         doubleTapTransitionObserver?(.started(transition))
 
         guard doubleTapTransitionDuration > 0,
@@ -1589,6 +1977,13 @@ final class S2NativeZoomPageController: UIViewController,
                 viewportOffset: .zero
             )
             applyCornerMask()
+            // IC-118 B：退出阶段采样——记录几何最终落地的时刻与取值，
+            // 与 recordDoubleTapEnded 的时间差即「过渡结束 → 落地」间隙。
+            doubleTapProbe?.recordDoubleTapExitCommit(
+                fittedSize: fittedSize,
+                cornerRadius: cornerRadius,
+                timestamp: CACurrentMediaTime()
+            )
         }
 
         if transition.isEnteringNx,
@@ -1628,6 +2023,27 @@ final class S2NativeZoomPageController: UIViewController,
         zoomScrollView.isUserInteractionEnabled = true
         owner?.doubleTapTransitionDidComplete(on: self)
         doubleTapTransitionObserver?(.completed(transition, reading))
+    }
+
+    /// IC-111 B：标记残影用的**当前已解码图快照**。
+    ///
+    /// `afterScreenUpdates: false` ⟹ 取渲染层现成内容，**不同步重读图**、
+    /// 不触发重新解码（卡内明令）。取不到就返回 nil，调用方跳过残影，
+    /// 绝不为了出动画而回退到同步读图。
+    func makeMarkAfterimageSnapshot(
+        in targetView: UIView
+    ) -> (view: UIView, frame: CGRect)? {
+        guard let content = zoomScrollView.presentationContentView,
+              let snapshot = content.snapshotView(afterScreenUpdates: false)
+        else {
+            return nil
+        }
+        let frame = content.convert(content.bounds, to: targetView)
+        guard frame.width > 0, frame.height > 0 else {
+            return nil
+        }
+        snapshot.frame = frame
+        return (snapshot, frame)
     }
 
     private func makeDoubleTapSnapshot() -> UIView {
@@ -1671,11 +2087,15 @@ final class S2NativeZoomPageController: UIViewController,
         )
         let elapsed = displayLink.timestamp -
             (doubleTapTransitionStartTimestamp ?? displayLink.timestamp)
-        let progress = doubleTapTransitionDuration > 0
+        // IC-110 A：线性进度只用于计时与收口判定；落到几何上的是缓动后进度。
+        // 缓动端点恒等，故终点几何与既有契约一致。
+        let linearProgress = doubleTapTransitionDuration > 0
             ? CGFloat(elapsed / doubleTapTransitionDuration)
             : 1
-        applyDoubleTapTransitionProgress(progress)
-        if progress >= 1 {
+        applyDoubleTapTransitionProgress(
+            S2DoubleTapTransitionTiming.easedProgress(linearProgress)
+        )
+        if linearProgress >= 1 {
             finishActiveDoubleTapTransition()
         }
     }
@@ -1979,6 +2399,23 @@ final class S2NativeZoomPageController: UIViewController,
             configuration: latestConfiguration,
             viewportSize: latestViewportSize
         )
+    }
+
+    /// IC-118 B：清算过期的推迟呈现目标。
+    ///
+    /// ⑤a 的退出恢复把 V 落回记录值；Nx 期间被推迟的 V 呈现目标若与
+    /// 当前 V 不一致，即已被退出恢复取代——决策 20 要求归位落点 =
+    /// 当前 V 对应 1x 几何，提交过期目标反而制造「先落基准、再跳
+    /// 显示态」的中间停顿（H52 第 6 项缺陷）。只丢弃已过期的记录；
+    /// 与当前 V 一致的推迟仍按决策 40 在回 1x 时应用（IC-063 G6 语义）。
+    func reconcileDeferredPresentation(
+        currentVisibility: S2InterfaceVisibility
+    ) {
+        guard let pending = pendingPresentationPage,
+              pending.interfaceVisibility != currentVisibility else {
+            return
+        }
+        pendingPresentationPage = nil
     }
 
     private func pendingPresentationMatches(
@@ -2416,6 +2853,8 @@ final class S2NativePagerViewController: UIViewController,
     private var configuration = S2CalibrationConfiguration.factoryPlaceholder
     private var viewportSize = CGSize.zero
     private var onLongPress: (() -> Void)?
+    /// IC-111 B：标记残影协调器。nil ⟹ 不放残影。
+    var markAfterimages: S2MarkAfterimageCoordinator?
     private var isApplyingSnapshot = false
     private(set) var settledIndex = 0
     /// IC-079 R1：各资产图像加载态（只读埋点，来自 S2View 的加载态回调）。
@@ -2795,6 +3234,12 @@ final class S2NativePagerViewController: UIViewController,
         ) else {
             return false
         }
+        if wasZoomed {
+            // IC-118 B：与产品双击路径同一清算，诊断过渡端点与真机为同一套。
+            page.reconcileDeferredPresentation(
+                currentVisibility: machine.interfaceVisibility
+            )
+        }
         var diagnosticConfiguration = configuration
         diagnosticConfiguration.animationsEnabled = true
         diagnosticConfiguration.animationDurationMilliseconds = max(
@@ -2802,6 +3247,8 @@ final class S2NativePagerViewController: UIViewController,
             Double(max(1, minimumMiddleFrames) + 2) * 50
         )
         page.doubleTapTransitionObserver = observer
+        // IC-110 A：时长改常量后，诊断不能再靠改配置加长过渡；改为显式传时长，
+        // 取值与改动前完全一致，中间帧数保证不变。
         return page.startDoubleTapTransition(
             enteringNx: !wasZoomed,
             targetScale: wasZoomed ? 1 : machine.scale,
@@ -2809,7 +3256,9 @@ final class S2NativePagerViewController: UIViewController,
                 x: viewportSize.width / 2,
                 y: viewportSize.height / 2
             ),
-            configuration: diagnosticConfiguration
+            configuration: diagnosticConfiguration,
+            durationOverrideSeconds:
+                diagnosticConfiguration.animationDurationMilliseconds / 1_000
         )
     }
 
@@ -2873,9 +3322,17 @@ final class S2NativePagerViewController: UIViewController,
         let zoomMatches = zoomState == .oneX
             ? abs(page.zoomScrollView.zoomScale - 1) <= 0.000_001
             : page.zoomScrollView.zoomScale > 1
+        // IC-115 v2（④ 依 v17 决策 20/40）：`s > 1` 期间截图的 V 呈现变更被
+        // 推迟应用（IC-104 C），页面侧 V 不落地属规格时序而非异常。Nx 稳定
+        // 判据按时序分段：页面侧即时一致（非截图路径，无推迟）或推迟记录
+        // 在案且携带目标态，二者其一即稳定；回 1x 后仍要求双侧收敛（原判据）。
+        let pageVisibilityMatches = zoomState == .nX
+            ? page.diagnosticInterfaceVisibility == visibility ||
+                page.diagnosticDeferredInterfaceVisibility == visibility
+            : page.diagnosticInterfaceVisibility == visibility
         if machine.interfaceVisibility == visibility,
            machine.zoomState == zoomState,
-           page.diagnosticInterfaceVisibility == visibility,
+           pageVisibilityMatches,
            !page.isPresentationTransitionActive,
            !page.isDoubleTapTransitionActive,
            zoomMatches {
@@ -2945,6 +3402,13 @@ final class S2NativePagerViewController: UIViewController,
         ) else {
             return false
         }
+        if wasZoomed {
+            // IC-118 B：退出恢复已把 V 落回记录值，先清算过期的推迟呈现
+            // 目标，退出过渡才会瞄准当前 V 对应的 1x 几何（决策 20）。
+            page.reconcileDeferredPresentation(
+                currentVisibility: machine.interfaceVisibility
+            )
+        }
         let targetScale = wasZoomed ? CGFloat(1) : machine.scale
         if !page.startDoubleTapTransition(
             enteringNx: !wasZoomed,
@@ -2958,6 +3422,91 @@ final class S2NativePagerViewController: UIViewController,
             )
         }
         return true
+    }
+
+    /// IC-111 C：把「起飞加入相簿残影」的入口装到协调器上，供 chrome 侧调用。
+    func installAlbumAfterimageHook() {
+        markAfterimages?.launchAlbumAfterimage = { [weak self] in
+            self?.launchAlbumAfterimage()
+        }
+    }
+
+    /// IC-111 B：起飞一枚残影。主图本体不参与位移——飞的是独立快照视图，
+    /// 故标记后立刻可以翻页。
+    private func launchMarkAfterimage(
+        snapshot: UIView,
+        photoFrame: CGRect
+    ) {
+        guard let markAfterimages else {
+            return
+        }
+        let target = S2MarkAfterimageFlight.trashCenter(
+            viewportSize: view.bounds.size,
+            safeAreaTop: view.safeAreaInsets.top
+        )
+        let from = CGPoint(x: photoFrame.midX, y: photoFrame.midY)
+        markAfterimages.willLaunch()
+        S2MarkAfterimagePresenter.launch(
+            snapshot: snapshot,
+            in: view,
+            from: from,
+            to: target,
+            path: S2MarkAfterimageFlight.path(
+                from: from,
+                to: target,
+                photoMaxX: photoFrame.maxX
+            ),
+            duration: S2MarkAfterimageFlight.durationSeconds,
+            endScale: S2MarkAfterimageFlight.endScale,
+            startOpacity: S2MarkAfterimageFlight.startOpacity,
+            endOpacity: S2MarkAfterimageFlight.endOpacity,
+            keyPrefix: "s2.markAfterimage",
+            onLanded: { [weak markAfterimages] in
+                markAfterimages?.didLand()
+            }
+        )
+    }
+
+    /// IC-111 C：起飞一枚「加入相簿」残影——当前已解码图快照沿向下弧线飞入
+    /// 底部中胶囊。与 B 同一套机制，可同屏并存、互不阻塞。
+    private func launchAlbumAfterimage() {
+        // 加入相簿针对的是**当前**这张，故取当前页快照。
+        guard let markAfterimages,
+              let index = machine?.currentIndex,
+              let page = pageControllers[index],
+              let prelaunch = page.makeMarkAfterimageSnapshot(in: view)
+        else {
+            return
+        }
+        let insets = S2OverlaySafeAreaInsets(
+            top: view.safeAreaInsets.top,
+            leading: view.safeAreaInsets.left,
+            bottom: view.safeAreaInsets.bottom,
+            trailing: view.safeAreaInsets.right
+        )
+        let target = S2AlbumAfterimageFlight.bottomCapsuleCenter(
+            viewportSize: view.bounds.size,
+            safeAreaInsets: insets
+        )
+        let from = CGPoint(
+            x: prelaunch.frame.midX,
+            y: prelaunch.frame.midY
+        )
+        S2MarkAfterimagePresenter.launch(
+            snapshot: prelaunch.view,
+            in: view,
+            from: from,
+            to: target,
+            path: S2AlbumAfterimageFlight.path(from: from, to: target),
+            duration: S2AlbumAfterimageFlight.durationSeconds,
+            endScale: S2AlbumAfterimageFlight.endScale,
+            startOpacity: S2AlbumAfterimageFlight.startOpacity,
+            endOpacity: S2AlbumAfterimageFlight.endOpacity,
+            keyPrefix: "s2.albumAfterimage",
+            onLanded: { [weak markAfterimages] in
+                markAfterimages?.albumDidLand()
+            }
+        )
     }
 
     func doubleTapTransitionDidComplete(
@@ -3016,6 +3565,13 @@ final class S2NativePagerViewController: UIViewController,
             viewportOffset: page.zoomScrollView.reportedViewportOffset(),
             accepted: true
         )
+        if targetScale != nil {
+            // IC-118 B：捏合结束若已恢复 V（归位路径），同样先清算过期的
+            // 推迟呈现目标，避免回 1x 时先提交过期几何再跳回当前 V 几何。
+            page.reconcileDeferredPresentation(
+                currentVisibility: machine.interfaceVisibility
+            )
+        }
         // IC-090 R2：先判定走哪条分支再记录，随后按原逻辑执行；判定与执行都不变。
         let path: String
         if let targetScale {
@@ -3085,6 +3641,20 @@ final class S2NativePagerViewController: UIViewController,
             duration: duration
         ))
         let previousIndex = machine.currentIndex
+        // IC-111 B：残影快照必须取在状态变更**之前**——标记成功会立刻翻到下一张，
+        // 之后再快照就拍到别人了。只在「上滑且当前张尚未标记」时才预拍，
+        // 其余手势零开销。快照走 `afterScreenUpdates: false`，不重读图。
+        //
+        // G274：这里只在既有结算调用的前后读已发布状态，**不碰任何手势识别器、
+        // 不改手势判定**；标记与否仍全由 `completeMainDrag` 决定。
+        let pendingBefore = machine.pendingDeletionAssetIDs
+        let markCandidate = markAfterimages != nil &&
+            translation.height < 0 &&
+            !pendingBefore.contains(machine.currentAssetID)
+        let prelaunch = markCandidate
+            ? page.makeMarkAfterimageSnapshot(in: view)
+            : nil
+
         let handled = machine.completeMainDrag(
             translation: translation,
             duration: duration,
@@ -3095,6 +3665,14 @@ final class S2NativePagerViewController: UIViewController,
         if machine.currentIndex != previousIndex {
             settledIndex = machine.currentIndex
             synchronizeNativeStateToMachine(animatedPaging: false)
+        }
+        // 确有新增才起飞；没标记成功就把预拍的快照丢掉。
+        if let prelaunch,
+           machine.pendingDeletionAssetIDs.count > pendingBefore.count {
+            launchMarkAfterimage(
+                snapshot: prelaunch.view,
+                photoFrame: prelaunch.frame
+            )
         }
         return handled
     }
@@ -3561,10 +4139,17 @@ final class S2GeometryDiagnosticsRun {
         let zoomMatches = zoomState == .oneX
             ? abs(page.zoomScrollView.zoomScale - 1) <= 0.000_001
             : page.zoomScrollView.zoomScale > 1
+        // IC-115 v2：与 `waitForDiagnosticStableState` 的分段判据保持一致。
+        let pageVisibilityMatches = zoomState == .nX
+            ? page.diagnosticInterfaceVisibility == visibility ||
+                page.diagnosticDeferredInterfaceVisibility == visibility
+            : page.diagnosticInterfaceVisibility == visibility
         return [
             "状态机V匹配=\(machine.interfaceVisibility == visibility)",
             "状态机缩放态匹配=\(machine.zoomState == zoomState)",
-            "页面V匹配=\(page.diagnosticInterfaceVisibility == visibility)",
+            "页面V匹配=\(pageVisibilityMatches)",
+            "页面V=\(page.diagnosticInterfaceVisibility)",
+            "推迟目标V=\(String(describing: page.diagnosticDeferredInterfaceVisibility))",
             "显隐转场中=\(page.isPresentationTransitionActive)",
             "双击转场中=\(page.isDoubleTapTransitionActive)",
             "原生缩放匹配=\(zoomMatches)",
@@ -3634,10 +4219,13 @@ final class S2GeometryDiagnosticsRun {
 
     private func startDoubleTapEntry() {
         capture("双击进入 Nx：动画开始前一帧")
+        // IC-115（⑤a ④）：进入放大会自动隐藏 chrome，故这一阶段的稳定态
+        // 由 `(V=显示, Nx)` 改为 `(V=隐藏, Nx)`。**若不改，该状态不可达，
+        // 整轮诊断会卡在等待并以失败收场**——#221 的 IC-063 用例正是栽在这里。
         startDoubleTap(
             minimumMiddleFrames: 3,
             middlePrefix: "双击进入 Nx：动画中间帧",
-            stableVisibility: .visible,
+            stableVisibility: .hidden,
             stableZoomState: .nX,
             completionLabel: "双击进入 Nx：动画结束稳定态"
         ) { [weak self] in
@@ -5398,6 +5986,14 @@ struct S2DoubleTapProbeEvent: Equatable {
     var nominalFrameInterval: CFTimeInterval = 0
     var imageRequestScaleChanges: [S2DoubleTapProbeScaleChange] = []
     var imageRequests: [S2DoubleTapProbeImageRequest] = []
+    /// IC-118 B：退出阶段采样。过渡瞄准的落点帧与其来源（是否取自推迟目标）。
+    var exitTargetFrame: CGRect?
+    var exitTargetUsedDeferredPresentation: Bool?
+    /// IC-118 B：退出完成时几何落地的取值与时刻；与 `endedAt` 之差即
+    /// 「过渡结束 → 几何落地」间隙。
+    var exitCommitFittedSize: CGSize?
+    var exitCommitCornerRadius: CGFloat?
+    var exitCommitAt: CFTimeInterval?
 
     var frameIntervals: [CFTimeInterval] {
         guard frameTimestamps.count >= 2 else {
@@ -5523,6 +6119,36 @@ final class S2DoubleTapSmoothnessProbeCoordinator: ObservableObject {
         activeEventIndex = nil
     }
 
+    /// IC-118 B：退出阶段采样——过渡瞄准的落点。事件仍在途，走 activeEventIndex。
+    func recordDoubleTapExitTarget(
+        targetFrame: CGRect,
+        usedDeferredPresentation: Bool,
+        timestamp _: CFTimeInterval
+    ) {
+        guard isRecording, let index = activeEventIndex else {
+            return
+        }
+        events[index].exitTargetFrame = targetFrame
+        events[index].exitTargetUsedDeferredPresentation =
+            usedDeferredPresentation
+    }
+
+    /// IC-118 B：退出完成时几何落地。在 `recordDoubleTapEnded` 之后同步调用，
+    /// activeEventIndex 已清，落到最后一个事件上。
+    func recordDoubleTapExitCommit(
+        fittedSize: CGSize,
+        cornerRadius: CGFloat,
+        timestamp: CFTimeInterval
+    ) {
+        guard isRecording,
+              let index = activeEventIndex ?? events.indices.last else {
+            return
+        }
+        events[index].exitCommitFittedSize = fittedSize
+        events[index].exitCommitCornerRadius = cornerRadius
+        events[index].exitCommitAt = timestamp
+    }
+
     func recordImageRequestScaleChange(
         scale: CGFloat,
         timestamp: CFTimeInterval
@@ -5608,6 +6234,44 @@ enum S2DoubleTapProbeText {
         ].joined(separator: "｜")
     }
 
+    /// IC-118 B：退出阶段子行。仅退出事件且有采样时输出。
+    static func exitStageLines(
+        _ event: S2DoubleTapProbeEvent
+    ) -> [String] {
+        guard !event.enteringNx else {
+            return []
+        }
+        var lines: [String] = []
+        if let frame = event.exitTargetFrame {
+            let source = event.exitTargetUsedDeferredPresentation == true
+                ? "推迟目标"
+                : "当前V已提交几何"
+            lines.append(
+                "  退出落点｜目标帧=(x=" +
+                    S2OnDeviceTransitionText.number(frame.minX) +
+                    ",y=" + S2OnDeviceTransitionText.number(frame.minY) +
+                    ",w=" + S2OnDeviceTransitionText.number(frame.width) +
+                    ",h=" + S2OnDeviceTransitionText.number(frame.height) +
+                    ")｜落点来源=" + source
+            )
+        }
+        if let fittedSize = event.exitCommitFittedSize,
+           let commitAt = event.exitCommitAt {
+            let gap = event.endedAt.map {
+                milliseconds(commitAt - $0)
+            } ?? "无结束时刻"
+            lines.append(
+                "  退出落地｜提交尺寸=(w=" +
+                    S2OnDeviceTransitionText.number(fittedSize.width) +
+                    ",h=" + S2OnDeviceTransitionText.number(fittedSize.height) +
+                    ")｜提交圆角=" +
+                    (event.exitCommitCornerRadius.map(decimal) ?? "无") +
+                    "｜距过渡结束ms=" + gap
+            )
+        }
+        return lines
+    }
+
     static func scaleChangeLines(
         _ event: S2DoubleTapProbeEvent
     ) -> [String] {
@@ -5660,6 +6324,7 @@ enum S2DoubleTapProbeText {
         ]
         for (index, event) in events.enumerated() {
             lines.append(row(index: index, event: event))
+            lines.append(contentsOf: exitStageLines(event))
             lines.append(contentsOf: scaleChangeLines(event))
             lines.append(contentsOf: imageRequestLines(event))
         }

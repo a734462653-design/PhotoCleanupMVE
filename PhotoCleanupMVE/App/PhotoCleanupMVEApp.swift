@@ -93,8 +93,23 @@ struct PhotoCleanupMVEApp: App {
                             albumPickerContent: { _, actions in
                                 AnyView(
                                     S2AlbumPickerListView(
-                                        albums: coordinator.s2UserAlbums(),
-                                        actions: actions
+                                        items: coordinator.s2UserAlbumItems(),
+                                        actions: actions,
+                                        thumbnail: { assetID in
+                                            AnyView(
+                                                S2TemporaryPhotoImageView(
+                                                    strategy:
+                                                        s2PhotoImageStrategy,
+                                                    assetID: assetID,
+                                                    requestedScale: 1,
+                                                    requestStrategy: nil,
+                                                    requestRevision: 0,
+                                                    showsOpaqueLoadingBackground:
+                                                        false,
+                                                    onReading: { _ in }
+                                                )
+                                            )
+                                        }
                                     )
                                 )
                             },
@@ -112,6 +127,15 @@ struct PhotoCleanupMVEApp: App {
                             onRecentAlbumRequest: { request in
                                 _ = coordinator.requestS2RecentAlbumAddition(
                                     request
+                                )
+                            },
+                            onAlbumRemovalRequest: { request in
+                                _ = coordinator.requestS2AlbumRemoval(request)
+                            },
+                            onAlbumCreationRequest: { name, completion in
+                                coordinator.requestS2AlbumCreation(
+                                    named: name,
+                                    completion: completion
                                 )
                             },
                             onAlbumPickerSelection: { request, album in

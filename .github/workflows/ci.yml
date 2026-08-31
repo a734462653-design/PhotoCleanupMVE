@@ -34,6 +34,23 @@ jobs:
           unset authorization GITHUB_TOKEN
           git checkout --detach FETCH_HEAD
 
+      - name: 选择 Xcode 26 工具链（IC-116）
+        run: |
+          set -euo pipefail
+          echo "== ls /Applications 实证 =="
+          ls /Applications | grep -E '^Xcode'
+          xcode_app="$(
+            ls /Applications |
+              grep -E '^Xcode_26(\.[0-9]+)*\.app$' |
+              sort -V | tail -n 1 || true
+          )"
+          if [ -z "$xcode_app" ]; then
+            echo "错误：runner 上不存在 Xcode 26 稳定版（命名 Xcode_26*.app 且不含 beta）。" >&2
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=/Applications/$xcode_app/Contents/Developer" >> "$GITHUB_ENV"
+          echo "已选择工具链：/Applications/$xcode_app"
+
       - name: 显示 Xcode 环境
         run: |
           xcodebuild -version

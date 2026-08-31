@@ -312,6 +312,62 @@ final class CleanupCoordinator: ObservableObject {
         return true
     }
 
+    /// IC-114 C：相簿选择器列表项（含数量与键图）。
+    func s2UserAlbumItems() -> [S2AlbumListItem] {
+        assetActionService.userAlbumItems()
+    }
+
+    /// IC-114 C：新建相簿。只创建，不加成员——加成员由视图随后走既有的
+    /// 选择路径完成，从而复用「最近相簿更新 + 首次入场时序 + 残影」全套。
+    /// 失败走既有反馈通道。
+    func requestS2AlbumCreation(
+        named name: String,
+        completion: @escaping (S2AlbumReference?) -> Void
+    ) {
+        guard route == .s2, let machine = s2Machine else {
+            completion(nil)
+            return
+        }
+        assetActionService.createAlbum(named: name) { [weak self] album in
+            Self.deliverOnMain {
+                guard let self, self.s2Machine === machine else {
+                    completion(nil)
+                    return
+                }
+                if album == nil {
+                    machine.reportAlbumCreationFailure()
+                }
+                completion(album)
+            }
+        }
+    }
+
+    /// IC-113 B：中央指示「撤回」——把资产从相簿移除。
+    /// 与加入同构：状态机登记在途 → 服务写入 → 主线程回结果。
+    @discardableResult
+    func requestS2AlbumRemoval(_ request: S2AlbumActionRequest) -> Bool {
+        guard route == .s2,
+              let machine = s2Machine,
+              machine.beginAlbumRemoval(request) else {
+            return false
+        }
+        assetActionService.removeAsset(
+            assetID: request.targetAssetID,
+            fromAlbumWithID: request.album.id
+        ) { [weak self] succeeded in
+            Self.deliverOnMain {
+                guard let self, self.s2Machine === machine else {
+                    return
+                }
+                _ = machine.completeAlbumRemoval(
+                    request,
+                    succeeded: succeeded
+                )
+            }
+        }
+        return true
+    }
+
     @discardableResult
     func requestS2AlbumPickerSelection(
         _ request: S2AlbumPickerRequest,
