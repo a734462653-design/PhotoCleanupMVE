@@ -3637,6 +3637,310 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertEqual(page.presentationGeometryCommitCount, 1)
     }
 
+    // MARK: - IC-123 B：异比例截图的 `s > 1` 几何基准
+
+    // IC-123 B：截图的 `nativeZoomBaseSize` 不再取整视口，而是该资产 aspectFit
+    // 于全视口的适配尺寸（规格 v17 决策 20），两种 V 相同、与非截图同式。
+    // 覆盖横屏（16:9）、iPad 类（4:3）与裁切（0.1823）三种异比例截图。
+    func testIC123BNonScreenAspectScreenshotZoomBaseIsFullViewportAspectFit() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let ratios: [CGFloat] = [16.0 / 9.0, 4.0 / 3.0, 0.1823]
+        for ratio in ratios {
+            for visibility in [S2InterfaceVisibility.visible, .hidden] {
+                let value = S2ViewportLayout.metrics(
+                    physicalSize: physicalSize,
+                    presentationState: S2ViewportPresentationState(
+                        interfaceVisibility: visibility,
+                        bottomStripState: .idle,
+                        sheetState: .closed
+                    ),
+                    assetAspectRatio: ratio,
+                    isScreenshot: true,
+                    configuration: configuration
+                )
+                let expected = S2Geometry.aspectFitSize(
+                    viewportSize: physicalSize,
+                    assetAspectRatio: ratio
+                )
+                XCTAssertTrue(value.isFramedPhoto)
+                XCTAssertEqual(
+                    value.nativeZoomBaseSize,
+                    expected,
+                    "ratio=\(ratio) V=\(visibility)"
+                )
+                XCTAssertEqual(value.nativeZoomBaseSize, value.aspectFitSize)
+                XCTAssertNotEqual(
+                    value.nativeZoomBaseSize,
+                    value.viewportSize,
+                    "异比例截图的基准不得是整视口 ratio=\(ratio)"
+                )
+                XCTAssertEqual(
+                    value.nativeZoomBaseSize.width /
+                        value.nativeZoomBaseSize.height,
+                    ratio,
+                    accuracy: 0.000_001
+                )
+            }
+        }
+    }
+
+    // IC-123 B 等价断言（钉住原路径零变化）：屏幕同比例截图的基准仍恒等于
+    // 视口（fitSize 与视口逐值相等）；非截图一如既往取全视口 aspectFit。
+    // 夹具侧同步核对：同比例截图页的基准 = 视口、1x contentSize = 视口
+    // （既有 1x 归位语义）、双击目标帧 = 视口 × minDoubleTapScale——与改前相同。
+    func testIC123BScreenAspectScreenshotAndOrdinaryPhotoZoomBaseUnchanged() {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        for visibility in [S2InterfaceVisibility.visible, .hidden] {
+            let screenshot = metrics(
+                visibility: visibility,
+                configuration: configuration
+            )
+            XCTAssertTrue(screenshot.isFramedPhoto)
+            XCTAssertEqual(screenshot.nativeZoomBaseSize, physicalSize)
+            XCTAssertEqual(screenshot.aspectFitSize, physicalSize)
+
+            let ordinary = S2ViewportLayout.metrics(
+                physicalSize: physicalSize,
+                presentationState: S2ViewportPresentationState(
+                    interfaceVisibility: visibility,
+                    bottomStripState: .idle,
+                    sheetState: .closed
+                ),
+                assetAspectRatio: 9.0 / 16.0,
+                isScreenshot: false,
+                configuration: configuration
+            )
+            XCTAssertFalse(ordinary.isFramedPhoto)
+            XCTAssertEqual(ordinary.nativeZoomBaseSize, ordinary.aspectFitSize)
+            XCTAssertNotEqual(ordinary.nativeZoomBaseSize, physicalSize)
+        }
+
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration
+        )
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        XCTAssertEqual(page.nativeZoomBaseSize, physicalSize)
+        XCTAssertEqual(page.zoomScrollView.contentSize, physicalSize)
+        let target = tryUnwrap(page.zoomScrollView.doubleTapTarget(
+            scale: CGFloat(configuration.minDoubleTapScale),
+            focusPoint: CGPoint(
+                x: physicalSize.width / 2,
+                y: physicalSize.height / 2
+            )
+        ))
+        XCTAssertEqual(
+            target.presentationFrame.width,
+            physicalSize.width * CGFloat(configuration.minDoubleTapScale),
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            target.presentationFrame.height,
+            physicalSize.height * CGFloat(configuration.minDoubleTapScale),
+            accuracy: 0.000_001
+        )
+    }
+
+    // IC-123 B（夹具驱动，真机未覆盖，H56 第 2 项兜底）：横屏截图双击——
+    // 进入过渡的源帧、目标帧与逐进度采样帧宽高比恒等于资产比，落到过渡
+    // 视图上的 transform 满足 a == d（无纵向拉伸；采样的正是每帧写入
+    // `transitionView.transform` 的同一函数）；落地后 contentSize 与呈现帧比例
+    // 同资产、高与视口齐（填满倍数）；退出反向同样无畸变，回到当前 V 的 1x
+    // 几何。改前目标帧 = 视口 × 填满倍数（比例 0.5 ≠ 1.78），d/a = 3.56。
+    func testIC123BLandscapeScreenshotDoubleTapKeepsAspectRatioThroughout() {
+        let ratio: CGFloat = 16.0 / 9.0
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let machine = makeMachine(configuration: configuration)
+        let controller = makeNativePagerController(
+            machine: machine,
+            configuration: configuration,
+            assetAspectRatio: ratio,
+            isScreenshot: true
+        )
+        let window = UIWindow(frame: CGRect(origin: .zero, size: physicalSize))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let visible = S2ViewportLayout.metrics(
+            physicalSize: physicalSize,
+            presentationState: S2ViewportPresentationState(
+                interfaceVisibility: .visible,
+                bottomStripState: .idle,
+                sheetState: .closed
+            ),
+            assetAspectRatio: ratio,
+            isScreenshot: true,
+            configuration: configuration
+        )
+        let center = CGPoint(
+            x: physicalSize.width / 2,
+            y: physicalSize.height / 2
+        )
+        func assertAspect(
+            _ frame: CGRect,
+            _ label: String,
+            line: UInt = #line
+        ) {
+            XCTAssertGreaterThan(frame.height, 0, label, line: line)
+            XCTAssertEqual(
+                frame.width / max(0.000_001, frame.height),
+                ratio,
+                accuracy: 0.002,
+                "\(label) 宽高比应为资产比：frame=\(frame)",
+                line: line
+            )
+        }
+        func assertUniformScale(
+            _ transition: S2DoubleTapTransition,
+            _ label: String,
+            line: UInt = #line
+        ) {
+            for step in 0...20 {
+                let progress = CGFloat(step) / 20
+                assertAspect(
+                    transition.frame(at: progress),
+                    "\(label) progress=\(progress)",
+                    line: line
+                )
+                let transform = transition.transform(at: progress)
+                XCTAssertEqual(
+                    transform.a,
+                    transform.d,
+                    accuracy: 0.000_01,
+                    "\(label) progress=\(progress) 过渡 transform 须等比：" +
+                        "a=\(transform.a) d=\(transform.d)",
+                    line: line
+                )
+            }
+        }
+
+        // s = 1：显示态等距带内 aspectFit，比例即资产比
+        assertAspect(page.zoomScrollView.oneXPresentationFrame, "1x 呈现帧")
+        XCTAssertEqual(page.nativeZoomBaseSize, visible.nativeZoomBaseSize)
+        assertAspect(
+            CGRect(origin: .zero, size: page.nativeZoomBaseSize),
+            "nativeZoomBaseSize"
+        )
+        XCTAssertFalse(
+            S2Geometry.isScreenAspectMatch(
+                assetAspectRatio: ratio,
+                viewportAspectRatio: physicalSize.width / physicalSize.height
+            )
+        )
+
+        var transitions: [S2DoubleTapTransition] = []
+        page.doubleTapTransitionObserver = { event in
+            if case let .started(transition) = event {
+                transitions.append(transition)
+            }
+        }
+
+        // 进入 Nx
+        XCTAssertTrue(page.applyRecognizedDoubleTap(at: center))
+        XCTAssertTrue(page.isDoubleTapTransitionActive)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            assetAspectRatio: ratio,
+            isScreenshot: true
+        )
+        let entry = tryUnwrap(transitions.last)
+        XCTAssertTrue(entry.isEnteringNx)
+        XCTAssertEqual(
+            entry.targetZoomScale,
+            visible.doubleTapTargetScale,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            visible.doubleTapTargetScale,
+            visible.aspectFillMultiplier,
+            accuracy: 0.000_001,
+            "异比例 → 双击目标为填满倍数"
+        )
+        assertAspect(entry.sourceFrame, "进入源帧")
+        assertAspect(entry.targetFrame, "进入目标帧")
+        XCTAssertEqual(
+            entry.targetFrame.width,
+            visible.nativeZoomBaseSize.width * visible.doubleTapTargetScale,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            entry.targetFrame.height,
+            visible.nativeZoomBaseSize.height * visible.doubleTapTargetScale,
+            accuracy: 0.5
+        )
+        assertUniformScale(entry, "进入")
+
+        page.finishActiveDoubleTapTransition()
+        XCTAssertFalse(page.isDoubleTapTransitionActive)
+        XCTAssertEqual(
+            page.zoomScrollView.zoomScale,
+            visible.doubleTapTargetScale,
+            accuracy: 0.000_001
+        )
+        assertAspect(
+            CGRect(origin: .zero, size: page.zoomScrollView.contentSize),
+            "Nx contentSize"
+        )
+        let nxFrame = tryUnwrap(page.zoomScrollView.visiblePresentationFrame())
+        assertAspect(nxFrame, "Nx 呈现帧")
+        // 填满：横屏截图短边为高，放大后高与视口齐、宽溢出
+        XCTAssertEqual(nxFrame.height, physicalSize.height, accuracy: 0.5)
+        XCTAssertGreaterThan(nxFrame.width, physicalSize.width)
+
+        // 退出：回到当前 V 对应的 1x 几何（⑤a 进入时自动隐藏，退出恢复显示态）
+        XCTAssertTrue(page.applyRecognizedDoubleTap(at: center))
+        XCTAssertTrue(page.isDoubleTapTransitionActive)
+        applyNativePagerController(
+            controller,
+            machine: machine,
+            configuration: configuration,
+            assetAspectRatio: ratio,
+            isScreenshot: true
+        )
+        let exit = tryUnwrap(transitions.last)
+        XCTAssertFalse(exit.isEnteringNx)
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        assertAspect(exit.sourceFrame, "退出源帧")
+        assertAspect(exit.targetFrame, "退出目标帧")
+        XCTAssertEqual(
+            exit.targetFrame.width,
+            visible.oneXDisplaySize.width,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            exit.targetFrame.height,
+            visible.oneXDisplaySize.height,
+            accuracy: 0.5
+        )
+        assertUniformScale(exit, "退出")
+
+        page.finishActiveDoubleTapTransition()
+        XCTAssertFalse(page.isDoubleTapTransitionActive)
+        XCTAssertEqual(page.zoomScrollView.zoomScale, 1, accuracy: 0.000_001)
+        let restored = page.zoomScrollView.oneXPresentationFrame
+        assertAspect(restored, "退出后 1x 呈现帧")
+        XCTAssertEqual(
+            restored.width,
+            visible.oneXDisplaySize.width,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            restored.height,
+            visible.oneXDisplaySize.height,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(
+            restored.midY,
+            visible.oneXDisplayCenterY,
+            accuracy: 0.5
+        )
+    }
+
     // IC-118 B：⑤a 下截图双击退出——进入时被推迟的隐藏态目标已被退出恢复
     // 取代，退出过渡必须瞄准恢复后 V（显示态）对应的 1x 几何，过期推迟清算。
     // 帧序列复现：改动前 targetFrame 取自推迟目标（隐藏全幅），过渡落基准位后

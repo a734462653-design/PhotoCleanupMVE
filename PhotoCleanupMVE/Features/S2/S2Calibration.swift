@@ -1218,7 +1218,15 @@ enum S2ViewportLayout {
             assetAspectRatio: assetAspectRatio,
             viewportAspectRatio: viewportAspectRatio,
             aspectFitSize: fitSize,
-            nativeZoomBaseSize: isScreenshot ? physicalSize : fitSize,
+            // IC-123 B：`s > 1` 几何基准 = 该资产 aspectFit 于全视口的适配尺寸
+            // （规格 v17 决策 20「照片完整填满视口 = aspectFit 于全视口」），
+            // 与是否截图、与 V 均无关。此前截图分支取**整视口尺寸**——该分支
+            // 在触发条件还是「屏幕同比例」时无害（同比例下 fitSize 即视口），
+            // a056126 把触发条件改为截图元数据后沿用，横屏 / 裁切等与视口不同
+            // 比例的截图从此以视口比例为基准：双击过渡目标帧按视口比例拉伸
+            // （H 实测 ① 2026-08-31 纵向畸变）。屏幕同比例截图 fitSize 与视口
+            // 逐值相等，行为零变化。
+            nativeZoomBaseSize: fitSize,
             isFramedPhoto: isScreenshot,
             oneXDisplaySize: displaySize,
             oneXDisplayCenterY: displayCenterY,
