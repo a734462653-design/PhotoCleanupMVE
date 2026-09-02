@@ -18,30 +18,36 @@ cleanup() {
 }
 trap cleanup EXIT
 
-destinations="$(
-    xcodebuild \
-        -project "$project_path" \
-        -scheme "$scheme_name" \
-        -showdestinations
+simulators_json="$(xcrun simctl list devices available -j)"
+
+destination_info="$(
+    printf "%s" "$simulators_json" |
+        jq -r '
+            .devices
+            | to_entries[]
+            | select(.key | test("com\\.apple\\.CoreSimulator\\.SimRuntime\\.iOS-26-"))
+            | . as $entry
+            | ($entry.key | capture("iOS-26-(?<minor>[0-9]+)$").minor | tonumber) as $minor
+            | $entry.value[]
+            | select(.isAvailable == true)
+            | select(.name | test("iPhone"))
+            | [$minor, .udid, .name] | @tsv
+        ' |
+        sort -t "$(printf '\t')" -k1,1nr |
+        head -n 1
 )"
 
-destination_id="$(
-    printf "%s\n" "$destinations" |
-        awk -F'id:' '/platform:iOS Simulator/ && /name:iPhone/ {
-            split($2, fields, ",")
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", fields[1])
-            print fields[1]
-            exit
-        }'
-)"
+destination_id="$(printf "%s" "$destination_info" | cut -f2)"
+destination_name="$(printf "%s" "$destination_info" | cut -f3)"
 
 if [ -z "$destination_id" ]; then
-    echo "错误：没有可用的 iPhone 模拟器。" >&2
-    printf "%s\n" "$destinations" >&2
+    echo "错误：runner 上没有可用的 iOS 26.x iPhone 模拟器（不静默回落到其他版本）。" >&2
+    echo "可用模拟器列表：" >&2
+    xcrun simctl list devices available >&2
     exit 1
 fi
 
-echo "使用 iPhone 模拟器：$destination_id"
+echo "使用 iPhone 模拟器：$destination_name（id=$destination_id）"
 
 xcodebuild \
     test \
