@@ -47,7 +47,7 @@ if [ -z "$destination_id" ]; then
     exit 1
 fi
 
-echo "使用 iPhone 模拟器：$destination_name（id=$destination_id）"
+echo "使用 iPhone 模拟器：${destination_name} (id=${destination_id})"
 
 xcodebuild \
     test \
