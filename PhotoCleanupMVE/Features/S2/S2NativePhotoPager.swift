@@ -662,8 +662,9 @@ final class S2NativeZoomScrollView: UIScrollView {
     /// IC-104 C v3：`s = 1` 照片中心在 `zoomContentView` 坐标系中的竖直位置。
     /// `fittedCenterY` 是**视口坐标**；`zoomContentView` 的 bounds 为
     /// `nativeZoomBaseSize`、居中于视口，故需减去其在视口中的顶偏移。
-    /// 截图的 `nativeZoomBaseSize` 即视口，偏移为 0；非截图时 `fittedCenterY`
-    /// 为视口中心，换算后恰为 `nativeZoomBaseSize.height / 2`——与改前一致。
+    /// IC-123 B 起截图的 `nativeZoomBaseSize` 亦为全视口 aspectFit（屏幕同比例
+    /// 截图仍等于视口、偏移为 0；异比例截图有非零偏移，公式通用）；非截图时
+    /// `fittedCenterY` 为视口中心，换算后恰为 `nativeZoomBaseSize.height / 2`。
     var oneXPhotoCenterYInZoomContent: CGFloat {
         photoCenterYInZoomContent(
             fittedCenterY: fittedCenterY,
