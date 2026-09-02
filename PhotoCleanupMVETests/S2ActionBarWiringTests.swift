@@ -610,6 +610,103 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertEqual(S2ChromeForeground.onGlassSecondary, Color.secondary)
     }
 
+    // IC-123 A：中央指示玻璃内前景按 colorScheme **显式解析为定值色**——
+    // 浅色 = label 黑、深色 = label 白，与 `Color.primary`（IC-121 A 规则）
+    // 同源，两态取值不同；撤回钮不改，仍走具体动态色。
+    func testIC123AIndicatorForegroundIsResolvedPerColorScheme() {
+        func white(_ color: UIColor, line: UInt = #line) -> CGFloat {
+            var value: CGFloat = -1
+            var alpha: CGFloat = -1
+            XCTAssertTrue(color.getWhite(&value, alpha: &alpha), line: line)
+            XCTAssertEqual(alpha, 1, accuracy: 0.001, line: line)
+            return value
+        }
+        let light = UIColor(S2CenterIndicatorView.resolvedForeground(for: .light))
+        let dark = UIColor(S2CenterIndicatorView.resolvedForeground(for: .dark))
+        let labelLight = UIColor.label.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: .light)
+        )
+        let labelDark = UIColor.label.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: .dark)
+        )
+
+        XCTAssertEqual(white(light), white(labelLight), accuracy: 0.001)
+        XCTAssertEqual(white(dark), white(labelDark), accuracy: 0.001)
+        XCTAssertEqual(white(light), 0, accuracy: 0.001, "浅色前景应为黑")
+        XCTAssertEqual(white(dark), 1, accuracy: 0.001, "深色前景应为白")
+        XCTAssertEqual(S2ChromeForeground.onGlassPrimary, Color.primary)
+    }
+
+    // IC-123 A（夹具驱动；CI 模拟器为 iOS 18.5，玻璃走回落配方，iOS 26
+    // `glassEffect` 合成层未覆盖，真机 H56 第 1 项兜底）：**同一实例**、不
+    // 重建、不翻页——只把宿主外观 override 在深/浅间来回切，玻璃内图标与
+    // 文字必须随之改色：浅色下出现近黑像素（label 黑），深色下没有。
+    @MainActor
+    func testIC123AIndicatorGlassContentFollowsInPlaceAppearanceSwitch() throws {
+        let view = ZStack {
+            Color.white
+            S2CenterIndicatorView(
+                state: .addedToAlbum(albumName: "旅行"),
+                onUndo: {}
+            )
+        }
+        .ignoresSafeArea()
+        let controller = UIHostingController(rootView: view)
+        controller.view.backgroundColor = .white
+        let window = UIWindow(
+            frame: CGRect(origin: .zero, size: CGSize(width: 390, height: 200))
+        )
+        window.backgroundColor = .white
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+
+        controller.overrideUserInterfaceStyle = .dark
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        let darkFirst = try ic123NearBlackPixelCount(in: controller)
+
+        controller.overrideUserInterfaceStyle = .light
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        let light = try ic123NearBlackPixelCount(in: controller)
+
+        controller.overrideUserInterfaceStyle = .dark
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        let darkAgain = try ic123NearBlackPixelCount(in: controller)
+
+        XCTAssertEqual(darkFirst, 0, "深色下玻璃内前景应为白，不应有近黑像素")
+        XCTAssertGreaterThan(light, 20, "原位切到浅色后图标与文字应即时变黑")
+        XCTAssertEqual(darkAgain, 0, "原位切回深色后应即时变回白")
+    }
+
+    /// IC-123 A：把宿主视图按 @2x 截屏，数亮度 < 24 的像素（label 黑的实体
+    /// 像素；深色回落材质即便按不透明回退色渲染也在 40 以上，不会误计）。
+    @MainActor
+    private func ic123NearBlackPixelCount(
+        in controller: UIViewController
+    ) throws -> Int {
+        controller.view.layoutIfNeeded()
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 2
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(
+            bounds: controller.view.bounds,
+            format: format
+        ).image { _ in
+            _ = controller.view.drawHierarchy(
+                in: controller.view.bounds,
+                afterScreenUpdates: true
+            )
+        }
+        let bitmap = try S2StripBitmap(cgImage: XCTUnwrap(image.cgImage))
+        var count = 0
+        for y in 0..<bitmap.height {
+            for x in 0..<bitmap.width where bitmap.luminance(x: x, y: y) < 24 {
+                count += 1
+            }
+        }
+        return count
+    }
+
     // IC-121 B：角标通知徽标样式取值——红底白字恒定（深浅同款）、
     // 1.5pt 协调描边、单数字正圆最小径容得下数字。渲染观感真机未覆盖，
     // H55 第 2 项兜底。
