@@ -3644,7 +3644,8 @@ final class S2CalibrationHarnessTests: XCTestCase {
     // 覆盖横屏（16:9）、iPad 类（4:3）与裁切（0.1823）三种异比例截图。
     func testIC123BNonScreenAspectScreenshotZoomBaseIsFullViewportAspectFit() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
-        for ratio in [CGFloat(16.0 / 9.0), 4.0 / 3.0, 0.1823] {
+        let ratios: [CGFloat] = [16.0 / 9.0, 4.0 / 3.0, 0.1823]
+        for ratio in ratios {
             for visibility in [S2InterfaceVisibility.visible, .hidden] {
                 let value = S2ViewportLayout.metrics(
                     physicalSize: physicalSize,
