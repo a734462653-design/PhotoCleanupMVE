@@ -3563,6 +3563,41 @@ struct S2CenterIndicatorView: View {
         Self.resolvedForeground(for: colorScheme)
     }
 
+    /// IC-123 附录（裁定：指示 S3 态的分隔线同属「指示器前景」，在子项 A
+    /// 的范围语义之内）：分隔线与图标 / 文字同在 `glassEffect` 子树内，
+    /// 此前用的是系统 `Divider` 自带的**动态**分隔色，按 A 的③归因它同样
+    /// 不随外观切换即时重解析。这里按当前 colorScheme 把系统分隔色
+    /// `UIColor.separator` 显式解析为非动态定值色，与 A 同方式、同一拍随
+    /// `body` 重算落笔。深浅语义不变（仍是系统自适应分隔色的两个态，
+    /// IC-120 A 的登记不变），亦不参与 tint 解析（IC-121 A）。
+    static func resolvedSeparator(for scheme: ColorScheme) -> Color {
+        let style: UIUserInterfaceStyle = scheme == .dark ? .dark : .light
+        return Color(
+            uiColor: UIColor.separator.resolvedColor(
+                with: UITraitCollection(userInterfaceStyle: style)
+            )
+        )
+    }
+
+    /// 本实例当前应落笔的分隔色（随 `colorScheme` 环境即时重算）。
+    private var glassContentSeparator: Color {
+        Self.resolvedSeparator(for: colorScheme)
+    }
+
+    /// 指示器内的分隔线。几何零改动：粗细与 22pt 高仍由系统
+    /// `Divider` 给定，线条本身改由 `overlay` 用定值色**单次**落笔。
+    ///
+    /// `hidden()` 的作用是不让定值色叠在 `Divider` 自带的半透明分隔线上
+    /// （同色叠加会把线的密度推高）；它只作用于它之前的视图，其后挂的
+    /// `overlay` 内容照常渲染——这一条由
+    /// `testIC123AppendixIndicatorSeparatorLineDrawsWithGivenColor` 钉住。
+    static func separator(color: Color) -> some View {
+        Divider()
+            .frame(height: 22)
+            .hidden()
+            .overlay(color)
+    }
+
     var body: some View {
         content
             // 视觉体整体不吃点击——手势穿透到主图。
@@ -3616,8 +3651,9 @@ struct S2CenterIndicatorView: View {
                     .foregroundStyle(glassContentForeground)
                     .lineLimit(1)
                     // IC-120 A：分隔线随规则去写死白，交系统自适应分隔色（登记）。
-                    Divider()
-                        .frame(height: 22)
+                    // IC-123 附录：该分隔色同属「指示器前景」，改按 colorScheme
+                    // 显式解析为定值色（见 `separator(color:)`）。
+                    Self.separator(color: glassContentSeparator)
                     // 撤回钮的占位：真正可点的那个以 overlay 叠在外层，
                     // 这里只用等宽的隐形文本把版面撑出来。
                     Text(verbatim: L10n.text("s2.center.undo"))
