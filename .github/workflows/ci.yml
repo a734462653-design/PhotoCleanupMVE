@@ -67,6 +67,9 @@ jobs:
       - name: 运行 XCTest
         run: |
           set -o pipefail
+          echo "== runner bash 实证（IC-125）=="
+          command -v bash
+          bash --version | head -n 1
           test_log="$(mktemp -t PhotoCleanupMVE-xctest.XXXXXX)"
           if bash Scripts/test-xcode.sh 2>&1 | tee "$test_log"; then
             test_status=0
@@ -75,7 +78,7 @@ jobs:
           fi
 
           executed_line="$(
-            /usr/bin/grep -E 'Executed [0-9]+ tests' "$test_log" |
+            /usr/bin/grep -E 'Executed [0-9]+ tests?' "$test_log" |
               tail -n 1 || true
           )"
           if [ -n "$executed_line" ]; then
@@ -95,6 +98,17 @@ jobs:
             else
               echo "::error title=XCTest 失败::未找到具体错误行。"
             fi
+          fi
+
+          # IC-125 哨兵：堵死「脚本没跑任何测试却以 0 退出」的假绿（#238 实例）。
+          # 只在 test_status == 0 时介入；非 0 路径原样退出，保留 65 / 1 等失败模式区分。
+          executed_count="$(
+            printf '%s\n' "$executed_line" |
+              /usr/bin/sed -nE 's/.*Executed ([0-9]+) tests?.*/\1/p' || true
+          )"
+          if [ "$test_status" -eq 0 ] && { [ -z "$executed_count" ] || [ "$executed_count" -le 0 ]; }; then
+            echo "::error title=XCTest 哨兵::日志中未出现 Executed N tests（N>0），判定为未执行任何测试，即使退出码为 0 也判失败。test_status=${test_status} executed_count=${executed_count:-空}"
+            exit 1
           fi
           exit "$test_status"
 
