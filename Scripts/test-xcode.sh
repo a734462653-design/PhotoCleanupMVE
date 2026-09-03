@@ -43,6 +43,9 @@ fi
 
 echo "使用 iPhone 模拟器：$destination_id"
 
+# IC-125 负对照：伪造「脚本没跑测试就成功返回」形态，仅存在于 probe/ic-125-sentinel-negative，不得合并。
+exit 0
+
 xcodebuild \
     test \
     -project "$project_path" \
