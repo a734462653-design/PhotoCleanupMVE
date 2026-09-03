@@ -371,6 +371,29 @@ if (Test-Path -LiteralPath $testDirectory -PathType Container) {
     }
 }
 
+# IC-125 子项 B：shell 变量名后紧邻非 ASCII 字符（如 "$name（id=$id）"）会被 runner 的旧版 bash
+# 把非 ASCII 字节吞进变量名，在 set -u 下报 unbound variable。凡 $ + 标识符 + 非 ASCII 且未用 ${} 界定即判失败。
+$shellVariableTrapPattern = '\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]'
+$shellVariableTrapFiles = @()
+$scriptsDirectory = Join-Path $projectRoot "Scripts"
+if (Test-Path -LiteralPath $scriptsDirectory -PathType Container) {
+    $shellVariableTrapFiles += Get-ChildItem -LiteralPath $scriptsDirectory -Filter "*.sh" -File
+}
+$workflowDirectory = Join-Path $projectRoot ".github/workflows"
+if (Test-Path -LiteralPath $workflowDirectory -PathType Container) {
+    $shellVariableTrapFiles += Get-ChildItem -LiteralPath $workflowDirectory -Filter "*.yml" -File
+}
+foreach ($shellFile in $shellVariableTrapFiles) {
+    $relativeShellPath = $shellFile.FullName.Substring($projectRoot.Length + 1).Replace("\", "/")
+    $shellLineNumber = 0
+    foreach ($shellLine in [System.IO.File]::ReadAllLines($shellFile.FullName, [System.Text.Encoding]::UTF8)) {
+        $shellLineNumber++
+        if ([regex]::IsMatch($shellLine, $shellVariableTrapPattern)) {
+            Add-Failure "shell 变量名后紧邻非 ASCII 字符（旧版 bash 会把它吞进变量名，须写成 `${name}）：${relativeShellPath}:${shellLineNumber}"
+        }
+    }
+}
+
 $hardcodedStringScanner = Join-Path $projectRoot "Scripts/scan-hardcoded-user-visible-strings.ps1"
 if (Test-Path -LiteralPath $hardcodedStringScanner -PathType Leaf) {
     & $hardcodedStringScanner
