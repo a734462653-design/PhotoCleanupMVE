@@ -18,30 +18,41 @@ cleanup() {
 }
 trap cleanup EXIT
 
-destinations="$(
-    xcodebuild \
-        -project "$project_path" \
-        -scheme "$scheme_name" \
-        -showdestinations
+simulators_json="$(xcrun simctl list devices available -j)"
+
+destination_info="$(
+    printf "%s" "$simulators_json" |
+        jq -r '
+            .devices
+            | to_entries[]
+            | select(.key | test("com\\.apple\\.CoreSimulator\\.SimRuntime\\.iOS-26-"))
+            | . as $entry
+            | ($entry.key | capture("iOS-26-(?<minor>[0-9]+)$").minor | tonumber) as $minor
+            | $entry.value[]
+            | select(.isAvailable == true)
+            | select(.name == "iPhone 16")
+            | [$minor, .udid, .name, $entry.key] | @tsv
+        ' |
+        sort -t "$(printf '\t')" -k1,1nr |
+        head -n 1
 )"
 
-destination_id="$(
-    printf "%s\n" "$destinations" |
-        awk -F'id:' '/platform:iOS Simulator/ && /name:iPhone/ {
-            split($2, fields, ",")
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", fields[1])
-            print fields[1]
-            exit
-        }'
-)"
+destination_id="$(printf "%s" "$destination_info" | cut -f2)"
+destination_name="$(printf "%s" "$destination_info" | cut -f3)"
+destination_runtime="$(printf "%s" "$destination_info" | cut -f4)"
 
+# IC-126 B：机型钉死为 iPhone 16（与 #239 同机型，数据可比）。找不到即显式失败并
+# 打印可用列表；不静默回落到其他机型或其他 iOS 版本。
 if [ -z "$destination_id" ]; then
-    echo "错误：没有可用的 iPhone 模拟器。" >&2
-    printf "%s\n" "$destinations" >&2
+    echo "错误：runner 上没有可用的 iOS 26.x「iPhone 16」模拟器（机型钉死，不回落到其他机型或版本）。" >&2
+    echo "可用模拟器列表：" >&2
+    xcrun simctl list devices available >&2
     exit 1
 fi
 
-echo "使用 iPhone 模拟器：$destination_id"
+echo "使用 iPhone 模拟器：${destination_name} (id=${destination_id}, runtime=${destination_runtime})"
+echo "== simctl 实证（IC-126 G423）：选中 runtime 区块内的可用设备 =="
+xcrun simctl list devices "${destination_runtime}" available
 
 xcodebuild \
     test \

@@ -1361,6 +1361,21 @@ struct S2DoubleTapSynchronizationReading: Equatable {
     }
 }
 
+/// IC-126 A：几何诊断专用的双击过渡时长。只经 `durationOverrideSeconds` 进入
+/// 诊断路径；产品双击恒用 `S2DoubleTapTransitionTiming.durationSeconds`，不受此处影响。
+enum S2DiagnosticDoubleTapTiming {
+    /// 每个中间帧阈值预留的墙钟余量。依据 #239 实测：iOS 26.2 模拟器 + XCTest 宿主下
+    /// 进入段约 2 次 CADisplayLink 回调 / 250ms（≈8fps 有效节奏）；200ms/阈值在同样
+    /// 节奏下跨 3 个阈值约 8 次回调，余量 2 倍以上。
+    static let secondsPerThreshold: TimeInterval = 0.2
+
+    /// 诊断过渡总时长 = (阈值数 + 2) × 每阈值余量（进入 n=3 → 1.0s，退出 n=5 → 1.4s）。
+    /// 与 `animationDurationMilliseconds` 解耦，不读也不写该配置字段。
+    static func durationSeconds(minimumMiddleFrames: Int) -> TimeInterval {
+        Double(max(1, minimumMiddleFrames) + 2) * secondsPerThreshold
+    }
+}
+
 enum S2DoubleTapTransitionEvent {
     case started(S2DoubleTapTransition)
     case progressed(S2DoubleTapTransition, CGFloat)
@@ -3243,13 +3258,11 @@ final class S2NativePagerViewController: UIViewController,
         }
         var diagnosticConfiguration = configuration
         diagnosticConfiguration.animationsEnabled = true
-        diagnosticConfiguration.animationDurationMilliseconds = max(
-            diagnosticConfiguration.animationDurationMilliseconds,
-            Double(max(1, minimumMiddleFrames) + 2) * 50
-        )
         page.doubleTapTransitionObserver = observer
-        // IC-110 A：时长改常量后，诊断不能再靠改配置加长过渡；改为显式传时长，
-        // 取值与改动前完全一致，中间帧数保证不变。
+        // IC-110 A：时长改常量后，诊断不能再靠改配置加长过渡；改为显式传时长。
+        // IC-126 A：诊断时长与宿主帧节奏解耦——不再改写
+        // `animationDurationMilliseconds` 再由它推导，而是独立按阈值数计算
+        // （每阈值 200ms，见 `S2DiagnosticDoubleTapTiming`）。产品路径不经此处。
         return page.startDoubleTapTransition(
             enteringNx: !wasZoomed,
             targetScale: wasZoomed ? 1 : machine.scale,
@@ -3259,7 +3272,9 @@ final class S2NativePagerViewController: UIViewController,
             ),
             configuration: diagnosticConfiguration,
             durationOverrideSeconds:
-                diagnosticConfiguration.animationDurationMilliseconds / 1_000
+                S2DiagnosticDoubleTapTiming.durationSeconds(
+                    minimumMiddleFrames: minimumMiddleFrames
+                )
         )
     }
 
@@ -4096,6 +4111,11 @@ final class S2GeometryDiagnosticsRun {
     private var cancelled = false
     private var middleThresholds: [CGFloat] = []
     private var activeMiddlePrefix = ""
+    // IC-126 A2：中间帧门禁失败时随错误消息带出的就地统计（不引入新探针）。
+    private var doubleTapSegmentStartTime: CFTimeInterval?
+    private var doubleTapProgressCallbackCount = 0
+    private var doubleTapPartialProgressCallbackCount = 0
+    private var doubleTapFirstProgressDelayMilliseconds: Double?
 
     init(
         controller: S2NativePagerViewController,
@@ -4271,8 +4291,22 @@ final class S2GeometryDiagnosticsRun {
             }
             switch event {
             case .started:
-                break
+                // IC-126 A2：`.started` 在过渡起始同步发出（display link 尚未创建），
+                // 以此为「过渡起始」计首次回调延迟。
+                self.doubleTapSegmentStartTime = CACurrentMediaTime()
+                self.doubleTapProgressCallbackCount = 0
+                self.doubleTapPartialProgressCallbackCount = 0
+                self.doubleTapFirstProgressDelayMilliseconds = nil
             case let .progressed(_, progress):
+                self.doubleTapProgressCallbackCount += 1
+                if progress < 1 {
+                    self.doubleTapPartialProgressCallbackCount += 1
+                }
+                if self.doubleTapFirstProgressDelayMilliseconds == nil,
+                   let start = self.doubleTapSegmentStartTime {
+                    self.doubleTapFirstProgressDelayMilliseconds =
+                        (CACurrentMediaTime() - start) * 1_000
+                }
                 if let threshold = self.middleThresholds.first,
                    progress >= threshold,
                    progress < 1 {
@@ -4285,8 +4319,15 @@ final class S2GeometryDiagnosticsRun {
                 controller.diagnosticCurrentPage?
                     .doubleTapTransitionObserver = nil
                 if !self.middleThresholds.isEmpty {
+                    // IC-126 A2：消息前缀保持原样，其后追加实测数据，下次再红时
+                    // 日志里直接有归因数据。
                     self.errors.append(
-                        "\(middlePrefix) 少于 \(minimumMiddleFrames) 帧"
+                        "\(middlePrefix) 少于 \(minimumMiddleFrames) 帧" +
+                            self.doubleTapCadenceDescription(
+                                hits: minimumMiddleFrames -
+                                    self.middleThresholds.count,
+                                minimumMiddleFrames: minimumMiddleFrames
+                            )
                     )
                 }
                 controller.waitForDiagnosticStableState(
@@ -4315,6 +4356,28 @@ final class S2GeometryDiagnosticsRun {
         if !started {
             finish(with: "诊断失败：无法启动双击转场。")
         }
+    }
+
+    // IC-126 A2：中间帧门禁失败自带归因数据。回调计数口径：CADisplayLink 每次
+    // 回调触发一次进度回调（进度<1），收口 `finishActiveDoubleTapTransition`
+    // 另补一次进度=1；故「进度<1 的次数」≈ 过渡期内的 display link 回调次数。
+    private func doubleTapCadenceDescription(
+        hits: Int,
+        minimumMiddleFrames: Int
+    ) -> String {
+        let firstDelay = doubleTapFirstProgressDelayMilliseconds
+            .map { String(format: "%.1f", $0) } ?? "无回调"
+        let durationMilliseconds = Int(
+            S2DiagnosticDoubleTapTiming.durationSeconds(
+                minimumMiddleFrames: minimumMiddleFrames
+            ) * 1_000
+        )
+        return "（实际命中 \(hits) 帧；" +
+            "进度回调 \(doubleTapProgressCallbackCount) 次，" +
+            "其中进度<1 的 \(doubleTapPartialProgressCallbackCount) 次" +
+            "≈CADisplayLink 回调次数；" +
+            "首次进度回调相对过渡起始延迟 \(firstDelay) ms；" +
+            "诊断时长 \(durationMilliseconds) ms）"
     }
 
     private func capture(_ label: String) {
