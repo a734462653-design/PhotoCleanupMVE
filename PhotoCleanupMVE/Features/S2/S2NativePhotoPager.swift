@@ -1361,6 +1361,21 @@ struct S2DoubleTapSynchronizationReading: Equatable {
     }
 }
 
+/// IC-126 A：几何诊断专用的双击过渡时长。只经 `durationOverrideSeconds` 进入
+/// 诊断路径；产品双击恒用 `S2DoubleTapTransitionTiming.durationSeconds`，不受此处影响。
+enum S2DiagnosticDoubleTapTiming {
+    /// 每个中间帧阈值预留的墙钟余量。依据 #239 实测：iOS 26.2 模拟器 + XCTest 宿主下
+    /// 进入段约 2 次 CADisplayLink 回调 / 250ms（≈8fps 有效节奏）；200ms/阈值在同样
+    /// 节奏下跨 3 个阈值约 8 次回调，余量 2 倍以上。
+    static let secondsPerThreshold: TimeInterval = 0.2
+
+    /// 诊断过渡总时长 = (阈值数 + 2) × 每阈值余量（进入 n=3 → 1.0s，退出 n=5 → 1.4s）。
+    /// 与 `animationDurationMilliseconds` 解耦，不读也不写该配置字段。
+    static func durationSeconds(minimumMiddleFrames: Int) -> TimeInterval {
+        Double(max(1, minimumMiddleFrames) + 2) * secondsPerThreshold
+    }
+}
+
 enum S2DoubleTapTransitionEvent {
     case started(S2DoubleTapTransition)
     case progressed(S2DoubleTapTransition, CGFloat)
@@ -3259,7 +3274,9 @@ final class S2NativePagerViewController: UIViewController,
             ),
             configuration: diagnosticConfiguration,
             durationOverrideSeconds:
-                diagnosticConfiguration.animationDurationMilliseconds / 1_000
+                S2DiagnosticDoubleTapTiming.durationSeconds(
+                    minimumMiddleFrames: minimumMiddleFrames
+                )
         )
     }
 
