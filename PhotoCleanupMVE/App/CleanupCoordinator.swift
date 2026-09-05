@@ -20,7 +20,8 @@ struct CleanupRouteConfiguration {
 
     static func ic048TemporaryWiringFixture() -> CleanupRouteConfiguration {
         return CleanupRouteConfiguration(
-            initialGroupingDimension: .month,
+            // IC-127 B（未定项 1）：首次安装无档时的默认值——按日期 + 最新在前。
+            initialGroupingDimension: .date,
             initialSortOrder: .newestFirst,
             s2InitialPresentation: S2InitialPresentation(
                 interfaceVisibility: .visible,
@@ -115,10 +116,53 @@ final class CleanupCoordinator: ObservableObject {
         return true
     }
 
+    /// IC-127 B（未定项 11）：由 S1 会话档恢复进入 S1。坏档（不变量不成立）返回 false，
+    /// 调用方回退到新会话。恢复出的状态机以 loading 起步，首次读取内先对账再可见。
+    @discardableResult
+    func enterS1(restoring snapshot: S1SessionSnapshot) -> Bool {
+        guard let machine = S1StateMachine.restore(from: snapshot) else {
+            return false
+        }
+        installS1Session(machine, route: .s1)
+        return true
+    }
+
+    /// IC-127 B：启动落点。有档且可恢复 → 恢复同一 `sessionID` 与 `T`／`O`；
+    /// 无档或坏档 → 清档并以默认 `T=date`、`O=newestFirst` 开新会话。
+    @discardableResult
+    func enterS1ResumingPersistedSessionOrStartNew() -> Bool {
+        if let snapshot = persistence.loadS1Session(),
+           enterS1(restoring: snapshot) {
+            return true
+        }
+        try? persistence.clearS1Session()
+        return enterS1(sessionID: UUID().uuidString)
+    }
+
+    /// IC-127 D：读取回应（结果 + 受限标志）。`S1View` 的读取方直接用本方法。
     func readS1Ranges(
         groupedBy groupingDimension: S1GroupingDimension
-    ) -> Result<[S1Range], S1RangeReadFailure> {
-        photoLibrary.s1Ranges(groupedBy: groupingDimension)
+    ) -> S1RangeReadResponse {
+        photoLibrary.s1RangeRead(groupedBy: groupingDimension)
+    }
+
+    /// IC-127 C（未定项 13）：从 S2 返回时的对账——重读 `R(T)`，交给状态机的
+    /// 单一对账入口；静默完成，不改 `message`。进入 S1 那一次对账由首次读取
+    /// （`S1StateMachine.completeRangeRead`）内的同一入口完成。
+    @discardableResult
+    func reconcileS1WithPhotoLibrary() -> Bool {
+        guard let s1Machine else {
+            return false
+        }
+        let response = photoLibrary.s1RangeRead(
+            groupedBy: s1Machine.groupingDimension
+        )
+        let reconciled = s1Machine.reconcile(
+            with: response.result,
+            isLimitedAuthorization: response.isLimitedAuthorization
+        )
+        sessionStore = s1Machine.sessionStore
+        return reconciled
     }
 
     @discardableResult
@@ -177,6 +221,8 @@ final class CleanupCoordinator: ObservableObject {
             return false
         }
         clearS2RouteState()
+        // IC-127 C：从 S2 返回时对账一次（静默）。
+        reconcileS1WithPhotoLibrary()
         route = .s1
         message = nil
         return true
@@ -184,11 +230,16 @@ final class CleanupCoordinator: ObservableObject {
 
     @discardableResult
     func enterConfirmationFromS2(with payload: S2ExitPayload) -> Bool {
-        guard applyS2ExitPayload(payload),
-              let submission = s1Machine?.makeS3Submission() else {
+        guard applyS2ExitPayload(payload) else {
             return false
         }
         clearS2RouteState()
+        // IC-127 C：S2 经垃圾桶直入 S3 同样是「从 S2 返回」——先对账再形成提交，
+        // 已被系统删除的资产不进入 D_全部。
+        reconcileS1WithPhotoLibrary()
+        guard let submission = s1Machine?.makeS3Submission() else {
+            return false
+        }
         return enterConfirmationFromS1(submission)
     }
 
@@ -724,11 +775,29 @@ final class CleanupCoordinator: ObservableObject {
         guard route == .loading else {
             return
         }
-        _ = enterS1(sessionID: UUID().uuidString)
+        // IC-127 B：启动时优先恢复 S1 会话档。
+        _ = enterS1ResumingPersistedSessionOrStartNew()
     }
 
     private func installS1Session(
         _ store: SessionStore,
+        route targetRoute: CleanupRoute
+    ) {
+        installS1Session(
+            S1StateMachine(
+                sessionStore: store,
+                initialGroupingDimension:
+                    routeConfiguration.initialGroupingDimension,
+                initialSortOrder: routeConfiguration.initialSortOrder
+            ),
+            route: targetRoute
+        )
+    }
+
+    /// IC-127 B：安装状态机的单一入口（新会话与档恢复共用），并把会话快照的
+    /// 单一写出口接到持久层。写档失败静默忽略——持久化不得阻断整理流程。
+    private func installS1Session(
+        _ machine: S1StateMachine,
         route targetRoute: CleanupRoute
     ) {
         for task in scanTasks.values {
@@ -740,13 +809,11 @@ final class CleanupCoordinator: ObservableObject {
         s4LastUptime = nil
         loadedAssets.removeAll()
         sessionDescriptors.removeAll()
-        sessionStore = store
-        s1Machine = S1StateMachine(
-            sessionStore: store,
-            initialGroupingDimension:
-                routeConfiguration.initialGroupingDimension,
-            initialSortOrder: routeConfiguration.initialSortOrder
-        )
+        sessionStore = machine.sessionStore
+        machine.persistenceSink = { [persistence] snapshot in
+            _ = try? persistence.saveS1Session(snapshot)
+        }
+        s1Machine = machine
         s2Machine = nil
         s2EntryContext = nil
         s3Machine = nil
@@ -984,6 +1051,8 @@ final class CleanupCoordinator: ObservableObject {
     private func finishSession() {
         do {
             try persistence.clear()
+            // IC-127 B：sessionID 随 S4 完成／S5 离开而结束，S1 会话档一并清除。
+            try persistence.clearS1Session()
         } catch {
             message = L10n.text(
                 "coordinator.error.clear_session_record",

@@ -199,8 +199,81 @@ struct PersistedSession: Codable {
     }
 }
 
+/// IC-127 B（未定项 11）：S1 会话档。与 S3→S4 提交快照 `session.json` **分文件**
+/// （`s1-session.json`），互不干扰——`claim` / `clear` 的既有语义原样保留。
+/// 集合以升序数组编码，保证同一状态的字节稳定。
+struct PersistedS1Session: Codable, Equatable {
+    struct Continuation: Codable, Equatable {
+        let currentAssetID: String
+        let farthestAssetID: String
+        let recordedSortOrder: String
+    }
+
+    let sessionID: String
+    let groupingDimension: String
+    let sortOrder: String
+    let pendingDeletionAssetIDsByRangeID: [String: [String]]
+    let continuationsByRangeID: [String: Continuation]
+    let firstMarkedRangeIDByAssetID: [String: String]
+
+    init(_ snapshot: S1SessionSnapshot) {
+        sessionID = snapshot.sessionID
+        groupingDimension = snapshot.groupingDimension.rawValue
+        sortOrder = snapshot.sortOrder.rawValue
+        pendingDeletionAssetIDsByRangeID = snapshot.pendingDeletionAssetIDsByRangeID
+            .mapValues { $0.sorted() }
+        continuationsByRangeID = snapshot.continuationsByRangeID.mapValues {
+            Continuation(
+                currentAssetID: $0.currentAssetID,
+                farthestAssetID: $0.farthestAssetID,
+                recordedSortOrder: $0.recordedSortOrder.rawValue
+            )
+        }
+        firstMarkedRangeIDByAssetID = snapshot.firstMarkedRangeIDByAssetID
+    }
+
+    /// 解码回值快照；字段非法（未知维度／排序、重复资产）时返回 nil，视为坏档。
+    var snapshot: S1SessionSnapshot? {
+        guard !sessionID.isEmpty,
+              let dimension = S1GroupingDimension(rawValue: groupingDimension),
+              let order = S1SortOrder(rawValue: sortOrder) else {
+            return nil
+        }
+        var pending: [String: Set<String>] = [:]
+        for (rangeID, assetIDs) in pendingDeletionAssetIDsByRangeID {
+            let set = Set(assetIDs)
+            guard set.count == assetIDs.count else {
+                return nil
+            }
+            pending[rangeID] = set
+        }
+        var continuations: [String: SessionStore.Continuation] = [:]
+        for (rangeID, continuation) in continuationsByRangeID {
+            guard let recorded = SessionStore.SortOrder(
+                rawValue: continuation.recordedSortOrder
+            ) else {
+                return nil
+            }
+            continuations[rangeID] = SessionStore.Continuation(
+                currentAssetID: continuation.currentAssetID,
+                farthestAssetID: continuation.farthestAssetID,
+                recordedSortOrder: recorded
+            )
+        }
+        return S1SessionSnapshot(
+            sessionID: sessionID,
+            groupingDimension: dimension,
+            sortOrder: order,
+            pendingDeletionAssetIDsByRangeID: pending,
+            continuationsByRangeID: continuations,
+            firstMarkedRangeIDByAssetID: firstMarkedRangeIDByAssetID
+        )
+    }
+}
+
 final class SessionPersistence {
     private let fileURL: URL
+    private let s1FileURL: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let fileManager: FileManager
@@ -221,10 +294,39 @@ final class SessionPersistence {
             withIntermediateDirectories: true
         )
         fileURL = directory.appendingPathComponent("session.json")
+        s1FileURL = directory.appendingPathComponent("s1-session.json")
         encoder = JSONEncoder()
         decoder = JSONDecoder()
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601
+    }
+
+    // MARK: - IC-127 B：S1 会话档（独立文件）
+
+    func saveS1Session(_ snapshot: S1SessionSnapshot) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        let data = try encoder.encode(PersistedS1Session(snapshot))
+        try data.write(to: s1FileURL, options: .atomic)
+    }
+
+    func loadS1Session() -> S1SessionSnapshot? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let data = try? Data(contentsOf: s1FileURL),
+              let persisted = try? decoder.decode(PersistedS1Session.self, from: data) else {
+            return nil
+        }
+        return persisted.snapshot
+    }
+
+    func clearS1Session() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard fileManager.fileExists(atPath: s1FileURL.path) else {
+            return
+        }
+        try fileManager.removeItem(at: s1FileURL)
     }
 
     func save(_ session: PersistedSession) throws {

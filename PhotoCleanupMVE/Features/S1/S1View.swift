@@ -1,9 +1,8 @@
 import SwiftUI
 
 struct S1View: View {
-    typealias RangeReader = (
-        S1GroupingDimension
-    ) -> Result<[S1Range], S1RangeReadFailure>
+    /// IC-127 D：读取方回传结果 + 受限标志。
+    typealias RangeReader = (S1GroupingDimension) -> S1RangeReadResponse
 
     @ObservedObject var machine: S1StateMachine
 
@@ -74,16 +73,34 @@ struct S1View: View {
             )
 
         case .ready:
+            // IC-127 A：只做适配两级树的最小结构改动——年节点行拆成「展开／收起」与
+            // 「进入」两个可区分的点击目标，月节点行左侧内缩；视觉留给 IC-128。
             List(machine.rangeRows) { row in
-                Button {
-                    guard let handoff = machine.makeS2Handoff(for: row.id) else {
-                        return
+                HStack(spacing: 12) {
+                    if row.childCount > 0 {
+                        Button {
+                            _ = machine.toggleYearExpansion(row.id)
+                        } label: {
+                            Image(
+                                systemName: row.isExpanded
+                                    ? "chevron.down"
+                                    : "chevron.right"
+                            )
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    onS2Handoff(handoff)
-                } label: {
-                    rangeRow(row)
+                    Button {
+                        guard let handoff = machine.makeS2Handoff(for: row.id) else {
+                            return
+                        }
+                        onS2Handoff(handoff)
+                    } label: {
+                        rangeRow(row)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .padding(.leading, row.parentRangeID == nil ? 0 : 28)
             }
 
         case .empty:
@@ -205,18 +222,18 @@ struct S1View: View {
               let request = machine.currentReadRequest else {
             return
         }
+        let response = rangeReader(request.groupingDimension)
         _ = machine.completeRangeRead(
-            rangeReader(request.groupingDimension),
-            for: request
+            response.result,
+            for: request,
+            isLimitedAuthorization: response.isLimitedAuthorization
         )
     }
 
     private func groupingTitle(_ dimension: S1GroupingDimension) -> String {
         switch dimension {
-        case .month:
-            return L10n.text("s1.dimension.month")
-        case .year:
-            return L10n.text("s1.dimension.year")
+        case .date:
+            return L10n.text("s1.dimension.date")
         case .album:
             return L10n.text("s1.dimension.album")
         case .unclassified:
@@ -246,7 +263,7 @@ private enum S1PreviewData {
         )
         let machine = S1StateMachine(
             sessionStore: store,
-            initialGroupingDimension: .month,
+            initialGroupingDimension: .date,
             initialSortOrder: .newestFirst
         )
         guard let request = machine.currentReadRequest else {
@@ -260,12 +277,21 @@ private enum S1PreviewData {
             _ = machine.completeRangeRead(
                 .success([
                     S1Range(
+                        id: "preview-year",
+                        displayName: "2026",
+                        assetIDsNewestFirst: [
+                            "preview-asset-2",
+                            "preview-asset-1"
+                        ]
+                    ),
+                    S1Range(
                         id: "preview-range",
                         displayName: "2026-08",
                         assetIDsNewestFirst: [
                             "preview-asset-2",
                             "preview-asset-1"
-                        ]
+                        ],
+                        parentRangeID: "preview-year"
                     )
                 ]),
                 for: request
@@ -276,7 +302,7 @@ private enum S1PreviewData {
             _ = machine.completeRangeRead(
                 .failure(
                     S1RangeReadFailure(
-                        groupingDimension: .month,
+                        groupingDimension: .date,
                         reason: .invalidResponse
                     )
                 ),

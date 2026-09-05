@@ -1,4 +1,5 @@
 import XCTest
+import Photos
 @testable import PhotoCleanupMVE
 
 final class S1StateMachineTests: XCTestCase {
@@ -8,7 +9,7 @@ final class S1StateMachineTests: XCTestCase {
 
         XCTAssertEqual(machine.state, .loading)
         XCTAssertEqual(machine.loadingState, .loading)
-        XCTAssertEqual(machine.currentReadRequest?.groupingDimension, .month)
+        XCTAssertEqual(machine.currentReadRequest?.groupingDimension, .date)
         XCTAssertTrue(machine.ranges.isEmpty)
     }
 
@@ -44,7 +45,7 @@ final class S1StateMachineTests: XCTestCase {
         let machine = makeMachine(state: .loading)
         let request = tryUnwrap(machine.currentReadRequest)
         let failure = S1RangeReadFailure(
-            groupingDimension: .month,
+            groupingDimension: .date,
             reason: .authorizationDenied
         )
 
@@ -57,7 +58,7 @@ final class S1StateMachineTests: XCTestCase {
         XCTAssertNotEqual(
             failure,
             S1RangeReadFailure(
-                groupingDimension: .month,
+                groupingDimension: .date,
                 reason: .missingCreationDate(assetID: "asset-1")
             )
         )
@@ -75,10 +76,10 @@ final class S1StateMachineTests: XCTestCase {
             let originalRecordedSortOrder = machine.sessionStore
                 .continuationsByRangeID["range-month"]?.recordedSortOrder
 
-            XCTAssertTrue(machine.switchGroupingDimension(to: .year))
+            XCTAssertTrue(machine.switchGroupingDimension(to: .album))
             XCTAssertEqual(machine.state, .loading)
             XCTAssertEqual(machine.loadingState, .loading)
-            XCTAssertEqual(machine.groupingDimension, .year)
+            XCTAssertEqual(machine.groupingDimension, .album)
             XCTAssertEqual(machine.sortOrder, originalSortOrder)
             XCTAssertEqual(machine.sessionStore, originalStore)
             XCTAssertEqual(
@@ -143,7 +144,7 @@ final class S1StateMachineTests: XCTestCase {
 
         XCTAssertTrue(machine.retry())
         XCTAssertEqual(machine.state, .loading)
-        XCTAssertEqual(machine.currentReadRequest?.groupingDimension, .month)
+        XCTAssertEqual(machine.currentReadRequest?.groupingDimension, .date)
         XCTAssertEqual(machine.sessionStore, originalStore)
         XCTAssertFalse(machine.retry())
     }
@@ -281,7 +282,20 @@ final class S1StateMachineTests: XCTestCase {
             rangeID: "range-month"
         )
         let invalidDMachine = makeMachine(state: .ready, store: invalidStore)
-        XCTAssertNil(invalidDMachine.makeS2Handoff(for: "range-month"))
+        // IC-127 C（未定项 13）：读取结果先经对账再到达就绪态，范围外的 D 已被剔除、
+        // F 键同步删除，因此交接可形成且 D 为空；makeS2Handoff 的子集守卫作为最后
+        // 一道防线原样保留（本用例改为断言对账结果）。
+        XCTAssertEqual(
+            invalidDMachine.sessionStore.pendingDeletionCount(for: "range-month"),
+            0
+        )
+        XCTAssertNil(
+            invalidDMachine.sessionStore.firstMarkedRangeIDByAssetID["asset-outside"]
+        )
+        let prunedHandoff = tryUnwrap(
+            invalidDMachine.makeS2Handoff(for: "range-month")
+        )
+        XCTAssertTrue(prunedHandoff.pendingDeletionAssetIDs.isEmpty)
     }
 
     // IC046-015：O 只翻转月、年范围列表；相册列表保持读取方提供的占位顺序。
@@ -330,7 +344,7 @@ final class S1StateMachineTests: XCTestCase {
         let originalRanges = machine.ranges
 
         machine.presentObscuration()
-        XCTAssertFalse(machine.switchGroupingDimension(to: .year))
+        XCTAssertFalse(machine.switchGroupingDimension(to: .album))
         XCTAssertFalse(machine.switchSortOrder(to: .oldestFirst))
         XCTAssertNil(machine.makeS2Handoff(for: "range-month"))
         XCTAssertNil(machine.makeS3Submission())
@@ -391,6 +405,141 @@ final class S1StateMachineTests: XCTestCase {
         XCTAssertEqual(row.processedAssetCount, 2)
     }
 
+    // IC-127 E（未定项 8 定案）：多范围提交时，分组顺序 = 范围在 R(T) 中的顺序，
+    // 组内顺序 = 当前 O 下的 A(r, O)，总表 = 各组顺序拼接；O 翻转后两级同时翻转。
+    func testIC127E_SubmissionFollowsRangeOrderInRTAndCurrentSortOrder() {
+        var store = SessionStore(sessionID: "session-ic127e")
+        store.setMarked(true, assetID: "new-3", rangeID: "newer")
+        store.setMarked(true, assetID: "new-1", rangeID: "newer")
+        store.setMarked(true, assetID: "old-2", rangeID: "older")
+        store.setMarked(true, assetID: "old-3", rangeID: "older")
+        let machine = makeMachine(
+            state: .ready,
+            store: store,
+            ranges: [
+                S1Range(
+                    id: "newer",
+                    displayName: "2026-08",
+                    assetIDsNewestFirst: ["new-3", "new-2", "new-1"]
+                ),
+                S1Range(
+                    id: "older",
+                    displayName: "2026-07",
+                    assetIDsNewestFirst: ["old-3", "old-2", "old-1"]
+                )
+            ]
+        )
+
+        let newestFirst = tryUnwrap(machine.makeS3Submission())
+        XCTAssertEqual(
+            newestFirst.groups.map(\.sourceRangeID),
+            machine.visibleRanges.map(\.id)
+        )
+        XCTAssertEqual(newestFirst.groups.map(\.sourceRangeID), ["newer", "older"])
+        XCTAssertEqual(
+            newestFirst.groups.map(\.orderedAssetIDs),
+            [["new-3", "new-1"], ["old-3", "old-2"]]
+        )
+        XCTAssertEqual(
+            newestFirst.orderedAssetIDs,
+            ["new-3", "new-1", "old-3", "old-2"]
+        )
+        XCTAssertEqual(newestFirst.groups.map(\.name), ["2026-08", "2026-07"])
+
+        XCTAssertTrue(machine.switchSortOrder(to: .oldestFirst))
+        let oldestFirst = tryUnwrap(machine.makeS3Submission())
+        XCTAssertEqual(
+            oldestFirst.groups.map(\.sourceRangeID),
+            machine.visibleRanges.map(\.id)
+        )
+        XCTAssertEqual(oldestFirst.groups.map(\.sourceRangeID), ["older", "newer"])
+        XCTAssertEqual(
+            oldestFirst.groups.map(\.orderedAssetIDs),
+            [["old-2", "old-3"], ["new-1", "new-3"]]
+        )
+        XCTAssertEqual(
+            oldestFirst.orderedAssetIDs,
+            ["old-2", "old-3", "new-1", "new-3"]
+        )
+        XCTAssertEqual(
+            Set(oldestFirst.orderedAssetIDs),
+            Set(newestFirst.orderedAssetIDs)
+        )
+    }
+
+    // IC-127 E 回归：各分组资产数之和恒等于 D_全部 元素数（含跨范围重复标记与
+    // 当前 R(T) 不含的范围——后者按稳定回退排在 R(T) 内范围之后）。
+    func testIC127E_GroupCountsStillSumToMergedDeletionCount() {
+        var store = SessionStore(sessionID: "session-ic127e-sum")
+        store.setMarked(true, assetID: "shared", rangeID: "range-month")
+        store.setMarked(true, assetID: "shared", rangeID: "range-album")
+        store.setMarked(true, assetID: "album-only", rangeID: "range-album")
+        store.setMarked(true, assetID: "asset-3", rangeID: "range-month")
+        let machine = makeMachine(
+            state: .ready,
+            store: store,
+            ranges: [
+                S1Range(
+                    id: "range-month",
+                    displayName: "2026-08",
+                    assetIDsNewestFirst: ["asset-3", "shared", "asset-1"]
+                )
+            ]
+        )
+        // range-album 不在当前 R(T) 中，但其名称须为已知才可提交；此处先在
+        // 相册维度读到它一次，再切回月维度，模拟跨维度标记。
+        XCTAssertTrue(machine.switchGroupingDimension(to: .album))
+        let albumRequest = tryUnwrap(machine.currentReadRequest)
+        XCTAssertTrue(
+            machine.completeRangeRead(
+                .success([
+                    S1Range(
+                        id: "range-album",
+                        displayName: "Album",
+                        assetIDsNewestFirst: ["album-only", "shared"]
+                    )
+                ]),
+                for: albumRequest
+            )
+        )
+        XCTAssertTrue(machine.switchGroupingDimension(to: .date))
+        let monthRequest = tryUnwrap(machine.currentReadRequest)
+        XCTAssertTrue(
+            machine.completeRangeRead(
+                .success([
+                    S1Range(
+                        id: "range-month",
+                        displayName: "2026-08",
+                        assetIDsNewestFirst: ["asset-3", "shared", "asset-1"]
+                    )
+                ]),
+                for: monthRequest
+            )
+        )
+
+        let submission = tryUnwrap(machine.makeS3Submission())
+        let groupCountSum = submission.groups.reduce(0) { $0 + $1.assetCount }
+        XCTAssertEqual(groupCountSum, machine.sessionStore.allPendingDeletionAssetIDs.count)
+        XCTAssertEqual(groupCountSum, submission.assetCount)
+        XCTAssertEqual(groupCountSum, 3)
+        XCTAssertEqual(
+            Set(submission.orderedAssetIDs),
+            machine.sessionStore.allPendingDeletionAssetIDs
+        )
+        XCTAssertEqual(
+            submission.groups.map(\.sourceRangeID),
+            ["range-month", "range-album"]
+        )
+        XCTAssertEqual(
+            submission.groups.first?.orderedAssetIDs,
+            ["asset-3", "shared"]
+        )
+        XCTAssertEqual(
+            submission.groups.last?.orderedAssetIDs,
+            ["album-only"]
+        )
+    }
+
     private var allStates: [S1State] {
         [.loading, .ready, .empty, .failed]
     }
@@ -398,7 +547,7 @@ final class S1StateMachineTests: XCTestCase {
     private func makeMachine(
         state: S1State,
         store: SessionStore = SessionStore(sessionID: "session-default"),
-        groupingDimension: S1GroupingDimension = .month,
+        groupingDimension: S1GroupingDimension = .date,
         ranges: [S1Range]? = nil
     ) -> S1StateMachine {
         let machine = S1StateMachine(
@@ -467,6 +616,314 @@ final class S1StateMachineTests: XCTestCase {
         )
         precondition(store.applyS2Return(returned, entryContext: context))
         return store
+    }
+
+    private func tryUnwrap<T>(
+        _ value: T?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> T {
+        do {
+            return try XCTUnwrap(value, file: file, line: line)
+        } catch {
+            XCTFail(String(describing: error), file: file, line: line)
+            preconditionFailure()
+        }
+    }
+}
+
+// MARK: - IC-127（并入本文件：工程文件未在授权范围内，新增测试文件无法登记）
+
+/// IC-127 A：`T=date` 两级树（Decision_log 140 漂移 A，SPEC-S1 第二／六节）。
+final class S1DateTreeTests: XCTestCase {
+    // 三类维度枚举齐全且仅此三类。
+    func testIC127A_GroupingDimensionHasExactlyThreeCases() {
+        XCTAssertEqual(
+            S1GroupingDimension.allCases,
+            [.date, .album, .unclassified]
+        )
+        XCTAssertEqual(S1GroupingDimension.allCases.count, 3)
+    }
+
+    // 读取方按日期形成两级树：年为一级、月为二级并指向所属年；
+    // 年节点资产 = 其月节点资产之并，总数相等；列表顺序为「年，其下月……」新到旧。
+    @MainActor
+    func testIC127A_ServiceBuildsYearMonthTreeAndYearTotalEqualsSumOfMonths() throws {
+        let service = PhotoLibraryService(
+            s1Source: makeSource(
+                allAssets: [
+                    makeAsset("资产-2026-08-a", year: 2026, month: 8, day: 15),
+                    makeAsset("资产-2026-08-b", year: 2026, month: 8, day: 2),
+                    makeAsset("资产-2026-03", year: 2026, month: 3, day: 10),
+                    makeAsset("资产-2024-01", year: 2024, month: 1, day: 5)
+                ]
+            )
+        )
+
+        let ranges = try service.s1Ranges(groupedBy: .date).get()
+        let years = ranges.filter { $0.parentRangeID == nil }
+
+        XCTAssertEqual(ranges.count, 5)
+        XCTAssertEqual(years.count, 2)
+        XCTAssertTrue(years.allSatisfy { $0.id.hasPrefix("year:") })
+        XCTAssertEqual(years.map(\.totalAssetCount), [3, 1])
+        XCTAssertEqual(
+            ranges.map(\.parentRangeID),
+            [nil, years[0].id, years[0].id, nil, years[1].id]
+        )
+        for year in years {
+            let months = ranges.filter { $0.parentRangeID == year.id }
+            XCTAssertFalse(months.isEmpty)
+            XCTAssertTrue(months.allSatisfy { $0.id.hasPrefix("month:") })
+            XCTAssertEqual(
+                months.reduce(0) { $0 + $1.totalAssetCount },
+                year.totalAssetCount
+            )
+            XCTAssertEqual(
+                Set(months.flatMap(\.assetIDsNewestFirst)),
+                Set(year.assetIDsNewestFirst)
+            )
+        }
+        XCTAssertEqual(
+            years[0].assetIDsNewestFirst,
+            ["资产-2026-08-a", "资产-2026-08-b", "资产-2026-03"]
+        )
+    }
+
+    // 年节点与月节点各自可进入 S2，交接数据正确且互不串味。
+    func testIC127A_YearAndMonthNodesEachFormValidS2Handoff() {
+        let machine = makeTreeMachine()
+
+        let yearHandoff = tryUnwrap(machine.makeS2Handoff(for: "y2026"))
+        XCTAssertEqual(yearHandoff.rangeDisplayInformation.displayName, "2026")
+        XCTAssertEqual(yearHandoff.rangeDisplayInformation.totalAssetCount, 3)
+        XCTAssertEqual(yearHandoff.orderedAssetIDs, ["a8", "a3b", "a3a"])
+        XCTAssertEqual(yearHandoff.currentAssetID, "a8")
+
+        let monthHandoff = tryUnwrap(machine.makeS2Handoff(for: "m2026-03"))
+        XCTAssertEqual(monthHandoff.rangeDisplayInformation.displayName, "2026-03")
+        XCTAssertEqual(monthHandoff.rangeDisplayInformation.totalAssetCount, 2)
+        XCTAssertEqual(monthHandoff.orderedAssetIDs, ["a3b", "a3a"])
+
+        // 在年范围内标记一张，月范围的 D 不受影响（范围级 D 各自记录）。
+        XCTAssertTrue(
+            machine.applyS2PendingDeletionChange(
+                ["a3a"],
+                entryContext: SessionStore.S2EntryContext(
+                    rangeID: "y2026",
+                    orderedAssetIDs: ["a8", "a3b", "a3a"],
+                    sortOrder: .newestFirst
+                )
+            )
+        )
+        XCTAssertEqual(
+            machine.makeS2Handoff(for: "y2026")?.pendingDeletionAssetIDs,
+            ["a3a"]
+        )
+        XCTAssertEqual(
+            machine.makeS2Handoff(for: "m2026-03")?.pendingDeletionAssetIDs,
+            []
+        )
+        XCTAssertEqual(machine.badgeCount, 1)
+    }
+
+    // 收起后月节点不出现在可见列表，但范围数据仍在，月范围仍可进入 S2。
+    func testIC127A_CollapsingYearHidesMonthRowsButKeepsRangeData() {
+        let machine = makeTreeMachine()
+        let originalRanges = machine.ranges
+        let originalStore = machine.sessionStore
+
+        XCTAssertTrue(machine.isYearExpanded("y2026"))
+        XCTAssertTrue(machine.toggleYearExpansion("y2026"))
+        XCTAssertFalse(machine.isYearExpanded("y2026"))
+        XCTAssertEqual(
+            machine.visibleRanges.map(\.id),
+            ["y2026", "y2024", "m2024-01"]
+        )
+        XCTAssertEqual(
+            machine.rangeRows.map(\.id),
+            ["y2026", "y2024", "m2024-01"]
+        )
+        XCTAssertEqual(machine.rangeRows.first?.isExpanded, false)
+        XCTAssertEqual(machine.rangeRows.first?.childCount, 2)
+        XCTAssertEqual(machine.ranges, originalRanges)
+        XCTAssertEqual(machine.sessionStore, originalStore)
+        XCTAssertEqual(machine.state, .ready)
+        XCTAssertNotNil(machine.makeS2Handoff(for: "m2026-08"))
+
+        XCTAssertTrue(machine.toggleYearExpansion("y2026"))
+        XCTAssertEqual(
+            machine.visibleRanges.map(\.id),
+            ["y2026", "m2026-08", "m2026-03", "y2024", "m2024-01"]
+        )
+
+        // 月节点、无子节点的范围与非日期维度都不是可展开目标。
+        XCTAssertFalse(machine.toggleYearExpansion("m2026-08"))
+        XCTAssertFalse(machine.toggleYearExpansion("missing"))
+    }
+
+    // O 翻转时年序与年内月序同时翻转。
+    func testIC127A_SortFlipReversesYearOrderAndMonthOrderTogether() {
+        let machine = makeTreeMachine()
+
+        XCTAssertEqual(
+            machine.visibleRanges.map(\.id),
+            ["y2026", "m2026-08", "m2026-03", "y2024", "m2024-01"]
+        )
+        XCTAssertTrue(machine.switchSortOrder(to: .oldestFirst))
+        XCTAssertEqual(
+            machine.visibleRanges.map(\.id),
+            ["y2024", "m2024-01", "y2026", "m2026-03", "m2026-08"]
+        )
+        XCTAssertEqual(
+            machine.makeS2Handoff(for: "y2026")?.orderedAssetIDs,
+            ["a3a", "a3b", "a8"]
+        )
+        XCTAssertTrue(machine.switchSortOrder(to: .newestFirst))
+        XCTAssertEqual(
+            machine.visibleRanges.map(\.id),
+            ["y2026", "m2026-08", "m2026-03", "y2024", "m2024-01"]
+        )
+    }
+
+    // 读取校验：年节点资产集合必须恰等于其月节点之并，不等即视为无效读取。
+    func testIC127A_ReadRejectsYearWhoseAssetsDifferFromMonthUnion() {
+        let machine = S1StateMachine(
+            sessionStore: SessionStore(sessionID: "session-tree-invalid"),
+            initialGroupingDimension: .date,
+            initialSortOrder: .newestFirst
+        )
+        let request = tryUnwrap(machine.currentReadRequest)
+        let mismatched = [
+            S1Range(id: "y", displayName: "2026", assetIDsNewestFirst: ["a", "b", "c"]),
+            S1Range(
+                id: "m",
+                displayName: "2026-08",
+                assetIDsNewestFirst: ["a", "b"],
+                parentRangeID: "y"
+            )
+        ]
+
+        XCTAssertFalse(machine.completeRangeRead(.success(mismatched), for: request))
+        XCTAssertEqual(machine.state, .failed)
+        XCTAssertEqual(machine.readFailure?.reason, .invalidResponse)
+
+        // 父引用必须指向同列表中的一级节点（不允许三级或悬空父）。
+        let retryMachine = S1StateMachine(
+            sessionStore: SessionStore(sessionID: "session-tree-orphan"),
+            initialGroupingDimension: .date,
+            initialSortOrder: .newestFirst
+        )
+        let retryRequest = tryUnwrap(retryMachine.currentReadRequest)
+        let orphan = [
+            S1Range(
+                id: "m",
+                displayName: "2026-08",
+                assetIDsNewestFirst: ["a"],
+                parentRangeID: "missing-year"
+            )
+        ]
+        XCTAssertFalse(retryMachine.completeRangeRead(.success(orphan), for: retryRequest))
+        XCTAssertEqual(retryMachine.state, .failed)
+    }
+
+    // 展开／收起与进入年范围是两个可区分的目标：展开不形成交接、不改 T／O／M／K；
+    // 进入不改展开态。
+    func testIC127A_ExpandAndEnterAreDistinctTargets() {
+        let machine = makeTreeMachine()
+        let originalStore = machine.sessionStore
+        let originalGrouping = machine.groupingDimension
+        let originalSort = machine.sortOrder
+        let originalRequest = machine.currentReadRequest
+
+        XCTAssertTrue(machine.toggleYearExpansion("y2024"))
+        XCTAssertEqual(machine.sessionStore, originalStore)
+        XCTAssertEqual(machine.groupingDimension, originalGrouping)
+        XCTAssertEqual(machine.sortOrder, originalSort)
+        XCTAssertEqual(machine.currentReadRequest, originalRequest)
+        XCTAssertEqual(machine.loadingState, .ready)
+
+        let handoff = tryUnwrap(machine.makeS2Handoff(for: "y2024"))
+        XCTAssertEqual(handoff.rangeDisplayInformation.rangeID, "y2024")
+        XCTAssertFalse(machine.isYearExpanded("y2024"))
+        XCTAssertEqual(machine.collapsedYearRangeIDs, ["y2024"])
+    }
+
+    // MARK: - Fixtures
+
+    private func makeTreeMachine() -> S1StateMachine {
+        let machine = S1StateMachine(
+            sessionStore: SessionStore(sessionID: "session-tree"),
+            initialGroupingDimension: .date,
+            initialSortOrder: .newestFirst
+        )
+        let request = tryUnwrap(machine.currentReadRequest)
+        XCTAssertTrue(
+            machine.completeRangeRead(.success(treeRanges()), for: request)
+        )
+        return machine
+    }
+
+    private func treeRanges() -> [S1Range] {
+        [
+            S1Range(
+                id: "y2026",
+                displayName: "2026",
+                assetIDsNewestFirst: ["a8", "a3b", "a3a"]
+            ),
+            S1Range(
+                id: "m2026-08",
+                displayName: "2026-08",
+                assetIDsNewestFirst: ["a8"],
+                parentRangeID: "y2026"
+            ),
+            S1Range(
+                id: "m2026-03",
+                displayName: "2026-03",
+                assetIDsNewestFirst: ["a3b", "a3a"],
+                parentRangeID: "y2026"
+            ),
+            S1Range(
+                id: "y2024",
+                displayName: "2024",
+                assetIDsNewestFirst: ["b1"]
+            ),
+            S1Range(
+                id: "m2024-01",
+                displayName: "2024-01",
+                assetIDsNewestFirst: ["b1"],
+                parentRangeID: "y2024"
+            )
+        ]
+    }
+
+    private func makeSource(
+        allAssets: [S1PhotoAssetSnapshot]
+    ) -> S1PhotoLibrarySource {
+        S1PhotoLibrarySource(
+            authorizationStatus: { .authorized },
+            fetchAssets: { allAssets },
+            fetchAssetCollections: { _, _ in [] }
+        )
+    }
+
+    private func makeAsset(
+        _ identifier: String,
+        year: Int,
+        month: Int,
+        day: Int
+    ) -> S1PhotoAssetSnapshot {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(
+            from: DateComponents(
+                year: year,
+                month: month,
+                day: day,
+                hour: 12
+            )
+        )!
+        return S1PhotoAssetSnapshot(identifier: identifier, creationDate: date)
     }
 
     private func tryUnwrap<T>(
