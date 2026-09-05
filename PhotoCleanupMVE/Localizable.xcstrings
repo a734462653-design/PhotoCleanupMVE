@@ -144,6 +144,17 @@
         }
       }
     },
+    "s1.chrome.subtitle_format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张 · {ranges} 个范围"
+          }
+        }
+      }
+    },
     "s1.dimension.accessibility" : {
       "extractionState" : "manual",
       "localizations" : {
