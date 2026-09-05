@@ -22,6 +22,28 @@ struct S1PhotoLibrarySource {
         PHAssetCollectionType,
         PHAssetCollectionSubtype
     ) -> [S1AlbumCollectionSnapshot]
+    /// IC-129：按资产标识批量查存在性——入参为一批 localIdentifier，
+    /// 返回其中当前仍存在的子集。生产实现一次 PhotoKit 批量取回，不逐个查。
+    let fetchExistingAssetIdentifiers: ([String]) -> Set<String>
+
+    init(
+        authorizationStatus: @escaping () -> PHAuthorizationStatus,
+        fetchAssets: @escaping () -> [S1PhotoAssetSnapshot],
+        fetchAssetCollections: @escaping (
+            PHAssetCollectionType,
+            PHAssetCollectionSubtype
+        ) -> [S1AlbumCollectionSnapshot],
+        // 夹具默认值：查询到的标识全部视为仍存在（等价于 IC-129 之前的行为）；
+        // 需要模拟外部删除的夹具显式传入自己的实现。
+        fetchExistingAssetIdentifiers: @escaping ([String]) -> Set<String> = {
+            Set($0)
+        }
+    ) {
+        self.authorizationStatus = authorizationStatus
+        self.fetchAssets = fetchAssets
+        self.fetchAssetCollections = fetchAssetCollections
+        self.fetchExistingAssetIdentifiers = fetchExistingAssetIdentifiers
+    }
 
     static let production = S1PhotoLibrarySource(
         authorizationStatus: {
@@ -41,6 +63,14 @@ struct S1PhotoLibrarySource {
                 snapshots.append(s1AlbumSnapshot(from: collection))
             }
             return snapshots
+        },
+        fetchExistingAssetIdentifiers: { identifiers in
+            var existing = Set<String>()
+            PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil)
+                .enumerateObjects { asset, _, _ in
+                    existing.insert(asset.localIdentifier)
+                }
+            return existing
         }
     )
 }
@@ -114,6 +144,17 @@ final class PhotoLibraryService {
             byIdentifier[asset.localIdentifier] = asset
         }
         return byIdentifier
+    }
+
+    /// IC-129：按资产标识批量查存在性——一次批量取回，返回入参中当前仍存在的
+    /// 子集。空入参直接返回空集，不发起查询。供对账入口按 `M` 全部范围的并集
+    /// 一次调用，与当前 `T` 无关。
+    func existingAssetIdentifiers(among identifiers: Set<String>) -> Set<String> {
+        guard !identifiers.isEmpty else {
+            return []
+        }
+        return s1Source.fetchExistingAssetIdentifiers(identifiers.sorted())
+            .intersection(identifiers)
     }
 
     /// IC-127 D：当前授权态的数据层表达（与 PhotoKit 类型解耦）。

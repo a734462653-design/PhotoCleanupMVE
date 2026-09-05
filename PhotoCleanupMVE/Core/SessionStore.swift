@@ -218,6 +218,24 @@ struct SessionStore: Equatable, Sendable {
         return state != before
     }
 
+    /// IC-129（未定项 13 跨维度补全）：按资产存在性对账。覆盖 `M` 的**全部范围**、
+    /// 与当前 `T` 无关：各范围剔除不在 `existingAssetIDs` 中的资产（经
+    /// `setMarked(false)` 同步维护 `F`）。与 `reconcileRange` 的按范围收敛叠加
+    /// 使用，不替换它；`K` 的钳制仍只由按范围收敛负责（钳制需要序列，存在性
+    /// 给不出序列）。幂等：对同一存在集合连调两次结果相同。返回是否有改动。
+    @discardableResult
+    mutating func reconcileMarkedAssets(
+        existingAssetIDs: Set<AssetID>
+    ) -> Bool {
+        let before = state
+        for (rangeID, pending) in state.pendingDeletionAssetIDsByRangeID {
+            for assetID in pending.subtracting(existingAssetIDs).sorted() {
+                setMarked(false, assetID: assetID, rangeID: rangeID)
+            }
+        }
+        return state != before
+    }
+
     func pendingDeletionCount(for rangeID: RangeID) -> Int {
         state.pendingDeletionAssetIDsByRangeID[rangeID]?.count ?? 0
     }

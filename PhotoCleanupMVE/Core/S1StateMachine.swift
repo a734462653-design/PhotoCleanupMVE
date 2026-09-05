@@ -307,6 +307,12 @@ final class S1StateMachine: ObservableObject {
     /// 推给持久层；由协调器在安装状态机时注入。
     var persistenceSink: ((S1SessionSnapshot) -> Void)?
 
+    /// IC-129：资产存在性探针——给一批资产标识，返回其中当前仍存在的子集；
+    /// 由协调器在安装状态机时注入。对账时以 `M` 全部范围的并集**一次**批量查询，
+    /// 与当前 `T` 无关；`M` 为空时不查询。为 nil（未注入的夹具）时对账退回
+    /// 仅按范围收敛，即 IC-129 之前的行为。
+    var assetExistenceProbe: ((Set<String>) -> Set<String>)?
+
     private var readGeneration = 0
     private var knownRangeNamesByID: [String: String] = [:]
     private var lastPublishedSnapshot: S1SessionSnapshot?
@@ -546,14 +552,25 @@ final class S1StateMachine: ObservableObject {
         if countsAsReconciliation {
             reconciliationCount += 1
         }
-        let reconciledStore = Self.reconciledStore(sessionStore, against: newRanges)
+        var reconciledStore = Self.reconciledStore(sessionStore, against: newRanges)
+        // IC-129：在按范围收敛之上叠加按存在性收敛——覆盖 `M` 的全部范围，
+        // 与本次读到的 `R(T)` 无关，跨维度的失效资产在任一次对账中即收敛。
+        if let assetExistenceProbe {
+            let markedAssetIDs = reconciledStore.allPendingDeletionAssetIDs
+            if !markedAssetIDs.isEmpty {
+                reconciledStore.reconcileMarkedAssets(
+                    existingAssetIDs: assetExistenceProbe(markedAssetIDs)
+                )
+            }
+        }
         if reconciledStore != sessionStore {
             sessionStore = reconciledStore
         }
     }
 
-    /// 对账的纯函数部分：只对出现在新 `R(T)` 中的范围做剔除与钳制。当前维度之外的
-    /// 范围（例如在相册维度下标记、此刻 `T=date`）在切回该维度读取时经同一入口对账。
+    /// 对账的按范围部分：只对出现在新 `R(T)` 中的范围做剔除与钳制。当前维度之外
+    /// 范围里的失效**资产**由叠加其上的存在性收敛（IC-129）兜住；这些范围的 `K`
+    /// 钳制仍在切回该维度读取时经同一入口完成。
     private static func reconciledStore(
         _ store: SessionStore,
         against newRanges: [S1Range]
