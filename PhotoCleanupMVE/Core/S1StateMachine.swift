@@ -421,10 +421,8 @@ final class S1StateMachine: ObservableObject {
                 loadingState = .failed
                 return false
             }
-            ranges = newRanges
-            for range in newRanges {
-                knownRangeNamesByID[range.id] = range.displayName
-            }
+            // IC-127 C：每一次读取结果都先过对账再对外可见（含 B 的恢复路径）。
+            adoptRanges(newRanges, isLimitedAuthorization: isLimitedAuthorization)
             readFailure = nil
             loadingState = .ready
             return true
@@ -444,6 +442,66 @@ final class S1StateMachine: ObservableObject {
             loadingState = .failed
             return true
         }
+    }
+
+    /// IC-127 C（未定项 13）：外部变更对账的单一入口。就绪态下以新的 `R(T)` 为准：
+    /// 替换范围列表；`M` 剔除已不存在的资产并从 `F` 删键；`K` 按新序列重新钳制。
+    /// 静默完成——不改 `loadingState`、不写 `readFailure`、不产生任何提示。
+    /// 重读失败时没有「新结果」可依据，原样保留（同样静默），返回 false。
+    @discardableResult
+    func reconcile(
+        with result: Result<[S1Range], S1RangeReadFailure>,
+        isLimitedAuthorization: Bool? = nil
+    ) -> Bool {
+        reconciliationCount += 1
+        guard loadingState == .ready,
+              case let .success(newRanges) = result,
+              Self.areValid(newRanges) else {
+            return false
+        }
+        adoptRanges(
+            newRanges,
+            isLimitedAuthorization: isLimitedAuthorization ?? self.isLimitedAuthorization,
+            countsAsReconciliation: false
+        )
+        return true
+    }
+
+    private func adoptRanges(
+        _ newRanges: [S1Range],
+        isLimitedAuthorization: Bool,
+        countsAsReconciliation: Bool = true
+    ) {
+        ranges = newRanges
+        for range in newRanges {
+            knownRangeNamesByID[range.id] = range.displayName
+        }
+        let validRangeIDs = Set(newRanges.map(\.id))
+        collapsedYearRangeIDs = collapsedYearRangeIDs.intersection(validRangeIDs)
+        self.isLimitedAuthorization = isLimitedAuthorization
+        if countsAsReconciliation {
+            reconciliationCount += 1
+        }
+        let reconciledStore = Self.reconciledStore(sessionStore, against: newRanges)
+        if reconciledStore != sessionStore {
+            sessionStore = reconciledStore
+        }
+    }
+
+    /// 对账的纯函数部分：只对出现在新 `R(T)` 中的范围做剔除与钳制。当前维度之外的
+    /// 范围（例如在相册维度下标记、此刻 `T=date`）在切回该维度读取时经同一入口对账。
+    private static func reconciledStore(
+        _ store: SessionStore,
+        against newRanges: [S1Range]
+    ) -> SessionStore {
+        var next = store
+        for range in newRanges {
+            next.reconcileRange(
+                range.id,
+                availableAssetIDsNewestFirst: range.assetIDsNewestFirst
+            )
+        }
+        return next
     }
 
     @discardableResult
@@ -549,6 +607,20 @@ final class S1StateMachine: ObservableObject {
             },
             groupNameForRangeID: { rangeID in
                 rangeNamesByID[rangeID] ?? String()
+            }
+        )
+    }
+
+    /// IC-127 E／C：提交排序走了兜底分支的范围数与资产数。对账之后再提交，
+    /// 同维度内两者都应为 0（由测试以计数断言钉住）。
+    func s3SubmissionOrderingFallback() -> SessionStore.S3SubmissionOrderingFallback {
+        let currentRanges = visibleRanges
+        let currentSortOrder = sortOrder
+        return sessionStore.s3SubmissionOrderingFallback(
+            rangeOrder: currentRanges.map(\.id),
+            orderedAssetIDsForRangeID: { rangeID in
+                currentRanges.first { $0.id == rangeID }?
+                    .orderedAssetIDs(for: currentSortOrder) ?? []
             }
         )
     }

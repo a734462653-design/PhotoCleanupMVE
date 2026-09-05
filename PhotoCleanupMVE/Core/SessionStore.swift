@@ -58,6 +58,14 @@ struct SessionStore: Equatable, Sendable {
         }
     }
 
+    /// IC-127 E／C：提交排序的兜底统计。`rangesOutsideOrder` = 有待删分组但不在
+    /// `rangeOrder` 中的范围数；`assetsOutsideOrder` = 分组成员中未被该范围
+    /// `A(r, O)` 覆盖、只能按标识升序补在组尾的资产数。
+    struct S3SubmissionOrderingFallback: Equatable, Sendable {
+        let rangesOutsideOrder: Int
+        let assetsOutsideOrder: Int
+    }
+
     private struct State: Equatable, Sendable {
         var pendingDeletionAssetIDsByRangeID: [RangeID: Set<AssetID>] = [:]
         var continuationsByRangeID: [RangeID: Continuation] = [:]
@@ -127,6 +135,53 @@ struct SessionStore: Equatable, Sendable {
         }
 
         state = nextState
+    }
+
+    /// IC-127 C（未定项 13）：按新的可用资产序列对账一个范围。
+    /// `M[r]` 剔除已不存在的资产（经 `setMarked(false)` 同步维护 `F`）；
+    /// `K[r]` 的 `c_范围`／`p_范围` 若已不在序列中，钳到 `O_记录` 顺序下的序列末位。
+    /// 幂等：对同一序列连调两次结果相同。返回是否有改动。
+    @discardableResult
+    mutating func reconcileRange(
+        _ rangeID: RangeID,
+        availableAssetIDsNewestFirst: [AssetID]
+    ) -> Bool {
+        let before = state
+        let available = Set(availableAssetIDsNewestFirst)
+
+        if let pending = state.pendingDeletionAssetIDsByRangeID[rangeID] {
+            for assetID in pending.subtracting(available).sorted() {
+                setMarked(false, assetID: assetID, rangeID: rangeID)
+            }
+        }
+
+        if let continuation = state.continuationsByRangeID[rangeID],
+           !availableAssetIDsNewestFirst.isEmpty {
+            let recordedOrder: [AssetID]
+            switch continuation.recordedSortOrder {
+            case .newestFirst:
+                recordedOrder = availableAssetIDsNewestFirst
+            case .oldestFirst:
+                recordedOrder = Array(availableAssetIDsNewestFirst.reversed())
+            }
+            let last = recordedOrder[recordedOrder.count - 1]
+            let current = available.contains(continuation.currentAssetID)
+                ? continuation.currentAssetID
+                : last
+            let farthest = available.contains(continuation.farthestAssetID)
+                ? continuation.farthestAssetID
+                : last
+            if current != continuation.currentAssetID ||
+                farthest != continuation.farthestAssetID {
+                state.continuationsByRangeID[rangeID] = Continuation(
+                    currentAssetID: current,
+                    farthestAssetID: farthest,
+                    recordedSortOrder: continuation.recordedSortOrder
+                )
+            }
+        }
+
+        return state != before
     }
 
     func pendingDeletionCount(for rangeID: RangeID) -> Int {
@@ -247,12 +302,50 @@ struct SessionStore: Equatable, Sendable {
     /// `rangeOrder` 之外的范围（例如在另一维度下标记、当前 `R(T)` 不含）按
     /// 范围标识升序排在其后；`orderedAssetIDsForRangeID` 未覆盖到的资产按标识
     /// 升序补在该组末尾。两条回退只保证顺序稳定可重算，并保持各组资产数之和
-    /// 恒等于 `D_全部` 元素数。
+    /// 恒等于 `D_全部` 元素数。对账（IC-127 C）之后再提交，同维度内不应有任何
+    /// 范围或资产走进回退分支（见 `s3SubmissionOrderingFallback`）。
     func makeS3Submission(
         rangeOrder: [RangeID],
         orderedAssetIDsForRangeID: (RangeID) -> [AssetID],
         groupNameForRangeID: (RangeID) -> String
     ) -> S3Submission {
+        let ordering = orderedGroups(
+            rangeOrder: rangeOrder,
+            orderedAssetIDsForRangeID: orderedAssetIDsForRangeID
+        )
+        let groups = ordering.groups.map { entry in
+            S3Submission.Group(
+                sourceRangeID: entry.rangeID,
+                name: groupNameForRangeID(entry.rangeID),
+                orderedAssetIDs: entry.orderedAssetIDs
+            )
+        }
+        return S3Submission(
+            sourceSessionID: sessionID,
+            orderedAssetIDs: groups.flatMap(\.orderedAssetIDs),
+            groups: groups
+        )
+    }
+
+    func s3SubmissionOrderingFallback(
+        rangeOrder: [RangeID],
+        orderedAssetIDsForRangeID: (RangeID) -> [AssetID]
+    ) -> S3SubmissionOrderingFallback {
+        orderedGroups(
+            rangeOrder: rangeOrder,
+            orderedAssetIDsForRangeID: orderedAssetIDsForRangeID
+        ).fallback
+    }
+
+    private struct OrderedGroup {
+        let rangeID: RangeID
+        let orderedAssetIDs: [AssetID]
+    }
+
+    private func orderedGroups(
+        rangeOrder: [RangeID],
+        orderedAssetIDsForRangeID: (RangeID) -> [AssetID]
+    ) -> (groups: [OrderedGroup], fallback: S3SubmissionOrderingFallback) {
         let groupedAssetIDs = pendingDeletionGroupsByRangeID
         var rangeRank: [RangeID: Int] = [:]
         for (index, rangeID) in rangeOrder.enumerated()
@@ -271,7 +364,12 @@ struct SessionStore: Equatable, Sendable {
                 return lhs < rhs
             }
         }
-        let groups = orderedRangeIDs.map { rangeID -> S3Submission.Group in
+        var rangesOutsideOrder = 0
+        var assetsOutsideOrder = 0
+        let groups = orderedRangeIDs.map { rangeID -> OrderedGroup in
+            if rangeRank[rangeID] == nil {
+                rangesOutsideOrder += 1
+            }
             let members = groupedAssetIDs[rangeID] ?? []
             var ordered: [AssetID] = []
             var seen = Set<AssetID>()
@@ -279,18 +377,17 @@ struct SessionStore: Equatable, Sendable {
             where members.contains(assetID) && seen.insert(assetID).inserted {
                 ordered.append(assetID)
             }
-            ordered.append(contentsOf: members.subtracting(seen).sorted())
-            return S3Submission.Group(
-                sourceRangeID: rangeID,
-                name: groupNameForRangeID(rangeID),
-                orderedAssetIDs: ordered
-            )
+            let remainder = members.subtracting(seen).sorted()
+            assetsOutsideOrder += remainder.count
+            ordered.append(contentsOf: remainder)
+            return OrderedGroup(rangeID: rangeID, orderedAssetIDs: ordered)
         }
-
-        return S3Submission(
-            sourceSessionID: sessionID,
-            orderedAssetIDs: groups.flatMap(\.orderedAssetIDs),
-            groups: groups
+        return (
+            groups,
+            S3SubmissionOrderingFallback(
+                rangesOutsideOrder: rangesOutsideOrder,
+                assetsOutsideOrder: assetsOutsideOrder
+            )
         )
     }
 

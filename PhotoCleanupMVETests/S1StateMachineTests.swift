@@ -282,7 +282,20 @@ final class S1StateMachineTests: XCTestCase {
             rangeID: "range-month"
         )
         let invalidDMachine = makeMachine(state: .ready, store: invalidStore)
-        XCTAssertNil(invalidDMachine.makeS2Handoff(for: "range-month"))
+        // IC-127 C（未定项 13）：读取结果先经对账再到达就绪态，范围外的 D 已被剔除、
+        // F 键同步删除，因此交接可形成且 D 为空；makeS2Handoff 的子集守卫作为最后
+        // 一道防线原样保留（本用例改为断言对账结果）。
+        XCTAssertEqual(
+            invalidDMachine.sessionStore.pendingDeletionCount(for: "range-month"),
+            0
+        )
+        XCTAssertNil(
+            invalidDMachine.sessionStore.firstMarkedRangeIDByAssetID["asset-outside"]
+        )
+        let prunedHandoff = tryUnwrap(
+            invalidDMachine.makeS2Handoff(for: "range-month")
+        )
+        XCTAssertTrue(prunedHandoff.pendingDeletionAssetIDs.isEmpty)
     }
 
     // IC046-015：O 只翻转月、年范围列表；相册列表保持读取方提供的占位顺序。

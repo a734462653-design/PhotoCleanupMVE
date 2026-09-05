@@ -177,6 +177,8 @@ final class CleanupCoordinator: ObservableObject {
             return false
         }
         clearS2RouteState()
+        // IC-127 C：从 S2 返回时对账一次（静默）。
+        reconcileS1WithPhotoLibrary()
         route = .s1
         message = nil
         return true
@@ -184,11 +186,16 @@ final class CleanupCoordinator: ObservableObject {
 
     @discardableResult
     func enterConfirmationFromS2(with payload: S2ExitPayload) -> Bool {
-        guard applyS2ExitPayload(payload),
-              let submission = s1Machine?.makeS3Submission() else {
+        guard applyS2ExitPayload(payload) else {
             return false
         }
         clearS2RouteState()
+        // IC-127 C：S2 经垃圾桶直入 S3 同样是「从 S2 返回」——先对账再形成提交，
+        // 已被系统删除的资产不进入 D_全部。
+        reconcileS1WithPhotoLibrary()
+        guard let submission = s1Machine?.makeS3Submission() else {
+            return false
+        }
         return enterConfirmationFromS1(submission)
     }
 

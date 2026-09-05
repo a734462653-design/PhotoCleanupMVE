@@ -540,3 +540,351 @@ final class AlbumScopeWiringTests: XCTestCase {
         return S1PhotoAssetSnapshot(identifier: identifier, creationDate: date)
     }
 }
+
+// MARK: - IC-127 C（并入本文件：工程文件未在授权范围内）
+
+/// IC-127 C（未定项 13 对账）。
+final class S1ReconciliationTests: XCTestCase {
+    // MARK: - C
+
+    // 资产被外部删除后，M 剔除该资产、F 同步删键，总数正确。
+    func testIC127C_ExternallyDeletedAssetIsPrunedFromMAndF() {
+        let machine = makeReadyMachine(assets: ["a3", "a2", "a1"])
+        XCTAssertTrue(
+            machine.applyS2PendingDeletionChange(
+                ["a2", "a1"],
+                entryContext: entryContext(["a3", "a2", "a1"])
+            )
+        )
+        XCTAssertEqual(machine.badgeCount, 2)
+
+        XCTAssertTrue(
+            machine.reconcile(with: .success([range(["a3", "a1"])]))
+        )
+
+        XCTAssertEqual(
+            machine.sessionStore.pendingDeletionAssetIDsByRangeID["r"],
+            ["a1"]
+        )
+        XCTAssertNil(machine.sessionStore.firstMarkedRangeIDByAssetID["a2"])
+        XCTAssertEqual(machine.sessionStore.firstMarkedRangeIDByAssetID["a1"], "r")
+        XCTAssertEqual(machine.sessionStore.allPendingDeletionAssetIDs, ["a1"])
+        XCTAssertEqual(machine.badgeCount, 1)
+        XCTAssertEqual(machine.ranges.map(\.assetIDsNewestFirst), [["a3", "a1"]])
+        XCTAssertEqual(machine.rangeRows.first?.totalAssetCount, 2)
+        XCTAssertEqual(machine.rangeRows.first?.pendingDeletionCount, 1)
+    }
+
+    // K 越界（c／p 所指资产已不存在）被钳到新序列在 O_记录 下的末位。
+    func testIC127C_ContinuationIsClampedToLastAvailableAsset() {
+        var store = SessionStore(sessionID: "session-clamp")
+        XCTAssertTrue(
+            store.applyS2Return(
+                SessionStore.S2Return(
+                    sourceSessionID: "session-clamp",
+                    sourceRangeID: "r",
+                    pendingDeletionAssetIDs: [],
+                    currentAssetID: "a1",
+                    farthestAssetID: "a1"
+                ),
+                entryContext: SessionStore.S2EntryContext(
+                    rangeID: "r",
+                    orderedAssetIDs: ["a3", "a2", "a1"],
+                    sortOrder: .newestFirst
+                )
+            )
+        )
+
+        var newestClamped = store
+        XCTAssertTrue(
+            newestClamped.reconcileRange("r", availableAssetIDsNewestFirst: ["a3", "a2"])
+        )
+        XCTAssertEqual(
+            newestClamped.continuationsByRangeID["r"],
+            SessionStore.Continuation(
+                currentAssetID: "a2",
+                farthestAssetID: "a2",
+                recordedSortOrder: .newestFirst
+            )
+        )
+
+        // O_记录 = 旧到新时，末位是新到旧序列的首元素。
+        var oldestStore = SessionStore(sessionID: "session-clamp-oldest")
+        XCTAssertTrue(
+            oldestStore.applyS2Return(
+                SessionStore.S2Return(
+                    sourceSessionID: "session-clamp-oldest",
+                    sourceRangeID: "r",
+                    pendingDeletionAssetIDs: [],
+                    currentAssetID: "a3",
+                    farthestAssetID: "a3"
+                ),
+                entryContext: SessionStore.S2EntryContext(
+                    rangeID: "r",
+                    orderedAssetIDs: ["a1", "a2", "a3"],
+                    sortOrder: .oldestFirst
+                )
+            )
+        )
+        XCTAssertTrue(
+            oldestStore.reconcileRange("r", availableAssetIDsNewestFirst: ["a2", "a1"])
+        )
+        XCTAssertEqual(
+            oldestStore.continuationsByRangeID["r"],
+            SessionStore.Continuation(
+                currentAssetID: "a2",
+                farthestAssetID: "a2",
+                recordedSortOrder: .oldestFirst
+            )
+        )
+
+        // 仍在序列中的续接不动。
+        var untouched = store
+        XCTAssertFalse(
+            untouched.reconcileRange("r", availableAssetIDsNewestFirst: ["a3", "a2", "a1"])
+        )
+        XCTAssertEqual(untouched, store)
+    }
+
+    // 对账静默：不改加载态、不写 readFailure、协调器 message 为空；重读失败时原样保留。
+    func testIC127C_ReconciliationIsSilentAndKeepsReadyState() async {
+        await MainActor.run {
+            let box = IC127LibraryBox(
+                assets: [
+                    makeAsset("资产-3", day: 3),
+                    makeAsset("资产-2", day: 2),
+                    makeAsset("资产-1", day: 1)
+                ]
+            )
+            let coordinator = CleanupCoordinator(
+                photoLibrary: PhotoLibraryService(s1Source: box.source)
+            )
+            XCTAssertTrue(coordinator.enterS1(sessionID: "会话-静默"))
+            let machine = tryUnwrap(coordinator.s1Machine)
+            readThroughCoordinator(coordinator)
+            XCTAssertEqual(machine.state, .ready)
+
+            box.assets.removeFirst()
+            XCTAssertTrue(coordinator.reconcileS1WithPhotoLibrary())
+            XCTAssertEqual(machine.state, .ready)
+            XCTAssertNil(machine.readFailure)
+            XCTAssertNil(coordinator.message)
+            XCTAssertEqual(machine.ranges.first?.totalAssetCount, 2)
+
+            box.status = .denied
+            let before = machine.ranges
+            let storeBefore = machine.sessionStore
+            XCTAssertFalse(coordinator.reconcileS1WithPhotoLibrary())
+            XCTAssertEqual(machine.state, .ready)
+            XCTAssertNil(machine.readFailure)
+            XCTAssertNil(coordinator.message)
+            XCTAssertEqual(machine.ranges, before)
+            XCTAssertEqual(machine.sessionStore, storeBefore)
+        }
+    }
+
+    // 对账幂等：同一结果连调两次，M／K／F 与范围列表相同；每次调用计数 +1。
+    func testIC127C_ReconciliationIsIdempotent() {
+        let machine = makeReadyMachine(assets: ["a3", "a2", "a1"])
+        XCTAssertTrue(
+            machine.applyS2PendingDeletionChange(
+                ["a2"],
+                entryContext: entryContext(["a3", "a2", "a1"])
+            )
+        )
+        XCTAssertTrue(
+            machine.applyS2Return(
+                SessionStore.S2Return(
+                    sourceSessionID: "session-reconcile",
+                    sourceRangeID: "r",
+                    pendingDeletionAssetIDs: ["a2"],
+                    currentAssetID: "a2",
+                    farthestAssetID: "a1"
+                ),
+                entryContext: entryContext(["a3", "a2", "a1"])
+            )
+        )
+        let countBefore = machine.reconciliationCount
+        let newRanges = [range(["a3"])]
+
+        XCTAssertTrue(machine.reconcile(with: .success(newRanges)))
+        let firstStore = machine.sessionStore
+        let firstRanges = machine.ranges
+        XCTAssertTrue(machine.reconcile(with: .success(newRanges)))
+
+        XCTAssertEqual(machine.sessionStore, firstStore)
+        XCTAssertEqual(machine.ranges, firstRanges)
+        XCTAssertEqual(machine.reconciliationCount, countBefore + 2)
+        XCTAssertTrue(machine.sessionStore.allPendingDeletionAssetIDs.isEmpty)
+        XCTAssertEqual(
+            machine.sessionStore.continuationsByRangeID["r"],
+            SessionStore.Continuation(
+                currentAssetID: "a3",
+                farthestAssetID: "a3",
+                recordedSortOrder: .newestFirst
+            )
+        )
+    }
+
+    // 进入 S1（首次读取）与从 S2 返回各经对账入口一次；返回前被外部删除的已标记资产
+    // 不进入 M；之后提交不走任何兜底分支（计数为 0）。
+    func testIC127C_EntryAndS2ReturnEachReconcileOnceAndSubmissionUsesNoFallback() async {
+        await MainActor.run {
+            let box = IC127LibraryBox(
+                assets: [
+                    makeAsset("资产-3", day: 3),
+                    makeAsset("资产-2", day: 2),
+                    makeAsset("资产-1", day: 1)
+                ]
+            )
+            let coordinator = CleanupCoordinator(
+                photoLibrary: PhotoLibraryService(s1Source: box.source)
+            )
+            XCTAssertTrue(coordinator.enterS1(sessionID: "会话-对账"))
+            let machine = tryUnwrap(coordinator.s1Machine)
+            XCTAssertEqual(machine.reconciliationCount, 0)
+            readThroughCoordinator(coordinator)
+            XCTAssertEqual(machine.reconciliationCount, 1)
+            XCTAssertEqual(machine.state, .ready)
+
+            let yearID = tryUnwrap(machine.topLevelRanges.first?.id)
+            let yearAssets = tryUnwrap(
+                machine.ranges.first { $0.id == yearID }?.assetIDsNewestFirst
+            )
+            XCTAssertEqual(yearAssets, ["资产-3", "资产-2", "资产-1"])
+            XCTAssertTrue(
+                machine.applyS2PendingDeletionChange(
+                    ["资产-2", "资产-1"],
+                    entryContext: SessionStore.S2EntryContext(
+                        rangeID: yearID,
+                        orderedAssetIDs: yearAssets,
+                        sortOrder: .newestFirst
+                    )
+                )
+            )
+            let handoff = tryUnwrap(machine.makeS2Handoff(for: yearID))
+            XCTAssertTrue(coordinator.enterS2(from: handoff))
+            let payload = tryUnwrap(coordinator.s2Machine?.makeExitPayload())
+
+            // 外部删除 资产-2，然后从 S2 返回。
+            box.assets.removeAll { $0.identifier == "资产-2" }
+            let fallbackBeforeReturn = machine.s3SubmissionOrderingFallback()
+            XCTAssertTrue(coordinator.leaveS2(with: payload))
+
+            XCTAssertEqual(coordinator.route, .s1)
+            XCTAssertEqual(machine.reconciliationCount, 2)
+            XCTAssertEqual(
+                machine.sessionStore.pendingDeletionAssetIDsByRangeID[yearID],
+                ["资产-1"]
+            )
+            XCTAssertNil(machine.sessionStore.firstMarkedRangeIDByAssetID["资产-2"])
+            XCTAssertEqual(machine.sessionStore.allPendingDeletionAssetIDs, ["资产-1"])
+            XCTAssertEqual(coordinator.sessionStore, machine.sessionStore)
+            XCTAssertNil(coordinator.message)
+
+            // 对账之后提交：无范围、无资产走进兜底分支（计数断言）。
+            let fallback = machine.s3SubmissionOrderingFallback()
+            XCTAssertEqual(fallback.rangesOutsideOrder, 0)
+            XCTAssertEqual(fallback.assetsOutsideOrder, 0)
+            XCTAssertEqual(fallbackBeforeReturn.rangesOutsideOrder, 0)
+            let submission = tryUnwrap(machine.makeS3Submission())
+            XCTAssertEqual(submission.orderedAssetIDs, ["资产-1"])
+            XCTAssertEqual(
+                submission.groups.reduce(0) { $0 + $1.assetCount },
+                machine.sessionStore.allPendingDeletionAssetIDs.count
+            )
+        }
+    }
+
+    // 兜底分支的计数器本身可测：对账前若 M 含已不在 A 中的资产，assetsOutsideOrder > 0。
+    func testIC127C_FallbackCounterDetectsStaleAssetsBeforeReconciliation() {
+        let machine = makeReadyMachine(assets: ["a3", "a2", "a1"])
+        XCTAssertTrue(
+            machine.applyS2PendingDeletionChange(
+                ["a2"],
+                entryContext: entryContext(["a3", "a2", "a1"])
+            )
+        )
+        // 直接把范围换成不含 a2 的新列表但不走对账入口（模拟「对账前」状态）：
+        // 通过 reconcile 之前先读一次兜底计数——此时 a2 仍在 A 中，计数为 0；
+        // 再用 SessionStore 层直接构造「a2 不在 A」的提交请求验证计数器。
+        XCTAssertEqual(machine.s3SubmissionOrderingFallback().assetsOutsideOrder, 0)
+        let stale = machine.sessionStore.s3SubmissionOrderingFallback(
+            rangeOrder: ["r"],
+            orderedAssetIDsForRangeID: { _ in ["a3", "a1"] }
+        )
+        XCTAssertEqual(stale.assetsOutsideOrder, 1)
+        XCTAssertEqual(stale.rangesOutsideOrder, 0)
+        let outsideOrder = machine.sessionStore.s3SubmissionOrderingFallback(
+            rangeOrder: [],
+            orderedAssetIDsForRangeID: { _ in [] }
+        )
+        XCTAssertEqual(outsideOrder.rangesOutsideOrder, 1)
+        XCTAssertEqual(outsideOrder.assetsOutsideOrder, 1)
+    }
+
+    // MARK: - Fixtures
+
+    private func makeReadyMachine(assets: [String]) -> S1StateMachine {
+        let machine = S1StateMachine(
+            sessionStore: SessionStore(sessionID: "session-reconcile"),
+            initialGroupingDimension: .date,
+            initialSortOrder: .newestFirst
+        )
+        let request = tryUnwrap(machine.currentReadRequest)
+        XCTAssertTrue(
+            machine.completeRangeRead(.success([range(assets)]), for: request)
+        )
+        return machine
+    }
+
+    private func range(_ assets: [String]) -> S1Range {
+        S1Range(id: "r", displayName: "2026", assetIDsNewestFirst: assets)
+    }
+
+    private func entryContext(_ assets: [String]) -> SessionStore.S2EntryContext {
+        SessionStore.S2EntryContext(
+            rangeID: "r",
+            orderedAssetIDs: assets,
+            sortOrder: .newestFirst
+        )
+    }
+
+    @MainActor
+    private func readThroughCoordinator(_ coordinator: CleanupCoordinator) {
+        guard let machine = coordinator.s1Machine,
+              let request = machine.currentReadRequest else {
+            return XCTFail("S1 应持有读取请求")
+        }
+        let response = coordinator.readS1Ranges(groupedBy: request.groupingDimension)
+        XCTAssertTrue(
+            machine.completeRangeRead(
+                response.result,
+                for: request,
+                isLimitedAuthorization: response.isLimitedAuthorization
+            )
+        )
+    }
+
+    private func makeAsset(_ identifier: String, day: Int) -> S1PhotoAssetSnapshot {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(
+            from: DateComponents(year: 2026, month: 8, day: day, hour: 12)
+        )!
+        return S1PhotoAssetSnapshot(identifier: identifier, creationDate: date)
+    }
+
+    private func tryUnwrap<T>(
+        _ value: T?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> T {
+        do {
+            return try XCTUnwrap(value, file: file, line: line)
+        } catch {
+            XCTFail(String(describing: error), file: file, line: line)
+            preconditionFailure()
+        }
+    }
+}
