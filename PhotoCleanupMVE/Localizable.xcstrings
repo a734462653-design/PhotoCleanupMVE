@@ -166,13 +166,13 @@
         }
       }
     },
-    "s1.dimension.month" : {
+    "s1.dimension.date" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按月"
+            "value" : "按日期"
           }
         }
       }
@@ -184,17 +184,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未分类"
-          }
-        }
-      }
-    },
-    "s1.dimension.year" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "按年"
           }
         }
       }

@@ -74,16 +74,34 @@ struct S1View: View {
             )
 
         case .ready:
+            // IC-127 A：只做适配两级树的最小结构改动——年节点行拆成「展开／收起」与
+            // 「进入」两个可区分的点击目标，月节点行左侧内缩；视觉留给 IC-128。
             List(machine.rangeRows) { row in
-                Button {
-                    guard let handoff = machine.makeS2Handoff(for: row.id) else {
-                        return
+                HStack(spacing: 12) {
+                    if row.childCount > 0 {
+                        Button {
+                            _ = machine.toggleYearExpansion(row.id)
+                        } label: {
+                            Image(
+                                systemName: row.isExpanded
+                                    ? "chevron.down"
+                                    : "chevron.right"
+                            )
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    onS2Handoff(handoff)
-                } label: {
-                    rangeRow(row)
+                    Button {
+                        guard let handoff = machine.makeS2Handoff(for: row.id) else {
+                            return
+                        }
+                        onS2Handoff(handoff)
+                    } label: {
+                        rangeRow(row)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .padding(.leading, row.parentRangeID == nil ? 0 : 28)
             }
 
         case .empty:
@@ -246,7 +264,7 @@ private enum S1PreviewData {
         )
         let machine = S1StateMachine(
             sessionStore: store,
-            initialGroupingDimension: .month,
+            initialGroupingDimension: .date,
             initialSortOrder: .newestFirst
         )
         guard let request = machine.currentReadRequest else {
@@ -260,12 +278,21 @@ private enum S1PreviewData {
             _ = machine.completeRangeRead(
                 .success([
                     S1Range(
+                        id: "preview-year",
+                        displayName: "2026",
+                        assetIDsNewestFirst: [
+                            "preview-asset-2",
+                            "preview-asset-1"
+                        ]
+                    ),
+                    S1Range(
                         id: "preview-range",
                         displayName: "2026-08",
                         assetIDsNewestFirst: [
                             "preview-asset-2",
                             "preview-asset-1"
-                        ]
+                        ],
+                        parentRangeID: "preview-year"
                     )
                 ]),
                 for: request
@@ -276,7 +303,7 @@ private enum S1PreviewData {
             _ = machine.completeRangeRead(
                 .failure(
                     S1RangeReadFailure(
-                        groupingDimension: .month,
+                        groupingDimension: .date,
                         reason: .invalidResponse
                     )
                 ),

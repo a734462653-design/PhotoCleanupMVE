@@ -178,7 +178,7 @@ final class S2ImageLoadingStateTests: XCTestCase {
         XCTAssertTrue(coordinator.enterS1(sessionID: "会话-077"))
         let s1Machine = try XCTUnwrap(coordinator.s1Machine)
         let request = try XCTUnwrap(s1Machine.currentReadRequest)
-        let ranges = try coordinator.readS1Ranges(groupedBy: .month).get()
+        let ranges = try coordinator.readS1Ranges(groupedBy: .date).result.get()
         XCTAssertTrue(s1Machine.completeRangeRead(.success(ranges), for: request))
         let range = try XCTUnwrap(ranges.first)
         let valid = try XCTUnwrap(s1Machine.makeS2Handoff(for: range.id))

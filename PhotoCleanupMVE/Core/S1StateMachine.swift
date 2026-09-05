@@ -14,14 +14,15 @@ enum S1LoadingState: Equatable, Sendable {
     case failed
 }
 
-enum S1GroupingDimension: CaseIterable, Equatable, Hashable, Sendable {
-    case month
-    case year
+/// IC-127 A（Decision_log 140 漂移 A，SPEC-S1 第二节）：分组维度回到三类。
+/// `date` 内部以年／月两级呈现，年与月都是范围项，不另增 `T` 的取值。
+enum S1GroupingDimension: String, CaseIterable, Equatable, Hashable, Sendable {
+    case date
     case album
     case unclassified
 }
 
-enum S1SortOrder: CaseIterable, Equatable, Hashable, Sendable {
+enum S1SortOrder: String, CaseIterable, Equatable, Hashable, Sendable {
     case newestFirst
     case oldestFirst
 
@@ -35,10 +36,25 @@ enum S1SortOrder: CaseIterable, Equatable, Hashable, Sendable {
     }
 }
 
+/// 范围项。IC-127 A：`parentRangeID` 非空表示这是某个年节点下的月节点；
+/// 年节点与其他维度的范围 `parentRangeID == nil`。两级都是范围，都可独立进入 S2。
 struct S1Range: Identifiable, Equatable, Sendable {
     let id: String
     let displayName: String
     let assetIDsNewestFirst: [String]
+    let parentRangeID: String?
+
+    init(
+        id: String,
+        displayName: String,
+        assetIDsNewestFirst: [String],
+        parentRangeID: String? = nil
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.assetIDsNewestFirst = assetIDsNewestFirst
+        self.parentRangeID = parentRangeID
+    }
 
     var totalAssetCount: Int {
         assetIDsNewestFirst.count
@@ -222,16 +238,68 @@ final class S1StateMachine: ObservableObject {
         sessionStore.allPendingDeletionAssetIDs.count
     }
 
+    /// 一级节点：`T=date` 时为年节点；其他维度即全部范围。
+    var topLevelRanges: [S1Range] {
+        ranges.filter { $0.parentRangeID == nil }
+    }
+
+    /// 某个年节点下的月节点（按读取方给出的新到旧顺序）。
+    func childRanges(of rangeID: String) -> [S1Range] {
+        ranges.filter { $0.parentRangeID == rangeID }
+    }
+
+    func isYearExpanded(_ rangeID: String) -> Bool {
+        !collapsedYearRangeIDs.contains(rangeID)
+    }
+
+    /// IC-127 A：展开／收起与「进入年范围」是两个可区分的目标——本方法只改月节点
+    /// 行是否显示，不改 `T`、`R(T)`、`M`、`K`，不触发读取，不形成交接。
+    @discardableResult
+    func toggleYearExpansion(_ rangeID: String) -> Bool {
+        guard !isObscured,
+              groupingDimension == .date,
+              state == .ready,
+              let range = ranges.first(where: { $0.id == rangeID }),
+              range.parentRangeID == nil,
+              !childRanges(of: rangeID).isEmpty else {
+            return false
+        }
+        if collapsedYearRangeIDs.contains(rangeID) {
+            collapsedYearRangeIDs.remove(rangeID)
+        } else {
+            collapsedYearRangeIDs.insert(rangeID)
+        }
+        return true
+    }
+
+    /// 范围列表的可见顺序。`T=date`：年节点按 `O` 排列，每个年节点后跟其月节点
+    /// （同样按 `O`），收起的年节点不列出月节点；其余维度沿用读取方顺序。
     var visibleRanges: [S1Range] {
-        guard groupingDimension == .month || groupingDimension == .year,
-              sortOrder == .oldestFirst else {
+        guard groupingDimension == .date else {
             return ranges
         }
-        return Array(ranges.reversed())
+        let orderedYears = sortOrder == .oldestFirst
+            ? Array(topLevelRanges.reversed())
+            : topLevelRanges
+        var visible: [S1Range] = []
+        for year in orderedYears {
+            visible.append(year)
+            guard isYearExpanded(year.id) else {
+                continue
+            }
+            let months = childRanges(of: year.id)
+            visible.append(
+                contentsOf: sortOrder == .oldestFirst
+                    ? Array(months.reversed())
+                    : months
+            )
+        }
+        return visible
     }
 
     var rangeRows: [S1RangeRow] {
         visibleRanges.map { range in
+            let childCount = childRanges(of: range.id).count
             return S1RangeRow(
                 id: range.id,
                 displayName: range.displayName,
@@ -239,7 +307,10 @@ final class S1StateMachine: ObservableObject {
                 pendingDeletionCount: sessionStore.pendingDeletionCount(
                     for: range.id
                 ),
-                processedAssetCount: processedAssetIDs(for: range.id).count
+                processedAssetCount: processedAssetIDs(for: range.id).count,
+                parentRangeID: range.parentRangeID,
+                childCount: childCount,
+                isExpanded: childCount > 0 && isYearExpanded(range.id)
             )
         }
     }
@@ -489,6 +560,30 @@ final class S1StateMachine: ObservableObject {
                   !range.assetIDsNewestFirst.isEmpty,
                   assetIDs.count == range.assetIDsNewestFirst.count,
                   !assetIDs.contains(String()) else {
+                return false
+            }
+        }
+
+        let rangesByID = Dictionary(
+            uniqueKeysWithValues: ranges.map { ($0.id, $0) }
+        )
+        var childAssetIDsByParent: [String: [String]] = [:]
+        for range in ranges {
+            guard let parentID = range.parentRangeID else {
+                continue
+            }
+            guard let parent = rangesByID[parentID],
+                  parent.parentRangeID == nil,
+                  parentID != range.id else {
+                return false
+            }
+            childAssetIDsByParent[parentID, default: []]
+                .append(contentsOf: range.assetIDsNewestFirst)
+        }
+        for (parentID, childAssetIDs) in childAssetIDsByParent {
+            guard let parent = rangesByID[parentID],
+                  childAssetIDs.count == parent.assetIDsNewestFirst.count,
+                  Set(childAssetIDs) == Set(parent.assetIDsNewestFirst) else {
                 return false
             }
         }

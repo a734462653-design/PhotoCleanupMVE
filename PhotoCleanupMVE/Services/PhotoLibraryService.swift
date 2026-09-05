@@ -431,25 +431,25 @@ final class PhotoLibraryService {
 
     private func chronologicalRangeID(
         for date: Date,
-        groupingDimension: S1GroupingDimension,
+        level: ChronologicalLevel,
         calendar: Calendar
     ) -> String {
         let components = calendar.dateComponents(
             [.era, .year, .month],
             from: date
         )
-        let prefix = groupingDimension == .month ? "month" : "year"
+        let prefix = level == .month ? "month" : "year"
         let values = [
             components.era ?? 0,
             components.year ?? 0,
-            groupingDimension == .month ? components.month ?? 0 : 0
+            level == .month ? components.month ?? 0 : 0
         ]
         return ([prefix] + values.map { String($0) }).joined(separator: ":")
     }
 
     private func chronologicalDisplayName(
         for date: Date,
-        groupingDimension: S1GroupingDimension,
+        level: ChronologicalLevel,
         calendar: Calendar
     ) -> String {
         let formatter = DateFormatter()
@@ -457,7 +457,7 @@ final class PhotoLibraryService {
         formatter.locale = .autoupdatingCurrent
         formatter.timeZone = .autoupdatingCurrent
         formatter.setLocalizedDateFormatFromTemplate(
-            groupingDimension == .month ? "yMMMM" : "y"
+            level == .month ? "yMMMM" : "y"
         )
         return formatter.string(from: date)
     }

@@ -157,10 +157,13 @@ final class AlbumScopeWiringTests: XCTestCase {
         )
 
         let albumRanges = try service.s1Ranges(groupedBy: .album).get()
-        let monthRanges = try service.s1Ranges(groupedBy: .month).get()
-        let yearRanges = try service.s1Ranges(groupedBy: .year).get()
+        // IC-127 A：按日期为两级树——2 个年节点 + 3 个月节点，空月／空年不出现。
+        let dateRanges = try service.s1Ranges(groupedBy: .date).get()
+        let yearRanges = dateRanges.filter { $0.parentRangeID == nil }
+        let monthRanges = dateRanges.filter { $0.parentRangeID != nil }
 
         XCTAssertEqual(albumRanges.map(\.id), ["非空相册"])
+        XCTAssertEqual(dateRanges.count, 5)
         XCTAssertEqual(monthRanges.count, 3)
         XCTAssertEqual(yearRanges.count, 2)
         XCTAssertTrue(albumRanges.allSatisfy { $0.totalAssetCount > 0 })
