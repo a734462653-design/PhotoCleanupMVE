@@ -462,7 +462,7 @@ final class AlbumScopeWiringTests: XCTestCase {
         let machine = try XCTUnwrap(coordinator.s1Machine)
         XCTAssertTrue(machine.switchGroupingDimension(to: .album))
         let request = try XCTUnwrap(machine.currentReadRequest)
-        let albumRanges = try coordinator.readS1Ranges(groupedBy: .album).get()
+        let albumRanges = try coordinator.readS1Ranges(groupedBy: .album).result.get()
         XCTAssertTrue(machine.completeRangeRead(.success(albumRanges), for: request))
         let range = try XCTUnwrap(albumRanges.first)
         let entryContext = SessionStore.S2EntryContext(
