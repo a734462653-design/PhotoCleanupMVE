@@ -397,9 +397,21 @@ final class S1StateMachine: ObservableObject {
             return nil
         }
         let rangeNamesByID = knownRangeNamesByID
-        return sessionStore.makeS3Submission { rangeID in
-            rangeNamesByID[rangeID] ?? String()
-        }
+        // IC-127 E（未定项 8 定案）：分组按范围在 R(T) 中的顺序（含 O 对日期
+        // 维度的翻转），组内按当前 O 的 A(r, O)；不在当前 R(T) 中的范围按
+        // SessionStore 的稳定回退排在其后。
+        let currentRanges = visibleRanges
+        let currentSortOrder = sortOrder
+        return sessionStore.makeS3Submission(
+            rangeOrder: currentRanges.map(\.id),
+            orderedAssetIDsForRangeID: { rangeID in
+                currentRanges.first { $0.id == rangeID }?
+                    .orderedAssetIDs(for: currentSortOrder) ?? []
+            },
+            groupNameForRangeID: { rangeID in
+                rangeNamesByID[rangeID] ?? String()
+            }
+        )
     }
 
     @discardableResult

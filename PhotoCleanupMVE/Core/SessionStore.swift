@@ -242,6 +242,58 @@ struct SessionStore: Equatable, Sendable {
         )
     }
 
+    /// IC-127 E（未定项 8 定案）：提交顺序 = 分组按其范围在 `R(T)` 中的顺序，
+    /// 组内按当前 `O` 下该范围的 `A(r, O)` 顺序；总表为各组顺序拼接。
+    /// `rangeOrder` 之外的范围（例如在另一维度下标记、当前 `R(T)` 不含）按
+    /// 范围标识升序排在其后；`orderedAssetIDsForRangeID` 未覆盖到的资产按标识
+    /// 升序补在该组末尾。两条回退只保证顺序稳定可重算，并保持各组资产数之和
+    /// 恒等于 `D_全部` 元素数。
+    func makeS3Submission(
+        rangeOrder: [RangeID],
+        orderedAssetIDsForRangeID: (RangeID) -> [AssetID],
+        groupNameForRangeID: (RangeID) -> String
+    ) -> S3Submission {
+        let groupedAssetIDs = pendingDeletionGroupsByRangeID
+        var rangeRank: [RangeID: Int] = [:]
+        for (index, rangeID) in rangeOrder.enumerated()
+        where rangeRank[rangeID] == nil {
+            rangeRank[rangeID] = index
+        }
+        let orderedRangeIDs = groupedAssetIDs.keys.sorted { lhs, rhs in
+            switch (rangeRank[lhs], rangeRank[rhs]) {
+            case let (lhsRank?, rhsRank?):
+                return lhsRank < rhsRank
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            case (.none, .none):
+                return lhs < rhs
+            }
+        }
+        let groups = orderedRangeIDs.map { rangeID -> S3Submission.Group in
+            let members = groupedAssetIDs[rangeID] ?? []
+            var ordered: [AssetID] = []
+            var seen = Set<AssetID>()
+            for assetID in orderedAssetIDsForRangeID(rangeID)
+            where members.contains(assetID) && seen.insert(assetID).inserted {
+                ordered.append(assetID)
+            }
+            ordered.append(contentsOf: members.subtracting(seen).sorted())
+            return S3Submission.Group(
+                sourceRangeID: rangeID,
+                name: groupNameForRangeID(rangeID),
+                orderedAssetIDs: ordered
+            )
+        }
+
+        return S3Submission(
+            sourceSessionID: sessionID,
+            orderedAssetIDs: groups.flatMap(\.orderedAssetIDs),
+            groups: groups
+        )
+    }
+
     private static func allPendingDeletionAssetIDs(in state: State) -> Set<AssetID> {
         state.pendingDeletionAssetIDsByRangeID.values.reduce(into: Set<AssetID>()) {
             $0.formUnion($1)

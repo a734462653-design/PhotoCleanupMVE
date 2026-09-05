@@ -391,6 +391,141 @@ final class S1StateMachineTests: XCTestCase {
         XCTAssertEqual(row.processedAssetCount, 2)
     }
 
+    // IC-127 E（未定项 8 定案）：多范围提交时，分组顺序 = 范围在 R(T) 中的顺序，
+    // 组内顺序 = 当前 O 下的 A(r, O)，总表 = 各组顺序拼接；O 翻转后两级同时翻转。
+    func testIC127E_SubmissionFollowsRangeOrderInRTAndCurrentSortOrder() {
+        var store = SessionStore(sessionID: "session-ic127e")
+        store.setMarked(true, assetID: "new-3", rangeID: "newer")
+        store.setMarked(true, assetID: "new-1", rangeID: "newer")
+        store.setMarked(true, assetID: "old-2", rangeID: "older")
+        store.setMarked(true, assetID: "old-3", rangeID: "older")
+        let machine = makeMachine(
+            state: .ready,
+            store: store,
+            ranges: [
+                S1Range(
+                    id: "newer",
+                    displayName: "2026-08",
+                    assetIDsNewestFirst: ["new-3", "new-2", "new-1"]
+                ),
+                S1Range(
+                    id: "older",
+                    displayName: "2026-07",
+                    assetIDsNewestFirst: ["old-3", "old-2", "old-1"]
+                )
+            ]
+        )
+
+        let newestFirst = tryUnwrap(machine.makeS3Submission())
+        XCTAssertEqual(
+            newestFirst.groups.map(\.sourceRangeID),
+            machine.visibleRanges.map(\.id)
+        )
+        XCTAssertEqual(newestFirst.groups.map(\.sourceRangeID), ["newer", "older"])
+        XCTAssertEqual(
+            newestFirst.groups.map(\.orderedAssetIDs),
+            [["new-3", "new-1"], ["old-3", "old-2"]]
+        )
+        XCTAssertEqual(
+            newestFirst.orderedAssetIDs,
+            ["new-3", "new-1", "old-3", "old-2"]
+        )
+        XCTAssertEqual(newestFirst.groups.map(\.name), ["2026-08", "2026-07"])
+
+        XCTAssertTrue(machine.switchSortOrder(to: .oldestFirst))
+        let oldestFirst = tryUnwrap(machine.makeS3Submission())
+        XCTAssertEqual(
+            oldestFirst.groups.map(\.sourceRangeID),
+            machine.visibleRanges.map(\.id)
+        )
+        XCTAssertEqual(oldestFirst.groups.map(\.sourceRangeID), ["older", "newer"])
+        XCTAssertEqual(
+            oldestFirst.groups.map(\.orderedAssetIDs),
+            [["old-2", "old-3"], ["new-1", "new-3"]]
+        )
+        XCTAssertEqual(
+            oldestFirst.orderedAssetIDs,
+            ["old-2", "old-3", "new-1", "new-3"]
+        )
+        XCTAssertEqual(
+            Set(oldestFirst.orderedAssetIDs),
+            Set(newestFirst.orderedAssetIDs)
+        )
+    }
+
+    // IC-127 E 回归：各分组资产数之和恒等于 D_全部 元素数（含跨范围重复标记与
+    // 当前 R(T) 不含的范围——后者按稳定回退排在 R(T) 内范围之后）。
+    func testIC127E_GroupCountsStillSumToMergedDeletionCount() {
+        var store = SessionStore(sessionID: "session-ic127e-sum")
+        store.setMarked(true, assetID: "shared", rangeID: "range-month")
+        store.setMarked(true, assetID: "shared", rangeID: "range-album")
+        store.setMarked(true, assetID: "album-only", rangeID: "range-album")
+        store.setMarked(true, assetID: "asset-3", rangeID: "range-month")
+        let machine = makeMachine(
+            state: .ready,
+            store: store,
+            ranges: [
+                S1Range(
+                    id: "range-month",
+                    displayName: "2026-08",
+                    assetIDsNewestFirst: ["asset-3", "shared", "asset-1"]
+                )
+            ]
+        )
+        // range-album 不在当前 R(T) 中，但其名称须为已知才可提交；此处先在
+        // 相册维度读到它一次，再切回月维度，模拟跨维度标记。
+        XCTAssertTrue(machine.switchGroupingDimension(to: .album))
+        let albumRequest = tryUnwrap(machine.currentReadRequest)
+        XCTAssertTrue(
+            machine.completeRangeRead(
+                .success([
+                    S1Range(
+                        id: "range-album",
+                        displayName: "Album",
+                        assetIDsNewestFirst: ["album-only", "shared"]
+                    )
+                ]),
+                for: albumRequest
+            )
+        )
+        XCTAssertTrue(machine.switchGroupingDimension(to: .month))
+        let monthRequest = tryUnwrap(machine.currentReadRequest)
+        XCTAssertTrue(
+            machine.completeRangeRead(
+                .success([
+                    S1Range(
+                        id: "range-month",
+                        displayName: "2026-08",
+                        assetIDsNewestFirst: ["asset-3", "shared", "asset-1"]
+                    )
+                ]),
+                for: monthRequest
+            )
+        )
+
+        let submission = tryUnwrap(machine.makeS3Submission())
+        let groupCountSum = submission.groups.reduce(0) { $0 + $1.assetCount }
+        XCTAssertEqual(groupCountSum, machine.sessionStore.allPendingDeletionAssetIDs.count)
+        XCTAssertEqual(groupCountSum, submission.assetCount)
+        XCTAssertEqual(groupCountSum, 3)
+        XCTAssertEqual(
+            Set(submission.orderedAssetIDs),
+            machine.sessionStore.allPendingDeletionAssetIDs
+        )
+        XCTAssertEqual(
+            submission.groups.map(\.sourceRangeID),
+            ["range-month", "range-album"]
+        )
+        XCTAssertEqual(
+            submission.groups.first?.orderedAssetIDs,
+            ["asset-3", "shared"]
+        )
+        XCTAssertEqual(
+            submission.groups.last?.orderedAssetIDs,
+            ["album-only"]
+        )
+    }
+
     private var allStates: [S1State] {
         [.loading, .ready, .empty, .failed]
     }

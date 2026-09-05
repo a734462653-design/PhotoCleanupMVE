@@ -463,9 +463,11 @@ final class FullFlowRoutingTests: XCTestCase {
             file: file,
             line: line
         )
+        // IC-127 E（未定项 8）：总表 = 分组按 R(T) 顺序拼接，组内按当前 O（新到旧）
+        // 的 A(r, O)：范围-1 = [资产-S, 资产-A]，范围-2 = [资产-B]。
         XCTAssertEqual(
             coordinator.s3Machine?.assets.map(\.identifier),
-            ["资产-A", "资产-B", "资产-S"],
+            ["资产-S", "资产-A", "资产-B"],
             file: file,
             line: line
         )
@@ -475,7 +477,7 @@ final class FullFlowRoutingTests: XCTestCase {
                 SessionStore.S3Submission.Group(
                     sourceRangeID: "范围-1",
                     name: "月份范围",
-                    orderedAssetIDs: ["资产-A", "资产-S"]
+                    orderedAssetIDs: ["资产-S", "资产-A"]
                 ),
                 SessionStore.S3Submission.Group(
                     sourceRangeID: "范围-2",
