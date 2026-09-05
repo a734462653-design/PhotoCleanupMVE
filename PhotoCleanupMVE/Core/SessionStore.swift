@@ -2,7 +2,7 @@ struct SessionStore: Equatable, Sendable {
     typealias AssetID = String
     typealias RangeID = String
 
-    enum SortOrder: Equatable, Sendable {
+    enum SortOrder: String, Equatable, Sendable {
         case newestFirst
         case oldestFirst
     }
@@ -109,6 +109,40 @@ struct SessionStore: Equatable, Sendable {
     init(sessionID: String) {
         precondition(!sessionID.isEmpty)
         self.sessionID = sessionID
+    }
+
+    /// IC-127 B：由档恢复。恢复前逐条核第二节共同不变量——`F` 的键恰为 `D_全部`、
+    /// `F[a]` 指向的范围确实含 `a`、续接字段非空；任一不成立返回 nil（视为坏档）。
+    init?(
+        sessionID: String,
+        pendingDeletionAssetIDsByRangeID: [RangeID: Set<AssetID>],
+        continuationsByRangeID: [RangeID: Continuation],
+        firstMarkedRangeIDByAssetID: [AssetID: RangeID]
+    ) {
+        guard !sessionID.isEmpty else {
+            return nil
+        }
+        var restored = State()
+        restored.pendingDeletionAssetIDsByRangeID = pendingDeletionAssetIDsByRangeID
+        restored.continuationsByRangeID = continuationsByRangeID
+        restored.firstMarkedRangeIDByAssetID = firstMarkedRangeIDByAssetID
+
+        let pendingAssetIDs = Self.allPendingDeletionAssetIDs(in: restored)
+        guard Set(firstMarkedRangeIDByAssetID.keys) == pendingAssetIDs,
+              !pendingAssetIDs.contains(String()),
+              pendingDeletionAssetIDsByRangeID.keys.allSatisfy({ !$0.isEmpty }),
+              firstMarkedRangeIDByAssetID.allSatisfy({ assetID, rangeID in
+                  pendingDeletionAssetIDsByRangeID[rangeID]?.contains(assetID) == true
+              }),
+              continuationsByRangeID.allSatisfy({ rangeID, continuation in
+                  !rangeID.isEmpty &&
+                      !continuation.currentAssetID.isEmpty &&
+                      !continuation.farthestAssetID.isEmpty
+              }) else {
+            return nil
+        }
+        self.sessionID = sessionID
+        state = restored
     }
 
     mutating func setMarked(

@@ -204,12 +204,28 @@ struct S1ToS2Handoff {
     }
 }
 
+/// 范围列表项投影。IC-127 A：加入树形信息——`parentRangeID`（月节点指向年节点）、
+/// `childCount`（年节点下月节点数）、`isExpanded`（年节点展开态；非年节点恒 false）。
 struct S1RangeRow: Identifiable, Equatable, Sendable {
     let id: String
     let displayName: String
     let totalAssetCount: Int
     let pendingDeletionCount: Int
     let processedAssetCount: Int
+    let parentRangeID: String?
+    let childCount: Int
+    let isExpanded: Bool
+}
+
+/// IC-127 B（未定项 11）：S1 会话跨启动持久化的值快照。`M`／`K`／`F`／`T`／`O` 与
+/// `sessionID` 一并入档；展开／收起状态是会话内视图态，不入档。
+struct S1SessionSnapshot: Equatable, Sendable {
+    let sessionID: String
+    let groupingDimension: S1GroupingDimension
+    let sortOrder: S1SortOrder
+    let pendingDeletionAssetIDsByRangeID: [String: Set<String>]
+    let continuationsByRangeID: [String: SessionStore.Continuation]
+    let firstMarkedRangeIDByAssetID: [String: String]
 }
 
 enum S1UndecidedPlaceholder: Equatable, Sendable {
@@ -267,15 +283,33 @@ enum S1UndecidedItems {
 
 final class S1StateMachine: ObservableObject {
     @Published private(set) var loadingState: S1LoadingState = .loading
-    @Published private(set) var groupingDimension: S1GroupingDimension
-    @Published private(set) var sortOrder: S1SortOrder
+    @Published private(set) var groupingDimension: S1GroupingDimension {
+        didSet { publishSnapshotIfChanged() }
+    }
+    @Published private(set) var sortOrder: S1SortOrder {
+        didSet { publishSnapshotIfChanged() }
+    }
     @Published private(set) var isObscured = false
     @Published private(set) var ranges: [S1Range] = []
     @Published private(set) var readFailure: S1RangeReadFailure?
-    @Published private(set) var sessionStore: SessionStore
+    @Published private(set) var sessionStore: SessionStore {
+        didSet { publishSnapshotIfChanged() }
+    }
+    /// IC-127 A：收起的年节点集合（会话内视图态，不入档）。默认全部展开。
+    @Published private(set) var collapsedYearRangeIDs: Set<String> = []
+    /// IC-127 D：受限授权标志。为真表示当前 `R(T)` 只覆盖用户选中的资产，
+    /// 界面层据此挂提示条；不影响状态机的任何迁移。
+    @Published private(set) var isLimitedAuthorization = false
+    /// IC-127 C：对账入口被调用的次数（含无变化的调用），供测试钉住调用点。
+    private(set) var reconciliationCount = 0
+
+    /// IC-127 B：会话快照的单一写出口。`M`／`K`／`F`／`T`／`O` 任一变化都经此处
+    /// 推给持久层；由协调器在安装状态机时注入。
+    var persistenceSink: ((S1SessionSnapshot) -> Void)?
 
     private var readGeneration = 0
     private var knownRangeNamesByID: [String: String] = [:]
+    private var lastPublishedSnapshot: S1SessionSnapshot?
 
     init(
         sessionStore: SessionStore,
@@ -285,6 +319,36 @@ final class S1StateMachine: ObservableObject {
         self.sessionStore = sessionStore
         groupingDimension = initialGroupingDimension
         sortOrder = initialSortOrder
+    }
+
+    /// IC-127 B：由档恢复状态机。恢复出的 `M` 可能含已被系统删除的资产，
+    /// 状态机以 `loading` 起步，首次 `completeRangeRead` 内必经对账后才到达就绪态。
+    static func restore(from snapshot: S1SessionSnapshot) -> S1StateMachine? {
+        guard let store = SessionStore(
+            sessionID: snapshot.sessionID,
+            pendingDeletionAssetIDsByRangeID: snapshot.pendingDeletionAssetIDsByRangeID,
+            continuationsByRangeID: snapshot.continuationsByRangeID,
+            firstMarkedRangeIDByAssetID: snapshot.firstMarkedRangeIDByAssetID
+        ) else {
+            return nil
+        }
+        return S1StateMachine(
+            sessionStore: store,
+            initialGroupingDimension: snapshot.groupingDimension,
+            initialSortOrder: snapshot.sortOrder
+        )
+    }
+
+    var sessionSnapshot: S1SessionSnapshot {
+        S1SessionSnapshot(
+            sessionID: sessionStore.sessionID,
+            groupingDimension: groupingDimension,
+            sortOrder: sortOrder,
+            pendingDeletionAssetIDsByRangeID:
+                sessionStore.pendingDeletionAssetIDsByRangeID,
+            continuationsByRangeID: sessionStore.continuationsByRangeID,
+            firstMarkedRangeIDByAssetID: sessionStore.firstMarkedRangeIDByAssetID
+        )
     }
 
     var state: S1State {
@@ -695,6 +759,21 @@ final class S1StateMachine: ObservableObject {
         return true
     }
 
+    private func publishSnapshotIfChanged() {
+        guard let persistenceSink else {
+            return
+        }
+        let snapshot = sessionSnapshot
+        guard snapshot != lastPublishedSnapshot else {
+            return
+        }
+        lastPublishedSnapshot = snapshot
+        persistenceSink(snapshot)
+    }
+
+    /// 范围列表校验。IC-127 A 追加两级树约束：月节点的父必须是同一列表中的
+    /// 一级节点（不允许三级）；一级节点若有子节点，其资产集合必须恰等于子节点
+    /// 资产集合之并（年总数 = 月总数之和由此保证）。
     private static func areValid(_ ranges: [S1Range]) -> Bool {
         var rangeIDs = Set<String>()
         for range in ranges {
