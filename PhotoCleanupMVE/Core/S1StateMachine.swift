@@ -127,22 +127,14 @@ enum S1UndecidedPlaceholder: Equatable, Sendable {
 }
 
 enum S1UndecidedItems {
-    static let item01InitialGroupingAndSort = S1UndecidedPlaceholder.unresolved
-    static let item02AuthorizationStates = S1UndecidedPlaceholder.unresolved
-    static let item03AlbumOrderingAndInclusion = S1UndecidedPlaceholder.unresolved
-    static let item04EmptyChronologicalRanges = S1UndecidedPlaceholder.unresolved
+    // IC-127 F（Decision_log 第 140 条漂移 B）：item03／item04 已于 SPEC-S1 v5／v7 定案，
+    // item01／02／08／09／11／13／14／14b／14c 随第 140 条定案，登记一并删除。
+    // item05／06／07／10／12／15 属视觉／文案，留给 IC-128；item16／17 仍为 v1 候补。
     static let item05LongNameTruncation = S1UndecidedPlaceholder.unresolved
     static let item06ZeroPendingAndProgressPresentation = S1UndecidedPlaceholder.unresolved
     static let item07EmptyMergedDeletionTrashPresentation = S1UndecidedPlaceholder.unresolved
-    static let item08MergedDeletionSubmissionOrder = S1UndecidedPlaceholder.unresolved
-    static let item09FailureDetailAndRetryPolicy = S1UndecidedPlaceholder.unresolved
     static let item10LoadingIndicator = S1UndecidedPlaceholder.unresolved
-    static let item11SessionPersistenceAndEnd = S1UndecidedPlaceholder.unresolved
     static let item12S2ReturnValidationFailurePresentation = S1UndecidedPlaceholder.unresolved
-    static let item13ExternalPhotoLibraryChanges = S1UndecidedPlaceholder.unresolved
-    static let item14DuplicateRangeCountExplanation = S1UndecidedPlaceholder.unresolved
-    static let item14bS3GroupOrderingAndPaging = S1UndecidedPlaceholder.unresolved
-    static let item14cEmptyS3GroupPresentation = S1UndecidedPlaceholder.unresolved
     static let item15EmptyAndFailureCopy = S1UndecidedPlaceholder.unresolved
     static let item16RecommendedCleanupArea = S1UndecidedPlaceholder.unresolved
     static let item17FileSizeSort = S1UndecidedPlaceholder.unresolved
