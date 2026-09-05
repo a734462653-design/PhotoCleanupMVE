@@ -116,69 +116,81 @@ final class PhotoLibraryService {
         return byIdentifier
     }
 
+    /// IC-127 D：当前授权态的数据层表达（与 PhotoKit 类型解耦）。
+    func s1AuthorizationState() -> S1AuthorizationState {
+        Self.s1AuthorizationState(from: s1Source.authorizationStatus())
+    }
+
+    /// IC-127 D：完整读取回应——授权分派后要么读取（可带受限标志），要么落
+    /// 授权类失败；`.notDetermined` 也以失败形态回传（`authorizationNotDetermined`），
+    /// 由界面层据 `S1AuthorizationDispatch` 决定是否弹系统授权。
+    func s1RangeRead(
+        groupedBy groupingDimension: S1GroupingDimension
+    ) -> S1RangeReadResponse {
+        s1RangeRead(groupedBy: groupingDimension) {
+            self.readRanges(
+                groupedBy: groupingDimension,
+                albumCandidates: self.fetchedUserAlbumCandidates()
+            )
+        }
+    }
+
     func s1Ranges(
         groupedBy groupingDimension: S1GroupingDimension
     ) -> Result<[S1Range], S1RangeReadFailure> {
-        if let authorizationFailure = s1AuthorizationFailure(
-            for: groupingDimension
-        ) {
-            return .failure(authorizationFailure)
-        }
-
-        switch groupingDimension {
-        case .month:
-            return chronologicalRanges(
-                groupedBy: .month,
-                groupingDimension: groupingDimension,
-                assets: s1Source.fetchAssets()
-            )
-        case .year:
-            return chronologicalRanges(
-                groupedBy: .year,
-                groupingDimension: groupingDimension,
-                assets: s1Source.fetchAssets()
-            )
-        case .album:
-            return albumRanges(from: fetchedUserAlbumCandidates())
-        case .unclassified:
-            return unclassifiedRanges(
-                allAssets: s1Source.fetchAssets(),
-                excluding: fetchedUserAlbumCandidates()
-            )
-        }
+        s1RangeRead(groupedBy: groupingDimension).result
     }
 
     func s1Ranges(
         groupedBy groupingDimension: S1GroupingDimension,
         albumCollections: [PHAssetCollection]
     ) -> Result<[S1Range], S1RangeReadFailure> {
-        if let authorizationFailure = s1AuthorizationFailure(
-            for: groupingDimension
-        ) {
-            return .failure(authorizationFailure)
-        }
+        s1RangeRead(groupedBy: groupingDimension) {
+            self.readRanges(
+                groupedBy: groupingDimension,
+                albumCandidates: albumCollections.map { s1AlbumSnapshot(from: $0) }
+            )
+        }.result
+    }
 
+    private func s1RangeRead(
+        groupedBy groupingDimension: S1GroupingDimension,
+        read: () -> Result<[S1Range], S1RangeReadFailure>
+    ) -> S1RangeReadResponse {
+        let authorizationState = s1AuthorizationState()
+        switch S1AuthorizationDispatch.dispatch(for: authorizationState) {
+        case let .proceed(isLimited):
+            // 受限授权按已授权处理：只整理系统交付的可见资产，不落失败态。
+            return S1RangeReadResponse(
+                result: read(),
+                isLimitedAuthorization: isLimited
+            )
+        case .requestSystemAuthorization, .fail:
+            return S1RangeReadResponse(
+                result: .failure(
+                    S1RangeReadFailure(
+                        groupingDimension: groupingDimension,
+                        reason: Self.authorizationFailureReason(for: authorizationState)
+                    )
+                ),
+                isLimitedAuthorization: false
+            )
+        }
+    }
+
+    private func readRanges(
+        groupedBy groupingDimension: S1GroupingDimension,
+        albumCandidates: @autoclosure () -> [S1AlbumCollectionSnapshot]
+    ) -> Result<[S1Range], S1RangeReadFailure> {
         switch groupingDimension {
-        case .month:
-            return chronologicalRanges(
-                groupedBy: .month,
-                groupingDimension: groupingDimension,
-                assets: s1Source.fetchAssets()
-            )
-        case .year:
-            return chronologicalRanges(
-                groupedBy: .year,
-                groupingDimension: groupingDimension,
-                assets: s1Source.fetchAssets()
-            )
+        case .date:
+            return dateRanges(assets: s1Source.fetchAssets())
         case .album:
-            return albumRanges(
-                from: albumCollections.map { s1AlbumSnapshot(from: $0) }
-            )
+            return albumRanges(from: albumCandidates())
         case .unclassified:
             return unclassifiedRanges(
                 allAssets: s1Source.fetchAssets(),
-                excluding: albumCollections.map { s1AlbumSnapshot(from: $0) }
+                excluding: albumCandidates()
             )
         }
     }
@@ -188,88 +200,126 @@ final class PhotoLibraryService {
         let creationDate: Date
     }
 
-    private func s1AuthorizationFailure(
-        for groupingDimension: S1GroupingDimension
-    ) -> S1RangeReadFailure? {
-        let status = s1Source.authorizationStatus()
+    private static func s1AuthorizationState(
+        from status: PHAuthorizationStatus
+    ) -> S1AuthorizationState {
         switch status {
         case .authorized:
-            return nil
-        case .notDetermined:
-            return S1RangeReadFailure(
-                groupingDimension: groupingDimension,
-                reason: .authorizationNotDetermined
-            )
-        case .denied:
-            return S1RangeReadFailure(
-                groupingDimension: groupingDimension,
-                reason: .authorizationDenied
-            )
-        case .restricted:
-            return S1RangeReadFailure(
-                groupingDimension: groupingDimension,
-                reason: .authorizationRestricted
-            )
+            return .authorized
         case .limited:
-            return S1RangeReadFailure(
-                groupingDimension: groupingDimension,
-                reason: .limitedAuthorizationPolicyUndecided
-            )
+            return .limited
+        case .notDetermined:
+            return .notDetermined
+        case .denied:
+            return .denied
+        case .restricted:
+            return .restricted
         @unknown default:
-            return S1RangeReadFailure(
-                groupingDimension: groupingDimension,
-                reason: .unknownAuthorizationStatus(status.rawValue)
-            )
+            return .unknown(status.rawValue)
         }
     }
 
-    private func chronologicalRanges(
-        groupedBy component: Calendar.Component,
-        groupingDimension: S1GroupingDimension,
+    private static func authorizationFailureReason(
+        for state: S1AuthorizationState
+    ) -> S1RangeReadFailure.Reason {
+        switch state {
+        case .notDetermined:
+            return .authorizationNotDetermined
+        case .denied:
+            return .authorizationDenied
+        case .restricted:
+            return .authorizationRestricted
+        case let .unknown(rawValue):
+            return .unknownAuthorizationStatus(rawValue)
+        case .authorized, .limited:
+            // 分派为 proceed 的状态不会走到这里；保守起见按 invalidResponse 归读取类。
+            return .invalidResponse
+        }
+    }
+
+    /// IC-127 A（SPEC-S1 第六节、Decision_log 140 漂移 A）：`T=date` 的两级树。
+    /// 年为一级节点、该年下的月为二级节点（`parentRangeID` 指向年）；年范围覆盖该年
+    /// 全部资产，月范围覆盖该月全部资产。列表顺序：年新到旧，每个年后紧跟其月（新到旧）。
+    private func dateRanges(
         assets: [S1PhotoAssetSnapshot]
     ) -> Result<[S1Range], S1RangeReadFailure> {
-        switch datedAssets(
-            in: assets,
-            groupingDimension: groupingDimension
-        ) {
+        switch datedAssets(in: assets, groupingDimension: .date) {
         case let .failure(failure):
             return .failure(failure)
         case let .success(assets):
             let calendar = Calendar.autoupdatingCurrent
-            var assetsByStartDate: [Date: [DatedAsset]] = [:]
+            var assetsByYearStart: [Date: [DatedAsset]] = [:]
+            var assetsByMonthStart: [Date: [DatedAsset]] = [:]
+            var monthStartsByYearStart: [Date: Set<Date>] = [:]
             for asset in assets {
-                guard let interval = calendar.dateInterval(
-                    of: component,
+                guard let yearInterval = calendar.dateInterval(
+                    of: .year,
+                    for: asset.creationDate
+                ), let monthInterval = calendar.dateInterval(
+                    of: .month,
                     for: asset.creationDate
                 ) else {
                     return .failure(
                         S1RangeReadFailure(
-                            groupingDimension: groupingDimension,
+                            groupingDimension: .date,
                             reason: .invalidResponse
                         )
                     )
                 }
-                assetsByStartDate[interval.start, default: []].append(asset)
+                assetsByYearStart[yearInterval.start, default: []].append(asset)
+                assetsByMonthStart[monthInterval.start, default: []].append(asset)
+                monthStartsByYearStart[yearInterval.start, default: []]
+                    .insert(monthInterval.start)
             }
 
-            let ranges = assetsByStartDate.keys.sorted(by: >).map { startDate in
-                let groupedAssets = assetsByStartDate[startDate] ?? []
-                return S1Range(
-                    id: chronologicalRangeID(
-                        for: startDate,
-                        groupingDimension: groupingDimension,
-                        calendar: calendar
-                    ),
-                    displayName: chronologicalDisplayName(
-                        for: startDate,
-                        groupingDimension: groupingDimension,
-                        calendar: calendar
-                    ),
-                    assetIDsNewestFirst: groupedAssets.map(\.identifier)
+            var ranges: [S1Range] = []
+            for yearStart in assetsByYearStart.keys.sorted(by: >) {
+                let yearID = chronologicalRangeID(
+                    for: yearStart,
+                    level: .year,
+                    calendar: calendar
                 )
+                ranges.append(
+                    S1Range(
+                        id: yearID,
+                        displayName: chronologicalDisplayName(
+                            for: yearStart,
+                            level: .year,
+                            calendar: calendar
+                        ),
+                        assetIDsNewestFirst:
+                            (assetsByYearStart[yearStart] ?? []).map(\.identifier)
+                    )
+                )
+                let monthStarts = (monthStartsByYearStart[yearStart] ?? [])
+                    .sorted(by: >)
+                for monthStart in monthStarts {
+                    ranges.append(
+                        S1Range(
+                            id: chronologicalRangeID(
+                                for: monthStart,
+                                level: .month,
+                                calendar: calendar
+                            ),
+                            displayName: chronologicalDisplayName(
+                                for: monthStart,
+                                level: .month,
+                                calendar: calendar
+                            ),
+                            assetIDsNewestFirst:
+                                (assetsByMonthStart[monthStart] ?? []).map(\.identifier),
+                            parentRangeID: yearID
+                        )
+                    )
+                }
             }
             return .success(ranges)
         }
+    }
+
+    private enum ChronologicalLevel {
+        case year
+        case month
     }
 
     private func albumRanges(

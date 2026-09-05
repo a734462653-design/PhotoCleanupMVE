@@ -75,22 +75,96 @@ struct S1RangeReadRequest: Equatable, Sendable {
     let groupingDimension: S1GroupingDimension
 }
 
+/// IC-127 D（未定项 9）：失败分类。授权类给「打开系统设置」，读取类给「重试」；
+/// 两类都不自动重试。
+enum S1FailureCategory: Equatable, Sendable {
+    case authorization
+    case read
+}
+
+/// IC-127 D（未定项 2）：照片库授权状态的数据层表达，与 PhotoKit 类型解耦。
+enum S1AuthorizationState: Equatable, Sendable {
+    case notDetermined
+    case authorized
+    case limited
+    case denied
+    case restricted
+    case unknown(Int)
+}
+
+/// IC-127 D：授权态分派结果。界面层据此决定弹系统授权、进 S1-2（可带受限提示条）
+/// 或落 S1-4 并给「打开系统设置」。本卡只做分派，不做界面。
+enum S1AuthorizationDispatch: Equatable, Sendable {
+    case requestSystemAuthorization
+    case proceed(isLimited: Bool)
+    case fail(S1FailureCategory)
+
+    static func dispatch(for state: S1AuthorizationState) -> S1AuthorizationDispatch {
+        switch state {
+        case .notDetermined:
+            return .requestSystemAuthorization
+        case .authorized:
+            return .proceed(isLimited: false)
+        case .limited:
+            // 受限授权按已授权处理：正常读取可见资产、正常进入 S1-2，
+            // 只多一个「受限」标志供界面层挂提示条。
+            return .proceed(isLimited: true)
+        case .denied, .restricted, .unknown:
+            return .fail(.authorization)
+        }
+    }
+}
+
 struct S1RangeReadFailure: Error, Equatable, Sendable {
     enum Reason: Equatable, Sendable {
         case authorizationNotDetermined
         case authorizationDenied
         case authorizationRestricted
-        case limitedAuthorizationPolicyUndecided
         case unknownAuthorizationStatus(Int)
         case missingCreationDate(assetID: String)
         case missingDisplayName(rangeID: String)
         case duplicateRangeID(String)
         case duplicateAssetID(rangeID: String, assetID: String)
         case invalidResponse
+
+        /// IC-127 D：失败分类。上层展示只应消费本分类，不消费具体原因字段。
+        var category: S1FailureCategory {
+            switch self {
+            case .authorizationNotDetermined,
+                 .authorizationDenied,
+                 .authorizationRestricted,
+                 .unknownAuthorizationStatus:
+                return .authorization
+            case .missingCreationDate,
+                 .missingDisplayName,
+                 .duplicateRangeID,
+                 .duplicateAssetID,
+                 .invalidResponse:
+                return .read
+            }
+        }
     }
 
     let groupingDimension: S1GroupingDimension
     let reason: Reason
+
+    var category: S1FailureCategory {
+        reason.category
+    }
+}
+
+/// IC-127 D：一次范围读取的完整回应——结果 + 受限标志。
+struct S1RangeReadResponse {
+    let result: Result<[S1Range], S1RangeReadFailure>
+    let isLimitedAuthorization: Bool
+
+    init(
+        result: Result<[S1Range], S1RangeReadFailure>,
+        isLimitedAuthorization: Bool = false
+    ) {
+        self.result = result
+        self.isLimitedAuthorization = isLimitedAuthorization
+    }
 }
 
 struct S1RangeDisplayInformation: Equatable, Sendable {
@@ -329,7 +403,8 @@ final class S1StateMachine: ObservableObject {
     @discardableResult
     func completeRangeRead(
         _ result: Result<[S1Range], S1RangeReadFailure>,
-        for request: S1RangeReadRequest
+        for request: S1RangeReadRequest,
+        isLimitedAuthorization: Bool = false
     ) -> Bool {
         guard request == currentReadRequest else {
             return false
@@ -393,6 +468,7 @@ final class S1StateMachine: ObservableObject {
         return true
     }
 
+    /// 重试只能由用户动作触发（未定项 9：不自动重试、不设次数上限）。
     @discardableResult
     func retry() -> Bool {
         guard !isObscured, loadingState == .failed else {

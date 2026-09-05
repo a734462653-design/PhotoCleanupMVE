@@ -1,9 +1,8 @@
 import SwiftUI
 
 struct S1View: View {
-    typealias RangeReader = (
-        S1GroupingDimension
-    ) -> Result<[S1Range], S1RangeReadFailure>
+    /// IC-127 D：读取方回传结果 + 受限标志。
+    typealias RangeReader = (S1GroupingDimension) -> S1RangeReadResponse
 
     @ObservedObject var machine: S1StateMachine
 
@@ -223,18 +222,18 @@ struct S1View: View {
               let request = machine.currentReadRequest else {
             return
         }
+        let response = rangeReader(request.groupingDimension)
         _ = machine.completeRangeRead(
-            rangeReader(request.groupingDimension),
-            for: request
+            response.result,
+            for: request,
+            isLimitedAuthorization: response.isLimitedAuthorization
         )
     }
 
     private func groupingTitle(_ dimension: S1GroupingDimension) -> String {
         switch dimension {
-        case .month:
-            return L10n.text("s1.dimension.month")
-        case .year:
-            return L10n.text("s1.dimension.year")
+        case .date:
+            return L10n.text("s1.dimension.date")
         case .album:
             return L10n.text("s1.dimension.album")
         case .unclassified:

@@ -2,6 +2,240 @@ import Photos
 import XCTest
 @testable import PhotoCleanupMVE
 
+// MARK: - IC-127 D（并入本文件：工程文件未在授权范围内）
+
+/// 可变照片库夹具：测试中途「外部删除」资产或改授权态。
+final class IC127LibraryBox {
+    var assets: [S1PhotoAssetSnapshot]
+    var status: PHAuthorizationStatus
+
+    init(assets: [S1PhotoAssetSnapshot], status: PHAuthorizationStatus = .authorized) {
+        self.assets = assets
+        self.status = status
+    }
+
+    var source: S1PhotoLibrarySource {
+        S1PhotoLibrarySource(
+            authorizationStatus: { [unowned self] in self.status },
+            fetchAssets: { [unowned self] in self.assets },
+            fetchAssetCollections: { _, _ in [] }
+        )
+    }
+}
+
+/// IC-127 D（未定项 2／9 授权分派与失败分类）。
+final class S1AuthorizationDispatchTests: XCTestCase {
+    // 五种授权态各自落到正确的分派结果。
+    func testIC127D_FiveAuthorizationStatesDispatchCorrectly() {
+        XCTAssertEqual(
+            S1AuthorizationDispatch.dispatch(for: .notDetermined),
+            .requestSystemAuthorization
+        )
+        XCTAssertEqual(
+            S1AuthorizationDispatch.dispatch(for: .denied),
+            .fail(.authorization)
+        )
+        XCTAssertEqual(
+            S1AuthorizationDispatch.dispatch(for: .restricted),
+            .fail(.authorization)
+        )
+        XCTAssertEqual(
+            S1AuthorizationDispatch.dispatch(for: .limited),
+            .proceed(isLimited: true)
+        )
+        XCTAssertEqual(
+            S1AuthorizationDispatch.dispatch(for: .authorized),
+            .proceed(isLimited: false)
+        )
+        XCTAssertEqual(
+            S1AuthorizationDispatch.dispatch(for: .unknown(99)),
+            .fail(.authorization)
+        )
+    }
+
+    // 服务层：拒绝／受限／未决定各自映射为授权类失败原因，且分类为授权类。
+    @MainActor
+    func testIC127D_AuthorizationFailuresAreClassifiedAsAuthorization() {
+        let box = IC127LibraryBox(assets: [makeAsset("资产-1", day: 1)], status: .denied)
+        let service = PhotoLibraryService(s1Source: box.source)
+
+        let expectations: [(PHAuthorizationStatus, S1RangeReadFailure.Reason)] = [
+            (.denied, .authorizationDenied),
+            (.restricted, .authorizationRestricted),
+            (.notDetermined, .authorizationNotDetermined)
+        ]
+        for (status, reason) in expectations {
+            box.status = status
+            let response = service.s1RangeRead(groupedBy: .date)
+            XCTAssertFalse(response.isLimitedAuthorization)
+            guard case let .failure(failure) = response.result else {
+                return XCTFail("\(status.rawValue) 应为失败")
+            }
+            XCTAssertEqual(failure.reason, reason)
+            XCTAssertEqual(failure.category, .authorization)
+            XCTAssertEqual(service.s1AuthorizationState().isFailureState, true)
+        }
+    }
+
+    // 受限授权按已授权处理：正常读取、进 S1-2，「受限」标志为真；完全授权标志为假。
+    @MainActor
+    func testIC127D_LimitedAuthorizationReachesReadyWithLimitedFlag() {
+        let box = IC127LibraryBox(
+            assets: [makeAsset("资产-2", day: 2), makeAsset("资产-1", day: 1)],
+            status: .limited
+        )
+        let service = PhotoLibraryService(s1Source: box.source)
+        XCTAssertEqual(service.s1AuthorizationState(), .limited)
+
+        let limited = service.s1RangeRead(groupedBy: .date)
+        XCTAssertTrue(limited.isLimitedAuthorization)
+        let machine = S1StateMachine(
+            sessionStore: SessionStore(sessionID: "session-limited"),
+            initialGroupingDimension: .date,
+            initialSortOrder: .newestFirst
+        )
+        let request = tryUnwrap(machine.currentReadRequest)
+        XCTAssertTrue(
+            machine.completeRangeRead(
+                limited.result,
+                for: request,
+                isLimitedAuthorization: limited.isLimitedAuthorization
+            )
+        )
+        XCTAssertEqual(machine.state, .ready)
+        XCTAssertNil(machine.readFailure)
+        XCTAssertTrue(machine.isLimitedAuthorization)
+        XCTAssertNotNil(machine.makeS2Handoff(for: tryUnwrap(machine.ranges.first?.id)))
+
+        box.status = .authorized
+        let full = service.s1RangeRead(groupedBy: .date)
+        XCTAssertFalse(full.isLimitedAuthorization)
+        XCTAssertTrue(machine.reconcile(with: full.result, isLimitedAuthorization: false))
+        XCTAssertFalse(machine.isLimitedAuthorization)
+    }
+
+    // 数据／校验类原因归读取类失败；服务层实读出的缺少拍摄日期即为一例。
+    @MainActor
+    func testIC127D_DataAndValidationReasonsAreReadFailures() {
+        let readReasons: [S1RangeReadFailure.Reason] = [
+            .missingCreationDate(assetID: "a"),
+            .missingDisplayName(rangeID: "r"),
+            .duplicateRangeID("r"),
+            .duplicateAssetID(rangeID: "r", assetID: "a"),
+            .invalidResponse
+        ]
+        for reason in readReasons {
+            XCTAssertEqual(reason.category, .read, "\(reason)")
+        }
+        XCTAssertEqual(
+            S1RangeReadFailure.Reason.unknownAuthorizationStatus(7).category,
+            .authorization
+        )
+
+        let box = IC127LibraryBox(
+            assets: [S1PhotoAssetSnapshot(identifier: "资产-无日期", creationDate: nil)]
+        )
+        let service = PhotoLibraryService(s1Source: box.source)
+        guard case let .failure(failure) = service.s1RangeRead(groupedBy: .date).result else {
+            return XCTFail("缺少拍摄日期应为读取类失败")
+        }
+        XCTAssertEqual(failure.reason, .missingCreationDate(assetID: "资产-无日期"))
+        XCTAssertEqual(failure.category, .read)
+    }
+
+    // 不存在任何自动重试路径：S1 产品源码里 `retry()` 只有一个调用点（S1View 的
+    // 用户按钮），状态机的 retry 只在失败态成立一次、不自行再次触发。
+    func testIC127D_NoAutomaticRetryPath() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let productFiles = [
+            "PhotoCleanupMVE/Features/S1/S1View.swift",
+            "PhotoCleanupMVE/Core/S1StateMachine.swift",
+            "PhotoCleanupMVE/App/CleanupCoordinator.swift",
+            "PhotoCleanupMVE/Services/PhotoLibraryService.swift"
+        ]
+        var callSitesByFile: [String: Int] = [:]
+        for relativePath in productFiles {
+            let text = try String(
+                contentsOf: repoRoot.appendingPathComponent(relativePath),
+                encoding: .utf8
+            )
+            let callSites = text.components(separatedBy: ".retry()").count - 1
+            callSitesByFile[relativePath] = callSites
+            XCTAssertFalse(text.contains("Timer.scheduledTimer"), relativePath)
+        }
+        XCTAssertEqual(
+            callSitesByFile,
+            [
+                "PhotoCleanupMVE/Features/S1/S1View.swift": 1,
+                "PhotoCleanupMVE/Core/S1StateMachine.swift": 0,
+                "PhotoCleanupMVE/App/CleanupCoordinator.swift": 0,
+                "PhotoCleanupMVE/Services/PhotoLibraryService.swift": 0
+            ]
+        )
+
+        let machine = S1StateMachine(
+            sessionStore: SessionStore(sessionID: "session-retry"),
+            initialGroupingDimension: .date,
+            initialSortOrder: .newestFirst
+        )
+        XCTAssertFalse(machine.retry())
+        let request = tryUnwrap(machine.currentReadRequest)
+        XCTAssertTrue(
+            machine.completeRangeRead(
+                .failure(
+                    S1RangeReadFailure(
+                        groupingDimension: .date,
+                        reason: .authorizationDenied
+                    )
+                ),
+                for: request
+            )
+        )
+        XCTAssertEqual(machine.readFailure?.category, .authorization)
+        XCTAssertTrue(machine.retry())
+        XCTAssertFalse(machine.retry())
+        XCTAssertEqual(machine.state, .loading)
+    }
+
+    // MARK: - Fixtures
+
+    private func makeAsset(_ identifier: String, day: Int) -> S1PhotoAssetSnapshot {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(
+            from: DateComponents(year: 2026, month: 8, day: day, hour: 12)
+        )!
+        return S1PhotoAssetSnapshot(identifier: identifier, creationDate: date)
+    }
+
+    private func tryUnwrap<T>(
+        _ value: T?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> T {
+        do {
+            return try XCTUnwrap(value, file: file, line: line)
+        } catch {
+            XCTFail(String(describing: error), file: file, line: line)
+            preconditionFailure()
+        }
+    }
+}
+
+private extension S1AuthorizationState {
+    var isFailureState: Bool {
+        if case .fail = S1AuthorizationDispatch.dispatch(for: self) {
+            return true
+        }
+        if case .requestSystemAuthorization = S1AuthorizationDispatch.dispatch(for: self) {
+            return true
+        }
+        return false
+    }
+}
+
 final class AlbumScopeWiringTests: XCTestCase {
     // T1：相册范围只保留用户自建普通相册。
     @MainActor
