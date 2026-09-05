@@ -452,6 +452,91 @@ final class IC128S1VisualTests: XCTestCase {
         )
     }
 
+    // MARK: - D：四态与文案
+
+    // 四态各自的元素清单：S1-1 降暗禁用 chrome + 进度指示 + 一行文案；
+    // S1-3 图标 + 主句、无按钮；S1-4 授权类给「打开系统设置」不给重试，
+    // 读取类给「重试」。
+    func testIC128D_StateLayoutsMatchElementInventory() {
+        XCTAssertEqual(
+            S1StateLayout.elements(state: .loading, failureCategory: nil),
+            [.dimmedDisabledChrome, .progressIndicator, .loadingText]
+        )
+        XCTAssertEqual(
+            S1StateLayout.elements(state: .ready, failureCategory: nil),
+            []
+        )
+        XCTAssertEqual(
+            S1StateLayout.elements(state: .empty, failureCategory: nil),
+            [.emptyIcon, .emptyText]
+        )
+        let authorization = S1StateLayout.elements(
+            state: .failed,
+            failureCategory: .authorization
+        )
+        XCTAssertEqual(
+            authorization,
+            [
+                .authorizationIcon,
+                .authorizationTitle,
+                .authorizationSubtitle,
+                .openSettingsButton
+            ]
+        )
+        XCTAssertFalse(authorization.contains(.retryButton))
+        let read = S1StateLayout.elements(
+            state: .failed,
+            failureCategory: .read
+        )
+        XCTAssertEqual(
+            read,
+            [
+                .readFailureIcon,
+                .readFailureTitle,
+                .readFailureSubtitle,
+                .retryButton
+            ]
+        )
+        XCTAssertFalse(read.contains(.openSettingsButton))
+    }
+
+    // 登记项清除：item05/06/07/10/12/15 已随本卡定案移除，item16/17 保留；
+    // 产品源码不再引用 s1.placeholder.* 占位 key。
+    func testIC128D_UndecidedVisualItemsAndPlaceholderKeysCleared() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let coreText = try String(
+            contentsOf: repoRoot.appendingPathComponent(
+                "PhotoCleanupMVE/Core/S1StateMachine.swift"
+            ),
+            encoding: .utf8
+        )
+        for clearedItem in [
+            "item05LongNameTruncation",
+            "item06ZeroPendingAndProgressPresentation",
+            "item07EmptyMergedDeletionTrashPresentation",
+            "item10LoadingIndicator",
+            "item12S2ReturnValidationFailurePresentation",
+            "item15EmptyAndFailureCopy"
+        ] {
+            XCTAssertFalse(coreText.contains(clearedItem), clearedItem)
+        }
+        XCTAssertTrue(coreText.contains("item16RecommendedCleanupArea"))
+        XCTAssertTrue(coreText.contains("item17FileSizeSort"))
+
+        for productFile in [
+            "PhotoCleanupMVE/Core/S1StateMachine.swift",
+            "PhotoCleanupMVE/Features/S1/S1View.swift"
+        ] {
+            let text = try String(
+                contentsOf: repoRoot.appendingPathComponent(productFile),
+                encoding: .utf8
+            )
+            XCTAssertFalse(text.contains("s1.placeholder."), productFile)
+        }
+    }
+
     // MARK: - Fixtures
 
     private func tryUnwrap<T>(

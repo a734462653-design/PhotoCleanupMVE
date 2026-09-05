@@ -254,83 +254,6 @@
         }
       }
     },
-    "s1.placeholder.empty" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 15 占位】空态文案"
-          }
-        }
-      }
-    },
-    "s1.placeholder.failure" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 15 占位】失败态文案"
-          }
-        }
-      }
-    },
-    "s1.placeholder.loading" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 10 占位】读取中状态指示"
-          }
-        }
-      }
-    },
-    "s1.placeholder.pending_zero" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 6 占位】待删计数为零"
-          }
-        }
-      }
-    },
-    "s1.placeholder.processed_progress" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 6 占位】已处理原始值 {processed}/{total}"
-          }
-        }
-      }
-    },
-    "s1.placeholder.retry" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 9 占位】重试入口"
-          }
-        }
-      }
-    },
-    "s1.placeholder.trash_empty" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 7 占位】空待删集合垃圾桶入口"
-          }
-        }
-      }
-    },
     "s1.range.pending_count" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -382,6 +305,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最旧在前"
+          }
+        }
+      }
+    },
+    "s1.state.auth_failure.button" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开系统设置"
+          }
+        }
+      }
+    },
+    "s1.state.auth_failure.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在系统设置里允许访问照片后即可继续整理。已标记的照片不受影响。"
+          }
+        }
+      }
+    },
+    "s1.state.auth_failure.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片访问权限已关闭。"
+          }
+        }
+      }
+    },
+    "s1.state.empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台设备上没有可整理的照片。"
+          }
+        }
+      }
+    },
+    "s1.state.loading" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取范围…"
+          }
+        }
+      }
+    },
+    "s1.state.read_failure.button" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        }
+      }
+    },
+    "s1.state.read_failure.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已标记的照片仍在，重试即可继续。"
+          }
+        }
+      }
+    },
+    "s1.state.read_failure.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取范围失败。"
           }
         }
       }

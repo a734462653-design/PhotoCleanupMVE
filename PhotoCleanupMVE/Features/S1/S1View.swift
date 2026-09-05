@@ -131,7 +131,7 @@ enum S1ActiveMenu: Equatable {
 
 // MARK: - IC-128 B：范围卡常量与展示口径
 
-/// 范围项卡片几何（④卡；contentSpacing 与 topLevelLeadingInset 为 ④取定）。
+/// 范围项卡片几何（④卡；contentSpacing 为 ④取定）。
 enum S1RangeCardMetrics {
     /// 列表卡片圆角（④卡 14）。
     static let cornerRadius: CGFloat = 14
@@ -454,6 +454,73 @@ enum S1LimitedBannerPresentation {
         bannerVisible
             ? S1ChromeLayout.limitedListTopOffset
             : S1ChromeLayout.listTopOffset
+    }
+}
+
+// MARK: - IC-128 D：四态版式常量与元素清单
+
+/// 四态中央版式（④卡：图标 52pt、跑道胶囊按钮高 44 圆角 22 水平内边距 24
+/// tint 文字玻璃底；主句 17 半粗、副句 13.5 次级色、加载文案 15 次级色与
+/// 元素间距 12 为 ④取定登记）。
+enum S1StatePlaceholderStyle {
+    static let iconPointSize: CGFloat = 52
+    static let buttonHeight: CGFloat = 44
+    static let buttonCornerRadius: CGFloat = 22
+    static let buttonHorizontalPadding: CGFloat = 24
+    static let titleFontSize: CGFloat = 17
+    static let subtitleFontSize: CGFloat = 13.5
+    static let loadingTextFontSize: CGFloat = 15
+    static let contentSpacing: CGFloat = 12
+}
+
+/// IC-128 D：四态元素清单（测试钉住）。
+enum S1StateElement: Equatable {
+    case dimmedDisabledChrome
+    case progressIndicator
+    case loadingText
+    case emptyIcon
+    case emptyText
+    case authorizationIcon
+    case authorizationTitle
+    case authorizationSubtitle
+    case openSettingsButton
+    case readFailureIcon
+    case readFailureTitle
+    case readFailureSubtitle
+    case retryButton
+}
+
+/// 四态版式：S1-1 chrome 降 40% 禁用 + 中央 ProgressView + 一行文案（不显示
+/// 进度与预计数量）；S1-3 图标 + 主句、无操作按钮；S1-4 授权类给「打开系统
+/// 设置」不给重试，读取类给「重试」不自动重试。
+enum S1StateLayout {
+    static func elements(
+        state: S1State,
+        failureCategory: S1FailureCategory?
+    ) -> [S1StateElement] {
+        switch state {
+        case .loading:
+            return [.dimmedDisabledChrome, .progressIndicator, .loadingText]
+        case .ready:
+            return []
+        case .empty:
+            return [.emptyIcon, .emptyText]
+        case .failed:
+            if failureCategory == .authorization {
+                return [
+                    .authorizationIcon,
+                    .authorizationTitle,
+                    .authorizationSubtitle,
+                    .openSettingsButton
+                ]
+            }
+            return [
+                .readFailureIcon,
+                .readFailureTitle,
+                .readFailureSubtitle,
+                .retryButton
+            ]
+        }
     }
 }
 
@@ -1108,45 +1175,162 @@ struct S1View: View {
         PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: presenter)
     }
 
-    // MARK: - 状态内容（IC-128 D 重排前的暂留版式）
+    // MARK: - IC-128 D：四态版式
 
     @ViewBuilder
     private var stateContent: some View {
         switch machine.state {
         case .loading:
-            placeholderState(
-                S1UndecidedItems.localizedCopy(.loading)
-            )
-
+            loadingState
         case .ready:
             rangeList
-
         case .empty:
-            placeholderState(
-                S1UndecidedItems.localizedCopy(.empty)
-            )
-
+            emptyState
         case .failed:
-            VStack(spacing: 12) {
-                Text(S1UndecidedItems.localizedCopy(.failure))
-                    .multilineTextAlignment(.center)
-                Button(S1UndecidedItems.localizedCopy(.retry)) {
-                    guard machine.retry() else {
-                        return
-                    }
-                    readCurrentRequestIfPossible()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
+            failureState
         }
     }
 
-    private func placeholderState(_ text: String) -> some View {
-        Text(text)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
+    /// S1-1：中央系统 ProgressView + 一行文案，不显示进度、不显示预计数量。
+    private var loadingState: some View {
+        VStack(spacing: S1StatePlaceholderStyle.contentSpacing) {
+            ProgressView()
+            Text(L10n.text("s1.state.loading"))
+                .font(
+                    .system(
+                        size: S1StatePlaceholderStyle.loadingTextFontSize
+                    )
+                )
+                .foregroundStyle(S1ChromeForeground.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    /// S1-3：中央线条图标（照片外框 52pt 三级色）+ 一行主句；无操作按钮。
+    private var emptyState: some View {
+        VStack(spacing: S1StatePlaceholderStyle.contentSpacing) {
+            Image(systemName: "photo.on.rectangle")
+                .font(.system(size: S1StatePlaceholderStyle.iconPointSize))
+                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+            Text(L10n.text("s1.state.empty"))
+                .font(
+                    .system(
+                        size: S1StatePlaceholderStyle.titleFontSize,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(S1ChromeForeground.primary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    @ViewBuilder
+    private var failureState: some View {
+        if machine.readFailure?.category == .authorization {
+            authorizationFailureState
+        } else {
+            readFailureState
+        }
+    }
+
+    /// S1-4 授权类：锁形图标 + 主句 + 副句 + 「打开系统设置」；不给重试。
+    private var authorizationFailureState: some View {
+        VStack(spacing: S1StatePlaceholderStyle.contentSpacing) {
+            Image(systemName: "lock")
+                .font(.system(size: S1StatePlaceholderStyle.iconPointSize))
+                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+            Text(L10n.text("s1.state.auth_failure.title"))
+                .font(
+                    .system(
+                        size: S1StatePlaceholderStyle.titleFontSize,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(S1ChromeForeground.primary)
+                .multilineTextAlignment(.center)
+            Text(L10n.text("s1.state.auth_failure.subtitle"))
+                .font(
+                    .system(size: S1StatePlaceholderStyle.subtitleFontSize)
+                )
+                .foregroundStyle(S1ChromeForeground.secondary)
+                .multilineTextAlignment(.center)
+            placeholderButton(
+                title: L10n.text("s1.state.auth_failure.button")
+            ) {
+                openSystemSettings()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    /// S1-4 读取类：三角感叹图标 + 主句 + 副句 + 「重试」；不自动重试
+    /// （唯一的重试触发点即本按钮）。
+    private var readFailureState: some View {
+        VStack(spacing: S1StatePlaceholderStyle.contentSpacing) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: S1StatePlaceholderStyle.iconPointSize))
+                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+            Text(L10n.text("s1.state.read_failure.title"))
+                .font(
+                    .system(
+                        size: S1StatePlaceholderStyle.titleFontSize,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(S1ChromeForeground.primary)
+                .multilineTextAlignment(.center)
+            Text(L10n.text("s1.state.read_failure.subtitle"))
+                .font(
+                    .system(size: S1StatePlaceholderStyle.subtitleFontSize)
+                )
+                .foregroundStyle(S1ChromeForeground.secondary)
+                .multilineTextAlignment(.center)
+            placeholderButton(
+                title: L10n.text("s1.state.read_failure.button")
+            ) {
+                guard machine.retry() else {
+                    return
+                }
+                readCurrentRequestIfPossible()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    /// 跑道胶囊按钮（④卡：高 44、圆角 22、水平内边距 24、tint 色文字、玻璃底）。
+    private func placeholderButton(
+        title: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(
+                    .system(
+                        size: S1StatePlaceholderStyle.loadingTextFontSize,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(Color.accentColor)
+                .padding(
+                    .horizontal,
+                    S1StatePlaceholderStyle.buttonHorizontalPadding
+                )
+                .frame(height: S1StatePlaceholderStyle.buttonHeight)
+                .s1ChromeGlassBackground(in: Capsule(), interactive: true)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else {
+            return
+        }
+        UIApplication.shared.open(url)
     }
 
     // MARK: - IC-128 B：范围卡列表
