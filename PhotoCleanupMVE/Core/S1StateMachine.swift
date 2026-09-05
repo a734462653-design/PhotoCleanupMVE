@@ -236,8 +236,8 @@ enum S1UndecidedItems {
     // IC-127 F（Decision_log 第 140 条漂移 B）：item03／item04 已于 SPEC-S1 v5／v7 定案，
     // item01／02／08／09／11／13／14／14b／14c 随第 140 条定案，登记一并删除。
     // IC-128 D：item05／06／07／10／12／15 的视觉与文案随视觉链定案，登记与
-    // `s1.placeholder.*` 占位文案一并清除（文案落 String Catalog `s1.state.*` 等）。
-    // item16／17 仍为 v1 候补。
+    // 占位文案 key（原 placeholder 系）一并清除，文案落 String Catalog
+    // `s1.state.*` 等正式 key。item16／17 仍为 v1 候补。
     static let item16RecommendedCleanupArea = S1UndecidedPlaceholder.unresolved
     static let item17FileSizeSort = S1UndecidedPlaceholder.unresolved
 }
