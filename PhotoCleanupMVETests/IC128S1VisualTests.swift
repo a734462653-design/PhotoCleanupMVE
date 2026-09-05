@@ -129,4 +129,241 @@ final class IC128S1VisualTests: XCTestCase {
         XCTAssertEqual(S1ChromeLayout.listTopOffset + 59, 122)
         XCTAssertEqual(S1ChromeLayout.limitedListTopOffset + 59, 174)
     }
+
+    // MARK: - B：范围项
+
+    // 封面取图规则：按当前 O 的首张；O 翻转后封面跟着换；年节点递归取首个
+    // 子范围的封面。
+    func testIC128B_CoverFollowsCurrentSortOrderAndFlips() {
+        let ranges = [
+            S1Range(
+                id: "year",
+                displayName: "2026",
+                assetIDsNewestFirst: ["a4", "a3", "a2", "a1"]
+            ),
+            S1Range(
+                id: "month-9",
+                displayName: "2026-09",
+                assetIDsNewestFirst: ["a4", "a3"],
+                parentRangeID: "year"
+            ),
+            S1Range(
+                id: "month-8",
+                displayName: "2026-08",
+                assetIDsNewestFirst: ["a2", "a1"],
+                parentRangeID: "year"
+            )
+        ]
+        XCTAssertEqual(
+            S1RangeCoverPolicy.coverAssetID(
+                forRangeID: "month-8",
+                in: ranges,
+                sortOrder: .newestFirst
+            ),
+            "a2"
+        )
+        XCTAssertEqual(
+            S1RangeCoverPolicy.coverAssetID(
+                forRangeID: "month-8",
+                in: ranges,
+                sortOrder: .oldestFirst
+            ),
+            "a1"
+        )
+        // 年节点：O=最新在前 → 首个子范围是 9 月，其首张 a4；
+        // O=最旧在前 → 首个子范围是 8 月，其首张 a1。
+        XCTAssertEqual(
+            S1RangeCoverPolicy.coverAssetID(
+                forRangeID: "year",
+                in: ranges,
+                sortOrder: .newestFirst
+            ),
+            "a4"
+        )
+        XCTAssertEqual(
+            S1RangeCoverPolicy.coverAssetID(
+                forRangeID: "year",
+                in: ranges,
+                sortOrder: .oldestFirst
+            ),
+            "a1"
+        )
+        XCTAssertNil(
+            S1RangeCoverPolicy.coverAssetID(
+                forRangeID: "不存在",
+                in: ranges,
+                sortOrder: .newestFirst
+            )
+        )
+    }
+
+    // 请求口径：目标尺寸按 56pt × 屏幕 scale。
+    func testIC128B_CoverTargetPixelSizeFollowsDisplayScale() {
+        XCTAssertEqual(
+            S1RangeCoverPolicy.targetPixelSize(displayScale: 2),
+            CGSize(width: 112, height: 112)
+        )
+        XCTAssertEqual(
+            S1RangeCoverPolicy.targetPixelSize(displayScale: 3),
+            CGSize(width: 168, height: 168)
+        )
+    }
+
+    // 只升不降：降质 → 最终允许替换；最终不被降质覆盖；nil 只在尚无图时落占位。
+    func testIC128B_CoverReplacementNeverDowngrades() {
+        XCTAssertTrue(
+            S1CoverImagePhase.shouldReplace(
+                current: .loading,
+                incomingIsDegraded: true,
+                incomingIsNil: false
+            )
+        )
+        XCTAssertTrue(
+            S1CoverImagePhase.shouldReplace(
+                current: .degraded,
+                incomingIsDegraded: false,
+                incomingIsNil: false
+            )
+        )
+        XCTAssertFalse(
+            S1CoverImagePhase.shouldReplace(
+                current: .final,
+                incomingIsDegraded: true,
+                incomingIsNil: false
+            )
+        )
+        XCTAssertTrue(
+            S1CoverImagePhase.shouldReplace(
+                current: .final,
+                incomingIsDegraded: false,
+                incomingIsNil: false
+            )
+        )
+        // 取不到图（nil）：无图可展示时落占位；已有图（含降质）不回退。
+        XCTAssertTrue(
+            S1CoverImagePhase.shouldReplace(
+                current: .loading,
+                incomingIsDegraded: false,
+                incomingIsNil: true
+            )
+        )
+        XCTAssertFalse(
+            S1CoverImagePhase.shouldReplace(
+                current: .degraded,
+                incomingIsDegraded: false,
+                incomingIsNil: true
+            )
+        )
+        XCTAssertFalse(
+            S1CoverImagePhase.shouldReplace(
+                current: .final,
+                incomingIsDegraded: false,
+                incomingIsNil: true
+            )
+        )
+    }
+
+    // 进度线：填充比例 = 已处理 / 总数（钳到 [0,1]）；范围未开始（r.id 不在 K 中）
+    // 整条不画。
+    func testIC128B_ProgressLineFractionAndVisibility() {
+        XCTAssertEqual(
+            S1ProgressLinePresentation.fillFraction(processed: 0, total: 10),
+            0
+        )
+        XCTAssertEqual(
+            S1ProgressLinePresentation.fillFraction(processed: 5, total: 10),
+            0.5
+        )
+        XCTAssertEqual(
+            S1ProgressLinePresentation.fillFraction(processed: 10, total: 10),
+            1
+        )
+        XCTAssertEqual(
+            S1ProgressLinePresentation.fillFraction(processed: 12, total: 10),
+            1
+        )
+        XCTAssertEqual(
+            S1ProgressLinePresentation.fillFraction(processed: 3, total: 0),
+            0
+        )
+        XCTAssertFalse(
+            S1ProgressLinePresentation.isVisible(hasContinuation: false)
+        )
+        XCTAssertTrue(
+            S1ProgressLinePresentation.isVisible(hasContinuation: true)
+        )
+    }
+
+    // 待删红点显隐口径：零待删不画。
+    func testIC128B_PendingBadgeHiddenAtZero() {
+        XCTAssertNil(S1PendingBadgePresentation.text(count: 0))
+        XCTAssertEqual(S1PendingBadgePresentation.text(count: 1), "1")
+        XCTAssertEqual(S1PendingBadgePresentation.text(count: 12), "12")
+    }
+
+    // 展开区与进入区是两个不同目标：展开区仅年节点持有；月行内容左缩进 52；
+    // 展开／收起不产生 S2 交接（机器侧行为复核）。
+    func testIC128B_YearRowHasSeparateExpandAndEnterTargets() {
+        XCTAssertTrue(S1RangeCardPresentation.hasExpandZone(childCount: 2))
+        XCTAssertFalse(S1RangeCardPresentation.hasExpandZone(childCount: 0))
+        XCTAssertEqual(
+            S1RangeCardPresentation.leadingInset(isChildRow: true),
+            52
+        )
+        XCTAssertEqual(
+            S1RangeCardPresentation.leadingInset(isChildRow: false),
+            12
+        )
+
+        let machine = S1StateMachine(
+            sessionStore: SessionStore(sessionID: "会话-128B"),
+            initialGroupingDimension: .date,
+            initialSortOrder: .newestFirst
+        )
+        let request = tryUnwrap(machine.currentReadRequest)
+        XCTAssertTrue(
+            machine.completeRangeRead(
+                .success([
+                    S1Range(
+                        id: "year",
+                        displayName: "2026",
+                        assetIDsNewestFirst: ["a1"]
+                    ),
+                    S1Range(
+                        id: "month",
+                        displayName: "2026-08",
+                        assetIDsNewestFirst: ["a1"],
+                        parentRangeID: "year"
+                    )
+                ]),
+                for: request
+            )
+        )
+        let yearRowBefore = tryUnwrap(
+            machine.rangeRows.first { $0.id == "year" }
+        )
+        XCTAssertTrue(yearRowBefore.isExpanded)
+        XCTAssertTrue(machine.toggleYearExpansion("year"))
+        let yearRowAfter = tryUnwrap(
+            machine.rangeRows.first { $0.id == "year" }
+        )
+        XCTAssertFalse(yearRowAfter.isExpanded)
+        // 展开／收起动作本身不构成进入：交接仍须显式调用且仍可用。
+        XCTAssertNotNil(machine.makeS2Handoff(for: "year"))
+    }
+
+    // MARK: - Fixtures
+
+    private func tryUnwrap<T>(
+        _ value: T?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> T {
+        do {
+            return try XCTUnwrap(value, file: file, line: line)
+        } catch {
+            XCTFail(String(describing: error), file: file, line: line)
+            preconditionFailure()
+        }
+    }
 }

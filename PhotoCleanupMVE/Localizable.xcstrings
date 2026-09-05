@@ -293,7 +293,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "资产总数 {count}"
+            "value" : "{count} 张"
           }
         }
       }
