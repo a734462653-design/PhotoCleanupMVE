@@ -1,9 +1,11 @@
-# IC-129 变更清单（v1，合并前版本）
+# IC-129 变更清单（v2 完整替换版）
 
 分支：`feature/ic-129-reconcile-by-existence`（自 `main` = `a3cc9eb` 切出）
 提交：`c7bf5da2c193edd128aa6983ea13ee0d95a2f4ea`
 `feat: IC-129 对账依据改为资产存在性（补 IC-127 跨维度缺口）`
-（单子项，单 commit，可独立 cherry-pick；合并提交短 SHA 见 v2 补记）
+（单子项，单 commit，可独立 cherry-pick）
+报告提交：v1 = `9857c36`（合并前随分支）；本 v2 于合并后补记（纪律第 7 条方式）
+合并提交：**`f0acdf4`**（`f0acdf48d3c34ea9a49f0fbe68538d986254f191`，`--no-ff` 入 `main`）
 
 ## 文件级变更（6 文件，+538 −3）
 
@@ -37,4 +39,6 @@
   iOS 26.2 / iPhone 16、IPA 1100833 字节
   SHA-256 `90270d1c2e5b52877f8d752cc38c40ba59fd1aed27381c263aa0d172602aa1fc`
 - 修复预算未动用
-- 合并后 `main` 自动运行（G605）见 v2 补记
+- G605：合并触发的 `main` 运行 **#249**（run id `33972006648`）绿——
+  625 项 0 失败、「XCTest 执行摘要」notice 在位；IPA 1100833 字节
+  SHA-256 `1ffb237165918facfb64bee65bcd8d7649235cc093df59cf8215d14f92bbec05`
