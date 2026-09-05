@@ -144,6 +144,17 @@
         }
       }
     },
+    "s1.chrome.subtitle_format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张 · {ranges} 个范围"
+          }
+        }
+      }
+    },
     "s1.dimension.accessibility" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -188,79 +199,57 @@
         }
       }
     },
-    "s1.placeholder.empty" : {
+    "s1.limited.banner" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "【未定项 15 占位】空态文案"
+            "value" : "仅可整理你选中的照片"
           }
         }
       }
     },
-    "s1.placeholder.failure" : {
+    "s1.limited.manage" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "【未定项 15 占位】失败态文案"
+            "value" : "管理"
           }
         }
       }
     },
-    "s1.placeholder.loading" : {
+    "s1.menu.dimension.album_hint" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "【未定项 10 占位】读取中状态指示"
+            "value" : "{count} 个"
           }
         }
       }
     },
-    "s1.placeholder.pending_zero" : {
+    "s1.menu.dimension.date_hint" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "【未定项 6 占位】待删计数为零"
+            "value" : "年 → 月"
           }
         }
       }
     },
-    "s1.placeholder.processed_progress" : {
+    "s1.menu.dimension.unclassified_hint" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "【未定项 6 占位】已处理原始值 {processed}/{total}"
-          }
-        }
-      }
-    },
-    "s1.placeholder.retry" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 9 占位】重试入口"
-          }
-        }
-      }
-    },
-    "s1.placeholder.trash_empty" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "【未定项 7 占位】空待删集合垃圾桶入口"
+            "value" : "{count} 张"
           }
         }
       }
@@ -282,7 +271,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "资产总数 {count}"
+            "value" : "{count} 张"
           }
         }
       }
@@ -304,7 +293,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按拍摄时间从新到旧"
+            "value" : "最新在前"
           }
         }
       }
@@ -315,7 +304,95 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按拍摄时间从旧到新"
+            "value" : "最旧在前"
+          }
+        }
+      }
+    },
+    "s1.state.auth_failure.button" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开系统设置"
+          }
+        }
+      }
+    },
+    "s1.state.auth_failure.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在系统设置里允许访问照片后即可继续整理。已标记的照片不受影响。"
+          }
+        }
+      }
+    },
+    "s1.state.auth_failure.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片访问权限已关闭。"
+          }
+        }
+      }
+    },
+    "s1.state.empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台设备上没有可整理的照片。"
+          }
+        }
+      }
+    },
+    "s1.state.loading" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取范围…"
+          }
+        }
+      }
+    },
+    "s1.state.read_failure.button" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        }
+      }
+    },
+    "s1.state.read_failure.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已标记的照片仍在，重试即可继续。"
+          }
+        }
+      }
+    },
+    "s1.state.read_failure.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取范围失败。"
           }
         }
       }
