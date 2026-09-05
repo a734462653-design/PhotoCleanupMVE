@@ -813,6 +813,14 @@ final class CleanupCoordinator: ObservableObject {
         machine.persistenceSink = { [persistence] snapshot in
             _ = try? persistence.saveS1Session(snapshot)
         }
+        // IC-129：把「按资产标识批量查存在性」接到对账——进入 S1 的首次读取与
+        // S2 返回两处对账共用状态机内的同一收敛点，故在安装状态机时注入。
+        // 探针只在主线程的对账路径内被同步调用。
+        machine.assetExistenceProbe = { [photoLibrary] identifiers in
+            MainActor.assumeIsolated {
+                photoLibrary.existingAssetIdentifiers(among: identifiers)
+            }
+        }
         s1Machine = machine
         s2Machine = nil
         s2EntryContext = nil
