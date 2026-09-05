@@ -366,6 +366,97 @@ struct S1PhotoKitCoverImageLoader: S1CoverImageLoading {
     }
 }
 
+// MARK: - IC-128 C：菜单与受限提示条常量
+
+/// 两菜单共通样式（④卡：圆角 14、近白 92～94% + 模糊、外圈 0.5 黑 6%、
+/// 投影 0 12 32 黑 18%、行间 0.5 分隔线、列表压黑 14% 暗色。背景不透明度取
+/// 区间中值 0.93；投影 32 直接用作 SwiftUI shadow radius；行字号 15 与排序行高
+/// 44 为 ④取定——均报告登记）。
+enum S1MenuStyle {
+    static let cornerRadius: CGFloat = 14
+    static let backgroundOpacity: Double = 0.93
+    static let ringOpacity: Double = 0.06
+    static let ringWidth: CGFloat = 0.5
+    static let shadowOpacity: Double = 0.18
+    static let shadowRadius: CGFloat = 32
+    static let shadowYOffset: CGFloat = 12
+    static let separatorWidth: CGFloat = 0.5
+    static let scrimOpacity: Double = 0.14
+    static let rowFontSize: CGFloat = 15
+    static let rowHorizontalPadding: CGFloat = 16
+    /// 排序菜单：left 16、宽 200、两项；选中项 tint + 半粗 + 左侧对勾（16 宽对勾位）。
+    static let sortMenuWidth: CGFloat = 200
+    static let sortRowHeight: CGFloat = 44
+    static let checkmarkSlotWidth: CGFloat = 16
+    /// 维度菜单：左右各距屏边 68、行高 50、提示字号 12.5 次级色。
+    static let dimensionEdgeInset: CGFloat = 68
+    static let dimensionRowHeight: CGFloat = 50
+    static let hintFontSize: CGFloat = 12.5
+}
+
+/// IC-128 C：维度菜单提示口径（测试钉住）。按日期为固定结构提示；相册／未分类
+/// 的 N 由该维度只读读取取得，读不到（nil）则该行不显示提示。
+enum S1DimensionMenuHintModel: Equatable {
+    case dateStructure
+    case albumCount(Int)
+    case unclassifiedCount(Int)
+    case unavailable
+
+    static func make(
+        for dimension: S1GroupingDimension,
+        albumRangeCount: Int?,
+        unclassifiedAssetCount: Int?
+    ) -> S1DimensionMenuHintModel {
+        switch dimension {
+        case .date:
+            return .dateStructure
+        case .album:
+            guard let albumRangeCount else {
+                return .unavailable
+            }
+            return .albumCount(albumRangeCount)
+        case .unclassified:
+            guard let unclassifiedAssetCount else {
+                return .unavailable
+            }
+            return .unclassifiedCount(unclassifiedAssetCount)
+        }
+    }
+}
+
+/// 受限授权提示条（④卡：高 44 圆角 22 玻璃底、左起 17pt 图标、文案 13.5 单行
+/// 省略、右端「管理」小胶囊高 30 圆角 15 水平内边距 12 tint 文字 + tint 10% 底；
+/// 内水平边距 14 取胶囊留白同值为 ④取定）。
+enum S1LimitedBannerStyle {
+    static let height: CGFloat = 44
+    static let cornerRadius: CGFloat = 22
+    static let iconPointSize: CGFloat = 17
+    static let textFontSize: CGFloat = 13.5
+    static let manageHeight: CGFloat = 30
+    static let manageCornerRadius: CGFloat = 15
+    static let manageHorizontalPadding: CGFloat = 12
+    static let manageTintBackgroundOpacity: Double = 0.10
+    static let horizontalPadding: CGFloat = 14
+}
+
+/// IC-128 C：受限提示条显隐与列表起始口径（测试钉住）。受限不进失败态、
+/// 正常列表：提示条挂在列表在场的状态（就绪／空态）；列表起始由 122 下移到 174
+/// （距安全区顶推导量 63 → 115）。
+enum S1LimitedBannerPresentation {
+    static func isVisible(
+        isLimitedAuthorization: Bool,
+        state: S1State
+    ) -> Bool {
+        isLimitedAuthorization && (state == .ready || state == .empty)
+    }
+
+    static func listTopOffset(bannerVisible: Bool) -> CGFloat {
+        bannerVisible
+            ? S1ChromeLayout.limitedListTopOffset
+            : S1ChromeLayout.listTopOffset
+    }
+}
+
 // MARK: - IC-128 A：S1 玻璃族（与 S2 同语汇：iOS 26+ 系统 glassEffect，17–25 回落配方）
 
 private extension View {
@@ -523,6 +614,8 @@ struct S1View: View {
 
     @ObservedObject var machine: S1StateMachine
     @State private var activeMenu: S1ActiveMenu = .none
+    @State private var albumHintRangeCount: Int?
+    @State private var unclassifiedHintAssetCount: Int?
 
     private let rangeReader: RangeReader?
     private let onS2Handoff: (S1ToS2Handoff) -> Void
@@ -548,8 +641,20 @@ struct S1View: View {
             Color(uiColor: .systemGroupedBackground)
                 .ignoresSafeArea()
             stateContent
-                .padding(.top, S1ChromeLayout.listTopOffset)
+                .padding(
+                    .top,
+                    S1LimitedBannerPresentation.listTopOffset(
+                        bannerVisible: showsLimitedBanner
+                    )
+                )
+            if activeMenu != .none {
+                menuScrim
+            }
             chromeColumn
+            if activeMenu != .none {
+                menuOverlay
+                    .padding(.top, S1ChromeLayout.overlayTopOffset)
+            }
         }
         .allowsHitTesting(!machine.isObscured)
         .onAppear {
@@ -567,9 +672,21 @@ struct S1View: View {
     }
 
     private var chromeColumn: some View {
-        chromeBar
-            .padding(.top, S1ChromeLayout.topRowTopInset)
-            .padding(.horizontal, S1ChromeLayout.horizontalMargin)
+        VStack(spacing: S1ChromeLayout.chromeToOverlaySpacing) {
+            chromeBar
+            if showsLimitedBanner {
+                limitedBanner
+            }
+        }
+        .padding(.top, S1ChromeLayout.topRowTopInset)
+        .padding(.horizontal, S1ChromeLayout.horizontalMargin)
+    }
+
+    private var showsLimitedBanner: Bool {
+        S1LimitedBannerPresentation.isVisible(
+            isLimitedAuthorization: machine.isLimitedAuthorization,
+            state: machine.state
+        )
     }
 
     /// IC-120 B 同教训：iOS 26 玻璃容器会把普通 overlay 盖进合成层，
@@ -616,7 +733,11 @@ struct S1View: View {
 
     private func dimensionCapsule(_ model: S1ChromeBarModel) -> some View {
         Button {
-            activeMenu = activeMenu.toggling(.dimension)
+            let next = activeMenu.toggling(.dimension)
+            if next == .dimension {
+                refreshDimensionHints()
+            }
+            activeMenu = next
         } label: {
             capsuleLabel
         }
@@ -723,6 +844,268 @@ struct S1View: View {
                 }
                 .allowsHitTesting(false)
         }
+    }
+
+    // MARK: - IC-128 C：菜单
+
+    /// 菜单开着时列表压一层黑 14% 暗色；点暗色层关闭菜单。
+    /// 层序在 chrome 之下——chrome 不被压暗，再点圆钮／胶囊即切换或关闭。
+    private var menuScrim: some View {
+        Color.black.opacity(S1MenuStyle.scrimOpacity)
+            .ignoresSafeArea()
+            .onTapGesture {
+                activeMenu = .none
+            }
+    }
+
+    @ViewBuilder
+    private var menuOverlay: some View {
+        switch activeMenu {
+        case .sort:
+            sortMenu
+                .frame(width: S1MenuStyle.sortMenuWidth)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, S1ChromeLayout.horizontalMargin)
+        case .dimension:
+            dimensionMenu
+                .padding(.horizontal, S1MenuStyle.dimensionEdgeInset)
+        case .none:
+            EmptyView()
+        }
+    }
+
+    private var sortMenu: some View {
+        menuContainer {
+            sortMenuRow(.newestFirst)
+            menuSeparator
+            sortMenuRow(.oldestFirst)
+        }
+    }
+
+    private func sortMenuRow(_ order: S1SortOrder) -> some View {
+        let isSelected = machine.sortOrder == order
+        return Button {
+            activeMenu = .none
+            _ = machine.switchSortOrder(to: order)
+        } label: {
+            HStack(spacing: 4) {
+                ZStack {
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                }
+                .frame(width: S1MenuStyle.checkmarkSlotWidth)
+                Text(sortTitle(order))
+                    .font(
+                        .system(
+                            size: S1MenuStyle.rowFontSize,
+                            weight: isSelected ? .semibold : .regular
+                        )
+                    )
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(
+                isSelected ? Color.accentColor : S1ChromeForeground.primary
+            )
+            .padding(.horizontal, S1MenuStyle.rowHorizontalPadding)
+            .frame(height: S1MenuStyle.sortRowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var dimensionMenu: some View {
+        menuContainer {
+            dimensionMenuRow(.date)
+            menuSeparator
+            dimensionMenuRow(.album)
+            menuSeparator
+            dimensionMenuRow(.unclassified)
+        }
+    }
+
+    private func dimensionMenuRow(
+        _ dimension: S1GroupingDimension
+    ) -> some View {
+        let isSelected = machine.groupingDimension == dimension
+        return Button {
+            activeMenu = .none
+            selectDimension(dimension)
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(groupingTitle(dimension))
+                    .font(
+                        .system(
+                            size: S1MenuStyle.rowFontSize,
+                            weight: isSelected ? .semibold : .regular
+                        )
+                    )
+                    .foregroundStyle(
+                        isSelected
+                            ? Color.accentColor
+                            : S1ChromeForeground.primary
+                    )
+                if let hint = dimensionHintText(dimension) {
+                    Text(hint)
+                        .font(.system(size: S1MenuStyle.hintFontSize))
+                        .foregroundStyle(S1ChromeForeground.secondary)
+                }
+            }
+            .padding(.horizontal, S1MenuStyle.rowHorizontalPadding)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: S1MenuStyle.dimensionRowHeight,
+                alignment: .leading
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func dimensionHintText(
+        _ dimension: S1GroupingDimension
+    ) -> String? {
+        let model = S1DimensionMenuHintModel.make(
+            for: dimension,
+            albumRangeCount: albumHintRangeCount,
+            unclassifiedAssetCount: unclassifiedHintAssetCount
+        )
+        switch model {
+        case .dateStructure:
+            return L10n.text("s1.menu.dimension.date_hint")
+        case let .albumCount(count):
+            return L10n.text(
+                "s1.menu.dimension.album_hint",
+                replacing: ["count": String(count)]
+            )
+        case let .unclassifiedCount(count):
+            return L10n.text(
+                "s1.menu.dimension.unclassified_hint",
+                replacing: ["count": String(count)]
+            )
+        case .unavailable:
+            return nil
+        }
+    }
+
+    private func menuContainer<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(spacing: 0, content: content)
+            .background {
+                RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
+                    .fill(
+                        Color(uiColor: .systemBackground)
+                            .opacity(S1MenuStyle.backgroundOpacity)
+                    )
+            }
+            .clipShape(
+                RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
+                    .strokeBorder(
+                        Color.black.opacity(S1MenuStyle.ringOpacity),
+                        lineWidth: S1MenuStyle.ringWidth
+                    )
+            }
+            .shadow(
+                color: Color.black.opacity(S1MenuStyle.shadowOpacity),
+                radius: S1MenuStyle.shadowRadius,
+                x: 0,
+                y: S1MenuStyle.shadowYOffset
+            )
+    }
+
+    private var menuSeparator: some View {
+        Rectangle()
+            .fill(Color(uiColor: .separator))
+            .frame(height: S1MenuStyle.separatorWidth)
+    }
+
+    /// 维度提示的只读读取：不触碰状态机，读不到即无提示。
+    private func refreshDimensionHints() {
+        guard let rangeReader else {
+            albumHintRangeCount = nil
+            unclassifiedHintAssetCount = nil
+            return
+        }
+        albumHintRangeCount = (try? rangeReader(.album).result.get())?.count
+        unclassifiedHintAssetCount =
+            (try? rangeReader(.unclassified).result.get())
+                .map { ranges in
+                    ranges.reduce(0) { $0 + $1.totalAssetCount }
+                }
+    }
+
+    private func selectDimension(_ dimension: S1GroupingDimension) {
+        guard machine.switchGroupingDimension(to: dimension) else {
+            return
+        }
+        readCurrentRequestIfPossible()
+    }
+
+    // MARK: - IC-128 C：受限授权提示条
+
+    private var limitedBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "info.circle")
+                .font(.system(size: S1LimitedBannerStyle.iconPointSize))
+                .foregroundStyle(S1ChromeForeground.primary)
+            Text(L10n.text("s1.limited.banner"))
+                .font(.system(size: S1LimitedBannerStyle.textFontSize))
+                .foregroundStyle(S1ChromeForeground.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            limitedManageButton
+        }
+        .padding(.horizontal, S1LimitedBannerStyle.horizontalPadding)
+        .frame(height: S1LimitedBannerStyle.height)
+        .frame(maxWidth: .infinity)
+        .s1ChromeGlassBackground(in: Capsule())
+    }
+
+    private var limitedManageButton: some View {
+        Button {
+            presentLimitedLibraryManagement()
+        } label: {
+            Text(L10n.text("s1.limited.manage"))
+                .font(
+                    .system(
+                        size: S1LimitedBannerStyle.textFontSize,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(Color.accentColor)
+                .padding(
+                    .horizontal,
+                    S1LimitedBannerStyle.manageHorizontalPadding
+                )
+                .frame(height: S1LimitedBannerStyle.manageHeight)
+                .background(
+                    Color.accentColor.opacity(
+                        S1LimitedBannerStyle.manageTintBackgroundOpacity
+                    ),
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 卡内未指明「管理」动作语义；接系统受限照片管理入口（报告登记）。
+    private func presentLimitedLibraryManagement() {
+        let scenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive }
+            ?? scenes.first
+        guard let presenter = scene?.keyWindow?.rootViewController else {
+            return
+        }
+        PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: presenter)
     }
 
     // MARK: - 状态内容（IC-128 D 重排前的暂留版式）

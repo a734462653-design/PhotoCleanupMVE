@@ -352,6 +352,106 @@ final class IC128S1VisualTests: XCTestCase {
         XCTAssertNotNil(machine.makeS2Handoff(for: "year"))
     }
 
+    // MARK: - C：菜单与受限提示条
+
+    // 两菜单互斥：同一时刻只能开一个；开一个即关另一个；再点已开的关闭。
+    func testIC128C_MenusAreMutuallyExclusive() {
+        XCTAssertEqual(S1ActiveMenu.none.toggling(.sort), .sort)
+        XCTAssertEqual(S1ActiveMenu.none.toggling(.dimension), .dimension)
+        XCTAssertEqual(S1ActiveMenu.sort.toggling(.dimension), .dimension)
+        XCTAssertEqual(S1ActiveMenu.dimension.toggling(.sort), .sort)
+        XCTAssertEqual(S1ActiveMenu.sort.toggling(.sort), .none)
+        XCTAssertEqual(S1ActiveMenu.dimension.toggling(.dimension), .none)
+    }
+
+    // 维度菜单提示口径：按日期固定结构提示；相册 N 个、未分类 N 张；读不到即
+    // 不显示提示。
+    func testIC128C_DimensionMenuHintsFollowReadState() {
+        XCTAssertEqual(
+            S1DimensionMenuHintModel.make(
+                for: .date,
+                albumRangeCount: nil,
+                unclassifiedAssetCount: nil
+            ),
+            .dateStructure
+        )
+        XCTAssertEqual(
+            S1DimensionMenuHintModel.make(
+                for: .album,
+                albumRangeCount: 3,
+                unclassifiedAssetCount: nil
+            ),
+            .albumCount(3)
+        )
+        XCTAssertEqual(
+            S1DimensionMenuHintModel.make(
+                for: .album,
+                albumRangeCount: nil,
+                unclassifiedAssetCount: 42
+            ),
+            .unavailable
+        )
+        XCTAssertEqual(
+            S1DimensionMenuHintModel.make(
+                for: .unclassified,
+                albumRangeCount: nil,
+                unclassifiedAssetCount: 42
+            ),
+            .unclassifiedCount(42)
+        )
+        XCTAssertEqual(
+            S1DimensionMenuHintModel.make(
+                for: .unclassified,
+                albumRangeCount: 3,
+                unclassifiedAssetCount: nil
+            ),
+            .unavailable
+        )
+    }
+
+    // 受限提示条显隐与列表起始：受限 + 列表在场（就绪／空态）才挂条；
+    // 列表起始 63 → 115（画布 122 → 174）。
+    func testIC128C_LimitedBannerVisibilityAndListTopOffset() {
+        XCTAssertTrue(
+            S1LimitedBannerPresentation.isVisible(
+                isLimitedAuthorization: true,
+                state: .ready
+            )
+        )
+        XCTAssertTrue(
+            S1LimitedBannerPresentation.isVisible(
+                isLimitedAuthorization: true,
+                state: .empty
+            )
+        )
+        XCTAssertFalse(
+            S1LimitedBannerPresentation.isVisible(
+                isLimitedAuthorization: true,
+                state: .loading
+            )
+        )
+        XCTAssertFalse(
+            S1LimitedBannerPresentation.isVisible(
+                isLimitedAuthorization: true,
+                state: .failed
+            )
+        )
+        XCTAssertFalse(
+            S1LimitedBannerPresentation.isVisible(
+                isLimitedAuthorization: false,
+                state: .ready
+            )
+        )
+        XCTAssertEqual(
+            S1LimitedBannerPresentation.listTopOffset(bannerVisible: false),
+            S1ChromeLayout.listTopOffset
+        )
+        XCTAssertEqual(
+            S1LimitedBannerPresentation.listTopOffset(bannerVisible: true),
+            S1ChromeLayout.limitedListTopOffset
+        )
+    }
+
     // MARK: - Fixtures
 
     private func tryUnwrap<T>(

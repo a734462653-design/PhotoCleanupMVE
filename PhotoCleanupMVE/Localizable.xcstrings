@@ -199,6 +199,61 @@
         }
       }
     },
+    "s1.limited.banner" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅可整理你选中的照片"
+          }
+        }
+      }
+    },
+    "s1.limited.manage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理"
+          }
+        }
+      }
+    },
+    "s1.menu.dimension.album_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 个"
+          }
+        }
+      }
+    },
+    "s1.menu.dimension.date_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "年 → 月"
+          }
+        }
+      }
+    },
+    "s1.menu.dimension.unclassified_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张"
+          }
+        }
+      }
+    },
     "s1.placeholder.empty" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -315,7 +370,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按拍摄时间从新到旧"
+            "value" : "最新在前"
           }
         }
       }
@@ -326,7 +381,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按拍摄时间从旧到新"
+            "value" : "最旧在前"
           }
         }
       }
