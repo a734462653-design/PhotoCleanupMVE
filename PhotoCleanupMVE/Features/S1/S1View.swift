@@ -683,9 +683,14 @@ private struct S1RangeCoverThumbnail: View {
 // MARK: - IC-131 B：写回失败的一次性反馈
 
 /// IC-131 B（v8 回写决策 29）：从 S2 返回时写回校验失败的一次性反馈。
-/// 目前只有一种失败；成功不发事件。
+/// 成功不发事件。
+///
+/// IC-132 B 追加 `submissionUnavailable`：写回**已生效**、但提交形成不了
+/// （`makeS3Submission()` 为 nil 或确认页校验未过）。与 `writeBackFailed`
+/// 的区别在于写回结果是否保留，两者文案也不同。
 enum S1FeedbackEventKind: Equatable {
     case writeBackFailed
+    case submissionUnavailable
 }
 
 struct S1FeedbackEvent: Equatable, Identifiable {
@@ -723,6 +728,8 @@ final class S1FeedbackToastPresenter: ObservableObject {
         switch kind {
         case .writeBackFailed:
             return L10n.text("s1.toast.writeback_failed")
+        case .submissionUnavailable:
+            return L10n.text("s1.toast.submission_unavailable")
         }
     }
 
@@ -749,6 +756,25 @@ final class S1FeedbackToastPresenter: ObservableObject {
     }
 }
 
+/// IC-132 B：垃圾桶按钮的动作口径（测试钉住——按钮本身不驱动渲染也能验）。
+///
+/// 原实装在 `makeS3Submission()` 为 nil 时直接 `return`，于是徽标显示 N、
+/// 点下去毫无反应（跨启动恢复后名字表为空即会如此）。现在改为交出一条
+/// `.submissionUnavailable` 反馈。
+enum S1TrashButtonAction {
+    static func perform(
+        machine: S1StateMachine,
+        onS3Submission: (SessionStore.S3Submission) -> Void,
+        onSubmissionUnavailable: () -> Void
+    ) {
+        guard let submission = machine.makeS3Submission() else {
+            onSubmissionUnavailable()
+            return
+        }
+        onS3Submission(submission)
+    }
+}
+
 // MARK: - S1View
 
 struct S1View: View {
@@ -760,6 +786,8 @@ struct S1View: View {
     @State private var activeMenu: S1ActiveMenu = .none
     @State private var albumHintRangeCount: Int?
     @State private var unclassifiedHintAssetCount: Int?
+    /// IC-132 B：本视图自发反馈的序号源（与协调器通道的序号互不相干）。
+    @State private var localFeedbackEventCount = 0
 
     private let rangeReader: RangeReader?
     private let onS2Handoff: (S1ToS2Handoff) -> Void
@@ -853,6 +881,17 @@ struct S1View: View {
             durationMilliseconds: feedbackToastDurationMilliseconds
         )
         onFeedbackEventConsumed()
+    }
+
+    /// IC-132 B：本视图自己产生的反馈（垃圾桶点不动）。此刻 S1 必然已挂载，
+    /// 不必绕协调器的等待通道，直接驱动本地呈现器；`id` 取负数与协调器发来的
+    /// 正序号分处两个命名空间，互不误判为同一条。
+    private func presentLocalFeedback(_ kind: S1FeedbackEventKind) {
+        localFeedbackEventCount += 1
+        feedbackToast.present(
+            S1FeedbackEvent(id: -localFeedbackEventCount, kind: kind),
+            durationMilliseconds: feedbackToastDurationMilliseconds
+        )
     }
 
     // MARK: - IC-128 A：顶排 chrome
@@ -990,10 +1029,13 @@ struct S1View: View {
 
     private func trashButton(_ model: S1ChromeBarModel) -> some View {
         Button {
-            guard let submission = machine.makeS3Submission() else {
-                return
-            }
-            onS3Submission(submission)
+            S1TrashButtonAction.perform(
+                machine: machine,
+                onS3Submission: onS3Submission,
+                onSubmissionUnavailable: {
+                    presentLocalFeedback(.submissionUnavailable)
+                }
+            )
         } label: {
             Image(systemName: "trash")
                 .foregroundStyle(S1ChromeForeground.primary)

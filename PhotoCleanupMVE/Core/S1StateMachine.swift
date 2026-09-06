@@ -219,6 +219,11 @@ struct S1RangeRow: Identifiable, Equatable, Sendable {
 
 /// IC-127 B（未定项 11）：S1 会话跨启动持久化的值快照。`M`／`K`／`F`／`T`／`O` 与
 /// `sessionID` 一并入档；展开／收起状态是会话内视图态，不入档。
+///
+/// IC-132 A：范围显示名一并入档。`makeS3Submission()` 要求 `M` 中每个已标记范围
+/// 都有已知名字（第七节第 3 部分「每个分组必须提供组名」），而名字表原先只由本次
+/// 读到的 `R(T)` 填充、不入档——跨启动恢复后若当前维度读不到那些范围（在相册维度
+/// 标记、重开停在按日期维度），名字永远补不齐，提交恒为 nil。
 struct S1SessionSnapshot: Equatable, Sendable {
     let sessionID: String
     let groupingDimension: S1GroupingDimension
@@ -226,6 +231,29 @@ struct S1SessionSnapshot: Equatable, Sendable {
     let pendingDeletionAssetIDsByRangeID: [String: Set<String>]
     let continuationsByRangeID: [String: SessionStore.Continuation]
     let firstMarkedRangeIDByAssetID: [String: String]
+    /// IC-132 A：已知范围显示名。只增不删——对账剔除范围时不删名字，
+    /// `M` 的键可能因范围失效而仍在（v8 未定项 18）。
+    let rangeNamesByID: [String: String]
+
+    /// 逐成员构造，`rangeNamesByID` 带默认空表：既有构造点（含 IC-127 B 的两条
+    /// 回归断言）无须改写即可编译。产品侧两个构造点都显式传值。
+    init(
+        sessionID: String,
+        groupingDimension: S1GroupingDimension,
+        sortOrder: S1SortOrder,
+        pendingDeletionAssetIDsByRangeID: [String: Set<String>],
+        continuationsByRangeID: [String: SessionStore.Continuation],
+        firstMarkedRangeIDByAssetID: [String: String],
+        rangeNamesByID: [String: String] = [:]
+    ) {
+        self.sessionID = sessionID
+        self.groupingDimension = groupingDimension
+        self.sortOrder = sortOrder
+        self.pendingDeletionAssetIDsByRangeID = pendingDeletionAssetIDsByRangeID
+        self.continuationsByRangeID = continuationsByRangeID
+        self.firstMarkedRangeIDByAssetID = firstMarkedRangeIDByAssetID
+        self.rangeNamesByID = rangeNamesByID
+    }
 }
 
 enum S1UndecidedPlaceholder: Equatable, Sendable {
@@ -299,11 +327,15 @@ final class S1StateMachine: ObservableObject {
         ) else {
             return nil
         }
-        return S1StateMachine(
+        let machine = S1StateMachine(
             sessionStore: store,
             initialGroupingDimension: snapshot.groupingDimension,
             initialSortOrder: snapshot.sortOrder
         )
+        // IC-132 A：把档里的范围名灌回名字表，使恢复出的状态机在读取任何 `R(T)`
+        // 之前就能形成提交。
+        machine.knownRangeNamesByID = snapshot.rangeNamesByID
+        return machine
     }
 
     var sessionSnapshot: S1SessionSnapshot {
@@ -314,7 +346,8 @@ final class S1StateMachine: ObservableObject {
             pendingDeletionAssetIDsByRangeID:
                 sessionStore.pendingDeletionAssetIDsByRangeID,
             continuationsByRangeID: sessionStore.continuationsByRangeID,
-            firstMarkedRangeIDByAssetID: sessionStore.firstMarkedRangeIDByAssetID
+            firstMarkedRangeIDByAssetID: sessionStore.firstMarkedRangeIDByAssetID,
+            rangeNamesByID: knownRangeNamesByID
         )
     }
 
@@ -504,9 +537,13 @@ final class S1StateMachine: ObservableObject {
         countsAsReconciliation: Bool = true
     ) {
         ranges = newRanges
+        // IC-132 A：名字表一次性合并（只增不删），不逐键赋值——逐键会让本函数
+        // 末尾的写出口按中间态多写几次。
+        var mergedRangeNames = knownRangeNamesByID
         for range in newRanges {
-            knownRangeNamesByID[range.id] = range.displayName
+            mergedRangeNames[range.id] = range.displayName
         }
+        knownRangeNamesByID = mergedRangeNames
         let validRangeIDs = Set(newRanges.map(\.id))
         collapsedYearRangeIDs = collapsedYearRangeIDs.intersection(validRangeIDs)
         self.isLimitedAuthorization = isLimitedAuthorization
@@ -527,6 +564,12 @@ final class S1StateMachine: ObservableObject {
         if reconciledStore != sessionStore {
             sessionStore = reconciledStore
         }
+        // IC-132 A：`knownRangeNamesByID` 不是 @Published、没有 didSet，名字单独
+        // 变化（本次读到新范围但 `M` 无需收敛）时上面的 `sessionStore` 赋值不发生，
+        // 快照就漏写。这里补一次——**写出口仍然只有 `publishSnapshotIfChanged`
+        // 一个**，且它自身按 `lastPublishedSnapshot` 去重，故 store 也变了的情况
+        // 不会多写一遍（陷阱 19、v8 第二节「不存在绕过该出口的写入路径」）。
+        publishSnapshotIfChanged()
     }
 
     /// 对账的按范围部分：只对出现在新 `R(T)` 中的范围做剔除与钳制。当前维度之外

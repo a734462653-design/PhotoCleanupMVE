@@ -397,6 +397,17 @@
         }
       }
     },
+    "s1.toast.submission_unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂时无法打开确认页，请重试。"
+          }
+        }
+      }
+    },
     "s1.toast.writeback_failed" : {
       "extractionState" : "manual",
       "localizations" : {
