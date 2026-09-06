@@ -236,7 +236,8 @@ final class IC132SubmissionDeadEndTests: XCTestCase {
                 ["第九相册"]
             )
             XCTAssertTrue(second.enterConfirmationFromS1(submission))
-            XCTAssertEqual(second.route, .s3)
+            // 卡内写作「route == .s3」，实际枚举例名为 `.confirmation`（S3 页）。
+            XCTAssertEqual(second.route, .confirmation)
             XCTAssertEqual(second.s1FeedbackEventCount, 0)
             XCTAssertNil(second.s1FeedbackEvent)
         }
