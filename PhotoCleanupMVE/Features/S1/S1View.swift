@@ -81,10 +81,16 @@ enum S1NotificationBadgeStyle {
     }
 }
 
-/// IC-128 A：顶排 chrome 的展示口径（测试钉住）。
-/// S1-1 加载中：三件降 40% 不透明并禁用，垃圾桶入口与徽标照常显示、只是不可触发；
-/// S1-3 空态：垃圾桶入口禁用、徽标不显示；
-/// 其余：徽标数值 = `D_全部`，为 0 时不显示且入口禁用。
+/// IC-128 A／IC-131 A：顶排 chrome 的展示口径（测试钉住）。
+///
+/// 四态统一口径（锁定决策 8：S1 的四个状态**均**显示垃圾桶入口；其中 S1-1
+/// 加载中显示但不可触发）：
+/// - 徽标数值 = `D_全部`，`> 0` 即显示，**与状态无关**（加载中、空态同样显示）；
+/// - 垃圾桶可触发 = 非加载中且 `D_全部 > 0`，**与状态无关**。
+///
+/// IC-131 A 修正：原实装在 `.empty` 时一律禁用垃圾桶且不显示徽标，与锁定决策 8
+/// 及 v8 第三节 S1-3「其他范围的既有选择仍可提交」直接冲突——切到一个 `R(T)`
+/// 为空的维度（如设备无自建相册）会让既有选择看起来丢失且无法提交。
 struct S1ChromeBarModel: Equatable {
     let controlsEnabled: Bool
     let controlsOpacity: Double
@@ -93,11 +99,11 @@ struct S1ChromeBarModel: Equatable {
 
     static func make(state: S1State, badgeCount: Int) -> S1ChromeBarModel {
         let isLoading = state == .loading
-        let badgeVisible = badgeCount > 0 && state != .empty
+        let badgeVisible = badgeCount > 0
         return S1ChromeBarModel(
             controlsEnabled: !isLoading,
             controlsOpacity: isLoading ? 0.4 : 1,
-            trashEnabled: !isLoading && state != .empty && badgeCount > 0,
+            trashEnabled: !isLoading && badgeCount > 0,
             badgeText: badgeVisible ? String(badgeCount) : nil
         )
     }
