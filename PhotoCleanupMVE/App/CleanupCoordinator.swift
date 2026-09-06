@@ -42,6 +42,12 @@ final class CleanupCoordinator: ObservableObject {
     @Published private(set) var s4Machine: S4StateMachine?
     @Published private(set) var s5Machine: S5StateMachine?
     @Published private(set) var message: String?
+    /// IC-131 B：供 S1 视图观察的一次性「写回失败」事件通道。与持久型 `message`
+    /// 分开——`message` 会一直挂着，与「短 toast」语义相反。事件在通道里等到
+    /// S1 视图出现为止，由视图取走后经 `consumeS1FeedbackEvent()` 清空。
+    @Published private(set) var s1FeedbackEvent: S1FeedbackEvent?
+    /// 已发出的写回失败事件总数（测试用；`id` 亦取此序号）。
+    private(set) var s1FeedbackEventCount = 0
     private(set) var sessionStore: SessionStore?
     let s2Calibration: S2CalibrationModel
 
@@ -218,6 +224,7 @@ final class CleanupCoordinator: ObservableObject {
     @discardableResult
     func leaveS2(with payload: S2ExitPayload) -> Bool {
         guard applyS2ExitPayload(payload) else {
+            returnToS1AfterFailedWriteBack()
             return false
         }
         clearS2RouteState()
@@ -228,9 +235,33 @@ final class CleanupCoordinator: ObservableObject {
         return true
     }
 
+    /// IC-131 B：S1 视图取走事件后清空通道，避免下次进入 S1 重复弹出。
+    func consumeS1FeedbackEvent() {
+        s1FeedbackEvent = nil
+    }
+
+    /// IC-131 B（v8 回写决策 29）：写回校验失败后的收场。**不写回**——该范围的
+    /// `M`、`K` 保持上一次有效值；但照常离开 S2 回到 S1 并对账一次，再发一条
+    /// 一次性事件由 S1 以底部短 toast 呈现。不弹窗、不阻断：用户点了返回就该
+    /// 回到 S1，原实装让 `route` 停在 `.s2` 且毫无反馈。
+    private func returnToS1AfterFailedWriteBack() {
+        clearS2RouteState()
+        reconcileS1WithPhotoLibrary()
+        route = .s1
+        message = nil
+        s1FeedbackEventCount += 1
+        s1FeedbackEvent = S1FeedbackEvent(
+            id: s1FeedbackEventCount,
+            kind: .writeBackFailed
+        )
+    }
+
     @discardableResult
     func enterConfirmationFromS2(with payload: S2ExitPayload) -> Bool {
         guard applyS2ExitPayload(payload) else {
+            // IC-131 B：垃圾桶路径失败同样回到 S1 并发 toast，**不进入 S3**
+            // （不形成提交）——④决策会话裁定，依据决策 29「不阻断」。
+            returnToS1AfterFailedWriteBack()
             return false
         }
         clearS2RouteState()

@@ -7,6 +7,29 @@ struct PhotoCleanupMVEApp: App {
     @Environment(\.scenePhase) private var scenePhase
     private let s2PhotoImageStrategy = S2TemporaryPhotoKitImageStrategy()
 
+    /// IC-131 B：S1 视图构造抽成 builder。加参数后仍留在 Scene body 的多层
+    /// 嵌套里会把类型检查推到超时（IC-108／IC-113 三次实例），构造点一律外提。
+    private func s1Screen(machine: S1StateMachine) -> some View {
+        S1View(
+            machine: machine,
+            rangeReader: coordinator.readS1Ranges,
+            onS2Handoff: { handoff in
+                _ = coordinator.enterS2(from: handoff)
+            },
+            onS3Submission: { submission in
+                _ = coordinator.enterConfirmationFromS1(submission)
+            },
+            feedbackEvent: coordinator.s1FeedbackEvent,
+            feedbackToastDurationMilliseconds: coordinator
+                .s2Calibration
+                .configuration
+                .feedbackToastDurationMilliseconds,
+            onFeedbackEventConsumed: {
+                coordinator.consumeS1FeedbackEvent()
+            }
+        )
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
@@ -15,18 +38,7 @@ struct PhotoCleanupMVEApp: App {
                     ProgressView(L10n.text("app.loading.photo_library"))
                 case .s1, .upstream, .finished:
                     if let machine = coordinator.s1Machine {
-                        S1View(
-                            machine: machine,
-                            rangeReader: coordinator.readS1Ranges,
-                            onS2Handoff: { handoff in
-                                _ = coordinator.enterS2(from: handoff)
-                            },
-                            onS3Submission: { submission in
-                                _ = coordinator.enterConfirmationFromS1(
-                                    submission
-                                )
-                            }
-                        )
+                        s1Screen(machine: machine)
                     } else {
                         ProgressView()
                     }

@@ -81,10 +81,16 @@ enum S1NotificationBadgeStyle {
     }
 }
 
-/// IC-128 A：顶排 chrome 的展示口径（测试钉住）。
-/// S1-1 加载中：三件降 40% 不透明并禁用，垃圾桶入口与徽标照常显示、只是不可触发；
-/// S1-3 空态：垃圾桶入口禁用、徽标不显示；
-/// 其余：徽标数值 = `D_全部`，为 0 时不显示且入口禁用。
+/// IC-128 A／IC-131 A：顶排 chrome 的展示口径（测试钉住）。
+///
+/// 四态统一口径（锁定决策 8：S1 的四个状态**均**显示垃圾桶入口；其中 S1-1
+/// 加载中显示但不可触发）：
+/// - 徽标数值 = `D_全部`，`> 0` 即显示，**与状态无关**（加载中、空态同样显示）；
+/// - 垃圾桶可触发 = 非加载中且 `D_全部 > 0`，**与状态无关**。
+///
+/// IC-131 A 修正：原实装在 `.empty` 时一律禁用垃圾桶且不显示徽标，与锁定决策 8
+/// 及 v8 第三节 S1-3「其他范围的既有选择仍可提交」直接冲突——切到一个 `R(T)`
+/// 为空的维度（如设备无自建相册）会让既有选择看起来丢失且无法提交。
 struct S1ChromeBarModel: Equatable {
     let controlsEnabled: Bool
     let controlsOpacity: Double
@@ -93,11 +99,11 @@ struct S1ChromeBarModel: Equatable {
 
     static func make(state: S1State, badgeCount: Int) -> S1ChromeBarModel {
         let isLoading = state == .loading
-        let badgeVisible = badgeCount > 0 && state != .empty
+        let badgeVisible = badgeCount > 0
         return S1ChromeBarModel(
             controlsEnabled: !isLoading,
             controlsOpacity: isLoading ? 0.4 : 1,
-            trashEnabled: !isLoading && state != .empty && badgeCount > 0,
+            trashEnabled: !isLoading && badgeCount > 0,
             badgeText: badgeVisible ? String(badgeCount) : nil
         )
     }
@@ -674,6 +680,75 @@ private struct S1RangeCoverThumbnail: View {
     }
 }
 
+// MARK: - IC-131 B：写回失败的一次性反馈
+
+/// IC-131 B（v8 回写决策 29）：从 S2 返回时写回校验失败的一次性反馈。
+/// 目前只有一种失败；成功不发事件。
+enum S1FeedbackEventKind: Equatable {
+    case writeBackFailed
+}
+
+struct S1FeedbackEvent: Equatable, Identifiable {
+    let id: Int
+    let kind: S1FeedbackEventKind
+}
+
+/// IC-131 B：S1 底部短 toast 的呈现器。形状与 S2 侧同名角色一致——一次性事件
+/// 驱动、同一时刻只显示一条、新事件替换旧事件（旧事件到期不再清除新事件）、
+/// 计时经 `scheduler` 注入使测试不依赖真实时钟。
+///
+/// 单独一份而不跨页复用 S2 的实例：S2 视图随路由销毁，写回失败恰恰发生在
+/// 离开 S2 的那一刻，复用会连同实例一起消失。
+final class S1FeedbackToastPresenter: ObservableObject {
+    typealias Scheduler = (TimeInterval, @escaping () -> Void) -> Void
+
+    @Published private(set) var activeEvent: S1FeedbackEvent?
+    private(set) var presentedCount = 0
+    private(set) var lastScheduledDurationSeconds: TimeInterval?
+    private var generation = 0
+    private let scheduler: Scheduler
+
+    init(
+        scheduler: @escaping Scheduler = { delay, action in
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + delay,
+                execute: action
+            )
+        }
+    ) {
+        self.scheduler = scheduler
+    }
+
+    static func text(for kind: S1FeedbackEventKind) -> String {
+        switch kind {
+        case .writeBackFailed:
+            return L10n.text("s1.toast.writeback_failed")
+        }
+    }
+
+    func present(
+        _ event: S1FeedbackEvent,
+        durationMilliseconds: Double
+    ) {
+        generation += 1
+        let currentGeneration = generation
+        presentedCount += 1
+        activeEvent = event
+        let seconds = max(0, durationMilliseconds) / 1_000
+        lastScheduledDurationSeconds = seconds
+        scheduler(seconds) { [weak self] in
+            self?.expire(generation: currentGeneration)
+        }
+    }
+
+    private func expire(generation expiredGeneration: Int) {
+        guard expiredGeneration == generation else {
+            return
+        }
+        activeEvent = nil
+    }
+}
+
 // MARK: - S1View
 
 struct S1View: View {
@@ -681,6 +756,7 @@ struct S1View: View {
     typealias RangeReader = (S1GroupingDimension) -> S1RangeReadResponse
 
     @ObservedObject var machine: S1StateMachine
+    @StateObject private var feedbackToast = S1FeedbackToastPresenter()
     @State private var activeMenu: S1ActiveMenu = .none
     @State private var albumHintRangeCount: Int?
     @State private var unclassifiedHintAssetCount: Int?
@@ -689,19 +765,31 @@ struct S1View: View {
     private let onS2Handoff: (S1ToS2Handoff) -> Void
     private let onS3Submission: (SessionStore.S3Submission) -> Void
     private let coverImageLoader: any S1CoverImageLoading
+    /// IC-131 B：协调器里等着的一次性「写回失败」事件。视图出现或事件变化时取走
+    /// 并交给呈现器，随后经 `onFeedbackEventConsumed` 把通道清空——失败发生在
+    /// S1 尚未挂载的那一刻，事件必须能等到视图出现，不能丢。
+    private let feedbackEvent: S1FeedbackEvent?
+    private let feedbackToastDurationMilliseconds: Double
+    private let onFeedbackEventConsumed: () -> Void
 
     init(
         machine: S1StateMachine,
         rangeReader: RangeReader? = nil,
         onS2Handoff: @escaping (S1ToS2Handoff) -> Void = { _ in },
         onS3Submission: @escaping (SessionStore.S3Submission) -> Void = { _ in },
-        coverImageLoader: any S1CoverImageLoading = S1PhotoKitCoverImageLoader()
+        coverImageLoader: any S1CoverImageLoading = S1PhotoKitCoverImageLoader(),
+        feedbackEvent: S1FeedbackEvent? = nil,
+        feedbackToastDurationMilliseconds: Double = 0,
+        onFeedbackEventConsumed: @escaping () -> Void = {}
     ) {
         self.machine = machine
         self.rangeReader = rangeReader
         self.onS2Handoff = onS2Handoff
         self.onS3Submission = onS3Submission
         self.coverImageLoader = coverImageLoader
+        self.feedbackEvent = feedbackEvent
+        self.feedbackToastDurationMilliseconds = feedbackToastDurationMilliseconds
+        self.onFeedbackEventConsumed = onFeedbackEventConsumed
     }
 
     var body: some View {
@@ -725,9 +813,46 @@ struct S1View: View {
             }
         }
         .allowsHitTesting(!machine.isObscured)
+        .overlay(alignment: .bottom) {
+            feedbackToastOverlay
+        }
         .onAppear {
             readCurrentRequestIfPossible()
+            presentPendingFeedbackEventIfNeeded()
         }
+        .onChange(of: feedbackEvent) { _, _ in
+            presentPendingFeedbackEventIfNeeded()
+        }
+    }
+
+    // MARK: - IC-131 B：写回失败 toast
+
+    /// 底部短 toast。样式取 S2 侧既有常量（同字号、同底、同圆角），不新造；
+    /// 位置只锚安全区底 + `bottomRowBottomInset`——S1 没有底部横栏，不能套
+    /// S2 那条含横栏高的推导式（视觉锚与触控锚是两套几何）。
+    @ViewBuilder
+    private var feedbackToastOverlay: some View {
+        if let event = feedbackToast.activeEvent {
+            Text(S1FeedbackToastPresenter.text(for: event.kind))
+                .font(.subheadline)
+                .padding(.horizontal, S2OverlayLayout.minimumSpacing * 2)
+                .padding(.vertical, S2OverlayLayout.minimumSpacing)
+                .background(.regularMaterial, in: Capsule())
+                .padding(.bottom, S2OverlayLayout.bottomRowBottomInset)
+                .allowsHitTesting(false)
+                .accessibilityAddTraits(.isStaticText)
+        }
+    }
+
+    private func presentPendingFeedbackEventIfNeeded() {
+        guard let feedbackEvent else {
+            return
+        }
+        feedbackToast.present(
+            feedbackEvent,
+            durationMilliseconds: feedbackToastDurationMilliseconds
+        )
+        onFeedbackEventConsumed()
     }
 
     // MARK: - IC-128 A：顶排 chrome

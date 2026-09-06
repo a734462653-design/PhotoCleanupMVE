@@ -8,8 +8,9 @@ final class IC128S1VisualTests: XCTestCase {
     // MARK: - A：顶排 chrome
 
     // 三件 chrome 的存在与禁用态：S1-1 全部降 40% 并禁用（垃圾桶与徽标照常
-    // 显示、不可触发）；S1-3 垃圾桶禁用且徽标不显示；就绪态徽标为 0 时不显示
-    // 且入口禁用。
+    // 显示、不可触发）；徽标为 0 时不显示且入口禁用。
+    // IC-131 A 修正：S1-3 空态不再特殊——徽标与垃圾桶可触发性只看 `D_全部`
+    // 与「是否加载中」，空态下既有选择照常显示、照常可提交（锁定决策 8）。
     func testIC128A_ChromeBarStatesFollowLoadingEmptyReady() {
         let loading = S1ChromeBarModel.make(state: .loading, badgeCount: 2)
         XCTAssertFalse(loading.controlsEnabled)
@@ -27,10 +28,17 @@ final class IC128S1VisualTests: XCTestCase {
         XCTAssertTrue(readyMarked.trashEnabled)
         XCTAssertEqual(readyMarked.badgeText, "3")
 
+        // IC-131 A：空态且 D_全部 > 0——垃圾桶可触发、徽标照常显示。
         let empty = S1ChromeBarModel.make(state: .empty, badgeCount: 2)
         XCTAssertTrue(empty.controlsEnabled)
-        XCTAssertFalse(empty.trashEnabled)
-        XCTAssertNil(empty.badgeText)
+        XCTAssertTrue(empty.trashEnabled)
+        XCTAssertEqual(empty.badgeText, "2")
+
+        // IC-131 A：空态且 D_全部 == 0——才禁用且不显示徽标。
+        let emptyZero = S1ChromeBarModel.make(state: .empty, badgeCount: 0)
+        XCTAssertTrue(emptyZero.controlsEnabled)
+        XCTAssertFalse(emptyZero.trashEnabled)
+        XCTAssertNil(emptyZero.badgeText)
 
         let failed = S1ChromeBarModel.make(state: .failed, badgeCount: 2)
         XCTAssertTrue(failed.controlsEnabled)
