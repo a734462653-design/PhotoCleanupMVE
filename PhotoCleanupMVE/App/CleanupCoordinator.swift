@@ -249,10 +249,25 @@ final class CleanupCoordinator: ObservableObject {
         reconcileS1WithPhotoLibrary()
         route = .s1
         message = nil
+        publishS1FeedbackEvent(.writeBackFailed)
+    }
+
+    /// IC-132 B：写回**已生效**、但提交形成不了时的收场。与
+    /// `returnToS1AfterFailedWriteBack()` 的区别只在写回结果——那条是没写回，
+    /// 这条 `M`／`K` 已更新并保留。调用方此前已 `clearS2RouteState()` 并对过账，
+    /// 这里只补路由收口与反馈，避免 `route` 停在 `.s2` 而 `s2Machine` 已为 nil
+    /// （App 的 `case .s2` 会落到一个退不出的 ProgressView）。
+    private func returnToS1AfterUnavailableSubmission() {
+        route = .s1
+        message = nil
+        publishS1FeedbackEvent(.submissionUnavailable)
+    }
+
+    private func publishS1FeedbackEvent(_ kind: S1FeedbackEventKind) {
         s1FeedbackEventCount += 1
         s1FeedbackEvent = S1FeedbackEvent(
             id: s1FeedbackEventCount,
-            kind: .writeBackFailed
+            kind: kind
         )
     }
 
@@ -269,9 +284,20 @@ final class CleanupCoordinator: ObservableObject {
         // 已被系统删除的资产不进入 D_全部。
         reconcileS1WithPhotoLibrary()
         guard let submission = s1Machine?.makeS3Submission() else {
+            // IC-132 B：写回已生效，只是提交形成不了（典型是恢复出的名字表为空）。
+            // 原实装直接 return false，`route` 停在 `.s2` 而 `s2Machine` 已 nil，
+            // 界面卡在退不出的转圈上。
+            returnToS1AfterUnavailableSubmission()
             return false
         }
-        return enterConfirmationFromS1(submission)
+        guard enterConfirmationFromS1(submission) else {
+            // IC-132 B：事件已由 `enterConfirmationFromS1` 发出，这里只补路由收口，
+            // 不重复发第二条。
+            route = .s1
+            message = nil
+            return false
+        }
+        return true
     }
 
     @discardableResult
@@ -280,6 +306,8 @@ final class CleanupCoordinator: ObservableObject {
     ) -> Bool {
         guard let s1Machine,
               submission == s1Machine.makeS3Submission() else {
+            // IC-132 B：不再静默失败。S1 视图此刻已挂载，事件立即被取走显示。
+            publishS1FeedbackEvent(.submissionUnavailable)
             return false
         }
         let descriptors = descriptorsForS3(
@@ -291,12 +319,16 @@ final class CleanupCoordinator: ObservableObject {
         } else {
             cachedConclusions = [:]
         }
-        return enterConfirmation(
+        guard enterConfirmation(
             from: submission,
             sessionStore: s1Machine.sessionStore,
             descriptors: descriptors,
             cachedConclusions: cachedConclusions
-        )
+        ) else {
+            publishS1FeedbackEvent(.submissionUnavailable)
+            return false
+        }
+        return true
     }
 
     func s2AssetAspectRatio(for assetID: String) -> CGFloat {
