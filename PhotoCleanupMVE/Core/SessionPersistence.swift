@@ -215,6 +215,47 @@ struct PersistedS1Session: Codable, Equatable {
     let pendingDeletionAssetIDsByRangeID: [String: [String]]
     let continuationsByRangeID: [String: Continuation]
     let firstMarkedRangeIDByAssetID: [String: String]
+    /// IC-132 A：已知范围显示名。**旧档没有这个键**，解码时缺失按空表处理，
+    /// 不判坏档——已装机用户的档不能因升级失效。
+    let rangeNamesByID: [String: String]
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionID
+        case groupingDimension
+        case sortOrder
+        case pendingDeletionAssetIDsByRangeID
+        case continuationsByRangeID
+        case firstMarkedRangeIDByAssetID
+        case rangeNamesByID
+    }
+
+    /// IC-132 A：手写解码只为让 `rangeNamesByID` 可缺省；其余字段与合成实现同义，
+    /// 缺失仍然抛错（坏档语义不变）。编码沿用合成实现。
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID = try values.decode(String.self, forKey: .sessionID)
+        groupingDimension = try values.decode(
+            String.self,
+            forKey: .groupingDimension
+        )
+        sortOrder = try values.decode(String.self, forKey: .sortOrder)
+        pendingDeletionAssetIDsByRangeID = try values.decode(
+            [String: [String]].self,
+            forKey: .pendingDeletionAssetIDsByRangeID
+        )
+        continuationsByRangeID = try values.decode(
+            [String: Continuation].self,
+            forKey: .continuationsByRangeID
+        )
+        firstMarkedRangeIDByAssetID = try values.decode(
+            [String: String].self,
+            forKey: .firstMarkedRangeIDByAssetID
+        )
+        rangeNamesByID = try values.decodeIfPresent(
+            [String: String].self,
+            forKey: .rangeNamesByID
+        ) ?? [:]
+    }
 
     init(_ snapshot: S1SessionSnapshot) {
         sessionID = snapshot.sessionID
@@ -230,6 +271,7 @@ struct PersistedS1Session: Codable, Equatable {
             )
         }
         firstMarkedRangeIDByAssetID = snapshot.firstMarkedRangeIDByAssetID
+        rangeNamesByID = snapshot.rangeNamesByID
     }
 
     /// 解码回值快照；字段非法（未知维度／排序、重复资产）时返回 nil，视为坏档。
@@ -266,7 +308,8 @@ struct PersistedS1Session: Codable, Equatable {
             sortOrder: order,
             pendingDeletionAssetIDsByRangeID: pending,
             continuationsByRangeID: continuations,
-            firstMarkedRangeIDByAssetID: firstMarkedRangeIDByAssetID
+            firstMarkedRangeIDByAssetID: firstMarkedRangeIDByAssetID,
+            rangeNamesByID: rangeNamesByID
         )
     }
 }
