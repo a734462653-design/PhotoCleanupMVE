@@ -55,6 +55,21 @@ struct S3GroupPresentation: Equatable {
     }
 }
 
+/// IC-133 B（决策单 D1）：信息条副行口径——`count` = 状态机 `assetCount`，
+/// `ranges` = `S3GroupPresentation` 输出的**非空组数**（不是 `s3Groups.count`）。
+/// 视图只取这里产出的字符串。
+enum S3HeaderSubtitle {
+    static func text(assetCount: Int, rangeCount: Int) -> String {
+        L10n.text(
+            "s3.chrome.subtitle_format",
+            replacing: [
+                "count": String(assetCount),
+                "ranges": String(rangeCount)
+            ]
+        )
+    }
+}
+
 // MARK: - S3View
 
 struct S3View: View {
@@ -80,11 +95,9 @@ struct S3View: View {
                             "s3.asset.pending_count",
                             replacing: ["count": String(machine.assetCount)]
                         ))
-                        Text(L10n.text(
-                            "s3.scope.source_summary.placeholder",
-                            replacing: [
-                                "count": String(coordinator.s3Groups.count)
-                            ]
+                        Text(S3HeaderSubtitle.text(
+                            assetCount: machine.assetCount,
+                            rangeCount: presentation.nonEmptyRangeCount
                         ))
                         Text(volumeText(machine))
                         if machine.state == .ready {

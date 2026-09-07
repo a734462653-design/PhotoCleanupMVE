@@ -147,6 +147,58 @@ final class IC133S3BehaviorTests: XCTestCase {
         XCTAssertEqual(machine.assetCount, 0)
     }
 
+    // MARK: - 子项 B · 信息条口径与「最近删除」提示句（决策单 D1、D2）
+
+    // 断言 5：三组各两张 → 副行「6 张 · 来自 3 个范围」；移除一组两张后 →
+    // 「4 张 · 来自 2 个范围」（`ranges` 随非空组数变，不是 `s3Groups.count`）。
+    func testIC133B_HeaderSubtitleTracksAssetCountAndNonEmptyRangeCount() {
+        let groups = makeThreeGroupsOfTwo()
+        let machine = S3StateMachine(assets: assets(for: groups))
+
+        func subtitle() -> String {
+            let presentation = S3GroupPresentation.make(
+                groups: groups,
+                currentAssets: machine.assets
+            )
+            return S3HeaderSubtitle.text(
+                assetCount: machine.assetCount,
+                rangeCount: presentation.nonEmptyRangeCount
+            )
+        }
+
+        XCTAssertEqual(subtitle(), "6 张 · 来自 3 个范围")
+
+        XCTAssertTrue(machine.removeAsset(identifier: "b-1"))
+        XCTAssertTrue(machine.removeAsset(identifier: "b-2"))
+
+        // 协调器快照仍是 3 组，副行按非空组数报 2。
+        XCTAssertEqual(groups.count, 3)
+        XCTAssertEqual(subtitle(), "4 张 · 来自 2 个范围")
+    }
+
+    // 断言 6：文案经 `L10n.text` 取得（NSLocalizedString 找不到时原样返回 key），
+    // 目录值逐字等于卡内登记原文；目录无孤儿 key 与源码无中文字面量另由
+    // Scripts/scan-hardcoded-user-visible-strings.ps1 覆盖。
+    func testIC133B_HeaderSubtitleAndNoticeComeFromStringCatalog() {
+        let subtitleKey = "s3.chrome.subtitle_format"
+        let subtitleFormat = L10n.text(subtitleKey)
+        XCTAssertNotEqual(subtitleFormat, subtitleKey)
+        XCTAssertEqual(subtitleFormat, "{count} 张 · 来自 {ranges} 个范围")
+        XCTAssertEqual(
+            S3HeaderSubtitle.text(assetCount: 6, rangeCount: 3),
+            L10n.text(subtitleKey, replacing: ["count": "6", "ranges": "3"])
+        )
+
+        let noticeKey = "s3.confirmation.recently_deleted_notice"
+        let notice = L10n.text(noticeKey)
+        XCTAssertNotEqual(notice, noticeKey)
+        XCTAssertEqual(notice, "删除后会移入系统「最近删除」，30 天内可恢复。")
+
+        // 旧占位 key 已删除：目录查不到时原样返回 key。
+        let removedKey = "s3.scope.source_summary.placeholder"
+        XCTAssertEqual(L10n.text(removedKey), removedKey)
+    }
+
     // MARK: - 夹具
 
     /// 三组各两张：范围-A{a-1,a-2}、范围-B{b-1,b-2}、范围-C{c-1,c-2}。

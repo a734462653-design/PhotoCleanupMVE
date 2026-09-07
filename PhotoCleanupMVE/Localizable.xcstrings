@@ -1739,13 +1739,24 @@
         }
       }
     },
+    "s3.chrome.subtitle_format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张 · 来自 {ranges} 个范围"
+          }
+        }
+      }
+    },
     "s3.confirmation.recently_deleted_notice" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请最终确认以下照片将被移入系统「最近删除」"
+            "value" : "删除后会移入系统「最近删除」，30 天内可恢复。"
           }
         }
       }
@@ -1779,17 +1790,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "操作"
-          }
-        }
-      }
-    },
-    "s3.scope.source_summary.placeholder" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本轮来自 {count} 个整理范围（当前范围说明文案待定）"
           }
         }
       }
