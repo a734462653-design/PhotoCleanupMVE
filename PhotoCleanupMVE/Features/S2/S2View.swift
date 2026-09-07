@@ -3508,9 +3508,12 @@ final class S2TutorialCoordinator: ObservableObject {
 
 /// IC-112 B / IC-118 C：中央状态指示的视图。
 ///
-/// IC-118 C（④）：跑道圆 → **正圆**，内层小方块删除——单层系统玻璃圆框
-/// 直接承载图标。已加入态的实际布局方案（登记）：左侧玻璃正圆承载图标，
-/// 右侧同族玻璃胶囊旁挂文字与撤回钮；撤回后的短提示保持胶囊。
+/// IC-118 C（④）：跑道圆 → **正圆**，内层小方块删除——单层圆框
+/// 直接承载图标。已加入态的实际布局方案（登记）：左侧正圆承载图标，
+/// 右侧同族胶囊旁挂文字与撤回钮；撤回后的短提示保持胶囊。
+///
+/// IC-136 C：底从玻璃改为固定黑 55%（见下方常量）。尺寸、位置、
+/// 出现／消失时长与缩放、解析规则、短提示停留与延迟——一律未动。
 ///
 /// **命中测试（硬闸门）**：整块视觉体 `allowsHitTesting(false)`，
 /// 只有撤回钮可点——它以 `overlay` 叠在**已禁用命中的子树之外**，
@@ -3519,11 +3522,21 @@ struct S2CenterIndicatorView: View {
     let state: S2CenterIndicatorState
     let onUndo: () -> Void
 
-    /// IC-123 A：body 显式依赖 colorScheme——外观切换瞬间本视图必然重算，
-    /// 玻璃子树内的前景随之以**新的定值色**重新落笔（见 `resolvedForeground`）。
-    @Environment(\.colorScheme) private var colorScheme
+    /// IC-136 C（④ H60；沿 SPEC-S2 v18 回写决策 37 的既有例外原则）：
+    /// 中央指示**压在照片内容上**，不是压在界面底色或压暗层上的 chrome，
+    /// 故它的可读性锚的是照片而不是主题。决策 42（chrome 自适应主色）在这里
+    /// 适得其反：深色模式遇白底照片就是白字白底，浅色模式遇黑底照片反过来。
+    ///
+    /// 待删标记早经决策 37 归为「内容叠加物」改成白符号叠黑底、固定不随外观；
+    /// 中央指示属同一类，本卡一并改齐。三种形态的底与前景一律固定，
+    /// 与待删标记**取同源常量**（不是写一份相等的字面量）。
+    static let backgroundColor = S2PendingDeletionMark.circleColor
+    static let foregroundColor = S2PendingDeletionMark.symbolColor
 
-    /// 容器高度 = 玻璃正圆直径（卡内取定，IC-118 C 沿用）。
+    /// 分隔线白 30%（④卡取定）——同样固定，不再走系统自适应分隔色。
+    static let separatorColor = Color.white.opacity(0.3)
+
+    /// 容器高度 = 正圆直径（卡内取定，IC-118 C 沿用，本卡未动）。
     static let containerHeight: CGFloat = 46
     static let horizontalPadding: CGFloat = 12
 
@@ -3533,55 +3546,6 @@ struct S2CenterIndicatorView: View {
             return true
         }
         return false
-    }
-
-    /// IC-123 A（H 实测 ① 2026-08-31：深→浅切换只有撤回钮变黑，图标与文字
-    /// 滞后到翻页才变）：玻璃子树**内**的图标/文字前景改为按当前 colorScheme
-    /// **显式解析出的非动态定值色**；撤回钮在玻璃子树之外、本就即时跟随，
-    /// 不改。
-    ///
-    /// 归因（③，真机 H56 第 1 项核证）：两处此前用的都是同一动态色
-    /// `S2ChromeForeground.onGlassPrimary`（= `Color.primary`），唯一结构差异是
-    /// 图标/文字位于 `glassEffect` 子树内——iOS 26 把玻璃与其内容提升到独立
-    /// 合成层（IC-120 已实测的层序事实），动态色在该层内的 trait 重解析不随
-    /// 外观切换即时发生；翻页令指示整块移除再插入、层重建，故「翻回来才变」。
-    /// 定值色不依赖宿主 trait 解析：body 因 colorScheme 变化而重算，新色值作为
-    /// **内容变更**推入玻璃层，与撤回钮同拍。取值与 `Color.primary` 同源
-    /// （`UIColor.label` 两态），深浅语义、IC-121 A「不参与 tint 解析」均不变。
-    /// 不用翻页刷新、不用定时器。
-    static func resolvedForeground(for scheme: ColorScheme) -> Color {
-        let style: UIUserInterfaceStyle = scheme == .dark ? .dark : .light
-        return Color(
-            uiColor: UIColor.label.resolvedColor(
-                with: UITraitCollection(userInterfaceStyle: style)
-            )
-        )
-    }
-
-    /// 本实例当前应落笔的玻璃内前景（随 `colorScheme` 环境即时重算）。
-    private var glassContentForeground: Color {
-        Self.resolvedForeground(for: colorScheme)
-    }
-
-    /// IC-123 附录（裁定：指示 S3 态的分隔线同属「指示器前景」，在子项 A
-    /// 的范围语义之内）：分隔线与图标 / 文字同在 `glassEffect` 子树内，
-    /// 此前用的是系统 `Divider` 自带的**动态**分隔色，按 A 的③归因它同样
-    /// 不随外观切换即时重解析。这里按当前 colorScheme 把系统分隔色
-    /// `UIColor.separator` 显式解析为非动态定值色，与 A 同方式、同一拍随
-    /// `body` 重算落笔。深浅语义不变（仍是系统自适应分隔色的两个态，
-    /// IC-120 A 的登记不变），亦不参与 tint 解析（IC-121 A）。
-    static func resolvedSeparator(for scheme: ColorScheme) -> Color {
-        let style: UIUserInterfaceStyle = scheme == .dark ? .dark : .light
-        return Color(
-            uiColor: UIColor.separator.resolvedColor(
-                with: UITraitCollection(userInterfaceStyle: style)
-            )
-        )
-    }
-
-    /// 本实例当前应落笔的分隔色（随 `colorScheme` 环境即时重算）。
-    private var glassContentSeparator: Color {
-        Self.resolvedSeparator(for: colorScheme)
     }
 
     /// 指示器内的分隔线。几何零改动：粗细与 22pt 高仍由系统
@@ -3609,9 +3573,10 @@ struct S2CenterIndicatorView: View {
                         onUndo()
                     }
                     .font(.system(size: 15, weight: .semibold))
-                    // IC-120 A（H53 纠偏）：撤回钮回到系统自适应
-                    //（118 C 写死黑被 H53 判不合格，深色模式应为白）。
-                    .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+                    // IC-136 C：撤回钮跟着整块改固定白。IC-120 A 把它从写死黑
+                    // 改回自适应，是因为当时底是玻璃；现在底是固定黑 55%，
+                    // 白字在两种外观下都对——H53 判不合格的那个情形不再存在。
+                    .foregroundStyle(Self.foregroundColor)
                     .padding(.horizontal, Self.horizontalPadding)
                     .frame(height: Self.containerHeight)
                     .contentShape(Rectangle())
@@ -3619,41 +3584,38 @@ struct S2CenterIndicatorView: View {
             }
     }
 
-    /// 玻璃正圆：图标直接落在单层系统玻璃圆框内（IC-118 C）。
-    private func glassCircle(systemName: String) -> some View {
+    /// 固定色正圆：图标落在黑 55% 圆底上（IC-136 C）。直径与位置
+    /// 沿 IC-118 C 登记值，本卡只换底与前景。
+    private func solidCircle(systemName: String) -> some View {
         Image(systemName: systemName)
             .font(.system(size: 17, weight: .semibold))
-            // IC-123 A：玻璃内前景走按 colorScheme 显式解析的定值色。
-            .foregroundStyle(glassContentForeground)
+            .foregroundStyle(Self.foregroundColor)
             .frame(
                 width: Self.containerHeight,
                 height: Self.containerHeight
             )
-            .s2ChromeGlassBackground(in: Circle())
+            .background(Circle().fill(Self.backgroundColor))
     }
 
     @ViewBuilder
     private var content: some View {
         switch state {
         case .marked:
-            glassCircle(systemName: "trash.fill")
+            solidCircle(systemName: "trash.fill")
                 .accessibilityLabel(L10n.text("s2.mark.primary.accessibility"))
         case let .addedToAlbum(albumName):
             HStack(spacing: 8) {
-                glassCircle(systemName: "rectangle.stack.badge.plus")
+                solidCircle(systemName: "rectangle.stack.badge.plus")
                 HStack(spacing: 10) {
                     Text(verbatim: L10n.text(
                         "s2.center.added_to_album",
                         replacing: ["album": albumName]
                     ))
                     .font(.system(size: 15))
-                    // IC-123 A：同上，玻璃内前景走定值色。
-                    .foregroundStyle(glassContentForeground)
+                    .foregroundStyle(Self.foregroundColor)
                     .lineLimit(1)
-                    // IC-120 A：分隔线随规则去写死白，交系统自适应分隔色（登记）。
-                    // IC-123 附录：该分隔色同属「指示器前景」，改按 colorScheme
-                    // 显式解析为定值色（见 `separator(color:)`）。
-                    Self.separator(color: glassContentSeparator)
+                    // IC-136 C：分隔线改固定白 30%，不再随外观解析。
+                    Self.separator(color: Self.separatorColor)
                     // 撤回钮的占位：真正可点的那个以 overlay 叠在外层，
                     // 这里只用等宽的隐形文本把版面撑出来。
                     Text(verbatim: L10n.text("s2.center.undo"))
@@ -3662,7 +3624,7 @@ struct S2CenterIndicatorView: View {
                 }
                 .padding(.horizontal, Self.horizontalPadding)
                 .frame(height: Self.containerHeight)
-                .s2ChromeGlassBackground(in: Capsule())
+                .background(Capsule().fill(Self.backgroundColor))
             }
         case let .removed(albumName):
             Text(verbatim: L10n.text(
@@ -3670,12 +3632,11 @@ struct S2CenterIndicatorView: View {
                 replacing: ["album": albumName]
             ))
             .font(.system(size: 15))
-            // IC-123 A：同上，玻璃内前景走定值色。
-            .foregroundStyle(glassContentForeground)
+            .foregroundStyle(Self.foregroundColor)
             .lineLimit(1)
             .padding(.horizontal, Self.horizontalPadding)
             .frame(height: Self.containerHeight)
-            .s2ChromeGlassBackground(in: Capsule())
+            .background(Capsule().fill(Self.backgroundColor))
         }
     }
 }

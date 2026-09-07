@@ -131,7 +131,8 @@ final class IC134S3VisualTests: XCTestCase {
         XCTAssertEqual(S3GridMetrics.cellWidth(cardWidth: 300), 96)
     }
 
-    // 断言 5：角标口径——♡ 只在收藏时、标签文本四种来源、chevron 只在拆分 ≥ 2。
+    // 断言 5：角标口径——♡ 只在收藏时；标签文本三种来源。
+    // IC-136 A 后标签只显示总量，展开段已随字段一并删除。
     func testIC134B_CellBadgeModelCoversFavoriteVolumeTextAndChevron() {
         let favorite = AssetDescriptor(identifier: "a", isFavorite: true)
         let plain = AssetDescriptor(identifier: "b", isFavorite: false)
@@ -139,15 +140,13 @@ final class IC134S3VisualTests: XCTestCase {
         XCTAssertTrue(
             S3CellBadgeModel.make(
                 asset: favorite,
-                conclusion: .knownBytes(3_100_000),
-                breakdownItemCount: 0
+                conclusion: .knownBytes(3_100_000)
             ).showsFavorite
         )
         XCTAssertFalse(
             S3CellBadgeModel.make(
                 asset: plain,
-                conclusion: .knownBytes(3_100_000),
-                breakdownItemCount: 0
+                conclusion: .knownBytes(3_100_000)
             ).showsFavorite
         )
 
@@ -155,8 +154,7 @@ final class IC134S3VisualTests: XCTestCase {
         XCTAssertEqual(
             S3CellBadgeModel.make(
                 asset: plain,
-                conclusion: .knownBytes(3_100_000),
-                breakdownItemCount: 0
+                conclusion: .knownBytes(3_100_000)
             ).volumeText,
             DecimalVolumeFormatter.string(forByteCount: 3_100_000)
         )
@@ -164,8 +162,7 @@ final class IC134S3VisualTests: XCTestCase {
         XCTAssertEqual(
             S3CellBadgeModel.make(
                 asset: plain,
-                conclusion: .unavailable,
-                breakdownItemCount: 0
+                conclusion: .unavailable
             ).volumeText,
             L10n.text("s3.cell.volume_unavailable")
         )
@@ -174,28 +171,11 @@ final class IC134S3VisualTests: XCTestCase {
             XCTAssertEqual(
                 S3CellBadgeModel.make(
                     asset: plain,
-                    conclusion: conclusion,
-                    breakdownItemCount: 0
+                    conclusion: conclusion
                 ).volumeText,
                 L10n.text("s3.cell.volume_pending")
             )
         }
-
-        // chevron 只在拆分 ≥ 2。
-        XCTAssertFalse(
-            S3CellBadgeModel.make(
-                asset: plain,
-                conclusion: .knownBytes(1),
-                breakdownItemCount: 1
-            ).showsDetailChevron
-        )
-        XCTAssertTrue(
-            S3CellBadgeModel.make(
-                asset: plain,
-                conclusion: .knownBytes(1),
-                breakdownItemCount: 2
-            ).showsDetailChevron
-        )
     }
 
     // 断言 6：点 ⊖ 调 removeAsset 恰一次；冻结后不响应。
@@ -224,93 +204,6 @@ final class IC134S3VisualTests: XCTestCase {
                 displayScale: 3
             ),
             CGSize(width: cellWidth * 3, height: cellWidth * 3)
-        )
-    }
-
-    // MARK: - C：体积明细
-
-    // 断言 8：拆分种类映射正确；总数 = 各项之和；单资源一项。
-    //
-    // 说明：`scanWithBreakdown(_:)` 需要真实 `PHAsset` 才能驱动，夹具层给不出，
-    // 故此处只覆盖**纯口径**——`PHAssetResourceType` → 四类的映射，以及
-    // 「总数 = 各项字节之和」这条不变量。端到端的一趟扫描留给 H60 第 3 项。
-    func testIC134C_ResourceKindMappingAndBreakdownSumInvariant() {
-        XCTAssertEqual(AssetResourceKind(.photo), .photo)
-        XCTAssertEqual(AssetResourceKind(.fullSizePhoto), .photo)
-        XCTAssertEqual(AssetResourceKind(.adjustmentBasePhoto), .photo)
-        XCTAssertEqual(AssetResourceKind(.video), .video)
-        XCTAssertEqual(AssetResourceKind(.fullSizeVideo), .video)
-        XCTAssertEqual(AssetResourceKind(.pairedVideo), .liveVideo)
-        XCTAssertEqual(AssetResourceKind(.fullSizePairedVideo), .liveVideo)
-        XCTAssertEqual(AssetResourceKind(.adjustmentData), .other)
-        XCTAssertEqual(AssetResourceKind(.audio), .other)
-
-        // 两资源（实况照片）：总数 = 各项之和。
-        let live = [
-            AssetSizeBreakdownItem(kind: .photo, bytes: 3_100_000),
-            AssetSizeBreakdownItem(kind: .liveVideo, bytes: 2_400_000)
-        ]
-        let liveOutcome = AssetScanOutcome(
-            conclusion: .knownBytes(live.reduce(0) { $0 + $1.bytes }),
-            breakdown: live
-        )
-        XCTAssertEqual(liveOutcome.conclusion, .knownBytes(5_500_000))
-        XCTAssertEqual(liveOutcome.breakdown.count, 2)
-        XCTAssertEqual(liveOutcome.breakdown.map(\.kind), [.photo, .liveVideo])
-
-        // 单资源：拆分只有一项，且因 < 2 不可展开。
-        let single = [AssetSizeBreakdownItem(kind: .photo, bytes: 900_000)]
-        XCTAssertEqual(single.count, 1)
-        XCTAssertFalse(
-            S3DetailExpansion.isExpandable(breakdownItemCount: single.count)
-        )
-    }
-
-    // 断言 9：展开口径——至多一行、点另一张切换、点已展开收起、< 2 不可展开。
-    func testIC134C_DetailExpansionKeepsAtMostOneRow() {
-        var expansion = S3DetailExpansion()
-        XCTAssertNil(expansion.expandedAssetID)
-
-        // 拆分 < 2 不可展开。
-        XCTAssertFalse(expansion.toggle(assetID: "a", breakdownItemCount: 1))
-        XCTAssertNil(expansion.expandedAssetID)
-
-        // 展开 a。
-        XCTAssertTrue(expansion.toggle(assetID: "a", breakdownItemCount: 2))
-        XCTAssertEqual(expansion.expandedAssetID, "a")
-        XCTAssertTrue(expansion.isExpanded("a"))
-
-        // 点另一张 → 切换，同一时刻仍只有一行。
-        XCTAssertTrue(expansion.toggle(assetID: "b", breakdownItemCount: 3))
-        XCTAssertEqual(expansion.expandedAssetID, "b")
-        XCTAssertFalse(expansion.isExpanded("a"))
-
-        // 点已展开的 → 收起。
-        XCTAssertTrue(expansion.toggle(assetID: "b", breakdownItemCount: 3))
-        XCTAssertNil(expansion.expandedAssetID)
-    }
-
-    // 断言 10：明细文案经 String Catalog、数值经 DecimalVolumeFormatter。
-    // 「源码无中文字面量」由 Scripts/scan-hardcoded-user-visible-strings.ps1 覆盖。
-    func testIC134C_DetailTextComesFromCatalogAndFormatter() {
-        let pairs: [(AssetResourceKind, String)] = [
-            (.photo, "s3.detail.kind.photo"),
-            (.video, "s3.detail.kind.video"),
-            (.liveVideo, "s3.detail.kind.live_video"),
-            (.other, "s3.detail.kind.other")
-        ]
-        for (kind, key) in pairs {
-            let resolved = L10n.text(key)
-            XCTAssertNotEqual(resolved, key, "目录里应有 \(key)")
-            XCTAssertEqual(S3VolumeDetailText.kindLabel(kind), resolved)
-        }
-        // 四类文案互不相同。
-        let labels = pairs.map { S3VolumeDetailText.kindLabel($0.0) }
-        XCTAssertEqual(Set(labels).count, 4)
-
-        XCTAssertEqual(
-            S3VolumeDetailText.value(3_100_000),
-            DecimalVolumeFormatter.string(forByteCount: 3_100_000)
         )
     }
 
@@ -448,10 +341,6 @@ final class IC134S3VisualTests: XCTestCase {
             "s3.cell.volume_pending",
             "s3.cell.remove.accessibility",
             "s3.cell.favorite.accessibility",
-            "s3.detail.kind.photo",
-            "s3.detail.kind.video",
-            "s3.detail.kind.live_video",
-            "s3.detail.kind.other",
             "s3.action.back",
             "s3.action.cancel_all",
             "s3.action.delete_count",
@@ -468,6 +357,86 @@ final class IC134S3VisualTests: XCTestCase {
         }
         // 空态主句已补句号。
         XCTAssertEqual(L10n.text("s3.state.empty"), "没有待删除照片。")
+    }
+
+    // MARK: - IC-136 A：撤销体积明细
+
+    // 断言 1：角标模型只剩「是否收藏」与「体积文本」两个字段——展开与箭头字段
+    // 已随本卡删除。用 Mirror 逐字段列出，避免「加了默认值仍能编译」的漏网。
+    func testIC136A_CellBadgeModelHasNoChevronOrExpansionFields() {
+        let model = S3CellBadgeModel.make(
+            asset: AssetDescriptor(identifier: "a", isFavorite: false),
+            conclusion: .knownBytes(3_100_000)
+        )
+        let fields = Mirror(reflecting: model).children.compactMap { $0.label }
+        XCTAssertEqual(fields, ["showsFavorite", "volumeText"])
+
+        // 三种来源之外没有第四种：已知走格式化器，其余两态各自取目录文案。
+        XCTAssertEqual(
+            model.volumeText,
+            DecimalVolumeFormatter.string(forByteCount: 3_100_000)
+        )
+    }
+
+    // 断言 2：产品源码不再引用扫描侧通道与展开口径的任何一个符号。
+    func testIC136A_ProductSourceNoLongerReferencesRemovedSymbols() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let productFiles = [
+            "PhotoCleanupMVE/Features/S3/S3View.swift",
+            "PhotoCleanupMVE/Services/AssetSizeScanner.swift",
+            "PhotoCleanupMVE/App/CleanupCoordinator.swift",
+            "PhotoCleanupMVE/Core/S3StateMachine.swift"
+        ]
+        // 拼接构造，源码里不出现完整名字（否则本断言会抓到自己的注释）。
+        let removed = [
+            "scan" + "WithBreakdown",
+            "AssetScan" + "Outcome",
+            "AssetSize" + "BreakdownItem",
+            "S3Detail" + "Expansion",
+            "scanBreakdown" + "ItemCount"
+        ]
+        for relativePath in productFiles {
+            let text = try String(
+                contentsOf: repoRoot.appendingPathComponent(relativePath),
+                encoding: .utf8
+            )
+            for symbol in removed {
+                XCTAssertFalse(
+                    text.contains(symbol),
+                    "\(relativePath) 仍引用 \(symbol)"
+                )
+            }
+        }
+    }
+
+    // 断言 4：四个种类 key 已从目录删除，产品源码也不再引用该前缀——
+    // 既无孤儿 key，也无缺 key（剩余 key 的可解析性由
+    // testIC134D_EveryS3KeyResolvesInCatalog 逐条覆盖）。
+    func testIC136A_DetailKindKeysRemovedFromCatalogAndSource() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let catalog = try String(
+            contentsOf: repoRoot.appendingPathComponent(
+                "PhotoCleanupMVE/Localizable.xcstrings"
+            ),
+            encoding: .utf8
+        )
+        let prefix = "s3." + "detail."
+        XCTAssertFalse(catalog.contains(prefix), "目录里仍有该前缀的孤儿 key")
+
+        for relativePath in [
+            "PhotoCleanupMVE/Features/S3/S3View.swift",
+            "PhotoCleanupMVE/App/CleanupCoordinator.swift"
+        ] {
+            let text = try String(
+                contentsOf: repoRoot.appendingPathComponent(relativePath),
+                encoding: .utf8
+            )
+            XCTAssertFalse(text.contains(prefix), relativePath)
+        }
     }
 
     // MARK: - 夹具

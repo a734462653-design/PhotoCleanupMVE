@@ -3,76 +3,25 @@ import Foundation
 import Photos
 import QuartzCore
 
-/// IC-134 C：按资源种类的字节拆分。`PHAssetResourceType` 归到四类，供 S3 体积
-/// 明细行显示；不参与总数计算，总数仍是逐资源求和。
-enum AssetResourceKind: Equatable, Sendable {
-    case photo
-    case video
-    case liveVideo
-    case other
-
-    init(_ type: PHAssetResourceType) {
-        switch type {
-        case .photo, .alternatePhoto, .fullSizePhoto, .adjustmentBasePhoto:
-            self = .photo
-        case .video, .fullSizeVideo, .adjustmentBaseVideo:
-            self = .video
-        case .pairedVideo, .fullSizePairedVideo, .adjustmentBasePairedVideo:
-            self = .liveVideo
-        default:
-            self = .other
-        }
-    }
-}
-
-struct AssetSizeBreakdownItem: Equatable, Sendable {
-    let kind: AssetResourceKind
-    let bytes: Int64
-}
-
-/// 同一趟扫描的结论与拆分。拆分只在**结论为已知字节**时有意义；
-/// 不可用时为空数组（明细行因此不可展开）。
-struct AssetScanOutcome: Equatable, Sendable {
-    let conclusion: AssetScanConclusion
-    let breakdown: [AssetSizeBreakdownItem]
-}
-
 struct AssetSizeScanner {
-    /// 结论口径与总数算法**不变**——本方法只取同趟扫描结果的结论部分。
     func scan(_ asset: PHAsset) async -> AssetScanConclusion {
-        await scanWithBreakdown(asset).conclusion
-    }
-
-    /// IC-134 C：同一趟扫描，除总数外附带返回按资源的字节拆分。
-    /// 逐资源取字节后求和的算法与顺序与原实现逐字一致，只多攒一个数组。
-    func scanWithBreakdown(_ asset: PHAsset) async -> AssetScanOutcome {
         let resources = PHAssetResource.assetResources(for: asset)
         guard !resources.isEmpty else {
-            return AssetScanOutcome(conclusion: .unavailable, breakdown: [])
+            return .unavailable
         }
 
         var total: Int64 = 0
-        var breakdown: [AssetSizeBreakdownItem] = []
         for resource in resources {
             guard let bytes = await bytes(of: resource) else {
-                return AssetScanOutcome(conclusion: .unavailable, breakdown: [])
+                return .unavailable
             }
             let addition = total.addingReportingOverflow(bytes)
             guard !addition.overflow else {
-                return AssetScanOutcome(conclusion: .unavailable, breakdown: [])
+                return .unavailable
             }
             total = addition.partialValue
-            breakdown.append(
-                AssetSizeBreakdownItem(
-                    kind: AssetResourceKind(resource.type),
-                    bytes: bytes
-                )
-            )
         }
-        return AssetScanOutcome(
-            conclusion: .knownBytes(total),
-            breakdown: breakdown
-        )
+        return .knownBytes(total)
     }
 
     private func bytes(of resource: PHAssetResource) async -> Int64? {

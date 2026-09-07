@@ -59,10 +59,6 @@ final class CleanupCoordinator: ObservableObject {
     private let persistence: SessionPersistence
     private let routeConfiguration: CleanupRouteConfiguration
 
-    /// IC-134 C：S3 体积明细的侧通道——扫描同趟拿到的按资源字节拆分。
-    /// 只读消费（`scanBreakdown(for:)`）；不参与总数计算、不入档、不触发重扫。
-    private var scanBreakdownsByAssetID: [String: [AssetSizeBreakdownItem]] = [:]
-
     private var loadedAssets: [String: PHAsset] = [:]
     private var sessionDescriptors: [String: AssetDescriptor] = [:]
     private var s2EntryContext: SessionStore.S2EntryContext?
@@ -942,31 +938,16 @@ final class CleanupCoordinator: ObservableObject {
                 guard let self else {
                     return
                 }
-                let outcome: AssetScanOutcome
+                let conclusion: AssetScanConclusion
                 if let asset = loadedAssets[identifier] {
-                    outcome = await sizeScanner.scanWithBreakdown(asset)
+                    conclusion = await sizeScanner.scan(asset)
                 } else {
-                    outcome = AssetScanOutcome(
-                        conclusion: .unavailable,
-                        breakdown: []
-                    )
+                    conclusion = .unavailable
                 }
-                // IC-134 C：拆分只在本趟扫描里接住存入侧通道；不重扫、不改
-                // 状态机的结论缓存、不入档。
-                scanBreakdownsByAssetID[identifier] = outcome.breakdown
-                applyScanConclusion(outcome.conclusion, to: identifier)
+                applyScanConclusion(conclusion, to: identifier)
                 scanTasks[identifier] = nil
             }
         }
-    }
-
-    /// IC-134 C：S3 体积明细的只读读取口。未扫描、缓存复用或不可用时为空数组。
-    func scanBreakdown(for assetID: String) -> [AssetSizeBreakdownItem] {
-        scanBreakdownsByAssetID[assetID] ?? []
-    }
-
-    func scanBreakdownItemCount(for assetID: String) -> Int {
-        scanBreakdown(for: assetID).count
     }
 
     private func applyScanConclusion(
