@@ -2014,40 +2014,18 @@
         }
       }
     },
-    "s5.failure.retry_notice" : {
+    "s5.c.body" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已保留原提交集合，可返回确认页再次尝试"
+            "value" : "照片都还在。"
           }
         }
       }
     },
-    "s5.navigation.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清理结果"
-          }
-        }
-      }
-    },
-    "s5.recently_deleted.boundary_notice" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片已移入系统「最近删除」，仍由系统保留。App 无法读取或清空该位置。请打开系统「照片」，进入「实用工具」中的「最近删除」，由你完成清空，然后返回本页。"
-          }
-        }
-      }
-    },
-    "s5.section.deletion_cancelled" : {
+    "s5.c.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
@@ -2058,7 +2036,84 @@
         }
       }
     },
-    "s5.section.deletion_incomplete" : {
+    "s5.card.reason" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原因"
+          }
+        }
+      }
+    },
+    "s5.card.result" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理结果"
+          }
+        }
+      }
+    },
+    "s5.card.result_unknown" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知"
+          }
+        }
+      }
+    },
+    "s5.card.submitted" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次提交"
+          }
+        }
+      }
+    },
+    "s5.card.submitted_value_format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张，全部未处理"
+          }
+        }
+      }
+    },
+    "s5.chrome.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清理结果"
+          }
+        }
+      }
+    },
+    "s5.f.body" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统未能完成这次删除。"
+          }
+        }
+      }
+    },
+    "s5.f.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
@@ -2069,18 +2124,40 @@
         }
       }
     },
-    "s5.section.deletion_result_unknown" : {
+    "s5.failure.retry_notice" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本次删除结果未知"
+            "value" : "已保留原提交集合，可返回确认页再次尝试。"
           }
         }
       }
     },
-    "s5.section.moved_to_recently_deleted" : {
+    "s5.recently_deleted.boundary_notice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片已移入系统「最近删除」，仍由系统保留。应用无法读取或清空该位置。请打开系统「照片」，进入「实用工具」中的「最近删除」，由你完成清空，然后返回本页。"
+          }
+        }
+      }
+    },
+    "s5.t0.body" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片仍由系统保留，去「最近删除」清空后才真正释放空间。"
+          }
+        }
+      }
+    },
+    "s5.t0.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
@@ -2091,57 +2168,68 @@
         }
       }
     },
-    "s5.status.assets_intact" : {
+    "s5.t0.volume_prefix" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "照片都还在"
+            "value" : "本次移入最近删除的照片共"
           }
         }
       }
     },
-    "s5.status.result_unknown" : {
+    "s5.tile.failure" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "处理结果未知"
+            "value" : "失败"
           }
         }
       }
     },
-    "s5.summary.cancelled_result" : {
+    "s5.tile.success" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本次提交 {count} 张，全部未处理"
+            "value" : "成功"
           }
         }
       }
     },
-    "s5.summary.failure_result" : {
+    "s5.tile.unprocessed" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "处理结果：成功 {success} 张，失败 {failure} 张，未处理 {unprocessed} 张"
+            "value" : "未处理"
           }
         }
       }
     },
-    "s5.summary.success_result" : {
+    "s5.u.body_format" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "处理结果：成功 {success} 张，失败 0 张，未处理 0 张"
+            "value" : "{reason}。本次提交 {count} 张。"
+          }
+        }
+      }
+    },
+    "s5.u.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次删除结果未知"
           }
         }
       }
@@ -2152,29 +2240,18 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请人工核对照片原位置与系统「最近删除」"
+            "value" : "请人工核对照片原位置与系统「最近删除」。"
           }
         }
       }
     },
-    "s5.volume.exact" : {
+    "s5.volume.lower_bound_format" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本次清理的照片共 {value}"
-          }
-        }
-      }
-    },
-    "s5.volume.lower_bound" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本次清理的照片共至少 {value}；另有 {count} 项体积不可用"
+            "value" : "至少 {value}"
           }
         }
       }
@@ -2190,13 +2267,24 @@
         }
       }
     },
-    "submission.asset_count" : {
+    "s5.volume.prefix" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本次提交 {count} 张"
+            "value" : "本次清理的照片共"
+          }
+        }
+      }
+    },
+    "s5.volume.unavailable_note_format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另有 {count} 项体积不可用"
           }
         }
       }
