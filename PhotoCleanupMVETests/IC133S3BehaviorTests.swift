@@ -74,11 +74,13 @@ final class IC133S3BehaviorTests: XCTestCase {
 
     // 断言 3：输出顺序等于输入 `s3Groups` 顺序——构造一个名字逆序的输入，
     // 断言未被重排（既不按名字、也不按范围标识）。
+    // 名字取 甲(U+7532)、乙(U+4E59)、丙(U+4E19)：按码点是**降序**，`sorted()`
+    // 会给出 丙、乙、甲；#259 用 丙、乙、甲 作输入恰好已是升序，对照失效，此处修正。
     func testIC133A_OutputOrderFollowsInputOrderNotName() {
         let groups = [
             SessionStore.S3Submission.Group(
                 sourceRangeID: "范围-3",
-                name: "丙",
+                name: "甲",
                 orderedAssetIDs: ["z-1"]
             ),
             SessionStore.S3Submission.Group(
@@ -88,7 +90,7 @@ final class IC133S3BehaviorTests: XCTestCase {
             ),
             SessionStore.S3Submission.Group(
                 sourceRangeID: "范围-1",
-                name: "甲",
+                name: "丙",
                 orderedAssetIDs: ["x-1"]
             )
         ]
@@ -103,10 +105,16 @@ final class IC133S3BehaviorTests: XCTestCase {
             presentation.groups.map(\.sourceRangeID),
             groups.map(\.sourceRangeID)
         )
-        XCTAssertEqual(presentation.groups.map(\.name), ["丙", "乙", "甲"])
+        XCTAssertEqual(presentation.groups.map(\.name), ["甲", "乙", "丙"])
+        // 对照：名字升序与范围标识升序都与输出不同，证明未按二者重排。
+        XCTAssertEqual(presentation.groups.map(\.name).sorted(), ["丙", "乙", "甲"])
         XCTAssertNotEqual(
             presentation.groups.map(\.name),
             presentation.groups.map(\.name).sorted()
+        )
+        XCTAssertNotEqual(
+            presentation.groups.map(\.sourceRangeID),
+            presentation.groups.map(\.sourceRangeID).sorted()
         )
     }
 
