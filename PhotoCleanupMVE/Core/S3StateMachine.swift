@@ -21,9 +21,18 @@ struct S3UpstreamReturn: Equatable, Sendable {
     let currentPendingDeletionAssetIDs: Set<String>
 }
 
+/// 合计体积的十进制写法（S3 格子、S3 操作条 L2、S5 L2 共用这一份）。
+///
+/// 三个档位：
+/// - ≥ 1 GB：一位小数，**向下截断**
+/// - ≥ 1 MB：整数 MB，**向下截断**
+/// - < 1 MB：一位小数，**四舍五入**（IC-136 B，④ H60）——几百 KB 的
+///   照片原本会截成 0 MB，真机上读不出东西。四舍五入后为 0.0 的
+///   （< 50 KB）抬到 0.1，避免 0.0 这种自相矛盾的读数（④决策会话取定）。
 enum DecimalVolumeFormatter {
     private static let bytesPerMegabyte: Int64 = 1_000_000
     private static let bytesPerGigabyte: Int64 = 1_000_000_000
+    private static let bytesPerTenthOfMegabyte: Int64 = 100_000
 
     static func string(forByteCount byteCount: Int64) -> String {
         precondition(byteCount >= 0, "体积字节数不得为负")
@@ -31,6 +40,13 @@ enum DecimalVolumeFormatter {
         if byteCount >= bytesPerGigabyte {
             let tenthsOfGigabyte = byteCount / (bytesPerGigabyte / 10)
             return "\(tenthsOfGigabyte / 10).\(tenthsOfGigabyte % 10) GB"
+        }
+
+        if byteCount < bytesPerMegabyte {
+            let rounded = (byteCount + bytesPerTenthOfMegabyte / 2) /
+                bytesPerTenthOfMegabyte
+            let tenthsOfMegabyte = max(1, rounded)
+            return "\(tenthsOfMegabyte / 10).\(tenthsOfMegabyte % 10) MB"
         }
 
         return "\(byteCount / bytesPerMegabyte) MB"

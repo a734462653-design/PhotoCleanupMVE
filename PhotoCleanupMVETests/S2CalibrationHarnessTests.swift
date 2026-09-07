@@ -8853,9 +8853,10 @@ final class S2CalibrationHarnessTests: XCTestCase {
             S2AssetVolumeFormatter.string(forByteCount: 324_846),
             "324 KB"
         )
+        // IC-136 B：合计口径 < 1 MB 改一位小数四舍五入（324 846 → 0.3）。
         XCTAssertEqual(
             DecimalVolumeFormatter.string(forByteCount: 324_846),
-            "0 MB"
+            "0.3 MB"
         )
         XCTAssertEqual(
             S2AssetVolumeFormatter.string(forByteCount: 2_466_000),
