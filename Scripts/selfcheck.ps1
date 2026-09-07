@@ -23,7 +23,6 @@ $baselineProductSourceFiles = @(
     "PhotoCleanupMVE/Services/PhotoLibraryService.swift",
     "PhotoCleanupMVE/Services/AssetSizeScanner.swift",
     "PhotoCleanupMVE/Services/PhotoDeletionService.swift",
-    "PhotoCleanupMVE/Services/FreeDiskSpaceReader.swift",
     "PhotoCleanupMVE/Features/S3/S3View.swift",
     "PhotoCleanupMVE/Features/S4/S4View.swift",
     "PhotoCleanupMVE/Features/S5/S5View.swift",
@@ -36,8 +35,6 @@ $requiredFiles = @(
     "PhotoCleanupMVE.xcodeproj/xcshareddata/xcschemes/PhotoCleanupMVE.xcscheme",
     "PhotoCleanupMVE/Info.plist",
     "PhotoCleanupMVE/Assets.xcassets/Contents.json",
-    "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/Contents.json",
-    "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/RECENTLY_DELETED_PLACEHOLDER.png",
     "PhotoCleanupMVE/Localizable.xcstrings",
     "PhotoCleanupMVETests/S3StateMachineTests.swift",
     "PhotoCleanupMVETests/SnapshotInvariantTests.swift",
@@ -114,7 +111,6 @@ if (Test-Path -LiteralPath $projectFile -PathType Leaf) {
         "PhotoLibraryService.swift",
         "AssetSizeScanner.swift",
         "PhotoDeletionService.swift",
-        "FreeDiskSpaceReader.swift",
         "S3View.swift",
         "S4View.swift",
         "S5View.swift",
@@ -194,51 +190,6 @@ if (Test-Path -LiteralPath $workflowFile -PathType Leaf) {
     }
 }
 
-$pngFile = Join-Path $projectRoot "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/RECENTLY_DELETED_PLACEHOLDER.png"
-if (Test-Path -LiteralPath $pngFile -PathType Leaf) {
-    $bytes = [System.IO.File]::ReadAllBytes($pngFile)
-    $signature = [byte[]](137, 80, 78, 71, 13, 10, 26, 10)
-    if ($bytes.Length -lt $signature.Length) {
-        Add-Failure "PLACEHOLDER 图片不是合法 PNG：文件过短"
-    }
-    else {
-        for ($index = 0; $index -lt $signature.Length; $index++) {
-            if ($bytes[$index] -ne $signature[$index]) {
-                Add-Failure "PLACEHOLDER 图片不是合法 PNG：签名错误"
-                break
-            }
-        }
-    }
-}
-
-$placeholderContentsFile = Join-Path $projectRoot "PhotoCleanupMVE/Assets.xcassets/RECENTLY_DELETED_PLACEHOLDER.imageset/Contents.json"
-if (Test-Path -LiteralPath $placeholderContentsFile -PathType Leaf) {
-    try {
-        $placeholderContents = Get-Content -LiteralPath $placeholderContentsFile -Raw -Encoding UTF8 |
-            ConvertFrom-Json
-        $placeholderLocales = @(
-            $placeholderContents.images |
-                ForEach-Object { $_.locale } |
-                Sort-Object -Unique
-        )
-        $placeholderFilenames = @(
-            $placeholderContents.images |
-                Where-Object { $_.PSObject.Properties.Name -contains "filename" } |
-                ForEach-Object { $_.filename }
-        )
-        if ($placeholderLocales.Count -ne 1 -or $placeholderLocales[0] -ne "zh-Hans") {
-            Add-Failure "PLACEHOLDER 图片语言条目必须且只能是 zh-Hans"
-        }
-        if ($placeholderFilenames.Count -ne 1 -or
-            $placeholderFilenames[0] -ne "RECENTLY_DELETED_PLACEHOLDER.png") {
-            Add-Failure "PLACEHOLDER 必须只填一份现有 zh-Hans PNG"
-        }
-    }
-    catch {
-        Add-Failure "PLACEHOLDER Contents.json 无法解析：$($_.Exception.Message)"
-    }
-}
-
 $swiftDirectories = @(
     (Join-Path $projectRoot "PhotoCleanupMVE/App"),
     (Join-Path $projectRoot "PhotoCleanupMVE/Core"),
@@ -274,27 +225,9 @@ if ($swiftFiles.Count -gt 0) {
         Add-Failure "产品源码出现账号或商店能力：$($accountHits[0].Path):$($accountHits[0].LineNumber)"
     }
 
-    $l3DefaultPatterns = @(
-        "(?i)\b(?:static\s+)?(?:let|var)\s+\w*pollingWindow\w*\s*=\s*[-+]?[0-9]",
-        "(?i)\b(?:static\s+)?(?:let|var)\s+\w*samplingInterval\w*\s*=\s*[-+]?[0-9]",
-        "(?i)\b(?:static\s+)?(?:let|var)\s+\w*(?:stability|start)Threshold\w*\s*=\s*[-+]?[0-9]",
-        "(?i)\b(?:static\s+)?(?:let|var)\s+\w*baselineTiming\w*\s*=\s*\."
-    )
-    foreach ($pattern in $l3DefaultPatterns) {
-        $hits = Select-String -LiteralPath $swiftFiles.FullName -Pattern $pattern
-        if ($hits) {
-            Add-Failure "产品源码疑似写死 L3 未定项：$($hits[0].Path):$($hits[0].LineNumber)"
-        }
-    }
-
     $forbiddenS5Patterns = @(
         "S5-T2",
-        "S5-T3",
-        "L3窗口上限",
-        "L3采样间隔",
-        "L3稳定判据",
-        "L3启动阈值",
-        "L3基线时机"
+        "S5-T3"
     )
     foreach ($pattern in $forbiddenS5Patterns) {
         $hits = Select-String -LiteralPath $swiftFiles.FullName -SimpleMatch -Pattern $pattern
@@ -315,15 +248,6 @@ if ($swiftFiles.Count -gt 0) {
         }
     }
 
-    $l3GateMarker = Select-String -LiteralPath $swiftFiles.FullName -Pattern "blockedByUndecidedThreshold\s*=\s*true"
-    if (-not $l3GateMarker) {
-        Add-Failure "缺少 L3 展示分支被未定规格阻断的显式标记"
-    }
-
-    $l3NumericGate = Select-String -LiteralPath $swiftFiles.FullName -Pattern "(?i)(?:l3DisplayThreshold|L3显示门槛)\s*(?:=|:)\s*[-+]?[0-9]"
-    if ($l3NumericGate) {
-        Add-Failure "L3 显示门槛被写入数值：$($l3NumericGate[0].Path):$($l3NumericGate[0].LineNumber)"
-    }
 }
 
 $testDirectory = Join-Path $projectRoot "PhotoCleanupMVETests"
@@ -357,10 +281,7 @@ if (Test-Path -LiteralPath $testDirectory -PathType Container) {
 
         $s5TestText = Get-Content -LiteralPath (Join-Path $testDirectory "S5StateMachineTests.swift") -Raw -Encoding UTF8
         $requiredCancellationTests = @(
-            "testCancellationDoesNotReadFreeDiskStrictGB",
-            "testCancellationDoesNotShowL3",
             "testCancellationDoesNotShowSystemErrorDomainOrCode",
-            "testCancellationDoesNotShowRecentlyDeletedConfirmationAction",
             "testCancellationVisibleCopyAvoidsFailureAndIncompleteWording"
         )
         foreach ($testName in $requiredCancellationTests) {

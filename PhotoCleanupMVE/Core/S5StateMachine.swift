@@ -1,24 +1,5 @@
 import Foundation
 
-enum S5DiskReading: Codable, Equatable, Sendable {
-    case available(Double)
-    case unavailable
-
-    static func capture(_ valueGB: Double?) -> S5DiskReading {
-        guard let valueGB, valueGB.isFinite, valueGB >= 0 else {
-            return .unavailable
-        }
-        return .available(valueGB)
-    }
-
-    var valueGB: Double? {
-        guard case let .available(valueGB) = self else {
-            return nil
-        }
-        return valueGB
-    }
-}
-
 struct S5SuccessContext: Equatable, Sendable {
     let snapshot: SubmissionSnapshot
     let successfulAssetIDs: Set<String>
@@ -39,16 +20,10 @@ struct S5UnknownContext: Equatable, Sendable {
     let reason: S4UnknownReason
 }
 
-enum S5L3DisplayGate {
-    // 「L3显示门槛」仍未确定，因此展示分支被规格阻断；本卡只持久化两次读数与 Y。
-    static let blockedByUndecidedThreshold = true
-}
-
+/// IC-134 F：L3「设备可用空间变化」整层撤销（④ Lynn 2026-09-06）后，
+/// 本结构只剩「是否展示系统错误详情」一项。
 struct S5PresentationCapabilities: Equatable, Sendable {
-    let allowsFreeDiskStrictRead: Bool
-    let showsL3: Bool
     let showsSystemErrorDetails: Bool
-    let showsRecentlyDeletedConfirmationAction: Bool
 }
 
 enum S5State: Equatable, Sendable {
@@ -84,36 +59,11 @@ enum S5State: Equatable, Sendable {
     }
 
     var presentationCapabilities: S5PresentationCapabilities {
-        let showsL3 = !S5L3DisplayGate.blockedByUndecidedThreshold
         switch self {
-        case .movedToRecentlyDeleted:
-            return S5PresentationCapabilities(
-                allowsFreeDiskStrictRead: true,
-                showsL3: showsL3,
-                showsSystemErrorDetails: false,
-                showsRecentlyDeletedConfirmationAction: true
-            )
-        case .cancelled:
-            return S5PresentationCapabilities(
-                allowsFreeDiskStrictRead: false,
-                showsL3: false,
-                showsSystemErrorDetails: false,
-                showsRecentlyDeletedConfirmationAction: false
-            )
+        case .movedToRecentlyDeleted, .cancelled, .unknown:
+            return S5PresentationCapabilities(showsSystemErrorDetails: false)
         case .failed:
-            return S5PresentationCapabilities(
-                allowsFreeDiskStrictRead: false,
-                showsL3: false,
-                showsSystemErrorDetails: true,
-                showsRecentlyDeletedConfirmationAction: false
-            )
-        case .unknown:
-            return S5PresentationCapabilities(
-                allowsFreeDiskStrictRead: false,
-                showsL3: false,
-                showsSystemErrorDetails: false,
-                showsRecentlyDeletedConfirmationAction: false
-            )
+            return S5PresentationCapabilities(showsSystemErrorDetails: true)
         }
     }
 }
@@ -145,7 +95,6 @@ struct S5Transition: Equatable, Sendable {
 }
 
 enum S5Event: Equatable, Sendable {
-    case confirmRecentlyDeletedCleared(declaredAt: Date)
     case returnToConfirmation(cacheExists: Bool)
     case leavePage
     case applicationBecameInactive
@@ -164,10 +113,6 @@ enum S5StateMachineError: Error, Equatable {
 struct S5PersistentState: Equatable, Sendable {
     var state: S5State
     var isApplicationActive: Bool
-    var l3BaselineReading: S5DiskReading? = nil
-    var l3CompletionReading: S5DiskReading? = nil
-    var l3DeltaGB: Double? = nil
-    var recentlyDeletedClearedAt: Date? = nil
 }
 
 struct S5StateMachine: Sendable {
@@ -179,11 +124,6 @@ struct S5StateMachine: Sendable {
 
     var isApplicationActive: Bool {
         persistentState.isApplicationActive
-    }
-
-    var isRecentlyDeletedConfirmationEnabled: Bool {
-        state.presentationCapabilities.showsRecentlyDeletedConfirmationAction
-            && persistentState.l3CompletionReading == nil
     }
 
     static func restore(
@@ -200,12 +140,10 @@ struct S5StateMachine: Sendable {
     static func enter(
         from handoff: S4Handoff,
         persist: (S5PersistentState) throws -> Void,
-        invalidateOldLists: (Set<String>) -> Void,
-        readFreeDiskStrictGB: () -> Double? = { nil }
+        invalidateOldLists: (Set<String>) -> Void
     ) throws -> S5StateMachine {
         let state: S5State
         let identifiersToInvalidate: Set<String>?
-        let baselineReading: S5DiskReading?
 
         // S5 只读 S4 已写入的交接字段，绝不根据失败详情重新分流。
         switch handoff.downstreamTargetState {
@@ -225,7 +163,6 @@ struct S5StateMachine: Sendable {
                 )
             )
             identifiersToInvalidate = submitted
-            baselineReading = S5DiskReading.capture(readFreeDiskStrictGB())
 
         case .cancelled:
             guard case let .failure(snapshot, callback, _) = handoff else {
@@ -242,7 +179,6 @@ struct S5StateMachine: Sendable {
                 S5CancellationContext(snapshot: snapshot, callback: callback)
             )
             identifiersToInvalidate = nil
-            baselineReading = nil
 
         case .failed:
             guard case let .failure(snapshot, callback, _) = handoff else {
@@ -255,7 +191,6 @@ struct S5StateMachine: Sendable {
                 S5FailureContext(snapshot: snapshot, callback: callback)
             )
             identifiersToInvalidate = nil
-            baselineReading = nil
 
         case .unknown:
             guard case let .unknown(snapshot, reason, _) = handoff else {
@@ -265,13 +200,11 @@ struct S5StateMachine: Sendable {
                 S5UnknownContext(snapshot: snapshot, reason: reason)
             )
             identifiersToInvalidate = nil
-            baselineReading = nil
         }
 
         let initialState = S5PersistentState(
             state: state,
-            isApplicationActive: true,
-            l3BaselineReading: baselineReading
+            isApplicationActive: true
         )
         try persist(initialState)
         if let identifiersToInvalidate {
@@ -282,28 +215,9 @@ struct S5StateMachine: Sendable {
 
     mutating func handle(
         _ event: S5Event,
-        persist: (S5PersistentState) throws -> Void,
-        readFreeDiskStrictGB: () -> Double? = { nil }
+        persist: (S5PersistentState) throws -> Void
     ) throws -> S5Transition {
         switch event {
-        case let .confirmRecentlyDeletedCleared(declaredAt):
-            guard case .movedToRecentlyDeleted = state,
-                  persistentState.l3CompletionReading == nil else {
-                return rejected(.actionUnavailableInCurrentState)
-            }
-
-            let completionReading = S5DiskReading.capture(readFreeDiskStrictGB())
-            var proposal = persistentState
-            proposal.l3CompletionReading = completionReading
-            proposal.recentlyDeletedClearedAt = declaredAt
-            if let baselineGB = proposal.l3BaselineReading?.valueGB,
-               let completionGB = completionReading.valueGB {
-                proposal.l3DeltaGB = completionGB - baselineGB
-            } else {
-                proposal.l3DeltaGB = nil
-            }
-            return try commit(proposal, persist: persist)
-
         case let .returnToConfirmation(cacheExists):
             let snapshot: SubmissionSnapshot
             switch state {
@@ -350,8 +264,7 @@ struct S5StateMachine: Sendable {
     private static func isValid(_ persistentState: S5PersistentState) -> Bool {
         switch persistentState.state {
         case let .movedToRecentlyDeleted(context):
-            guard context.successfulAssetIDs == Set(context.snapshot.assetIDs),
-                  persistentState.l3BaselineReading != nil else {
+            guard context.successfulAssetIDs == Set(context.snapshot.assetIDs) else {
                 return false
             }
         case let .cancelled(context):
@@ -370,25 +283,7 @@ struct S5StateMachine: Sendable {
             break
         }
 
-        if case .movedToRecentlyDeleted = persistentState.state {
-            let hasCompletion = persistentState.l3CompletionReading != nil
-            guard hasCompletion == (persistentState.recentlyDeletedClearedAt != nil) else {
-                return false
-            }
-            let expectedDelta: Double?
-            if let baselineGB = persistentState.l3BaselineReading?.valueGB,
-               let completionGB = persistentState.l3CompletionReading?.valueGB {
-                expectedDelta = completionGB - baselineGB
-            } else {
-                expectedDelta = nil
-            }
-            return persistentState.l3DeltaGB == expectedDelta
-        }
-
-        return persistentState.l3BaselineReading == nil
-            && persistentState.l3CompletionReading == nil
-            && persistentState.l3DeltaGB == nil
-            && persistentState.recentlyDeletedClearedAt == nil
+        return true
     }
 
     private static func isValid(

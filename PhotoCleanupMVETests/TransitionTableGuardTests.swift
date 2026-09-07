@@ -214,10 +214,10 @@ final class TransitionTableGuardTests: XCTestCase {
         let transition: S5Transition
         switch cell.event {
         case "用户点击“我已清空最近删除”":
-            transition = try machine.handle(
-                .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-                persist: ignoreS5Persistence
-            )
+            // IC-134 F：L3 整层撤销后 `S5Event` 已没有这个事件，类型层面就提交不了，
+            // 故该行恒不可达。矩阵行本身保留——`TRACEABILITY-S3-S5.md` 在 Reports
+            // 目录，不在本卡白名单内；已在报告「发现但未处理」中登记。
+            return
         case "用户点击“返回确认页”":
             transition = try machine.handle(
                 .returnToConfirmation(cacheExists: true),

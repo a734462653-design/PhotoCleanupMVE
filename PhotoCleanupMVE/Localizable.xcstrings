@@ -1981,17 +1981,6 @@
         }
       }
     },
-    "s5.action.confirm_recently_deleted_cleared" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "我已清空最近删除"
-          }
-        }
-      }
-    },
     "s5.action.finish" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2043,17 +2032,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清理结果"
-          }
-        }
-      }
-    },
-    "s5.placeholder.disclaimer" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "系统标注截图占位图，不属于正式交付素材"
           }
         }
       }
@@ -2120,17 +2098,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "照片都还在"
-          }
-        }
-      }
-    },
-    "s5.status.device_space_waiting" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "设备可用空间仍在等待你的系统操作"
           }
         }
       }

@@ -34,13 +34,6 @@ struct S5View: View {
                 ))
                 Text(volumeText(context.snapshot))
                 Text(boundaryText)
-                placeholderImage
-                if machine.isRecentlyDeletedConfirmationEnabled {
-                    Text(L10n.text("s5.status.device_space_waiting"))
-                    Button(L10n.text("s5.action.confirm_recently_deleted_cleared")) {
-                        coordinator.confirmRecentlyDeletedCleared()
-                    }
-                }
                 Button(L10n.text("s5.action.leave")) {
                     coordinator.leaveCompletion()
                 }
@@ -91,21 +84,10 @@ struct S5View: View {
                 Text(L10n.text("s5.volume.original_submission_disclaimer"))
                 Text(L10n.text("s5.unknown.manual_verification_notice"))
                 Text(boundaryText)
-                placeholderImage
                 Button(L10n.text("s5.action.finish")) {
                     coordinator.leaveCompletion()
                 }
             }
-        }
-    }
-
-    private var placeholderImage: some View {
-        VStack(alignment: .leading) {
-            Image("RECENTLY_DELETED_PLACEHOLDER")
-                .resizable()
-                .scaledToFit()
-                .frame(maxHeight: 180)
-            Text(L10n.text("s5.placeholder.disclaimer"))
         }
     }
 

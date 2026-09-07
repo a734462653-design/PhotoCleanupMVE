@@ -56,7 +56,6 @@ final class CleanupCoordinator: ObservableObject {
     private let deletionService: any PhotoDeletionServicing
     private let assetActionService: any PhotoAssetActionServicing
     private let recentAlbumStore: any S2RecentAlbumStoring
-    private let freeDiskSpaceReader: FreeDiskSpaceReader
     private let persistence: SessionPersistence
     private let routeConfiguration: CleanupRouteConfiguration
 
@@ -80,7 +79,6 @@ final class CleanupCoordinator: ObservableObject {
             PhotoKitAssetActionService(),
         recentAlbumStore: any S2RecentAlbumStoring =
             S2UserDefaultsRecentAlbumStore(),
-        freeDiskSpaceReader: FreeDiskSpaceReader = FreeDiskSpaceReader(),
         persistence: SessionPersistence = SessionPersistence(),
         routeConfiguration: CleanupRouteConfiguration =
             .ic048TemporaryWiringFixture(),
@@ -92,7 +90,6 @@ final class CleanupCoordinator: ObservableObject {
         self.deletionService = deletionService
         self.assetActionService = assetActionService
         self.recentAlbumStore = recentAlbumStore
-        self.freeDiskSpaceReader = freeDiskSpaceReader
         self.persistence = persistence
         self.routeConfiguration = routeConfiguration
         s2Calibration = S2CalibrationModel(
@@ -756,26 +753,6 @@ final class CleanupCoordinator: ObservableObject {
         }
     }
 
-    func confirmRecentlyDeletedCleared() {
-        guard var machine = s5Machine else {
-            return
-        }
-        do {
-            _ = try machine.handle(
-                .confirmRecentlyDeletedCleared(declaredAt: Date()),
-                persist: persistS5,
-                readFreeDiskStrictGB: freeDiskSpaceReader.freeDiskStrictGB
-            )
-            s5Machine = machine
-            message = nil
-        } catch {
-            message = L10n.text(
-                "coordinator.error.persist_completion_state",
-                replacing: ["error": error.localizedDescription]
-            )
-        }
-    }
-
     func leaveCompletion() {
         guard var machine = s5Machine else {
             return
@@ -1067,8 +1044,7 @@ final class CleanupCoordinator: ObservableObject {
                         sessionDescriptors.removeValue(forKey: identifier)
                     }
                     s3Machine = nil
-                },
-                readFreeDiskStrictGB: freeDiskSpaceReader.freeDiskStrictGB
+                }
             )
             s5Machine = next
             route = .completion
@@ -1256,11 +1232,7 @@ final class CleanupCoordinator: ObservableObject {
                 s5Machine = try S5StateMachine.restore(
                     persistentState: S5PersistentState(
                         state: state,
-                        isApplicationActive: true,
-                        l3BaselineReading: persisted.l3BaselineReading,
-                        l3CompletionReading: persisted.l3CompletionReading,
-                        l3DeltaGB: persisted.l3DeltaGB,
-                        recentlyDeletedClearedAt: persisted.recentlyDeletedClearedAt
+                        isApplicationActive: true
                     ),
                     persist: persistS5
                 )

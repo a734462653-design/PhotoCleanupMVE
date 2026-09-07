@@ -321,66 +321,22 @@ final class CoverageGapTests: XCTestCase {
     }
 
     func testC5_006SuccessAndUnknownExitDoNotSubmitOrStartScanning() throws {
-        var readCount = 0
-        var success = try makeSuccessS5Machine {
-            readCount += 1
-            return 5
-        }
+        var success = try makeSuccessS5Machine()
         var unknown = try makeUnknownS5Machine()
-        let countBeforeExit = readCount
 
         let successExit = try success.handle(
             .leavePage,
-            persist: ignoreS5Persistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 6
-            }
+            persist: ignoreS5Persistence
         )
         let unknownExit = try unknown.handle(
             .leavePage,
-            persist: ignoreS5Persistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 7
-            }
+            persist: ignoreS5Persistence
         )
 
         XCTAssertEqual(successExit.effect, .exitCleanup)
         XCTAssertEqual(unknownExit.effect, .exitCleanup)
-        XCTAssertEqual(readCount, countBeforeExit)
         XCTAssertEqual(success.state.snapshot.submissionID, makeSnapshot().submissionID)
         XCTAssertEqual(unknown.state.snapshot.submissionID, makeSnapshot().submissionID)
-    }
-
-    func testC5_031RepeatedLifecycleTicksNeverPollFreeDisk() throws {
-        var readCount = 0
-        var machine = try makeSuccessS5Machine {
-            readCount += 1
-            return 10
-        }
-        _ = try machine.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-            persist: ignoreS5Persistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 12
-            }
-        )
-        let forbiddenRead: () -> Double? = {
-            readCount += 1
-            return 99
-        }
-
-        for _ in 0..<20 {
-            _ = try machine.handle(
-                .applicationBecameActive,
-                persist: ignoreS5Persistence,
-                readFreeDiskStrictGB: forbiddenRead
-            )
-        }
-
-        XCTAssertEqual(readCount, 2)
     }
 
     func testC5_034SuccessOnlyLeavesThroughExitAndCannotModifySubmission() throws {
@@ -399,98 +355,21 @@ final class CoverageGapTests: XCTestCase {
         XCTAssertEqual(machine.state.snapshot, originalSnapshot)
     }
 
-    func testC5_039CompletedReadingsSurviveTerminationAndRestoreWithoutNewRead() throws {
-        var readCount = 0
-        var machine = try makeSuccessS5Machine {
-            readCount += 1
-            return 10
-        }
-        _ = try machine.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-            persist: ignoreS5Persistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 13.5
-            }
-        )
-        _ = try machine.handle(.processTerminated, persist: ignoreS5Persistence)
-
-        let restored = try S5StateMachine.restore(
-            persistentState: machine.persistentState,
-            persist: ignoreS5Persistence
-        )
-
-        XCTAssertEqual(readCount, 2)
-        XCTAssertEqual(restored.persistentState.l3BaselineReading, .available(10))
-        XCTAssertEqual(restored.persistentState.l3CompletionReading, .available(13.5))
-        XCTAssertEqual(restored.persistentState.l3DeltaGB, 3.5)
-        XCTAssertEqual(restored.persistentState.recentlyDeletedClearedAt, fixedDate)
-        guard case .movedToRecentlyDeleted = restored.state else {
-            return XCTFail("重启后应恢复 S5-T0")
-        }
-    }
-
-    func testC5_069FailureNeverReadsFreeDiskOrDisplaysL3() throws {
-        var readCount = 0
-        var machine = try S5StateMachine.enter(
-            from: makeFailureHandoff(),
-            persist: ignoreS5Persistence,
-            invalidateOldLists: { _ in },
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 8
-            }
-        )
-
-        let confirmation = try machine.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-            persist: ignoreS5Persistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 9
-            }
-        )
-        _ = try machine.handle(
-            .applicationBecameActive,
-            persist: ignoreS5Persistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 10
-            }
-        )
-
-        XCTAssertEqual(confirmation.rejection, .actionUnavailableInCurrentState)
-        XCTAssertEqual(readCount, 0)
-        XCTAssertFalse(machine.state.presentationCapabilities.showsL3)
-        XCTAssertNil(machine.persistentState.l3BaselineReading)
-    }
-
-    func testC5_086UnknownCannotReadConfirmOrWriteBackManualResult() throws {
-        var readCount = 0
+    // IC-134 F：L3 撤销后「清空确认」事件与其展示位都不存在，本用例只保留
+    // 「S5-U 不回写人工结果」这一条非 L3 断言。
+    func testC5_086UnknownCannotWriteBackManualResult() throws {
         var machine = try S5StateMachine.enter(
             from: makeUnknownHandoff(),
             persist: ignoreS5Persistence,
-            invalidateOldLists: { _ in },
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 8
-            }
+            invalidateOldLists: { _ in }
         )
 
-        let confirmation = try machine.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-            persist: ignoreS5Persistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 9
-            }
+        let returnAttempt = try machine.handle(
+            .returnToConfirmation(cacheExists: true),
+            persist: ignoreS5Persistence
         )
 
-        XCTAssertEqual(confirmation.rejection, .actionUnavailableInCurrentState)
-        XCTAssertEqual(readCount, 0)
-        XCTAssertFalse(
-            machine.state.presentationCapabilities.showsRecentlyDeletedConfirmationAction
-        )
+        XCTAssertEqual(returnAttempt.rejection, .actionUnavailableInCurrentState)
         XCTAssertNil(PersistedSession(s5: machine.persistentState).failure)
     }
 
@@ -502,13 +381,7 @@ final class CoverageGapTests: XCTestCase {
             .returnToConfirmation(cacheExists: true),
             persist: ignoreS5Persistence
         )
-        let confirmationAttempt = try machine.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-            persist: ignoreS5Persistence
-        )
-
         XCTAssertEqual(returnAttempt.rejection, .actionUnavailableInCurrentState)
-        XCTAssertEqual(confirmationAttempt.rejection, .actionUnavailableInCurrentState)
         XCTAssertEqual(machine.state.snapshot, originalSnapshot)
     }
 
@@ -563,60 +436,20 @@ final class CoverageGapTests: XCTestCase {
         XCTAssertNotEqual(nextSnapshot.submissionID, makeSnapshot().submissionID)
     }
 
-    func testC5_144SuccessExitClearsPersistedL3Session() async throws {
-        let temporaryRoot = FileManager.default.temporaryDirectory.appendingPathComponent(
-            UUID().uuidString,
-            isDirectory: true
-        )
-        let fileManager = IsolatedFileManager(applicationSupportRoot: temporaryRoot)
-        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
-
-        try await MainActor.run {
-            var machine = try self.makeSuccessS5Machine { 20 }
-            _ = try machine.handle(
-                .confirmRecentlyDeletedCleared(declaredAt: self.fixedDate),
-                persist: self.ignoreS5Persistence,
-                readFreeDiskStrictGB: { 23 }
-            )
-            let persistence = SessionPersistence(fileManager: fileManager)
-            try persistence.save(PersistedSession(s5: machine.persistentState))
-            XCTAssertEqual(persistence.load()?.l3DeltaGB, 3)
-
-            let coordinator = CleanupCoordinator(persistence: persistence)
-            coordinator.start()
-            XCTAssertEqual(coordinator.route, .completion)
-            coordinator.leaveCompletion()
-
-            XCTAssertEqual(coordinator.route, .finished)
-            XCTAssertNil(persistence.load())
-            XCTAssertNil(coordinator.s5Machine)
-        }
-    }
-
     func testC5_145UnknownExitDoesNotInferResultOrResubmit() throws {
-        var readCount = 0
         var machine = try S5StateMachine.enter(
             from: makeUnknownHandoff(),
             persist: ignoreS5Persistence,
-            invalidateOldLists: { _ in },
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 7
-            }
+            invalidateOldLists: { _ in }
         )
         let before = PersistedSession(s5: machine.persistentState)
 
         let transition = try machine.handle(
             .leavePage,
-            persist: ignoreS5Persistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 8
-            }
+            persist: ignoreS5Persistence
         )
 
         XCTAssertEqual(transition.effect, .exitCleanup)
-        XCTAssertEqual(readCount, 0)
         XCTAssertNil(before.failure)
         XCTAssertEqual(before.phase, .completionUnknown)
         guard case .unknown = machine.state else {
@@ -788,8 +621,7 @@ final class CoverageGapTests: XCTestCase {
         let target = try S5StateMachine.enter(
             from: handoff,
             persist: { receivedAtEntry = $0.state.snapshot },
-            invalidateOldLists: { _ in },
-            readFreeDiskStrictGB: { 10 }
+            invalidateOldLists: { _ in }
         )
         let received = try XCTUnwrap(receivedAtEntry, "目标 S5 必须先接收并持久化快照")
 
@@ -933,13 +765,11 @@ final class CoverageGapTests: XCTestCase {
     }
 
     private func makeSuccessS5Machine(
-        read: @escaping () -> Double? = { 10 }
     ) throws -> S5StateMachine {
         try S5StateMachine.enter(
             from: makeSuccessHandoff(),
             persist: ignoreS5Persistence,
-            invalidateOldLists: { _ in },
-            readFreeDiskStrictGB: read
+            invalidateOldLists: { _ in }
         )
     }
 
