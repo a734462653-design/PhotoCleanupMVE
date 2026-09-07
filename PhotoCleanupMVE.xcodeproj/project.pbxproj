@@ -61,6 +61,8 @@
 		200000000000000000000035 /* IC131S1WriteBackToastTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000038 /* IC131S1WriteBackToastTests.swift */; };
 		200000000000000000000036 /* IC132S1RangeNamePersistenceTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000039 /* IC132S1RangeNamePersistenceTests.swift */; };
 		200000000000000000000037 /* IC132SubmissionDeadEndTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000003A /* IC132SubmissionDeadEndTests.swift */; };
+		200000000000000000000038 /* IC134S3VisualTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000003B /* IC134S3VisualTests.swift */; };
+		200000000000000000000039 /* IC134S4S5VisualTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000003C /* IC134S4S5VisualTests.swift */; };
 		200000000000000000000038 /* IC133S3BehaviorTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000003B /* IC133S3BehaviorTests.swift */; };
 /* PBXBuildFile 区段结束 */
 
@@ -132,6 +134,8 @@
 		100000000000000000000038 /* IC131S1WriteBackToastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC131S1WriteBackToastTests.swift; sourceTree = "<group>"; };
 		100000000000000000000039 /* IC132S1RangeNamePersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC132S1RangeNamePersistenceTests.swift; sourceTree = "<group>"; };
 		10000000000000000000003A /* IC132SubmissionDeadEndTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC132SubmissionDeadEndTests.swift; sourceTree = "<group>"; };
+		10000000000000000000003B /* IC134S3VisualTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC134S3VisualTests.swift; sourceTree = "<group>"; };
+		10000000000000000000003C /* IC134S4S5VisualTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC134S4S5VisualTests.swift; sourceTree = "<group>"; };
 		10000000000000000000003B /* IC133S3BehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC133S3BehaviorTests.swift; sourceTree = "<group>"; };
 /* PBXFileReference 区段结束 */
 
@@ -290,6 +294,8 @@
 				100000000000000000000038 /* IC131S1WriteBackToastTests.swift */,
 				100000000000000000000039 /* IC132S1RangeNamePersistenceTests.swift */,
 				10000000000000000000003A /* IC132SubmissionDeadEndTests.swift */,
+				10000000000000000000003B /* IC134S3VisualTests.swift */,
+				10000000000000000000003C /* IC134S4S5VisualTests.swift */,
 				10000000000000000000003B /* IC133S3BehaviorTests.swift */,
 				100000000000000000000029 /* FullFlowRoutingTests.swift */,
 				100000000000000000000024 /* S1StateMachineTests.swift */,
@@ -465,6 +471,8 @@
 				200000000000000000000035 /* IC131S1WriteBackToastTests.swift（测试源码） */,
 				200000000000000000000036 /* IC132S1RangeNamePersistenceTests.swift（测试源码） */,
 				200000000000000000000037 /* IC132SubmissionDeadEndTests.swift（测试源码） */,
+				200000000000000000000038 /* IC134S3VisualTests.swift（测试源码） */,
+				200000000000000000000039 /* IC134S4S5VisualTests.swift（测试源码） */,
 				200000000000000000000038 /* IC133S3BehaviorTests.swift（测试源码） */,
 				200000000000000000000026 /* FullFlowRoutingTests.swift（测试源码） */,
 				200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */,
