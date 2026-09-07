@@ -384,6 +384,84 @@ enum S3GridRows {
     }
 }
 
+/// IC-134 D：底部操作条的展示口径（测试钉住）。
+///
+/// 体积区（L2）两行右对齐：扫描中为「转圈 + 正在计算…」加「已知 X」副行；
+/// 就绪且无不可用项为精确值、无副行；有不可用项为下界值加「另有 N 项」副行。
+struct S3ActionBarModel: Equatable {
+    enum Volume: Equatable {
+        case scanning(primary: String, knownSoFar: String)
+        case exact(String)
+        case lowerBound(primary: String, unavailableNote: String)
+
+        var isScanning: Bool {
+            if case .scanning = self {
+                return true
+            }
+            return false
+        }
+    }
+
+    let volume: Volume
+    let cancelAllEnabled: Bool
+    let submitTitle: String
+    let submitEnabled: Bool
+
+    static func make(machine: S3StateMachine) -> S3ActionBarModel {
+        let known = DecimalVolumeFormatter.string(
+            forByteCount: machine.knownTotalBytes
+        )
+        let volume: Volume
+        switch machine.state {
+        case .scanning:
+            volume = .scanning(
+                primary: L10n.text("s3.bar.scanning"),
+                knownSoFar: L10n.text(
+                    "s3.bar.known_so_far",
+                    replacing: ["known": known]
+                )
+            )
+        case .ready where machine.unavailableCount == 0:
+            volume = .exact(
+                L10n.text("s3.bar.volume_exact", replacing: ["known": known])
+            )
+        case .ready, .empty:
+            volume = .lowerBound(
+                primary: L10n.text(
+                    "s3.bar.volume_lower_bound",
+                    replacing: ["known": known]
+                ),
+                unavailableNote: L10n.text(
+                    "s3.bar.unavailable_count",
+                    replacing: ["count": String(machine.unavailableCount)]
+                )
+            )
+        }
+        return S3ActionBarModel(
+            volume: volume,
+            cancelAllEnabled: S3CancelAllAction.isAvailable(
+                assetCount: machine.assetCount,
+                isFrozen: machine.frozenSnapshot != nil
+            ),
+            submitTitle: L10n.text(
+                "s3.action.delete_count",
+                replacing: ["count": String(machine.assetCount)]
+            ),
+            submitEnabled: machine.canSubmit
+        )
+    }
+}
+
+/// IC-134 D：删除按钮的动作口径（测试钉住）。禁用时不调下游。
+enum S3SubmitButtonAction {
+    static func perform(isEnabled: Bool, submit: () -> Void) {
+        guard isEnabled else {
+            return
+        }
+        submit()
+    }
+}
+
 /// IC-134 B：⊖ 移除的动作口径（测试钉住）。冻结快照后不响应。
 enum S3RemoveButtonAction {
     static func perform(isFrozen: Bool, remove: () -> Void) {
@@ -451,7 +529,165 @@ struct S3View: View {
                 recentlyDeletedNotice
             }
             chromeBar(machine, presentation: presentation)
+            if S3StatePresentation.showsActionBar(for: machine.state) {
+                actionBar(machine)
+            }
         }
+        .confirmationDialog(
+            L10n.text(
+                "s3.cancel_all.confirm.title",
+                replacing: ["count": String(machine.assetCount)]
+            ),
+            isPresented: cancelAllDialogBinding,
+            titleVisibility: .visible
+        ) {
+            Button(
+                L10n.text("s3.cancel_all.confirm.action"),
+                role: .destructive
+            ) {
+                cancelAllAction.confirm {
+                    coordinator.cancelAllAssets()
+                }
+            }
+        }
+    }
+
+    private var cancelAllDialogBinding: Binding<Bool> {
+        Binding(
+            get: { cancelAllAction.isAwaitingConfirmation },
+            set: { isPresented in
+                if !isPresented {
+                    cancelAllAction.dismiss()
+                }
+            }
+        )
+    }
+
+    // MARK: - IC-134 D：底部操作条
+
+    private func actionBar(_ machine: S3StateMachine) -> some View {
+        let model = S3ActionBarModel.make(machine: machine)
+        return HStack(spacing: S3ActionBarMetrics.itemSpacing) {
+            cancelAllButton(machine, model: model)
+            Spacer(minLength: 0)
+            volumeSummary(model)
+            submitButton(model)
+        }
+        .padding(.leading, S3ActionBarMetrics.leadingPadding)
+        .padding(.trailing, S3ActionBarMetrics.trailingPadding)
+        .frame(height: S3ActionBarMetrics.height)
+        .s1ChromeGlassBackground(
+            in: RoundedRectangle(
+                cornerRadius: S3ActionBarMetrics.cornerRadius,
+                style: .continuous
+            )
+        )
+        .padding(.horizontal, S3ActionBarMetrics.horizontalMargin)
+        .padding(.bottom, S2OverlayLayout.bottomRowBottomInset)
+        .frame(maxHeight: .infinity, alignment: .bottom)
+    }
+
+    private func cancelAllButton(
+        _ machine: S3StateMachine,
+        model: S3ActionBarModel
+    ) -> some View {
+        Button {
+            cancelAllAction.request(
+                assetCount: machine.assetCount,
+                isFrozen: machine.frozenSnapshot != nil
+            )
+        } label: {
+            Text(L10n.text("s3.action.cancel_all"))
+                .font(.system(size: S3ActionBarMetrics.cancelFontSize))
+                .foregroundStyle(S1ChromeForeground.secondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(!model.cancelAllEnabled)
+    }
+
+    private func volumeSummary(_ model: S3ActionBarModel) -> some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            switch model.volume {
+            case let .scanning(primary, knownSoFar):
+                HStack(spacing: S3VolumeDetailMetrics.pairSpacing) {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .frame(
+                            width: S3ActionBarMetrics.scanningIndicatorSize,
+                            height: S3ActionBarMetrics.scanningIndicatorSize
+                        )
+                        .id("s3-bar-scanning")
+                    Text(primary)
+                }
+                .font(
+                    .system(
+                        size: S3ActionBarMetrics.volumePrimaryFontSize,
+                        design: .monospaced
+                    )
+                )
+                .foregroundStyle(S1ChromeForeground.primary)
+                Text(knownSoFar)
+                    .font(
+                        .system(size: S3ActionBarMetrics.volumeSecondaryFontSize)
+                    )
+                    .foregroundStyle(S1ChromeForeground.secondary)
+            case let .exact(primary):
+                volumePrimaryText(primary)
+            case let .lowerBound(primary, note):
+                volumePrimaryText(primary)
+                Text(note)
+                    .font(
+                        .system(size: S3ActionBarMetrics.volumeSecondaryFontSize)
+                    )
+                    .foregroundStyle(S1ChromeForeground.secondary)
+            }
+        }
+        .lineLimit(1)
+    }
+
+    private func volumePrimaryText(_ text: String) -> some View {
+        Text(text)
+            .font(
+                .system(
+                    size: S3ActionBarMetrics.volumePrimaryFontSize,
+                    design: .monospaced
+                )
+            )
+            .foregroundStyle(S1ChromeForeground.primary)
+    }
+
+    private func submitButton(_ model: S3ActionBarModel) -> some View {
+        Button {
+            S3SubmitButtonAction.perform(isEnabled: model.submitEnabled) {
+                coordinator.submitDeletion()
+            }
+        } label: {
+            Text(model.submitTitle)
+                .font(
+                    .system(
+                        size: S3ActionBarMetrics.submitFontSize,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(Color.white)
+                .padding(
+                    .horizontal,
+                    S3ActionBarMetrics.submitHorizontalPadding
+                )
+                .frame(height: S3ActionBarMetrics.submitHeight)
+                .background(
+                    RoundedRectangle(
+                        cornerRadius: S3ActionBarMetrics.submitCornerRadius,
+                        style: .continuous
+                    )
+                    .fill(Color(uiColor: .systemRed))
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!model.submitEnabled)
+        .opacity(
+            model.submitEnabled ? 1 : S3ActionBarMetrics.disabledOpacity
+        )
     }
 
     // MARK: - IC-134 A：顶排 chrome（左圆钮 + 中胶囊，无右件）
