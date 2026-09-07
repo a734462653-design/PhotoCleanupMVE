@@ -56,9 +56,12 @@ final class CleanupCoordinator: ObservableObject {
     private let deletionService: any PhotoDeletionServicing
     private let assetActionService: any PhotoAssetActionServicing
     private let recentAlbumStore: any S2RecentAlbumStoring
-    private let freeDiskSpaceReader: FreeDiskSpaceReader
     private let persistence: SessionPersistence
     private let routeConfiguration: CleanupRouteConfiguration
+
+    /// IC-134 C：S3 体积明细的侧通道——扫描同趟拿到的按资源字节拆分。
+    /// 只读消费（`scanBreakdown(for:)`）；不参与总数计算、不入档、不触发重扫。
+    private var scanBreakdownsByAssetID: [String: [AssetSizeBreakdownItem]] = [:]
 
     private var loadedAssets: [String: PHAsset] = [:]
     private var sessionDescriptors: [String: AssetDescriptor] = [:]
@@ -76,7 +79,6 @@ final class CleanupCoordinator: ObservableObject {
             PhotoKitAssetActionService(),
         recentAlbumStore: any S2RecentAlbumStoring =
             S2UserDefaultsRecentAlbumStore(),
-        freeDiskSpaceReader: FreeDiskSpaceReader = FreeDiskSpaceReader(),
         persistence: SessionPersistence = SessionPersistence(),
         routeConfiguration: CleanupRouteConfiguration =
             .ic048TemporaryWiringFixture(),
@@ -88,7 +90,6 @@ final class CleanupCoordinator: ObservableObject {
         self.deletionService = deletionService
         self.assetActionService = assetActionService
         self.recentAlbumStore = recentAlbumStore
-        self.freeDiskSpaceReader = freeDiskSpaceReader
         self.persistence = persistence
         self.routeConfiguration = routeConfiguration
         s2Calibration = S2CalibrationModel(
@@ -752,26 +753,6 @@ final class CleanupCoordinator: ObservableObject {
         }
     }
 
-    func confirmRecentlyDeletedCleared() {
-        guard var machine = s5Machine else {
-            return
-        }
-        do {
-            _ = try machine.handle(
-                .confirmRecentlyDeletedCleared(declaredAt: Date()),
-                persist: persistS5,
-                readFreeDiskStrictGB: freeDiskSpaceReader.freeDiskStrictGB
-            )
-            s5Machine = machine
-            message = nil
-        } catch {
-            message = L10n.text(
-                "coordinator.error.persist_completion_state",
-                replacing: ["error": error.localizedDescription]
-            )
-        }
-    }
-
     func leaveCompletion() {
         guard var machine = s5Machine else {
             return
@@ -961,16 +942,31 @@ final class CleanupCoordinator: ObservableObject {
                 guard let self else {
                     return
                 }
-                let conclusion: AssetScanConclusion
+                let outcome: AssetScanOutcome
                 if let asset = loadedAssets[identifier] {
-                    conclusion = await sizeScanner.scan(asset)
+                    outcome = await sizeScanner.scanWithBreakdown(asset)
                 } else {
-                    conclusion = .unavailable
+                    outcome = AssetScanOutcome(
+                        conclusion: .unavailable,
+                        breakdown: []
+                    )
                 }
-                applyScanConclusion(conclusion, to: identifier)
+                // IC-134 C：拆分只在本趟扫描里接住存入侧通道；不重扫、不改
+                // 状态机的结论缓存、不入档。
+                scanBreakdownsByAssetID[identifier] = outcome.breakdown
+                applyScanConclusion(outcome.conclusion, to: identifier)
                 scanTasks[identifier] = nil
             }
         }
+    }
+
+    /// IC-134 C：S3 体积明细的只读读取口。未扫描、缓存复用或不可用时为空数组。
+    func scanBreakdown(for assetID: String) -> [AssetSizeBreakdownItem] {
+        scanBreakdownsByAssetID[assetID] ?? []
+    }
+
+    func scanBreakdownItemCount(for assetID: String) -> Int {
+        scanBreakdown(for: assetID).count
     }
 
     private func applyScanConclusion(
@@ -1048,8 +1044,7 @@ final class CleanupCoordinator: ObservableObject {
                         sessionDescriptors.removeValue(forKey: identifier)
                     }
                     s3Machine = nil
-                },
-                readFreeDiskStrictGB: freeDiskSpaceReader.freeDiskStrictGB
+                }
             )
             s5Machine = next
             route = .completion
@@ -1237,11 +1232,7 @@ final class CleanupCoordinator: ObservableObject {
                 s5Machine = try S5StateMachine.restore(
                     persistentState: S5PersistentState(
                         state: state,
-                        isApplicationActive: true,
-                        l3BaselineReading: persisted.l3BaselineReading,
-                        l3CompletionReading: persisted.l3CompletionReading,
-                        l3DeltaGB: persisted.l3DeltaGB,
-                        recentlyDeletedClearedAt: persisted.recentlyDeletedClearedAt
+                        isApplicationActive: true
                     ),
                     persist: persistS5
                 )

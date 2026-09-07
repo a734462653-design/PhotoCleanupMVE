@@ -118,10 +118,9 @@ struct PersistedSession: Codable {
     let failure: PersistedFailure?
     let unknownReason: String?
     let downstreamTargetState: String?
-    let l3BaselineReading: S5DiskReading?
-    let l3CompletionReading: S5DiskReading?
-    let l3DeltaGB: Double?
-    let recentlyDeletedClearedAt: Date?
+    // IC-134 F：L3 四个字段随「设备可用空间变化」整层撤销一并删除。
+    // 旧档里仍带这些键——`Codable` 的合成解码忽略多余键，故旧档照常解码，
+    // 不判坏档（断言 19 钉住）。
 
     init(s4 state: S4PersistentState) {
         let phase: PersistedSessionPhase
@@ -157,10 +156,6 @@ struct PersistedSession: Codable {
         self.failure = failure
         self.unknownReason = unknownReason
         downstreamTargetState = state.downstreamTargetState?.rawValue
-        l3BaselineReading = nil
-        l3CompletionReading = nil
-        l3DeltaGB = nil
-        recentlyDeletedClearedAt = nil
     }
 
     init(s5 state: S5PersistentState) {
@@ -192,10 +187,6 @@ struct PersistedSession: Codable {
         self.failure = failure
         self.unknownReason = unknownReason
         downstreamTargetState = state.state.downstreamTargetState.rawValue
-        l3BaselineReading = state.l3BaselineReading
-        l3CompletionReading = state.l3CompletionReading
-        l3DeltaGB = state.l3DeltaGB
-        recentlyDeletedClearedAt = state.recentlyDeletedClearedAt
     }
 }
 

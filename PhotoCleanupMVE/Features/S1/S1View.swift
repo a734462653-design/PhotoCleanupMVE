@@ -533,7 +533,11 @@ enum S1StateLayout {
 
 // MARK: - IC-128 A：S1 玻璃族（与 S2 同语汇：iOS 26+ 系统 glassEffect，17–25 回落配方）
 
-private extension View {
+/// IC-134 前置（④ Lynn 2026-09-06 授权，白名单就此一行）：由 `private` 放宽为
+/// internal，使 S3／S4／S5 的顶排 chrome 能**直接引用**这两个 helper，而不是各自
+/// 重造一份等价 modifier。玻璃配方因此保持单一来源（H60 第 1 项「五页 chrome
+/// 是否同一套」正是要看这个）。取值与行为一字未动。
+extension View {
     @ViewBuilder
     func s1ChromeGlassBackground<S: InsettableShape>(
         in shape: S,

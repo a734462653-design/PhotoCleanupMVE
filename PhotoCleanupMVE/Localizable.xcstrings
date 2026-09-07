@@ -1695,46 +1695,68 @@
         }
       }
     },
-    "s3.action.remove" : {
+    "s3.action.delete_count" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "移除"
+            "value" : "删除 {count} 张"
           }
         }
       }
     },
-    "s3.action.submit_deletion" : {
+    "s3.bar.known_so_far" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "提交删除"
+            "value" : "已知 {known}"
           }
         }
       }
     },
-    "s3.asset.favorite" : {
+    "s3.bar.scanning" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已收藏"
+            "value" : "正在计算…"
           }
         }
       }
     },
-    "s3.asset.pending_count" : {
+    "s3.bar.unavailable_count" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "待删除 {count} 张"
+            "value" : "另有 {count} 项体积不可用"
+          }
+        }
+      }
+    },
+    "s3.bar.volume_exact" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{known}"
+          }
+        }
+      }
+    },
+    "s3.bar.volume_lower_bound" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≥ {known}"
           }
         }
       }
@@ -1761,6 +1783,50 @@
         }
       }
     },
+    "s3.cell.favorite.accessibility" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已收藏"
+          }
+        }
+      }
+    },
+    "s3.cell.remove.accessibility" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除，{volume}"
+          }
+        }
+      }
+    },
+    "s3.cell.volume_pending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "…"
+          }
+        }
+      }
+    },
+    "s3.cell.volume_unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "—"
+          }
+        }
+      }
+    },
     "s3.chrome.subtitle_format" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1768,6 +1834,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "{count} 张 · 来自 {ranges} 个范围"
+          }
+        }
+      }
+    },
+    "s3.chrome.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认删除"
           }
         }
       }
@@ -1783,46 +1860,57 @@
         }
       }
     },
-    "s3.group.asset_count" : {
+    "s3.detail.kind.live_video" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "{name}（{count} 张）"
+            "value" : "实况视频"
           }
         }
       }
     },
-    "s3.navigation.title" : {
+    "s3.detail.kind.other" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确认删除"
+            "value" : "其他"
           }
         }
       }
     },
-    "s3.section.actions" : {
+    "s3.detail.kind.photo" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "操作"
+            "value" : "照片"
           }
         }
       }
     },
-    "s3.section.status" : {
+    "s3.detail.kind.video" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "状态"
+            "value" : "视频"
+          }
+        }
+      }
+    },
+    "s3.group.count_format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张"
           }
         }
       }
@@ -1833,78 +1921,23 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "没有待删除照片"
+            "value" : "没有待删除照片。"
           }
         }
       }
     },
-    "s3.state.ready" : {
+    "s4.chrome.subtitle_format" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "可以提交删除"
+            "value" : "共 {count} 张"
           }
         }
       }
     },
-    "s3.state.scanning" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在计算照片体积"
-          }
-        }
-      }
-    },
-    "s3.volume.empty" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有可计算的照片体积"
-          }
-        }
-      }
-    },
-    "s3.volume.exact" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片体积 {known}"
-          }
-        }
-      }
-    },
-    "s3.volume.lower_bound" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片体积 ≥ {known}；另有 {count} 项体积不可用"
-          }
-        }
-      }
-    },
-    "s3.volume.scanning" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在计算；当前已知 {known}，不可用 {count} 项（未完成）"
-          }
-        }
-      }
-    },
-    "s4.navigation.title" : {
+    "s4.chrome.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
@@ -1915,29 +1948,7 @@
         }
       }
     },
-    "s4.section.all_succeeded" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全批成功"
-          }
-        }
-      }
-    },
-    "s4.section.batch_failed" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "整批失败"
-          }
-        }
-      }
-    },
-    "s4.section.confirming_result" : {
+    "s4.status.confirming_title" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
@@ -1948,101 +1959,24 @@
         }
       }
     },
-    "s4.section.result_unknown" : {
+    "s4.status.submitted_body" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "结果未知"
+            "value" : "正在等待系统返回结果。"
           }
         }
       }
     },
-    "s4.section.submitted" : {
+    "s4.status.submitted_title" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "删除请求已提交"
-          }
-        }
-      }
-    },
-    "s4.status.waiting_for_system_result" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "等待系统返回结果"
-          }
-        }
-      }
-    },
-    "s4.status.waiting_for_system_result_active" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在等待系统返回结果"
-          }
-        }
-      }
-    },
-    "s4.summary.failure_count" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "失败 {count} 张"
-          }
-        }
-      }
-    },
-    "s4.summary.submitted_count" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "提交 {count} 张"
-          }
-        }
-      }
-    },
-    "s4.summary.success_count" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "成功 {count} 张"
-          }
-        }
-      }
-    },
-    "s4.summary.unprocessed_count" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未处理 {count} 张"
-          }
-        }
-      }
-    },
-    "s5.action.confirm_recently_deleted_cleared" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "我已清空最近删除"
           }
         }
       }
@@ -2080,51 +2014,18 @@
         }
       }
     },
-    "s5.failure.retry_notice" : {
+    "s5.c.body" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已保留原提交集合，可返回确认页再次尝试"
+            "value" : "照片都还在。"
           }
         }
       }
     },
-    "s5.navigation.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清理结果"
-          }
-        }
-      }
-    },
-    "s5.placeholder.disclaimer" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "系统标注截图占位图，不属于正式交付素材"
-          }
-        }
-      }
-    },
-    "s5.recently_deleted.boundary_notice" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片已移入系统「最近删除」，仍由系统保留。App 无法读取或清空该位置。请打开系统「照片」，进入「实用工具」中的「最近删除」，由你完成清空，然后返回本页。"
-          }
-        }
-      }
-    },
-    "s5.section.deletion_cancelled" : {
+    "s5.c.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
@@ -2135,7 +2036,84 @@
         }
       }
     },
-    "s5.section.deletion_incomplete" : {
+    "s5.card.reason" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原因"
+          }
+        }
+      }
+    },
+    "s5.card.result" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理结果"
+          }
+        }
+      }
+    },
+    "s5.card.result_unknown" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知"
+          }
+        }
+      }
+    },
+    "s5.card.submitted" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次提交"
+          }
+        }
+      }
+    },
+    "s5.card.submitted_value_format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张，全部未处理"
+          }
+        }
+      }
+    },
+    "s5.chrome.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清理结果"
+          }
+        }
+      }
+    },
+    "s5.f.body" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统未能完成这次删除。"
+          }
+        }
+      }
+    },
+    "s5.f.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
@@ -2146,18 +2124,40 @@
         }
       }
     },
-    "s5.section.deletion_result_unknown" : {
+    "s5.failure.retry_notice" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本次删除结果未知"
+            "value" : "已保留原提交集合，可返回确认页再次尝试。"
           }
         }
       }
     },
-    "s5.section.moved_to_recently_deleted" : {
+    "s5.recently_deleted.boundary_notice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片已移入系统「最近删除」，仍由系统保留。应用无法读取或清空该位置。请打开系统「照片」，进入「实用工具」中的「最近删除」，由你完成清空，然后返回本页。"
+          }
+        }
+      }
+    },
+    "s5.t0.body" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片仍由系统保留，去「最近删除」清空后才真正释放空间。"
+          }
+        }
+      }
+    },
+    "s5.t0.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
@@ -2168,68 +2168,68 @@
         }
       }
     },
-    "s5.status.assets_intact" : {
+    "s5.t0.volume_prefix" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "照片都还在"
+            "value" : "本次移入最近删除的照片共"
           }
         }
       }
     },
-    "s5.status.device_space_waiting" : {
+    "s5.tile.failure" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "设备可用空间仍在等待你的系统操作"
+            "value" : "失败"
           }
         }
       }
     },
-    "s5.status.result_unknown" : {
+    "s5.tile.success" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "处理结果未知"
+            "value" : "成功"
           }
         }
       }
     },
-    "s5.summary.cancelled_result" : {
+    "s5.tile.unprocessed" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本次提交 {count} 张，全部未处理"
+            "value" : "未处理"
           }
         }
       }
     },
-    "s5.summary.failure_result" : {
+    "s5.u.body_format" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "处理结果：成功 {success} 张，失败 {failure} 张，未处理 {unprocessed} 张"
+            "value" : "{reason}。本次提交 {count} 张。"
           }
         }
       }
     },
-    "s5.summary.success_result" : {
+    "s5.u.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "处理结果：成功 {success} 张，失败 0 张，未处理 0 张"
+            "value" : "本次删除结果未知"
           }
         }
       }
@@ -2240,29 +2240,18 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请人工核对照片原位置与系统「最近删除」"
+            "value" : "请人工核对照片原位置与系统「最近删除」。"
           }
         }
       }
     },
-    "s5.volume.exact" : {
+    "s5.volume.lower_bound_format" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本次清理的照片共 {value}"
-          }
-        }
-      }
-    },
-    "s5.volume.lower_bound" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本次清理的照片共至少 {value}；另有 {count} 项体积不可用"
+            "value" : "至少 {value}"
           }
         }
       }
@@ -2278,13 +2267,24 @@
         }
       }
     },
-    "submission.asset_count" : {
+    "s5.volume.prefix" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本次提交 {count} 张"
+            "value" : "本次清理的照片共"
+          }
+        }
+      }
+    },
+    "s5.volume.unavailable_note_format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另有 {count} 项体积不可用"
           }
         }
       }

@@ -211,38 +211,17 @@ final class S5StateMachineTests: XCTestCase {
         XCTAssertFalse(machine.isApplicationActive)
     }
 
-    func testConfirmationButtonIsEnabledOnlyBeforeSuccessConfirmation() throws {
-        var success = try makeSuccessMachine()
-        XCTAssertTrue(success.isRecentlyDeletedConfirmationEnabled)
-        XCTAssertFalse(try makeFailureMachine().isRecentlyDeletedConfirmationEnabled)
-        XCTAssertFalse(try makeCancellationMachine().isRecentlyDeletedConfirmationEnabled)
-        XCTAssertFalse(try makeUnknownMachine().isRecentlyDeletedConfirmationEnabled)
-
-        _ = try success.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-            persist: ignorePersistence,
-            readFreeDiskStrictGB: { 11 }
-        )
-        XCTAssertFalse(success.isRecentlyDeletedConfirmationEnabled)
-    }
-
     func testCancellationEntryUsesDownstreamTargetWithoutReadingFailureCategory() throws {
-        var readCount = 0
         let machine = try S5StateMachine.enter(
             from: makeCancellationHandoff(category: .unknown),
             persist: ignorePersistence,
-            invalidateOldLists: ignoreInvalidation,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 9
-            }
+            invalidateOldLists: ignoreInvalidation
         )
 
         guard case let .cancelled(context) = machine.state else {
             return XCTFail("应按交接字段进入取消状态")
         }
         XCTAssertEqual(context.callback.reason.category, .unknown)
-        XCTAssertEqual(readCount, 0)
     }
 
     func testFailureEntryUsesDownstreamTargetWithoutReadingFailureCategory() throws {
@@ -310,50 +289,10 @@ final class S5StateMachineTests: XCTestCase {
         XCTAssertEqual(transition.effect, .none)
     }
 
-    func testCancellationDoesNotReadFreeDiskStrictGB() throws {
-        var readCount = 0
-        var machine = try S5StateMachine.enter(
-            from: makeCancellationHandoff(),
-            persist: ignorePersistence,
-            invalidateOldLists: ignoreInvalidation,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 7
-            }
-        )
-        _ = try machine.handle(
-            .applicationBecameInactive,
-            persist: ignorePersistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 8
-            }
-        )
-
-        XCTAssertEqual(readCount, 0)
-        XCTAssertNil(machine.persistentState.l3BaselineReading)
-        XCTAssertNil(machine.persistentState.l3CompletionReading)
-    }
-
-    func testCancellationDoesNotShowL3() throws {
-        let capabilities = try makeCancellationMachine().state.presentationCapabilities
-
-        XCTAssertFalse(capabilities.showsL3)
-    }
-
     func testCancellationDoesNotShowSystemErrorDomainOrCode() throws {
         let capabilities = try makeCancellationMachine().state.presentationCapabilities
 
         XCTAssertFalse(capabilities.showsSystemErrorDetails)
-    }
-
-    func testCancellationDoesNotShowRecentlyDeletedConfirmationAction() throws {
-        let machine = try makeCancellationMachine()
-
-        XCTAssertFalse(
-            machine.state.presentationCapabilities.showsRecentlyDeletedConfirmationAction
-        )
-        XCTAssertFalse(machine.isRecentlyDeletedConfirmationEnabled)
     }
 
     func testCancellationVisibleCopyAvoidsFailureAndIncompleteWording() {
@@ -369,183 +308,6 @@ final class S5StateMachineTests: XCTestCase {
 
         XCTAssertFalse(visibleTexts.contains { $0.contains("失败") })
         XCTAssertFalse(visibleTexts.contains { $0.contains("未完成") })
-    }
-
-    func testSuccessEntryReadsBaselineExactlyOnceAndPersistsIt() throws {
-        var readCount = 0
-        var persisted: S5PersistentState?
-        let machine = try S5StateMachine.enter(
-            from: makeSuccessHandoff(),
-            persist: { persisted = $0 },
-            invalidateOldLists: ignoreInvalidation,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 10.5
-            }
-        )
-
-        XCTAssertEqual(readCount, 1)
-        XCTAssertEqual(machine.persistentState.l3BaselineReading, .available(10.5))
-        XCTAssertEqual(persisted, machine.persistentState)
-        XCTAssertNil(machine.persistentState.l3CompletionReading)
-        XCTAssertNil(machine.persistentState.l3DeltaGB)
-    }
-
-    func testConfirmationReadsCompletionExactlyOnceAndPersistsDelta() throws {
-        let readValues = [10.5, 12.25]
-        var readCount = 0
-        var machine = try S5StateMachine.enter(
-            from: makeSuccessHandoff(),
-            persist: ignorePersistence,
-            invalidateOldLists: ignoreInvalidation,
-            readFreeDiskStrictGB: {
-                defer { readCount += 1 }
-                return readValues[readCount]
-            }
-        )
-        var persisted: S5PersistentState?
-
-        let transition = try machine.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-            persist: { persisted = $0 },
-            readFreeDiskStrictGB: {
-                defer { readCount += 1 }
-                return readValues[readCount]
-            }
-        )
-
-        XCTAssertTrue(transition.isApplied)
-        XCTAssertEqual(readCount, 2)
-        XCTAssertEqual(machine.persistentState.l3CompletionReading, .available(12.25))
-        XCTAssertEqual(machine.persistentState.l3DeltaGB, 1.75)
-        XCTAssertEqual(machine.persistentState.recentlyDeletedClearedAt, fixedDate)
-        XCTAssertEqual(persisted, machine.persistentState)
-    }
-
-    func testRepeatedConfirmationDoesNotReadAgain() throws {
-        var readCount = 0
-        var machine = try S5StateMachine.enter(
-            from: makeSuccessHandoff(),
-            persist: ignorePersistence,
-            invalidateOldLists: ignoreInvalidation,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 4
-            }
-        )
-        _ = try machine.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-            persist: ignorePersistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 5
-            }
-        )
-
-        let repeated = try machine.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate.addingTimeInterval(1)),
-            persist: ignorePersistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 6
-            }
-        )
-
-        XCTAssertEqual(repeated.rejection, .actionUnavailableInCurrentState)
-        XCTAssertEqual(readCount, 2)
-        XCTAssertEqual(machine.persistentState.l3DeltaGB, 1)
-    }
-
-    func testLifecycleEventsDoNotReadFreeDiskAgain() throws {
-        var readCount = 0
-        var machine = try S5StateMachine.enter(
-            from: makeSuccessHandoff(),
-            persist: ignorePersistence,
-            invalidateOldLists: ignoreInvalidation,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return 4
-            }
-        )
-        let forbiddenRead: () -> Double? = {
-            readCount += 1
-            return 99
-        }
-
-        _ = try machine.handle(
-            .applicationBecameInactive,
-            persist: ignorePersistence,
-            readFreeDiskStrictGB: forbiddenRead
-        )
-        _ = try machine.handle(
-            .applicationBecameActive,
-            persist: ignorePersistence,
-            readFreeDiskStrictGB: forbiddenRead
-        )
-        _ = try machine.handle(
-            .processTerminated,
-            persist: ignorePersistence,
-            readFreeDiskStrictGB: forbiddenRead
-        )
-
-        XCTAssertEqual(readCount, 1)
-    }
-
-    func testUnavailableReadingsArePersistedWithoutDeltaOrRetry() throws {
-        var readCount = 0
-        var machine = try S5StateMachine.enter(
-            from: makeSuccessHandoff(),
-            persist: ignorePersistence,
-            invalidateOldLists: ignoreInvalidation,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return nil
-            }
-        )
-        _ = try machine.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-            persist: ignorePersistence,
-            readFreeDiskStrictGB: {
-                readCount += 1
-                return nil
-            }
-        )
-
-        XCTAssertEqual(readCount, 2)
-        XCTAssertEqual(machine.persistentState.l3BaselineReading, .unavailable)
-        XCTAssertEqual(machine.persistentState.l3CompletionReading, .unavailable)
-        XCTAssertNil(machine.persistentState.l3DeltaGB)
-    }
-
-    func testPersistedSessionCarriesTargetReadingsDeltaAndDeclarationTime() throws {
-        var machine = try S5StateMachine.enter(
-            from: makeSuccessHandoff(),
-            persist: ignorePersistence,
-            invalidateOldLists: ignoreInvalidation,
-            readFreeDiskStrictGB: { 20 }
-        )
-        _ = try machine.handle(
-            .confirmRecentlyDeletedCleared(declaredAt: fixedDate),
-            persist: ignorePersistence,
-            readFreeDiskStrictGB: { 23.5 }
-        )
-
-        let persisted = PersistedSession(s5: machine.persistentState)
-
-        XCTAssertEqual(persisted.phase, .completionSuccess)
-        XCTAssertEqual(persisted.downstreamTargetState, "S5-T0")
-        XCTAssertEqual(persisted.l3BaselineReading, .available(20))
-        XCTAssertEqual(persisted.l3CompletionReading, .available(23.5))
-        XCTAssertEqual(persisted.l3DeltaGB, 3.5)
-        XCTAssertEqual(persisted.recentlyDeletedClearedAt, fixedDate)
-    }
-
-    func testL3DisplayRemainsBlockedForEveryState() throws {
-        XCTAssertFalse(try makeSuccessMachine().state.presentationCapabilities.showsL3)
-        XCTAssertFalse(try makeCancellationMachine().state.presentationCapabilities.showsL3)
-        XCTAssertFalse(try makeFailureMachine().state.presentationCapabilities.showsL3)
-        XCTAssertFalse(try makeUnknownMachine().state.presentationCapabilities.showsL3)
-        XCTAssertTrue(S5L3DisplayGate.blockedByUndecidedThreshold)
     }
 
     func testMismatchedHandoffPayloadAndTargetIsRejected() {
@@ -654,8 +416,6 @@ final class S5StateMachineTests: XCTestCase {
         )
 
         XCTAssertEqual(restored.persistentState, original.persistentState)
-        XCTAssertNil(restored.persistentState.l3BaselineReading)
-        XCTAssertNil(restored.persistentState.l3CompletionReading)
     }
 
     func testRestoreKeepsPersistedUnknownState() throws {
