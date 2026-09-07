@@ -199,6 +199,140 @@ final class IC133S3BehaviorTests: XCTestCase {
         XCTAssertEqual(L10n.text(removedKey), removedKey)
     }
 
+    // MARK: - 子项 C · 全部取消二次确认（决策单 D5）
+
+    // 断言 7：`request()` 后未执行清空（状态机 `assetCount` 不变）、动作处于
+    // 待确认态；`dismiss()` 回到空闲且仍未清空。
+    func testIC133C_RequestEntersAwaitingConfirmationWithoutClearingAndDismissReturnsToIdle() {
+        let groups = makeThreeGroupsOfTwo()
+        let machine = S3StateMachine(assets: assets(for: groups))
+        var action = S3CancelAllAction()
+
+        XCTAssertEqual(action.phase, .idle)
+        XCTAssertFalse(action.isAwaitingConfirmation)
+
+        XCTAssertTrue(
+            action.request(
+                assetCount: machine.assetCount,
+                isFrozen: machine.frozenSnapshot != nil
+            )
+        )
+
+        XCTAssertEqual(action.phase, .awaitingConfirmation)
+        XCTAssertTrue(action.isAwaitingConfirmation)
+        XCTAssertEqual(machine.assetCount, 6)
+        XCTAssertNotEqual(machine.state, .empty)
+
+        action.dismiss()
+
+        XCTAssertEqual(action.phase, .idle)
+        XCTAssertFalse(action.isAwaitingConfirmation)
+        XCTAssertEqual(machine.assetCount, 6)
+        XCTAssertNotEqual(machine.state, .empty)
+    }
+
+    // 断言 8：`request()` → `confirm()` 后状态机为 `.empty`，且 `confirm` 只执行
+    // 一次清空（计数钉住；再次 `confirm` 为无操作，空闲态直接 `confirm` 亦无操作）。
+    func testIC133C_ConfirmClearsExactlyOnceAndMachineBecomesEmpty() {
+        let groups = makeThreeGroupsOfTwo()
+        let machine = S3StateMachine(assets: assets(for: groups))
+        var action = S3CancelAllAction()
+        var cancelAllInvocations = 0
+        let cancelAll = {
+            cancelAllInvocations += 1
+            _ = machine.cancelAll()
+        }
+
+        // 空闲态直接确认：无操作。
+        XCTAssertFalse(action.confirm(cancelAll: cancelAll))
+        XCTAssertEqual(cancelAllInvocations, 0)
+        XCTAssertEqual(machine.assetCount, 6)
+
+        XCTAssertTrue(
+            action.request(
+                assetCount: machine.assetCount,
+                isFrozen: machine.frozenSnapshot != nil
+            )
+        )
+        XCTAssertTrue(action.confirm(cancelAll: cancelAll))
+
+        XCTAssertEqual(cancelAllInvocations, 1)
+        XCTAssertEqual(machine.state, .empty)
+        XCTAssertEqual(machine.assetCount, 0)
+        XCTAssertEqual(action.phase, .idle)
+
+        // 重复确认不再触发。
+        XCTAssertFalse(action.confirm(cancelAll: cancelAll))
+        XCTAssertEqual(cancelAllInvocations, 1)
+    }
+
+    // 断言 9：空集或已冻结时 `request()` 无效（不进入待确认态）；
+    // 可用性口径与既有按钮禁用条件一致。
+    func testIC133C_RequestIsRejectedWhenEmptyOrFrozen() {
+        // 空集。
+        let emptyMachine = S3StateMachine(assets: [])
+        var emptyAction = S3CancelAllAction()
+        XCTAssertEqual(emptyMachine.state, .empty)
+        XCTAssertFalse(
+            S3CancelAllAction.isAvailable(
+                assetCount: emptyMachine.assetCount,
+                isFrozen: emptyMachine.frozenSnapshot != nil
+            )
+        )
+        XCTAssertFalse(
+            emptyAction.request(
+                assetCount: emptyMachine.assetCount,
+                isFrozen: emptyMachine.frozenSnapshot != nil
+            )
+        )
+        XCTAssertEqual(emptyAction.phase, .idle)
+
+        // 已冻结：扫描完成后冻结快照。
+        let groups = makeThreeGroupsOfTwo()
+        let frozenMachine = S3StateMachine(assets: assets(for: groups))
+        for identifier in frozenMachine.takePendingScanAssetIDs() {
+            XCTAssertTrue(frozenMachine.recordScanSuccess(for: identifier, byteCount: 1_000))
+        }
+        XCTAssertEqual(frozenMachine.state, .ready)
+        guard case .frozen = frozenMachine.freezeSubmissionSnapshot() else {
+            return XCTFail("冻结快照失败")
+        }
+        XCTAssertNotNil(frozenMachine.frozenSnapshot)
+
+        var frozenAction = S3CancelAllAction()
+        XCTAssertFalse(
+            S3CancelAllAction.isAvailable(
+                assetCount: frozenMachine.assetCount,
+                isFrozen: frozenMachine.frozenSnapshot != nil
+            )
+        )
+        XCTAssertFalse(
+            frozenAction.request(
+                assetCount: frozenMachine.assetCount,
+                isFrozen: frozenMachine.frozenSnapshot != nil
+            )
+        )
+        XCTAssertEqual(frozenAction.phase, .idle)
+        XCTAssertEqual(frozenMachine.assetCount, 6)
+
+        // 对照：非空且未冻结时可用。
+        let readyMachine = S3StateMachine(assets: assets(for: groups))
+        var readyAction = S3CancelAllAction()
+        XCTAssertTrue(
+            S3CancelAllAction.isAvailable(
+                assetCount: readyMachine.assetCount,
+                isFrozen: readyMachine.frozenSnapshot != nil
+            )
+        )
+        XCTAssertTrue(
+            readyAction.request(
+                assetCount: readyMachine.assetCount,
+                isFrozen: readyMachine.frozenSnapshot != nil
+            )
+        )
+        XCTAssertEqual(readyAction.phase, .awaitingConfirmation)
+    }
+
     // MARK: - 夹具
 
     /// 三组各两张：范围-A{a-1,a-2}、范围-B{b-1,b-2}、范围-C{c-1,c-2}。

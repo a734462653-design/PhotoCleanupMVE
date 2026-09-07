@@ -1739,6 +1739,28 @@
         }
       }
     },
+    "s3.cancel_all.confirm.action" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部取消"
+          }
+        }
+      }
+    },
+    "s3.cancel_all.confirm.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消全部 {count} 张的待删标记？"
+          }
+        }
+      }
+    },
     "s3.chrome.subtitle_format" : {
       "extractionState" : "manual",
       "localizations" : {

@@ -70,10 +70,69 @@ enum S3HeaderSubtitle {
     }
 }
 
+/// IC-133 C（决策单 D5）：「全部取消」两步动作模型——`request()` 置待确认态，
+/// `confirm(cancelAll:)` 执行清空并回到空闲，`dismiss()` 直接回到空闲。空集或
+/// 快照已冻结时 `request()` 无效（既有按钮禁用口径不变）。视图只绑定它的状态，
+/// 系统 `confirmationDialog` 由 `isAwaitingConfirmation` 驱动。
+struct S3CancelAllAction: Equatable {
+    enum Phase: Equatable {
+        case idle
+        case awaitingConfirmation
+    }
+
+    private(set) var phase: Phase = .idle
+
+    var isAwaitingConfirmation: Bool {
+        phase == .awaitingConfirmation
+    }
+
+    static func isAvailable(assetCount: Int, isFrozen: Bool) -> Bool {
+        assetCount > 0 && !isFrozen
+    }
+
+    /// 进入待确认态；不可用（空集／已冻结）时不进入并返回 false。
+    @discardableResult
+    mutating func request(assetCount: Int, isFrozen: Bool) -> Bool {
+        guard Self.isAvailable(assetCount: assetCount, isFrozen: isFrozen) else {
+            return false
+        }
+        phase = .awaitingConfirmation
+        return true
+    }
+
+    /// 用户在对话框里放弃：回到空闲，不执行任何清空。
+    mutating func dismiss() {
+        phase = .idle
+    }
+
+    /// 用户确认：仅在待确认态执行一次 `cancelAll`，随后回到空闲；空闲时调用为无操作。
+    @discardableResult
+    mutating func confirm(cancelAll: () -> Void) -> Bool {
+        guard phase == .awaitingConfirmation else {
+            return false
+        }
+        phase = .idle
+        cancelAll()
+        return true
+    }
+}
+
 // MARK: - S3View
 
 struct S3View: View {
     @ObservedObject var coordinator: CleanupCoordinator
+    @State private var cancelAllAction = S3CancelAllAction()
+
+    private var cancelAllDialogBinding: Binding<Bool> {
+        Binding(
+            get: { cancelAllAction.isAwaitingConfirmation },
+            set: { isPresented in
+                if !isPresented {
+                    cancelAllAction.dismiss()
+                }
+            }
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -121,9 +180,17 @@ struct S3View: View {
 
                     Section(L10n.text("s3.section.actions")) {
                         Button(L10n.text("s3.action.cancel_all"), role: .destructive) {
-                            coordinator.cancelAllAssets()
+                            cancelAllAction.request(
+                                assetCount: machine.assetCount,
+                                isFrozen: machine.frozenSnapshot != nil
+                            )
                         }
-                        .disabled(machine.assetCount == 0 || machine.frozenSnapshot != nil)
+                        .disabled(
+                            !S3CancelAllAction.isAvailable(
+                                assetCount: machine.assetCount,
+                                isFrozen: machine.frozenSnapshot != nil
+                            )
+                        )
 
                         Button(L10n.text("s3.action.submit_deletion"), role: .destructive) {
                             coordinator.submitDeletion()
@@ -136,6 +203,20 @@ struct S3View: View {
                     }
                 }
                 .navigationTitle(L10n.text("s3.navigation.title"))
+                .confirmationDialog(
+                    L10n.text(
+                        "s3.cancel_all.confirm.title",
+                        replacing: ["count": String(machine.assetCount)]
+                    ),
+                    isPresented: cancelAllDialogBinding,
+                    titleVisibility: .visible
+                ) {
+                    Button(L10n.text("s3.cancel_all.confirm.action"), role: .destructive) {
+                        cancelAllAction.confirm {
+                            coordinator.cancelAllAssets()
+                        }
+                    }
+                }
             } else {
                 ProgressView()
             }
