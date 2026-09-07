@@ -656,7 +656,7 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertEqual(background.white, 0, accuracy: 0.001, "底应为黑")
         XCTAssertEqual(
             background.alpha,
-            S2PendingDeletionMark.circleOpacity,
+            CGFloat(S2PendingDeletionMark.circleOpacity),
             accuracy: 0.001
         )
         let foreground = grayscale(S2CenterIndicatorView.foregroundColor, .light)

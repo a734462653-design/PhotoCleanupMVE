@@ -368,7 +368,7 @@ final class IC134S3VisualTests: XCTestCase {
             asset: AssetDescriptor(identifier: "a", isFavorite: false),
             conclusion: .knownBytes(3_100_000)
         )
-        let fields = Mirror(reflecting: model).children.compactMap(\.label)
+        let fields = Mirror(reflecting: model).children.compactMap { $0.label }
         XCTAssertEqual(fields, ["showsFavorite", "volumeText"])
 
         // 三种来源之外没有第四种：已知走格式化器，其余两态各自取目录文案。
