@@ -182,6 +182,57 @@ enum S3ActionBarMetrics {
     static let disabledOpacity: Double = 0.4
 }
 
+/// 分组卡与三列网格（④卡取值表）。
+enum S3GroupCardMetrics {
+    static let cornerRadius: CGFloat = 14
+    static let headerTopPadding: CGFloat = 12
+    static let headerHorizontalPadding: CGFloat = 14
+    static let headerBottomPadding: CGFloat = 8
+    static let headerNameFontSize: CGFloat = 15
+    static let headerCountFontSize: CGFloat = 13
+    static let headerSpacing: CGFloat = 8
+}
+
+/// 三列等宽网格。格宽由卡宽反解，供封面按「格宽 × 倍率」请求像素。
+enum S3GridMetrics {
+    static let columnCount = 3
+    static let interitemSpacing: CGFloat = 3
+    static let contentPadding: CGFloat = 3
+    static let cellCornerRadius: CGFloat = 6
+
+    static func cellWidth(cardWidth: CGFloat) -> CGFloat {
+        let spacing = interitemSpacing * CGFloat(columnCount - 1)
+        let padding = contentPadding * 2
+        return max(0, (cardWidth - spacing - padding) / CGFloat(columnCount))
+    }
+}
+
+/// 格子三件角标（④卡取值表）。
+enum S3CellBadgeMetrics {
+    static let removeDiameter: CGFloat = 22
+    static let removeTopInset: CGFloat = 5
+    static let removeTrailingInset: CGFloat = 5
+    static let removeGlyphWidth: CGFloat = 12
+    static let removeGlyphThickness: CGFloat = 3
+    /// 命中区扩到 44×44（引用 S2 已登记的最小触控带）。
+    static let removeHitTarget = S2OverlayLayout.minimumTouchTarget
+    static let favoritePointSize: CGFloat = 14
+    static let favoriteLeadingInset: CGFloat = 6
+    static let favoriteBottomInset: CGFloat = 6
+    static let volumeHeight: CGFloat = 18
+    static let volumeCornerRadius: CGFloat = 9
+    static let volumeHorizontalPadding: CGFloat = 6
+    static let volumeFontSize: CGFloat = 11
+    static let volumeTrailingInset: CGFloat = 5
+    static let volumeBottomInset: CGFloat = 5
+    static let detailChevronPointSize: CGFloat = 9
+    /// 角标底色不透明度。
+    static let scrimOpacity: Double = 0.55
+    static var scrim: Color {
+        Color.black.opacity(scrimOpacity)
+    }
+}
+
 /// 空态（S3-4）——尺寸引用 S1 已登记的四态版式常量。
 enum S3EmptyStateMetrics {
     static let iconPointSize = S1StatePlaceholderStyle.iconPointSize
@@ -217,6 +268,47 @@ enum S3StateElement: Equatable {
     case emptyTitle
 }
 
+/// IC-134 B：单个格子的角标口径（测试钉住）。
+///
+/// 体积标签文本只有四种来源：已知走 `DecimalVolumeFormatter`；不可用「—」；
+/// 未开始／进行中「…」。拆分项 ≥ 2 时右侧才有展开箭头。
+struct S3CellBadgeModel: Equatable {
+    let showsFavorite: Bool
+    let volumeText: String
+    let showsDetailChevron: Bool
+
+    static func make(
+        asset: AssetDescriptor,
+        conclusion: AssetScanConclusion?,
+        breakdownItemCount: Int
+    ) -> S3CellBadgeModel {
+        let volumeText: String
+        switch conclusion {
+        case let .knownBytes(bytes):
+            volumeText = DecimalVolumeFormatter.string(forByteCount: bytes)
+        case .unavailable:
+            volumeText = L10n.text("s3.cell.volume_unavailable")
+        case .notStarted, .inProgress, .none:
+            volumeText = L10n.text("s3.cell.volume_pending")
+        }
+        return S3CellBadgeModel(
+            showsFavorite: asset.isFavorite,
+            volumeText: volumeText,
+            showsDetailChevron: breakdownItemCount >= 2
+        )
+    }
+}
+
+/// IC-134 B：⊖ 移除的动作口径（测试钉住）。冻结快照后不响应。
+enum S3RemoveButtonAction {
+    static func perform(isFrozen: Bool, remove: () -> Void) {
+        guard !isFrozen else {
+            return
+        }
+        remove()
+    }
+}
+
 enum S3StatePresentation {
     /// S3-4 空集：顶排 + 中央图标 + 主句，**无操作条、无提示句**。
     /// S3-1／S3-2：顶排 + 提示句 + 分组卡 + 操作条——两者差别在格子与操作条的
@@ -243,6 +335,7 @@ enum S3StatePresentation {
 
 struct S3View: View {
     @ObservedObject var coordinator: CleanupCoordinator
+    @Environment(\.displayScale) private var displayScale
     @State private var cancelAllAction = S3CancelAllAction()
 
     var body: some View {
@@ -344,25 +437,210 @@ struct S3View: View {
         _ presentation: S3GroupPresentation,
         machine: S3StateMachine
     ) -> some View {
-        ScrollView {
-            LazyVStack(spacing: S3PageLayout.cardSpacing) {
-                ForEach(presentation.groups, id: \.sourceRangeID) { group in
-                    groupCard(group, machine: machine)
+        GeometryReader { proxy in
+            let cardWidth = proxy.size.width
+                - S3PageLayout.listHorizontalMargin * 2
+            ScrollView {
+                LazyVStack(spacing: S3PageLayout.cardSpacing) {
+                    ForEach(presentation.groups, id: \.sourceRangeID) { group in
+                        groupCard(
+                            group,
+                            machine: machine,
+                            cardWidth: cardWidth
+                        )
+                    }
                 }
+                .padding(.horizontal, S3PageLayout.listHorizontalMargin)
+                .padding(.top, S3PageLayout.listTopInset)
+                .padding(.bottom, S3PageLayout.listBottomClearance)
             }
-            .padding(.horizontal, S3PageLayout.listHorizontalMargin)
-            .padding(.top, S3PageLayout.listTopInset)
-            .padding(.bottom, S3PageLayout.listBottomClearance)
         }
     }
 
-    /// 子项 B 在此填入组头与三列网格。
-    @ViewBuilder
+    // MARK: - IC-134 B：分组卡与三列网格
+
     private func groupCard(
         _ group: S3GroupPresentation.Group,
-        machine: S3StateMachine
+        machine: S3StateMachine,
+        cardWidth: CGFloat
     ) -> some View {
-        EmptyView()
+        let cellWidth = S3GridMetrics.cellWidth(cardWidth: cardWidth)
+        return VStack(alignment: .leading, spacing: 0) {
+            groupHeader(group)
+            grid(group, machine: machine, cellWidth: cellWidth)
+        }
+        .background(
+            RoundedRectangle(
+                cornerRadius: S3GroupCardMetrics.cornerRadius,
+                style: .continuous
+            )
+            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+    }
+
+    private func groupHeader(_ group: S3GroupPresentation.Group) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: S3GroupCardMetrics.headerSpacing) {
+            Text(group.name)
+                .font(
+                    .system(
+                        size: S3GroupCardMetrics.headerNameFontSize,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(S1ChromeForeground.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text(
+                L10n.text(
+                    "s3.group.count_format",
+                    replacing: ["count": String(group.assetCount)]
+                )
+            )
+            .font(
+                .system(
+                    size: S3GroupCardMetrics.headerCountFontSize,
+                    design: .monospaced
+                )
+            )
+            .foregroundStyle(S1ChromeForeground.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, S3GroupCardMetrics.headerTopPadding)
+        .padding(.horizontal, S3GroupCardMetrics.headerHorizontalPadding)
+        .padding(.bottom, S3GroupCardMetrics.headerBottomPadding)
+    }
+
+    private func grid(
+        _ group: S3GroupPresentation.Group,
+        machine: S3StateMachine,
+        cellWidth: CGFloat
+    ) -> some View {
+        LazyVGrid(
+            columns: Array(
+                repeating: GridItem(
+                    .flexible(),
+                    spacing: S3GridMetrics.interitemSpacing
+                ),
+                count: S3GridMetrics.columnCount
+            ),
+            spacing: S3GridMetrics.interitemSpacing
+        ) {
+            ForEach(group.orderedAssets, id: \.identifier) { asset in
+                cell(asset, machine: machine, cellWidth: cellWidth)
+            }
+        }
+        .padding(.horizontal, S3GridMetrics.contentPadding)
+        .padding(.bottom, S3GridMetrics.contentPadding)
+    }
+
+    private func cell(
+        _ asset: AssetDescriptor,
+        machine: S3StateMachine,
+        cellWidth: CGFloat
+    ) -> some View {
+        let model = S3CellBadgeModel.make(
+            asset: asset,
+            conclusion: machine.cachedConclusion(for: asset.identifier),
+            // 子项 C 接入扫描侧通道后改为真实拆分项数；此处先按「无拆分」渲染。
+            breakdownItemCount: 0
+        )
+        return ThumbnailView(
+            assetIdentifier: asset.identifier,
+            sideLength: cellWidth,
+            displayScale: displayScale,
+            cornerRadius: S3GridMetrics.cellCornerRadius
+        )
+        .overlay(alignment: .topTrailing) {
+            removeBadge(asset, machine: machine, model: model)
+        }
+        .overlay(alignment: .bottomLeading) {
+            if model.showsFavorite {
+                favoriteBadge
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            volumeBadge(model)
+        }
+    }
+
+    private func removeBadge(
+        _ asset: AssetDescriptor,
+        machine: S3StateMachine,
+        model: S3CellBadgeModel
+    ) -> some View {
+        Button {
+            S3RemoveButtonAction.perform(
+                isFrozen: machine.frozenSnapshot != nil
+            ) {
+                coordinator.removeAsset(asset.identifier)
+            }
+        } label: {
+            Circle()
+                .fill(S3CellBadgeMetrics.scrim)
+                .frame(
+                    width: S3CellBadgeMetrics.removeDiameter,
+                    height: S3CellBadgeMetrics.removeDiameter
+                )
+                .overlay {
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(
+                            width: S3CellBadgeMetrics.removeGlyphWidth,
+                            height: S3CellBadgeMetrics.removeGlyphThickness
+                        )
+                }
+                .frame(
+                    width: S3CellBadgeMetrics.removeHitTarget,
+                    height: S3CellBadgeMetrics.removeHitTarget,
+                    alignment: .topTrailing
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, S3CellBadgeMetrics.removeTopInset)
+        .padding(.trailing, S3CellBadgeMetrics.removeTrailingInset)
+        .accessibilityLabel(
+            L10n.text(
+                "s3.cell.remove.accessibility",
+                replacing: ["volume": model.volumeText]
+            )
+        )
+    }
+
+    private var favoriteBadge: some View {
+        Image(systemName: "heart.fill")
+            .font(.system(size: S3CellBadgeMetrics.favoritePointSize))
+            .foregroundStyle(Color.white)
+            .padding(.leading, S3CellBadgeMetrics.favoriteLeadingInset)
+            .padding(.bottom, S3CellBadgeMetrics.favoriteBottomInset)
+            .accessibilityLabel(L10n.text("s3.cell.favorite.accessibility"))
+    }
+
+    private func volumeBadge(_ model: S3CellBadgeModel) -> some View {
+        HStack(spacing: 2) {
+            Text(model.volumeText)
+                .font(
+                    .system(
+                        size: S3CellBadgeMetrics.volumeFontSize,
+                        weight: .semibold,
+                        design: .monospaced
+                    )
+                )
+            if model.showsDetailChevron {
+                Image(systemName: "chevron.down")
+                    .font(
+                        .system(size: S3CellBadgeMetrics.detailChevronPointSize)
+                    )
+            }
+        }
+        .foregroundStyle(Color.white)
+        .padding(.horizontal, S3CellBadgeMetrics.volumeHorizontalPadding)
+        .frame(height: S3CellBadgeMetrics.volumeHeight)
+        .background(
+            Capsule().fill(S3CellBadgeMetrics.scrim)
+        )
+        .padding(.trailing, S3CellBadgeMetrics.volumeTrailingInset)
+        .padding(.bottom, S3CellBadgeMetrics.volumeBottomInset)
     }
 
     // MARK: - IC-134 A：S3-4 空态

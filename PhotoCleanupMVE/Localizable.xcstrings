@@ -1761,6 +1761,50 @@
         }
       }
     },
+    "s3.cell.favorite.accessibility" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已收藏"
+          }
+        }
+      }
+    },
+    "s3.cell.remove.accessibility" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除，{volume}"
+          }
+        }
+      }
+    },
+    "s3.cell.volume_pending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "…"
+          }
+        }
+      }
+    },
+    "s3.cell.volume_unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "—"
+          }
+        }
+      }
+    },
     "s3.chrome.subtitle_format" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1801,6 +1845,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "{name}（{count} 张）"
+          }
+        }
+      }
+    },
+    "s3.group.count_format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张"
           }
         }
       }
