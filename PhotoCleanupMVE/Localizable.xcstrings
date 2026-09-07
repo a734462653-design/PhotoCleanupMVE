@@ -1860,50 +1860,6 @@
         }
       }
     },
-    "s3.detail.kind.live_video" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "实况视频"
-          }
-        }
-      }
-    },
-    "s3.detail.kind.other" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "其他"
-          }
-        }
-      }
-    },
-    "s3.detail.kind.photo" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片"
-          }
-        }
-      }
-    },
-    "s3.detail.kind.video" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视频"
-          }
-        }
-      }
-    },
     "s3.group.count_format" : {
       "extractionState" : "manual",
       "localizations" : {

@@ -225,7 +225,6 @@ enum S3CellBadgeMetrics {
     static let volumeFontSize: CGFloat = 11
     static let volumeTrailingInset: CGFloat = 5
     static let volumeBottomInset: CGFloat = 5
-    static let detailChevronPointSize: CGFloat = 9
     /// 角标底色不透明度。
     static let scrimOpacity: Double = 0.55
     static var scrim: Color {
@@ -270,20 +269,15 @@ enum S3StateElement: Equatable {
 
 /// IC-134 B：单个格子的角标口径（测试钉住）。
 ///
-/// 体积标签文本只有四种来源：已知走 `DecimalVolumeFormatter`；不可用「—」；
-/// 未开始／进行中「…」。拆分项 ≥ 2 时右侧才有展开箭头。
+/// 体积标签文本只有三种来源：已知走 `DecimalVolumeFormatter`；不可用「—」；
+/// 未开始／进行中「…」。标签只显示总量，不带箭头、不可点（IC-136 A）。
 struct S3CellBadgeModel: Equatable {
     let showsFavorite: Bool
     let volumeText: String
-    let showsDetailChevron: Bool
-    /// 箭头朝向：展开为 ▴、收起为 ▾。
-    let isDetailExpanded: Bool
 
     static func make(
         asset: AssetDescriptor,
-        conclusion: AssetScanConclusion?,
-        breakdownItemCount: Int,
-        isDetailExpanded: Bool = false
+        conclusion: AssetScanConclusion?
     ) -> S3CellBadgeModel {
         let volumeText: String
         switch conclusion {
@@ -296,90 +290,22 @@ struct S3CellBadgeModel: Equatable {
         }
         return S3CellBadgeModel(
             showsFavorite: asset.isFavorite,
-            volumeText: volumeText,
-            showsDetailChevron: S3DetailExpansion.isExpandable(
-                breakdownItemCount: breakdownItemCount
-            ),
-            isDetailExpanded: isDetailExpanded
+            volumeText: volumeText
         )
     }
 }
 
-/// IC-134 C：体积明细行的取值（④卡取值表）。
+/// ④ IC-134 取定、IC-136 A 后仅存的一个取值：操作条扫描行里「转圈 ↔ 文案」
+/// 的间距，取与组头同值 8 的一半，使两者读起来成组。
 enum S3VolumeDetailMetrics {
-    static let cornerRadius: CGFloat = 8
-    static let verticalPadding: CGFloat = 8
-    static let horizontalPadding: CGFloat = 10
-    static let fontSize: CGFloat = 13
-    /// 键与值、以及各项之间的间距（④取定：卡未给，取与组头同值 8 的一半，
-    /// 使「键 值 · 键 值」读起来成组）。
     static let pairSpacing: CGFloat = 4
-    static let itemSpacing: CGFloat = 8
 }
 
-/// IC-134 C：明细行的文案与数值来源（测试钉住）。种类名经 String Catalog，
-/// 数值经 `DecimalVolumeFormatter`；源码里没有中文字面量。
-enum S3VolumeDetailText {
-    static func kindLabel(_ kind: AssetResourceKind) -> String {
-        switch kind {
-        case .photo:
-            return L10n.text("s3.detail.kind.photo")
-        case .video:
-            return L10n.text("s3.detail.kind.video")
-        case .liveVideo:
-            return L10n.text("s3.detail.kind.live_video")
-        case .other:
-            return L10n.text("s3.detail.kind.other")
-        }
-    }
-
-    static func value(_ bytes: Int64) -> String {
-        DecimalVolumeFormatter.string(forByteCount: bytes)
-    }
-}
-
-/// IC-134 C：明细展开口径（测试钉住）。
-///
-/// 同一时刻至多一行展开；点另一张切换、点已展开的收起；拆分项 < 2 不可展开
-/// （缓存复用／未扫描／单资源都落在这一支）。
-struct S3DetailExpansion: Equatable {
-    private(set) var expandedAssetID: String?
-
-    static func isExpandable(breakdownItemCount: Int) -> Bool {
-        breakdownItemCount >= 2
-    }
-
-    func isExpanded(_ assetID: String) -> Bool {
-        expandedAssetID == assetID
-    }
-
-    @discardableResult
-    mutating func toggle(
-        assetID: String,
-        breakdownItemCount: Int
-    ) -> Bool {
-        guard Self.isExpandable(breakdownItemCount: breakdownItemCount) else {
-            return false
-        }
-        expandedAssetID = expandedAssetID == assetID ? nil : assetID
-        return true
-    }
-}
-
-/// IC-134 C：三列网格的分行口径——明细行要插在「该格所在行」下方，故按 3 分块。
+/// 三列网格的分行口径：按 3 分块，行内顺序即该组过滤后的顺序。
 enum S3GridRows {
     static func rows(_ assets: [AssetDescriptor]) -> [[AssetDescriptor]] {
         stride(from: 0, to: assets.count, by: S3GridMetrics.columnCount).map {
             Array(assets[$0..<min($0 + S3GridMetrics.columnCount, assets.count)])
-        }
-    }
-
-    static func rowIndex(
-        ofAssetID assetID: String,
-        in rows: [[AssetDescriptor]]
-    ) -> Int? {
-        rows.firstIndex { row in
-            row.contains { $0.identifier == assetID }
         }
     }
 }
@@ -500,7 +426,6 @@ struct S3View: View {
     @ObservedObject var coordinator: CleanupCoordinator
     @Environment(\.displayScale) private var displayScale
     @State private var cancelAllAction = S3CancelAllAction()
-    @State private var detailExpansion = S3DetailExpansion()
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -832,19 +757,16 @@ struct S3View: View {
         .padding(.bottom, S3GroupCardMetrics.headerBottomPadding)
     }
 
-    /// 手工分行而不是 `LazyVGrid`：明细行必须插在**该格所在行**的下方，
-    /// 且跨满三列——网格容器给不出这个插入点。
+    /// 手工分行而不是 `LazyVGrid`：IC-134 C 的跨列行需要这个插入点；
+    /// IC-136 A 撤销那一行后分行本身照旧——本卡只删那一行，版式一律不动。
     private func grid(
         _ group: S3GroupPresentation.Group,
         machine: S3StateMachine,
         cellWidth: CGFloat
     ) -> some View {
         let rows = S3GridRows.rows(group.orderedAssets)
-        let expandedRow = detailExpansion.expandedAssetID.flatMap {
-            S3GridRows.rowIndex(ofAssetID: $0, in: rows)
-        }
         return VStack(spacing: S3GridMetrics.interitemSpacing) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 HStack(spacing: S3GridMetrics.interitemSpacing) {
                     ForEach(row, id: \.identifier) { asset in
                         cell(asset, machine: machine, cellWidth: cellWidth)
@@ -855,49 +777,10 @@ struct S3View: View {
                         }
                     }
                 }
-                if expandedRow == index, let assetID = detailExpansion.expandedAssetID {
-                    volumeDetailRow(assetID)
-                }
             }
         }
         .padding(.horizontal, S3GridMetrics.contentPadding)
         .padding(.bottom, S3GridMetrics.contentPadding)
-    }
-
-    /// 跨三列的一行明细：「照片 3.1 MB · 实况视频 2.4 MB」。
-    private func volumeDetailRow(_ assetID: String) -> some View {
-        let items = coordinator.scanBreakdown(for: assetID)
-        return HStack(spacing: S3VolumeDetailMetrics.itemSpacing) {
-            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                if index > 0 {
-                    Text(verbatim: "·")
-                        .foregroundStyle(S1ChromeForeground.secondary)
-                }
-                HStack(spacing: S3VolumeDetailMetrics.pairSpacing) {
-                    Text(S3VolumeDetailText.kindLabel(item.kind))
-                        .foregroundStyle(S1ChromeForeground.secondary)
-                    Text(S3VolumeDetailText.value(item.bytes))
-                        .foregroundStyle(S1ChromeForeground.primary)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .font(
-            .system(
-                size: S3VolumeDetailMetrics.fontSize,
-                design: .monospaced
-            )
-        )
-        .padding(.vertical, S3VolumeDetailMetrics.verticalPadding)
-        .padding(.horizontal, S3VolumeDetailMetrics.horizontalPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(
-                cornerRadius: S3VolumeDetailMetrics.cornerRadius,
-                style: .continuous
-            )
-            .fill(Color(uiColor: .systemGroupedBackground))
-        )
     }
 
     private func cell(
@@ -905,14 +788,9 @@ struct S3View: View {
         machine: S3StateMachine,
         cellWidth: CGFloat
     ) -> some View {
-        let breakdownItemCount = coordinator.scanBreakdownItemCount(
-            for: asset.identifier
-        )
         let model = S3CellBadgeModel.make(
             asset: asset,
-            conclusion: machine.cachedConclusion(for: asset.identifier),
-            breakdownItemCount: breakdownItemCount,
-            isDetailExpanded: detailExpansion.isExpanded(asset.identifier)
+            conclusion: machine.cachedConclusion(for: asset.identifier)
         )
         return ThumbnailView(
             assetIdentifier: asset.identifier,
@@ -929,11 +807,7 @@ struct S3View: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            volumeBadge(
-                model,
-                assetID: asset.identifier,
-                breakdownItemCount: breakdownItemCount
-            )
+            volumeBadge(model)
         }
     }
 
@@ -990,54 +864,31 @@ struct S3View: View {
             .accessibilityLabel(L10n.text("s3.cell.favorite.accessibility"))
     }
 
-    private func volumeBadge(
-        _ model: S3CellBadgeModel,
-        assetID: String,
-        breakdownItemCount: Int
-    ) -> some View {
-        Button {
-            detailExpansion.toggle(
-                assetID: assetID,
-                breakdownItemCount: breakdownItemCount
-            )
-        } label: {
-            volumeBadgeLabel(model)
-        }
-        .buttonStyle(.plain)
-        .disabled(
-            !S3DetailExpansion.isExpandable(
-                breakdownItemCount: breakdownItemCount
-            )
-        )
-        .padding(.trailing, S3CellBadgeMetrics.volumeTrailingInset)
-        .padding(.bottom, S3CellBadgeMetrics.volumeBottomInset)
+    /// IC-136 A：只是一块标签，不再是按钮——不接点击、不占命中区。
+    private func volumeBadge(_ model: S3CellBadgeModel) -> some View {
+        volumeBadgeLabel(model)
+            .padding(.trailing, S3CellBadgeMetrics.volumeTrailingInset)
+            .padding(.bottom, S3CellBadgeMetrics.volumeBottomInset)
     }
 
     private func volumeBadgeLabel(_ model: S3CellBadgeModel) -> some View {
-        HStack(spacing: 2) {
-            Text(model.volumeText)
-                .font(
-                    .system(
-                        size: S3CellBadgeMetrics.volumeFontSize,
-                        weight: .semibold,
-                        design: .monospaced
-                    )
+        Text(model.volumeText)
+            .font(
+                .system(
+                    size: S3CellBadgeMetrics.volumeFontSize,
+                    weight: .semibold,
+                    design: .monospaced
                 )
-            if model.showsDetailChevron {
-                Image(
-                    systemName: model.isDetailExpanded
-                        ? "chevron.up"
-                        : "chevron.down"
-                )
-                .font(.system(size: S3CellBadgeMetrics.detailChevronPointSize))
-            }
-        }
-        .foregroundStyle(Color.white)
-        .padding(.horizontal, S3CellBadgeMetrics.volumeHorizontalPadding)
-        .frame(height: S3CellBadgeMetrics.volumeHeight)
-        .background(
-            Capsule().fill(S3CellBadgeMetrics.scrim)
-        )
+            )
+            .foregroundStyle(Color.white)
+            .padding(
+                .horizontal,
+                S3CellBadgeMetrics.volumeHorizontalPadding
+            )
+            .frame(height: S3CellBadgeMetrics.volumeHeight)
+            .background(
+                Capsule().fill(S3CellBadgeMetrics.scrim)
+            )
     }
 
     // MARK: - IC-134 A：S3-4 空态
