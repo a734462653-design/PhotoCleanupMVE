@@ -276,11 +276,14 @@ struct S3CellBadgeModel: Equatable {
     let showsFavorite: Bool
     let volumeText: String
     let showsDetailChevron: Bool
+    /// 箭头朝向：展开为 ▴、收起为 ▾。
+    let isDetailExpanded: Bool
 
     static func make(
         asset: AssetDescriptor,
         conclusion: AssetScanConclusion?,
-        breakdownItemCount: Int
+        breakdownItemCount: Int,
+        isDetailExpanded: Bool = false
     ) -> S3CellBadgeModel {
         let volumeText: String
         switch conclusion {
@@ -294,8 +297,90 @@ struct S3CellBadgeModel: Equatable {
         return S3CellBadgeModel(
             showsFavorite: asset.isFavorite,
             volumeText: volumeText,
-            showsDetailChevron: breakdownItemCount >= 2
+            showsDetailChevron: S3DetailExpansion.isExpandable(
+                breakdownItemCount: breakdownItemCount
+            ),
+            isDetailExpanded: isDetailExpanded
         )
+    }
+}
+
+/// IC-134 C：体积明细行的取值（④卡取值表）。
+enum S3VolumeDetailMetrics {
+    static let cornerRadius: CGFloat = 8
+    static let verticalPadding: CGFloat = 8
+    static let horizontalPadding: CGFloat = 10
+    static let fontSize: CGFloat = 13
+    /// 键与值、以及各项之间的间距（④取定：卡未给，取与组头同值 8 的一半，
+    /// 使「键 值 · 键 值」读起来成组）。
+    static let pairSpacing: CGFloat = 4
+    static let itemSpacing: CGFloat = 8
+}
+
+/// IC-134 C：明细行的文案与数值来源（测试钉住）。种类名经 String Catalog，
+/// 数值经 `DecimalVolumeFormatter`；源码里没有中文字面量。
+enum S3VolumeDetailText {
+    static func kindLabel(_ kind: AssetResourceKind) -> String {
+        switch kind {
+        case .photo:
+            return L10n.text("s3.detail.kind.photo")
+        case .video:
+            return L10n.text("s3.detail.kind.video")
+        case .liveVideo:
+            return L10n.text("s3.detail.kind.live_video")
+        case .other:
+            return L10n.text("s3.detail.kind.other")
+        }
+    }
+
+    static func value(_ bytes: Int64) -> String {
+        DecimalVolumeFormatter.string(forByteCount: bytes)
+    }
+}
+
+/// IC-134 C：明细展开口径（测试钉住）。
+///
+/// 同一时刻至多一行展开；点另一张切换、点已展开的收起；拆分项 < 2 不可展开
+/// （缓存复用／未扫描／单资源都落在这一支）。
+struct S3DetailExpansion: Equatable {
+    private(set) var expandedAssetID: String?
+
+    static func isExpandable(breakdownItemCount: Int) -> Bool {
+        breakdownItemCount >= 2
+    }
+
+    func isExpanded(_ assetID: String) -> Bool {
+        expandedAssetID == assetID
+    }
+
+    @discardableResult
+    mutating func toggle(
+        assetID: String,
+        breakdownItemCount: Int
+    ) -> Bool {
+        guard Self.isExpandable(breakdownItemCount: breakdownItemCount) else {
+            return false
+        }
+        expandedAssetID = expandedAssetID == assetID ? nil : assetID
+        return true
+    }
+}
+
+/// IC-134 C：三列网格的分行口径——明细行要插在「该格所在行」下方，故按 3 分块。
+enum S3GridRows {
+    static func rows(_ assets: [AssetDescriptor]) -> [[AssetDescriptor]] {
+        stride(from: 0, to: assets.count, by: S3GridMetrics.columnCount).map {
+            Array(assets[$0..<min($0 + S3GridMetrics.columnCount, assets.count)])
+        }
+    }
+
+    static func rowIndex(
+        ofAssetID assetID: String,
+        in rows: [[AssetDescriptor]]
+    ) -> Int? {
+        rows.firstIndex { row in
+            row.contains { $0.identifier == assetID }
+        }
     }
 }
 
@@ -337,6 +422,7 @@ struct S3View: View {
     @ObservedObject var coordinator: CleanupCoordinator
     @Environment(\.displayScale) private var displayScale
     @State private var cancelAllAction = S3CancelAllAction()
+    @State private var detailExpansion = S3DetailExpansion()
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -510,27 +596,72 @@ struct S3View: View {
         .padding(.bottom, S3GroupCardMetrics.headerBottomPadding)
     }
 
+    /// 手工分行而不是 `LazyVGrid`：明细行必须插在**该格所在行**的下方，
+    /// 且跨满三列——网格容器给不出这个插入点。
     private func grid(
         _ group: S3GroupPresentation.Group,
         machine: S3StateMachine,
         cellWidth: CGFloat
     ) -> some View {
-        LazyVGrid(
-            columns: Array(
-                repeating: GridItem(
-                    .flexible(),
-                    spacing: S3GridMetrics.interitemSpacing
-                ),
-                count: S3GridMetrics.columnCount
-            ),
-            spacing: S3GridMetrics.interitemSpacing
-        ) {
-            ForEach(group.orderedAssets, id: \.identifier) { asset in
-                cell(asset, machine: machine, cellWidth: cellWidth)
+        let rows = S3GridRows.rows(group.orderedAssets)
+        let expandedRow = detailExpansion.expandedAssetID.flatMap {
+            S3GridRows.rowIndex(ofAssetID: $0, in: rows)
+        }
+        return VStack(spacing: S3GridMetrics.interitemSpacing) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                HStack(spacing: S3GridMetrics.interitemSpacing) {
+                    ForEach(row, id: \.identifier) { asset in
+                        cell(asset, machine: machine, cellWidth: cellWidth)
+                    }
+                    if row.count < S3GridMetrics.columnCount {
+                        ForEach(row.count..<S3GridMetrics.columnCount, id: \.self) { _ in
+                            Color.clear.frame(width: cellWidth, height: cellWidth)
+                        }
+                    }
+                }
+                if expandedRow == index, let assetID = detailExpansion.expandedAssetID {
+                    volumeDetailRow(assetID)
+                }
             }
         }
         .padding(.horizontal, S3GridMetrics.contentPadding)
         .padding(.bottom, S3GridMetrics.contentPadding)
+    }
+
+    /// 跨三列的一行明细：「照片 3.1 MB · 实况视频 2.4 MB」。
+    private func volumeDetailRow(_ assetID: String) -> some View {
+        let items = coordinator.scanBreakdown(for: assetID)
+        return HStack(spacing: S3VolumeDetailMetrics.itemSpacing) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                if index > 0 {
+                    Text(verbatim: "·")
+                        .foregroundStyle(S1ChromeForeground.secondary)
+                }
+                HStack(spacing: S3VolumeDetailMetrics.pairSpacing) {
+                    Text(S3VolumeDetailText.kindLabel(item.kind))
+                        .foregroundStyle(S1ChromeForeground.secondary)
+                    Text(S3VolumeDetailText.value(item.bytes))
+                        .foregroundStyle(S1ChromeForeground.primary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .font(
+            .system(
+                size: S3VolumeDetailMetrics.fontSize,
+                design: .monospaced
+            )
+        )
+        .padding(.vertical, S3VolumeDetailMetrics.verticalPadding)
+        .padding(.horizontal, S3VolumeDetailMetrics.horizontalPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(
+                cornerRadius: S3VolumeDetailMetrics.cornerRadius,
+                style: .continuous
+            )
+            .fill(Color(uiColor: .systemGroupedBackground))
+        )
     }
 
     private func cell(
@@ -538,11 +669,14 @@ struct S3View: View {
         machine: S3StateMachine,
         cellWidth: CGFloat
     ) -> some View {
+        let breakdownItemCount = coordinator.scanBreakdownItemCount(
+            for: asset.identifier
+        )
         let model = S3CellBadgeModel.make(
             asset: asset,
             conclusion: machine.cachedConclusion(for: asset.identifier),
-            // 子项 C 接入扫描侧通道后改为真实拆分项数；此处先按「无拆分」渲染。
-            breakdownItemCount: 0
+            breakdownItemCount: breakdownItemCount,
+            isDetailExpanded: detailExpansion.isExpanded(asset.identifier)
         )
         return ThumbnailView(
             assetIdentifier: asset.identifier,
@@ -559,7 +693,11 @@ struct S3View: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            volumeBadge(model)
+            volumeBadge(
+                model,
+                assetID: asset.identifier,
+                breakdownItemCount: breakdownItemCount
+            )
         }
     }
 
@@ -616,7 +754,30 @@ struct S3View: View {
             .accessibilityLabel(L10n.text("s3.cell.favorite.accessibility"))
     }
 
-    private func volumeBadge(_ model: S3CellBadgeModel) -> some View {
+    private func volumeBadge(
+        _ model: S3CellBadgeModel,
+        assetID: String,
+        breakdownItemCount: Int
+    ) -> some View {
+        Button {
+            detailExpansion.toggle(
+                assetID: assetID,
+                breakdownItemCount: breakdownItemCount
+            )
+        } label: {
+            volumeBadgeLabel(model)
+        }
+        .buttonStyle(.plain)
+        .disabled(
+            !S3DetailExpansion.isExpandable(
+                breakdownItemCount: breakdownItemCount
+            )
+        )
+        .padding(.trailing, S3CellBadgeMetrics.volumeTrailingInset)
+        .padding(.bottom, S3CellBadgeMetrics.volumeBottomInset)
+    }
+
+    private func volumeBadgeLabel(_ model: S3CellBadgeModel) -> some View {
         HStack(spacing: 2) {
             Text(model.volumeText)
                 .font(
@@ -627,10 +788,12 @@ struct S3View: View {
                     )
                 )
             if model.showsDetailChevron {
-                Image(systemName: "chevron.down")
-                    .font(
-                        .system(size: S3CellBadgeMetrics.detailChevronPointSize)
-                    )
+                Image(
+                    systemName: model.isDetailExpanded
+                        ? "chevron.up"
+                        : "chevron.down"
+                )
+                .font(.system(size: S3CellBadgeMetrics.detailChevronPointSize))
             }
         }
         .foregroundStyle(Color.white)
@@ -639,8 +802,6 @@ struct S3View: View {
         .background(
             Capsule().fill(S3CellBadgeMetrics.scrim)
         )
-        .padding(.trailing, S3CellBadgeMetrics.volumeTrailingInset)
-        .padding(.bottom, S3CellBadgeMetrics.volumeBottomInset)
     }
 
     // MARK: - IC-134 A：S3-4 空态
