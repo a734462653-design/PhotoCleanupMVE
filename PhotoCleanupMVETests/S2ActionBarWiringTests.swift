@@ -610,37 +610,67 @@ final class S2ActionBarWiringTests: XCTestCase {
         XCTAssertEqual(S2ChromeForeground.onGlassSecondary, Color.secondary)
     }
 
-    // IC-123 A：中央指示玻璃内前景按 colorScheme **显式解析为定值色**——
-    // 浅色 = label 黑、深色 = label 白，与 `Color.primary`（IC-121 A 规则）
-    // 同源，两态取值不同；撤回钮不改，仍走具体动态色。
+    // IC-123 A → IC-136 C 改写（原断言取反）：中央指示的前景与底不再随
+    // colorScheme 变化——它压在照片上，不是 chrome。底取待删标记的同源常量
+    // （黑 55%），前景取同源的白；两种外观下解析结果逐通道相同。
     func testIC123AIndicatorForegroundIsResolvedPerColorScheme() {
-        func white(_ color: UIColor, line: UInt = #line) -> CGFloat {
-            var value: CGFloat = -1
+        func grayscale(
+            _ color: Color,
+            _ style: UIUserInterfaceStyle,
+            line: UInt = #line
+        ) -> (white: CGFloat, alpha: CGFloat) {
+            var white: CGFloat = -1
             var alpha: CGFloat = -1
-            XCTAssertTrue(color.getWhite(&value, alpha: &alpha), line: line)
-            XCTAssertEqual(alpha, 1, accuracy: 0.001, line: line)
-            return value
+            let resolved = UIColor(color).resolvedColor(
+                with: UITraitCollection(userInterfaceStyle: style)
+            )
+            XCTAssertTrue(resolved.getWhite(&white, alpha: &alpha), line: line)
+            return (white, alpha)
         }
-        let light = UIColor(S2CenterIndicatorView.resolvedForeground(for: .light))
-        let dark = UIColor(S2CenterIndicatorView.resolvedForeground(for: .dark))
-        let labelLight = UIColor.label.resolvedColor(
-            with: UITraitCollection(userInterfaceStyle: .light)
-        )
-        let labelDark = UIColor.label.resolvedColor(
-            with: UITraitCollection(userInterfaceStyle: .dark)
-        )
 
-        XCTAssertEqual(white(light), white(labelLight), accuracy: 0.001)
-        XCTAssertEqual(white(dark), white(labelDark), accuracy: 0.001)
-        XCTAssertEqual(white(light), 0, accuracy: 0.001, "浅色前景应为黑")
-        XCTAssertEqual(white(dark), 1, accuracy: 0.001, "深色前景应为白")
+        // 同源引用，不是「写一份相等的字面量」。
+        XCTAssertEqual(
+            S2CenterIndicatorView.backgroundColor,
+            S2PendingDeletionMark.circleColor
+        )
+        XCTAssertEqual(
+            S2CenterIndicatorView.foregroundColor,
+            S2PendingDeletionMark.symbolColor
+        )
+        XCTAssertEqual(S2CenterIndicatorView.foregroundColor, Color.white)
+
+        // 两种外观下逐通道相同——固定色的定义。
+        for color in [
+            S2CenterIndicatorView.backgroundColor,
+            S2CenterIndicatorView.foregroundColor,
+            S2CenterIndicatorView.separatorColor
+        ] {
+            let light = grayscale(color, .light)
+            let dark = grayscale(color, .dark)
+            XCTAssertEqual(light.white, dark.white, accuracy: 0.001)
+            XCTAssertEqual(light.alpha, dark.alpha, accuracy: 0.001)
+        }
+
+        // 底是黑 55%、前景是不透明白：与主题无关的双色。
+        let background = grayscale(S2CenterIndicatorView.backgroundColor, .light)
+        XCTAssertEqual(background.white, 0, accuracy: 0.001, "底应为黑")
+        XCTAssertEqual(
+            background.alpha,
+            S2PendingDeletionMark.circleOpacity,
+            accuracy: 0.001
+        )
+        let foreground = grayscale(S2CenterIndicatorView.foregroundColor, .light)
+        XCTAssertEqual(foreground.white, 1, accuracy: 0.001, "前景应为白")
+        XCTAssertEqual(foreground.alpha, 1, accuracy: 0.001)
+
+        // 决策 42 的 chrome 前景不受本卡影响，仍是自适应的。
         XCTAssertEqual(S2ChromeForeground.onGlassPrimary, Color.primary)
     }
 
-    // IC-123 A（夹具驱动；CI 模拟器为 iOS 18.5，玻璃走回落配方，iOS 26
-    // `glassEffect` 合成层未覆盖，真机 H56 第 1 项兜底）：**同一实例**、不
-    // 重建、不翻页——只把宿主外观 override 在深/浅间来回切，玻璃内图标与
-    // 文字必须随之改色：浅色下出现近黑像素（label 黑），深色下没有。
+    // IC-123 A → IC-136 C 改写（原断言取反；夹具驱动，真机 H61 第 1 项兜底）：
+    // **同一实例**、不重建、不翻页，只把宿主外观在深/浅间来回切——中央指示
+    // 的渲染必须**一模一样**。原来这里断言「切浅色出现近黑像素」，现在断言
+    // 三次采样的暗像素数完全相等：固定色的意思就是没有可重解析的对象。
     @MainActor
     func testIC123AIndicatorGlassContentFollowsInPlaceAppearanceSwitch() throws {
         let view = ZStack {
@@ -661,26 +691,53 @@ final class S2ActionBarWiringTests: XCTestCase {
         window.isHidden = false
         defer { window.isHidden = true }
 
-        controller.overrideUserInterfaceStyle = .dark
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-        let darkFirst = try ic123NearBlackPixelCount(in: controller)
+        // 阈值 200：黑 55% 压在白底上约 115，落在阈值内；纯白前景不计入。
+        func sample(_ style: UIUserInterfaceStyle) throws -> (dim: Int, black: Int) {
+            controller.overrideUserInterfaceStyle = style
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+            return (
+                try ic123NearBlackPixelCount(in: controller, luminanceBelow: 200),
+                try ic123NearBlackPixelCount(in: controller)
+            )
+        }
 
-        controller.overrideUserInterfaceStyle = .light
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-        let light = try ic123NearBlackPixelCount(in: controller)
+        let darkFirst = try sample(.dark)
+        let light = try sample(.light)
+        let darkAgain = try sample(.dark)
 
-        controller.overrideUserInterfaceStyle = .dark
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-        let darkAgain = try ic123NearBlackPixelCount(in: controller)
+        XCTAssertGreaterThan(darkFirst.dim, 0, "指示应真的画出来，否则本断言无意义")
+        XCTAssertEqual(light.dim, darkFirst.dim, "原位切到浅色后渲染不得变化")
+        XCTAssertEqual(darkAgain.dim, darkFirst.dim, "原位切回深色后渲染不得变化")
 
-        XCTAssertEqual(darkFirst, 0, "深色下玻璃内前景应为白，不应有近黑像素")
-        XCTAssertGreaterThan(light, 20, "原位切到浅色后图标与文字应即时变黑")
-        XCTAssertEqual(darkAgain, 0, "原位切回深色后应即时变回白")
+        // 前景固定为白：任何一态都不应出现近黑像素（原断言在浅色下要求 > 20）。
+        XCTAssertEqual(darkFirst.black, 0)
+        XCTAssertEqual(light.black, 0, "前景不再随外观变黑")
+        XCTAssertEqual(darkAgain.black, 0)
     }
 
-    // IC-123 附录：指示器内分隔线的定值分隔色——按 colorScheme 显式解析，
-    // 与系统 `UIColor.separator` 两态同值，且两态不同色（定值解析的意义所在）。
+    // IC-123 附录 → IC-136 C 改写（原断言取反）：分隔线改固定白 30%，
+    // 两种外观下同色；不再与系统自适应分隔色挂钩。
     func testIC123AppendixIndicatorSeparatorIsResolvedPerColorScheme() {
+        var white: CGFloat = -1
+        var alpha: CGFloat = -1
+        let separator = UIColor(S2CenterIndicatorView.separatorColor)
+        XCTAssertTrue(separator.getWhite(&white, alpha: &alpha))
+        XCTAssertEqual(white, 1, accuracy: 0.001, "分隔线应为白")
+        XCTAssertEqual(alpha, 0.3, accuracy: 0.001, "白 30%")
+
+        // 两态同色——原断言要求「两态应不同」，本卡取反。
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            var resolvedWhite: CGFloat = -1
+            var resolvedAlpha: CGFloat = -1
+            let resolved = separator.resolvedColor(
+                with: UITraitCollection(userInterfaceStyle: style)
+            )
+            XCTAssertTrue(resolved.getWhite(&resolvedWhite, alpha: &resolvedAlpha))
+            XCTAssertEqual(resolvedWhite, white, accuracy: 0.001)
+            XCTAssertEqual(resolvedAlpha, alpha, accuracy: 0.001)
+        }
+
+        // 与系统自适应分隔色脱钩：系统那个本就两态不同，作为对照。
         func rgba(
             _ color: UIColor,
             line: UInt = #line
@@ -688,50 +745,34 @@ final class S2ActionBarWiringTests: XCTestCase {
             var red: CGFloat = -1
             var green: CGFloat = -1
             var blue: CGFloat = -1
-            var alpha: CGFloat = -1
+            var componentAlpha: CGFloat = -1
             XCTAssertTrue(
-                color.getRed(&red, green: &green, blue: &blue, alpha: &alpha),
+                color.getRed(
+                    &red,
+                    green: &green,
+                    blue: &blue,
+                    alpha: &componentAlpha
+                ),
                 line: line
             )
-            return (red, green, blue, alpha)
+            return (red, green, blue, componentAlpha)
         }
-        func assertSameColor(
-            _ lhs: (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat),
-            _ rhs: (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat),
-            line: UInt = #line
-        ) {
-            XCTAssertEqual(lhs.r, rhs.r, accuracy: 0.01, line: line)
-            XCTAssertEqual(lhs.g, rhs.g, accuracy: 0.01, line: line)
-            XCTAssertEqual(lhs.b, rhs.b, accuracy: 0.01, line: line)
-            XCTAssertEqual(lhs.a, rhs.a, accuracy: 0.01, line: line)
-        }
-
-        let light = rgba(UIColor(S2CenterIndicatorView.resolvedSeparator(for: .light)))
-        let dark = rgba(UIColor(S2CenterIndicatorView.resolvedSeparator(for: .dark)))
         let systemLight = rgba(UIColor.separator.resolvedColor(
             with: UITraitCollection(userInterfaceStyle: .light)
         ))
         let systemDark = rgba(UIColor.separator.resolvedColor(
             with: UITraitCollection(userInterfaceStyle: .dark)
         ))
-
-        assertSameColor(light, systemLight)
-        assertSameColor(dark, systemDark)
         XCTAssertFalse(
-            abs(light.r - dark.r) < 0.01 && abs(light.a - dark.a) < 0.01,
-            "两态分隔色应不同——定值解析才有意义"
-        )
-        // 图标 / 文字的前景取值不受本改动影响（仍为 A 的 label 两态）。
-        XCTAssertNotEqual(
-            UIColor(S2CenterIndicatorView.resolvedSeparator(for: .light)),
-            UIColor(S2CenterIndicatorView.resolvedForeground(for: .light))
+            abs(systemLight.r - systemDark.r) < 0.01 &&
+                abs(systemLight.a - systemDark.a) < 0.01,
+            "系统分隔色本就两态不同——这是本断言的对照"
         )
     }
 
-    // IC-123 附录（夹具驱动；CI 模拟器为 iOS 18.5，iOS 26 `glassEffect`
-    // 合成层未覆盖，真机 H56 第 1 项兜底）：分隔线由 `separator(color:)`
-    // 以定值色**单次**落笔——给黑色应真的画出线（`hidden()` 只藏系统
-    // `Divider` 自带的线，不藏其后挂的 overlay），给全透明则不画。
+    // IC-123 附录 → IC-136 C 改写（夹具驱动；真机 H61 第 1 项兜底）：
+    // 分隔线的落笔机制不变（`hidden()` 只藏系统自带线，其后的 overlay 照画），
+    // 且产品现在交给它的固定白 30% 不是全透明，故确实画得出线。
     @MainActor
     func testIC123AppendixIndicatorSeparatorLineDrawsWithGivenColor() throws {
         func darkPixelCount(color: Color) throws -> Int {
@@ -761,6 +802,17 @@ final class S2ActionBarWiringTests: XCTestCase {
 
         XCTAssertEqual(blank, 0, "全透明色下不应有暗像素（系统自带的线已被藏起）")
         XCTAssertGreaterThan(drawn, 0, "定值色应真的画出分隔线")
+
+        // 产品交给它的固定色不是全透明——否则线根本不存在。
+        var white: CGFloat = -1
+        var alpha: CGFloat = -1
+        XCTAssertTrue(
+            UIColor(S2CenterIndicatorView.separatorColor).getWhite(
+                &white,
+                alpha: &alpha
+            )
+        )
+        XCTAssertGreaterThan(alpha, 0)
     }
 
     /// IC-123 A：把宿主视图按 @2x 截屏，数亮度低于阈值的像素。默认阈值 24
