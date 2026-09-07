@@ -1772,6 +1772,17 @@
         }
       }
     },
+    "s3.chrome.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认删除"
+          }
+        }
+      }
+    },
     "s3.confirmation.recently_deleted_notice" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1833,7 +1844,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "没有待删除照片"
+            "value" : "没有待删除照片。"
           }
         }
       }

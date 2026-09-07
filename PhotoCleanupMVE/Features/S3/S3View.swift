@@ -117,183 +117,266 @@ struct S3CancelAllAction: Equatable {
     }
 }
 
+// MARK: - IC-134 A：S3 视觉登记制常量
+//
+// 设计语言的唯一来源是 SPEC-S2 v18 第十一节第 2 部分。chrome 的一切取值**不新造**，
+// 一律取自 S1 视觉层已登记的常量容器；此处只做「引用登记」，让断言能核对来源
+// （断言 1 比对的是 S1 常量本身，不是 44、16 这类字面量）。
+// 登记制：这些量不进 `S2CalibrationConfiguration`、不上标定面板。
+
+/// 顶排 chrome 的取值——逐项引用 S1，S3 不自造语汇。
+enum S3ChromeMetrics {
+    static let rowHeight = S1ChromeLayout.rowHeight
+    static let topRowTopInset = S1ChromeLayout.topRowTopInset
+    static let horizontalMargin = S1ChromeLayout.horizontalMargin
+    static let itemSpacing = S1ChromeLayout.itemSpacing
+    static let titleFontSize = S1ChromeTypography.titleFontSize
+    static let subtitleFontSize = S1ChromeTypography.subtitleFontSize
+    static let circleIconPointSize = S1ChromeTypography.circleIconPointSize
+}
+
+/// 页面版式（④卡取值表逐条转录；「距安全区」的量随机型自适应）。
+enum S3PageLayout {
+    /// 「最近删除」提示句上缘距安全区顶。
+    static let noticeTopInset: CGFloat = 59
+    /// 提示句左右边距。
+    static let noticeHorizontalMargin: CGFloat = 32
+    /// 列表上缘距安全区顶。
+    static let listTopInset: CGFloat = 87
+    /// 列表左右边距。
+    static let listHorizontalMargin: CGFloat = 16
+    /// 分组卡之间的间距。
+    static let cardSpacing: CGFloat = 16
+    /// 末卡与操作条之间的间隙（④取定：卡只说「末卡不被遮」，未给具体值，
+    /// 取与 chrome 件间距同值 8）。
+    static let listToActionBarSpacing: CGFloat = 8
+
+    /// 列表底部内边距 = 操作条高 + 操作条下缘距安全区底 + 末卡间隙。
+    ///
+    /// ④取定：卡内写「操作条高 + 8 + 安全区底」；安全区底由滚动容器自身的安全区
+    /// 内边距承担，此处不重复计入，否则末卡下方会多出一个安全区高度的空白。
+    static var listBottomClearance: CGFloat {
+        S3ActionBarMetrics.height
+            + S2OverlayLayout.bottomRowBottomInset
+            + listToActionBarSpacing
+    }
+}
+
+/// 底部操作条（④卡取值表）。
+enum S3ActionBarMetrics {
+    static let height: CGFloat = 56
+    static let cornerRadius: CGFloat = 28
+    static let horizontalMargin: CGFloat = 16
+    static let leadingPadding: CGFloat = 16
+    static let trailingPadding: CGFloat = 6
+    static let itemSpacing: CGFloat = 10
+    static let cancelFontSize: CGFloat = 15
+    static let volumePrimaryFontSize: CGFloat = 13
+    static let volumeSecondaryFontSize: CGFloat = 11
+    static let scanningIndicatorSize: CGFloat = 16
+    static let submitHeight: CGFloat = 44
+    static let submitCornerRadius: CGFloat = 22
+    static let submitFontSize: CGFloat = 15
+    static let submitHorizontalPadding: CGFloat = 20
+    /// 禁用态降幅——与 S1 加载态同值（v18 §11.2 的 40%）。
+    static let disabledOpacity: Double = 0.4
+}
+
+/// 空态（S3-4）——尺寸引用 S1 已登记的四态版式常量。
+enum S3EmptyStateMetrics {
+    static let iconPointSize = S1StatePlaceholderStyle.iconPointSize
+    static let titleFontSize = S1StatePlaceholderStyle.titleFontSize
+    static let contentSpacing = S1StatePlaceholderStyle.contentSpacing
+}
+
+// MARK: - IC-134 A：顶排 chrome 与三态元素清单（测试钉住）
+
+/// 顶排 chrome 的展示口径。副行**只**取 IC-133 的 `S3HeaderSubtitle`，不另起格式串。
+struct S3ChromeBarModel: Equatable {
+    let title: String
+    let subtitle: String
+
+    static func make(assetCount: Int, rangeCount: Int) -> S3ChromeBarModel {
+        S3ChromeBarModel(
+            title: L10n.text("s3.chrome.title"),
+            subtitle: S3HeaderSubtitle.text(
+                assetCount: assetCount,
+                rangeCount: rangeCount
+            )
+        )
+    }
+}
+
+/// 三态版式的元素清单。
+enum S3StateElement: Equatable {
+    case chrome
+    case recentlyDeletedNotice
+    case groupCards
+    case actionBar
+    case emptyIcon
+    case emptyTitle
+}
+
+enum S3StatePresentation {
+    /// S3-4 空集：顶排 + 中央图标 + 主句，**无操作条、无提示句**。
+    /// S3-1／S3-2：顶排 + 提示句 + 分组卡 + 操作条——两者差别在格子与操作条的
+    /// **内容**（未完成格「…」、转圈与删除禁用），不在元素清单。
+    static func elements(for state: S3State) -> [S3StateElement] {
+        switch state {
+        case .scanning, .ready:
+            return [.chrome, .recentlyDeletedNotice, .groupCards, .actionBar]
+        case .empty:
+            return [.chrome, .emptyIcon, .emptyTitle]
+        }
+    }
+
+    static func showsActionBar(for state: S3State) -> Bool {
+        elements(for: state).contains(.actionBar)
+    }
+
+    static func showsRecentlyDeletedNotice(for state: S3State) -> Bool {
+        elements(for: state).contains(.recentlyDeletedNotice)
+    }
+}
+
 // MARK: - S3View
 
 struct S3View: View {
     @ObservedObject var coordinator: CleanupCoordinator
     @State private var cancelAllAction = S3CancelAllAction()
 
-    private var cancelAllDialogBinding: Binding<Bool> {
-        Binding(
-            get: { cancelAllAction.isAwaitingConfirmation },
-            set: { isPresented in
-                if !isPresented {
-                    cancelAllAction.dismiss()
-                }
-            }
-        )
-    }
-
     var body: some View {
-        NavigationStack {
+        ZStack(alignment: .top) {
+            Color(uiColor: .systemGroupedBackground)
+                .ignoresSafeArea()
             if let machine = coordinator.s3Machine {
-                let presentation = S3GroupPresentation.make(
-                    groups: coordinator.s3Groups,
-                    currentAssets: machine.assets
-                )
-                List {
-                    if let message = coordinator.message {
-                        Section {
-                            Text(message)
-                        }
-                    }
-
-                    Section(L10n.text("s3.section.status")) {
-                        Text(stateTitle(machine.state))
-                        Text(L10n.text(
-                            "s3.asset.pending_count",
-                            replacing: ["count": String(machine.assetCount)]
-                        ))
-                        Text(S3HeaderSubtitle.text(
-                            assetCount: machine.assetCount,
-                            rangeCount: presentation.nonEmptyRangeCount
-                        ))
-                        Text(volumeText(machine))
-                        if machine.state == .ready {
-                            Text(L10n.text("s3.confirmation.recently_deleted_notice"))
-                        }
-                        if machine.state == .scanning {
-                            ProgressView()
-                        }
-                    }
-
-                    ForEach(
-                        presentation.groups,
-                        id: \.sourceRangeID
-                    ) { group in
-                        Section(groupTitle(group)) {
-                            ForEach(group.orderedAssets, id: \.identifier) { asset in
-                                assetRow(asset, machine: machine)
-                            }
-                        }
-                    }
-
-                    Section(L10n.text("s3.section.actions")) {
-                        Button(L10n.text("s3.action.cancel_all"), role: .destructive) {
-                            cancelAllAction.request(
-                                assetCount: machine.assetCount,
-                                isFrozen: machine.frozenSnapshot != nil
-                            )
-                        }
-                        .disabled(
-                            !S3CancelAllAction.isAvailable(
-                                assetCount: machine.assetCount,
-                                isFrozen: machine.frozenSnapshot != nil
-                            )
-                        )
-
-                        Button(L10n.text("s3.action.submit_deletion"), role: .destructive) {
-                            coordinator.submitDeletion()
-                        }
-                        .disabled(!machine.canSubmit)
-
-                        Button(L10n.text("s3.action.back")) {
-                            coordinator.leaveConfirmation()
-                        }
-                    }
-                }
-                .navigationTitle(L10n.text("s3.navigation.title"))
-                .confirmationDialog(
-                    L10n.text(
-                        "s3.cancel_all.confirm.title",
-                        replacing: ["count": String(machine.assetCount)]
-                    ),
-                    isPresented: cancelAllDialogBinding,
-                    titleVisibility: .visible
-                ) {
-                    Button(L10n.text("s3.cancel_all.confirm.action"), role: .destructive) {
-                        cancelAllAction.confirm {
-                            coordinator.cancelAllAssets()
-                        }
-                    }
-                }
+                content(machine)
             } else {
                 ProgressView()
+                    .id("s3-loading")
             }
         }
     }
 
-    private func groupTitle(_ group: S3GroupPresentation.Group) -> String {
-        L10n.text(
-            "s3.group.asset_count",
-            replacing: [
-                "name": group.name,
-                "count": String(group.assetCount)
-            ]
+    @ViewBuilder
+    private func content(_ machine: S3StateMachine) -> some View {
+        let presentation = S3GroupPresentation.make(
+            groups: coordinator.s3Groups,
+            currentAssets: machine.assets
         )
+        ZStack(alignment: .top) {
+            if machine.state == .empty {
+                emptyState
+            } else {
+                groupList(presentation, machine: machine)
+                recentlyDeletedNotice
+            }
+            chromeBar(machine, presentation: presentation)
+        }
     }
 
-    private func assetRow(
-        _ asset: AssetDescriptor,
+    // MARK: - IC-134 A：顶排 chrome（左圆钮 + 中胶囊，无右件）
+
+    private func chromeBar(
+        _ machine: S3StateMachine,
+        presentation: S3GroupPresentation
+    ) -> some View {
+        let model = S3ChromeBarModel.make(
+            assetCount: machine.assetCount,
+            rangeCount: presentation.nonEmptyRangeCount
+        )
+        return HStack(spacing: S3ChromeMetrics.itemSpacing) {
+            backButton
+            capsule(model)
+        }
+        .padding(.top, S3ChromeMetrics.topRowTopInset)
+        .padding(.horizontal, S3ChromeMetrics.horizontalMargin)
+    }
+
+    private var backButton: some View {
+        Button {
+            coordinator.leaveConfirmation()
+        } label: {
+            Image(systemName: "chevron.left")
+                .foregroundStyle(S1ChromeForeground.primary)
+                .s1ChromeCircleGlass()
+        }
+        .accessibilityLabel(L10n.text("s3.action.back"))
+    }
+
+    /// 跑道胶囊占满剩余宽，右缘对齐右边距。
+    private func capsule(_ model: S3ChromeBarModel) -> some View {
+        VStack(spacing: 0) {
+            Text(model.title)
+                .font(
+                    .system(
+                        size: S3ChromeMetrics.titleFontSize,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(S1ChromeForeground.primary)
+            Text(model.subtitle)
+                .font(.system(size: S3ChromeMetrics.subtitleFontSize))
+                .foregroundStyle(S1ChromeForeground.secondary)
+        }
+        .lineLimit(1)
+        .frame(maxWidth: .infinity)
+        .frame(height: S3ChromeMetrics.rowHeight)
+        .s1ChromeGlassBackground(in: Capsule())
+    }
+
+    // MARK: - IC-134 A：提示句
+
+    private var recentlyDeletedNotice: some View {
+        Text(L10n.text("s3.confirmation.recently_deleted_notice"))
+            .font(.system(size: S3ChromeMetrics.subtitleFontSize))
+            .foregroundStyle(S1ChromeForeground.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, S3PageLayout.noticeHorizontalMargin)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, S3PageLayout.noticeTopInset)
+            .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    // MARK: - IC-134 A：列表容器（分组卡由子项 B 填充）
+
+    private func groupList(
+        _ presentation: S3GroupPresentation,
         machine: S3StateMachine
     ) -> some View {
-        HStack {
-            ThumbnailView(assetIdentifier: asset.identifier)
-            VStack(alignment: .leading) {
-                Text(asset.identifier)
-                    .lineLimit(2)
-                if asset.isFavorite {
-                    Label(
-                        L10n.text("s3.asset.favorite"),
-                        systemImage: "heart.fill"
-                    )
+        ScrollView {
+            LazyVStack(spacing: S3PageLayout.cardSpacing) {
+                ForEach(presentation.groups, id: \.sourceRangeID) { group in
+                    groupCard(group, machine: machine)
                 }
             }
-            Spacer()
-            Button(L10n.text("s3.action.remove")) {
-                coordinator.removeAsset(asset.identifier)
-            }
-            .disabled(machine.frozenSnapshot != nil)
+            .padding(.horizontal, S3PageLayout.listHorizontalMargin)
+            .padding(.top, S3PageLayout.listTopInset)
+            .padding(.bottom, S3PageLayout.listBottomClearance)
         }
     }
 
-    private func stateTitle(_ state: S3State) -> String {
-        switch state {
-        case .scanning:
-            return L10n.text("s3.state.scanning")
-        case .ready:
-            return L10n.text("s3.state.ready")
-        case .empty:
-            return L10n.text("s3.state.empty")
-        }
+    /// 子项 B 在此填入组头与三列网格。
+    @ViewBuilder
+    private func groupCard(
+        _ group: S3GroupPresentation.Group,
+        machine: S3StateMachine
+    ) -> some View {
+        EmptyView()
     }
 
-    private func volumeText(_ machine: S3StateMachine) -> String {
-        let known = DecimalVolumeFormatter.string(forByteCount: machine.knownTotalBytes)
-        switch machine.state {
-        case .scanning:
-            return L10n.text(
-                "s3.volume.scanning",
-                replacing: [
-                    "known": known,
-                    "count": String(machine.unavailableCount)
-                ]
-            )
-        case .ready where machine.unavailableCount == 0:
-            return L10n.text(
-                "s3.volume.exact",
-                replacing: ["known": known]
-            )
-        case .ready:
-            return L10n.text(
-                "s3.volume.lower_bound",
-                replacing: [
-                    "known": known,
-                    "count": String(machine.unavailableCount)
-                ]
-            )
-        case .empty:
-            return L10n.text("s3.volume.empty")
+    // MARK: - IC-134 A：S3-4 空态
+
+    private var emptyState: some View {
+        VStack(spacing: S3EmptyStateMetrics.contentSpacing) {
+            Image(systemName: "trash")
+                .font(.system(size: S3EmptyStateMetrics.iconPointSize))
+                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+            Text(L10n.text("s3.state.empty"))
+                .font(.system(size: S3EmptyStateMetrics.titleFontSize))
+                .foregroundStyle(S1ChromeForeground.secondary)
+                .multilineTextAlignment(.center)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
