@@ -30,6 +30,129 @@ struct PhotoCleanupMVEApp: App {
         )
     }
 
+    /// IC-139：S2 视图构造抽成 builder（陷阱 16）。
+    ///
+    /// 本卡给 `S2View` 加了 `assetMediaKind` 实参。这段构造原先内联在
+    /// Scene body 的多层嵌套里共 113 行，再加参数会把类型检查推到超时
+    /// （IC-108 #192、IC-113 #214／#215 三次实例）。实参顺序与逐成员
+    /// 声明顺序一致。
+    private func s2Screen(machine: S2StateMachine) -> some View {
+        S2View(
+            machine: machine,
+            calibration: coordinator.s2Calibration,
+            assetAspectRatio: coordinator.s2AssetAspectRatio,
+            assetIsScreenshot:
+                coordinator.s2AssetIsScreenshot,
+            assetMediaKind: coordinator.s2AssetMediaKind,
+            assetPixelSize: coordinator.s2AssetPixelSize,
+            assetCreationDate:
+                coordinator.s2AssetCreationDate,
+            assetVolumeProvider:
+                coordinator.makeS2AssetVolumeProvider(),
+            assetSizeProber:
+                coordinator.makeS2AssetSizeProber(),
+            photoContent: { context in
+                AnyView(
+                    S2TemporaryPhotoImageView(
+                        strategy: s2PhotoImageStrategy,
+                        assetID: context.assetID,
+                        requestBaseSize:
+                            context.requestBaseSize,
+                        requestedScale: context.scale,
+                        requestStrategy:
+                            context.requestStrategy,
+                        requestRevision:
+                            context.requestRevision,
+                        contentMode: context.contentMode,
+                        showsOpaqueLoadingBackground: true,
+                        onReading:
+                            context.onRequestReading,
+                        onLoadStateChange:
+                            context.onLoadStateChange,
+                        onRequestResult:
+                            context.onRequestResult,
+                        onImageReplaced:
+                            context.onImageReplaced,
+                        onImageReplacementSuppressed:
+                            context
+                            .onImageReplacementSuppressed,
+                        onImageRequestStarted:
+                            context.onImageRequestStarted,
+                        onImageRequestRawResult:
+                            context.onImageRequestRawResult
+                    )
+                )
+            },
+            stripItemContent: { item in
+                AnyView(
+                    S2TemporaryPhotoImageView(
+                        strategy: s2PhotoImageStrategy,
+                        assetID: item.assetID,
+                        requestedScale: 1,
+                        requestStrategy: nil,
+                        requestRevision: 0,
+                        showsOpaqueLoadingBackground: false,
+                        onReading: { _ in }
+                    )
+                )
+            },
+            albumPickerContent: { _, actions in
+                AnyView(
+                    S2AlbumPickerListView(
+                        items: coordinator.s2UserAlbumItems(),
+                        actions: actions,
+                        thumbnail: { assetID in
+                            AnyView(
+                                S2TemporaryPhotoImageView(
+                                    strategy:
+                                        s2PhotoImageStrategy,
+                                    assetID: assetID,
+                                    requestedScale: 1,
+                                    requestStrategy: nil,
+                                    requestRevision: 0,
+                                    showsOpaqueLoadingBackground:
+                                        false,
+                                    onReading: { _ in }
+                                )
+                            )
+                        }
+                    )
+                )
+            },
+            onBack: { payload in
+                _ = coordinator.leaveS2(with: payload)
+            },
+            onConfirmation: { payload in
+                _ = coordinator.enterConfirmationFromS2(
+                    with: payload
+                )
+            },
+            onFavoriteRequest: { request in
+                _ = coordinator.requestS2FavoriteToggle(request)
+            },
+            onRecentAlbumRequest: { request in
+                _ = coordinator.requestS2RecentAlbumAddition(
+                    request
+                )
+            },
+            onAlbumRemovalRequest: { request in
+                _ = coordinator.requestS2AlbumRemoval(request)
+            },
+            onAlbumCreationRequest: { name, completion in
+                coordinator.requestS2AlbumCreation(
+                    named: name,
+                    completion: completion
+                )
+            },
+            onAlbumPickerSelection: { request, album in
+                _ = coordinator.requestS2AlbumPickerSelection(
+                    request,
+                    album: album
+                )
+            }
+        )
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
@@ -44,119 +167,7 @@ struct PhotoCleanupMVEApp: App {
                     }
                 case .s2:
                     if let machine = coordinator.s2Machine {
-                        S2View(
-                            machine: machine,
-                            calibration: coordinator.s2Calibration,
-                            assetAspectRatio: coordinator.s2AssetAspectRatio,
-                            assetIsScreenshot:
-                                coordinator.s2AssetIsScreenshot,
-                            assetPixelSize: coordinator.s2AssetPixelSize,
-                            assetCreationDate:
-                                coordinator.s2AssetCreationDate,
-                            assetVolumeProvider:
-                                coordinator.makeS2AssetVolumeProvider(),
-                            assetSizeProber:
-                                coordinator.makeS2AssetSizeProber(),
-                            photoContent: { context in
-                                AnyView(
-                                    S2TemporaryPhotoImageView(
-                                        strategy: s2PhotoImageStrategy,
-                                        assetID: context.assetID,
-                                        requestBaseSize:
-                                            context.requestBaseSize,
-                                        requestedScale: context.scale,
-                                        requestStrategy:
-                                            context.requestStrategy,
-                                        requestRevision:
-                                            context.requestRevision,
-                                        contentMode: context.contentMode,
-                                        showsOpaqueLoadingBackground: true,
-                                        onReading:
-                                            context.onRequestReading,
-                                        onLoadStateChange:
-                                            context.onLoadStateChange,
-                                        onRequestResult:
-                                            context.onRequestResult,
-                                        onImageReplaced:
-                                            context.onImageReplaced,
-                                        onImageReplacementSuppressed:
-                                            context
-                                            .onImageReplacementSuppressed,
-                                        onImageRequestStarted:
-                                            context.onImageRequestStarted,
-                                        onImageRequestRawResult:
-                                            context.onImageRequestRawResult
-                                    )
-                                )
-                            },
-                            stripItemContent: { item in
-                                AnyView(
-                                    S2TemporaryPhotoImageView(
-                                        strategy: s2PhotoImageStrategy,
-                                        assetID: item.assetID,
-                                        requestedScale: 1,
-                                        requestStrategy: nil,
-                                        requestRevision: 0,
-                                        showsOpaqueLoadingBackground: false,
-                                        onReading: { _ in }
-                                    )
-                                )
-                            },
-                            albumPickerContent: { _, actions in
-                                AnyView(
-                                    S2AlbumPickerListView(
-                                        items: coordinator.s2UserAlbumItems(),
-                                        actions: actions,
-                                        thumbnail: { assetID in
-                                            AnyView(
-                                                S2TemporaryPhotoImageView(
-                                                    strategy:
-                                                        s2PhotoImageStrategy,
-                                                    assetID: assetID,
-                                                    requestedScale: 1,
-                                                    requestStrategy: nil,
-                                                    requestRevision: 0,
-                                                    showsOpaqueLoadingBackground:
-                                                        false,
-                                                    onReading: { _ in }
-                                                )
-                                            )
-                                        }
-                                    )
-                                )
-                            },
-                            onBack: { payload in
-                                _ = coordinator.leaveS2(with: payload)
-                            },
-                            onConfirmation: { payload in
-                                _ = coordinator.enterConfirmationFromS2(
-                                    with: payload
-                                )
-                            },
-                            onFavoriteRequest: { request in
-                                _ = coordinator.requestS2FavoriteToggle(request)
-                            },
-                            onRecentAlbumRequest: { request in
-                                _ = coordinator.requestS2RecentAlbumAddition(
-                                    request
-                                )
-                            },
-                            onAlbumRemovalRequest: { request in
-                                _ = coordinator.requestS2AlbumRemoval(request)
-                            },
-                            onAlbumCreationRequest: { name, completion in
-                                coordinator.requestS2AlbumCreation(
-                                    named: name,
-                                    completion: completion
-                                )
-                            },
-                            onAlbumPickerSelection: { request, album in
-                                _ = coordinator.requestS2AlbumPickerSelection(
-                                    request,
-                                    album: album
-                                )
-                            }
-                        )
+                        s2Screen(machine: machine)
                     } else {
                         ProgressView()
                     }

@@ -455,11 +455,17 @@ struct S2View: View {
 
     private let assetAspectRatio: (String) -> CGFloat
     private let assetIsScreenshot: (String) -> Bool
+    /// IC-139 A：媒体类别取数。默认全判 `photo`——既有 5 处测试构造点因此
+    /// 一行不用改，且照片路径的默认行为与本卡前逐字相同。
+    private let assetMediaKind: (String) -> S2MediaKind
     private let assetPixelSize: (String) -> CGSize
     /// IC-078：`pinchMaxScale` 的 1:1 像素倍率按屏幕倍率换算。
     @Environment(\.displayScale) private var displayScale
     /// IC-079 R1：各资产图像加载态登记，仅供诊断录制场景 D 读取。
     @StateObject private var imageLoadStateRegistry = S2ImageLoadStateRegistry()
+    /// IC-139 D：实况长按事件记录（本卡不接播放器，IC-140 接线时读它对齐）。
+    @StateObject private var livePhotoLongPress =
+        S2LivePhotoLongPressRecorder()
     private let photoContent: PhotoContent
     private let stripItemContent: StripItemContent
     private let albumPickerContent: AlbumPickerContent
@@ -533,6 +539,7 @@ struct S2View: View {
         calibration: S2CalibrationModel,
         assetAspectRatio: @escaping (String) -> CGFloat,
         assetIsScreenshot: @escaping (String) -> Bool = { _ in false },
+        assetMediaKind: @escaping (String) -> S2MediaKind = { _ in .photo },
         assetPixelSize: @escaping (String) -> CGSize = { _ in .zero },
         assetCreationDate: @escaping (String) -> Date? = { _ in nil },
         assetVolumeProvider: S2AssetVolumeProviding? = nil,
@@ -566,6 +573,7 @@ struct S2View: View {
         self.calibration = calibration
         self.assetAspectRatio = assetAspectRatio
         self.assetIsScreenshot = assetIsScreenshot
+        self.assetMediaKind = assetMediaKind
         self.assetPixelSize = assetPixelSize
         self.photoContent = photoContent
         self.stripItemContent = stripItemContent
@@ -890,8 +898,10 @@ struct S2View: View {
             configuration: calibration.configuration,
             viewportSize: viewportSize,
             pages: pages,
+            // IC-139 D（v19 回写决策 58）：主图长按改派。识别器本身不动
+            // （装在分页器根视图上，本卡不改那个文件），只改闭包语义。
             onLongPress: {
-                calibrationOverlayState.toggleAccessControls()
+                handleMainPhotoLongPress()
             },
             diagnosticsCoordinator: geometryDiagnostics,
             transitionDiagnosticsCoordinator: transitionDiagnostics,
@@ -928,13 +938,27 @@ struct S2View: View {
                 // IC-104 C：同上，逐页几何也必须用真实安全区。
                 safeAreaInsets: safeAreaInsets
             )
+            // IC-139 C（v19 回写决策 57）：视频页显示态适配区下缘上移 68。
+            // 走 `S2NativePageContent` 既有的逐页 `fittedSize` / `fittedCenterY`
+            // 两个入口（IC-104 C v3 为截图带建的同一套机制），因此
+            // `S2NativePhotoPager.swift` 与 `S2Calibration.swift` 都不用动；
+            // `nativeZoomBaseSize` 不受影响，Nx 基准与照片页一致。
+            let mediaFit = S2MediaPageGeometry.videoPageFit(
+                viewportSize: viewportSize,
+                assetAspectRatio: assetAspectRatio(assetID),
+                mediaKind: assetMediaKind(assetID),
+                interfaceVisibility: machine.interfaceVisibility
+            )
+            let fittedSize = mediaFit?.size ?? pageMetrics.oneXDisplaySize
+            let fittedCenterY = mediaFit?.centerY
+                ?? pageMetrics.oneXDisplayCenterY
             let requestRevision = machine.imageRequestAssetID == assetID
                 ? machine.imageRequestRevision
                 : 0
             let pixelSize = assetPixelSize(assetID)
             let content = photoContent(S2ImageContentContext(
                 assetID: assetID,
-                fittedSize: pageMetrics.oneXDisplaySize,
+                fittedSize: fittedSize,
                 requestBaseSize: pageMetrics.nativeZoomBaseSize,
                 contentMode: .fit,
                 scale: index == machine.currentIndex
@@ -1000,8 +1024,8 @@ struct S2View: View {
                 assetID: assetID,
                 interfaceVisibility: machine.interfaceVisibility,
                 isFramedPhoto: pageMetrics.isFramedPhoto,
-                fittedSize: pageMetrics.oneXDisplaySize,
-                fittedCenterY: pageMetrics.oneXDisplayCenterY,
+                fittedSize: fittedSize,
+                fittedCenterY: fittedCenterY,
                 nativeZoomBaseSize: pageMetrics.nativeZoomBaseSize,
                 cornerRadius: pageMetrics.oneXCornerRadius,
                 doubleTapTargetScale: pageMetrics.doubleTapTargetScale,
@@ -1089,9 +1113,188 @@ struct S2View: View {
                         safeAreaBottom: safeAreaInsets.bottom
                     )
                 )
+
+            // IC-139 A／B：媒体标识层。放在最后一个兄弟层，既有三层的
+            // 帧与锚点一字未动。
+            mediaChromeLayer(
+                bottomStripHeight: bottomStripHeight,
+                safeAreaInsets: safeAreaInsets
+            )
         }
         .padding(.leading, safeAreaInsets.leading)
         .padding(.trailing, safeAreaInsets.trailing)
+    }
+
+    /// IC-139 A：当前页的媒体类别 `m`（按当前资产 `c` 派生）。
+    private var currentMediaKind: S2MediaKind {
+        assetMediaKind(machine.currentAssetID)
+    }
+
+    /// IC-139 D：主图长按 0.8 s 的落点。分派规则本身是纯函数
+    /// （`S2MainPhotoLongPressAction.resolve`），这里只负责执行。
+    ///
+    /// **夹具驱动不到这条路径**——它由分页器根视图的 UIKit 识别器触发，
+    /// 真机落点由 H63a 第 3 项兜底（陷阱 1）。
+    private func handleMainPhotoLongPress() {
+        switch S2MainPhotoLongPressAction.resolve(mediaKind: currentMediaKind) {
+        case .livePhotoPlayback:
+            livePhotoLongPress.record(assetID: machine.currentAssetID)
+        case .unbound:
+            break
+        }
+    }
+
+    /// IC-139 A／B：实况胶囊与视频浮框。
+    ///
+    /// 两件挂在 `interfaceOverlay` 的 ZStack 里作为**独立兄弟层**——ZStack 子层
+    /// 互不影响布局，顶排、横栏与操作条的几何因此一字未动（陷阱 13）；
+    /// 显隐过渡由外层 `.s2ChromeVisibilityTransition` 统一施加，本层不自造语汇，
+    /// 时长／缩放／模糊三个量全部落在 `S2ChromeVisibilityTransition` 上。
+    @ViewBuilder
+    private func mediaChromeLayer(
+        bottomStripHeight: CGFloat,
+        safeAreaInsets: S2OverlaySafeAreaInsets
+    ) -> some View {
+        let visibility = machine.interfaceVisibility
+        let kind = currentMediaKind
+
+        if let pill = S2LivePillPresentation.make(
+            mediaKind: kind,
+            interfaceVisibility: visibility
+        ) {
+            livePill(pill)
+                .padding(.leading, S2MediaMetrics.livePillLeading)
+                .padding(
+                    .top,
+                    S2MediaMetrics.livePillTopFromViewportTop(
+                        safeAreaTop: safeAreaInsets.top
+                    )
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .topLeading
+                )
+        }
+
+        if let bar = S2VideoBarPresentation.make(
+            mediaKind: kind,
+            interfaceVisibility: visibility
+        ) {
+            videoBar(bar)
+                .padding(
+                    .horizontal,
+                    S2MediaMetrics.videoBarHorizontalMargin
+                )
+                .padding(
+                    .bottom,
+                    S2MediaMetrics.videoBarBottomFromViewportBottom(
+                        safeAreaBottom: safeAreaInsets.bottom,
+                        bottomStripHeight: bottomStripHeight
+                    )
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .bottom
+                )
+        }
+    }
+
+    /// 实况胶囊：实况符号 + 文字，玻璃跑道底。决策 54：**无下箭头、不可点**。
+    private func livePill(_ model: S2LivePillPresentation) -> some View {
+        HStack(spacing: S2MediaMetrics.livePillItemSpacing) {
+            Image(systemName: model.symbolName)
+                .font(.system(size: S2MediaMetrics.livePillIconPointSize))
+            Text(verbatim: model.text)
+                .font(.system(
+                    size: S2MediaMetrics.livePillFontSize,
+                    weight: .semibold
+                ))
+        }
+        .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+        .padding(.leading, S2MediaMetrics.livePillPaddingLeading)
+        .padding(.trailing, S2MediaMetrics.livePillPaddingTrailing)
+        .frame(height: S2MediaMetrics.livePillHeight)
+        .s2ChromeGlassBackground(
+            in: RoundedRectangle(
+                cornerRadius: S2MediaMetrics.livePillCornerRadius,
+                style: .continuous
+            )
+        )
+        .allowsHitTesting(false)
+        .accessibilityElement()
+        .accessibilityLabel(model.text)
+    }
+
+    /// 视频浮框骨架：暂停／播放、进度条、静音三件。
+    /// 本卡三件都不响应点击（`acceptsHits == false`），IC-141 接线。
+    private func videoBar(_ model: S2VideoBarPresentation) -> some View {
+        HStack(spacing: S2MediaMetrics.videoBarItemSpacing) {
+            Image(systemName: model.playSymbolName)
+                .font(.system(
+                    size: S2MediaMetrics.videoBarButtonIconPointSize
+                ))
+                .accessibilityLabel(L10n.text("s2.media.video_play"))
+
+            videoBarTrack(progress: model.progress)
+
+            Image(systemName: model.muteSymbolName)
+                .font(.system(size: S2MediaMetrics.videoBarMuteIconPointSize))
+                .accessibilityLabel(L10n.text("s2.media.video_mute"))
+        }
+        .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+        .padding(.horizontal, S2MediaMetrics.videoBarHorizontalPadding)
+        .frame(maxWidth: .infinity)
+        .frame(height: S2MediaMetrics.videoBarHeight)
+        .s2ChromeGlassBackground(
+            in: RoundedRectangle(
+                cornerRadius: S2MediaMetrics.videoBarCornerRadius,
+                style: .continuous
+            )
+        )
+        .allowsHitTesting(model.acceptsHits)
+        .accessibilityLabel(L10n.text("s2.media.video_bar"))
+    }
+
+    /// 进度轨：轨白 28%、填充白 100%、右端拖动圆点。本卡填充恒为 0，
+    /// 圆点只画不接拖动（决策 56 的读数与拖动属 IC-141）。
+    private func videoBarTrack(progress: Double) -> some View {
+        let ratio = min(max(progress, 0), 1)
+        return GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(
+                        Color.white
+                            .opacity(S2MediaMetrics.videoBarTrackOpacity)
+                    )
+                    .frame(height: S2MediaMetrics.videoBarTrackHeight)
+
+                Capsule()
+                    .fill(Color.white)
+                    .frame(
+                        width: proxy.size.width * ratio,
+                        height: S2MediaMetrics.videoBarTrackHeight
+                    )
+
+                Circle()
+                    .fill(Color.white)
+                    .frame(
+                        width: S2MediaMetrics.videoBarKnobDiameter,
+                        height: S2MediaMetrics.videoBarKnobDiameter
+                    )
+                    .offset(
+                        x: proxy.size.width * ratio -
+                            S2MediaMetrics.videoBarKnobDiameter / 2
+                    )
+            }
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .leading
+            )
+        }
+        .frame(height: S2MediaMetrics.videoBarHeight)
     }
 
     /// IC-113 C：教程浮层抽成独立 builder。
@@ -1343,6 +1546,14 @@ struct S2View: View {
             topInfoArea
                 .s2ChromeCapsuleGlass()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // IC-139 D（v19 回写决策 58）：标定／诊断面板的入口从主图长按
+                // 改到这里，所有页一致、与 `m` 无关。该面板不属产品行为，
+                // 只是入口登记变更。
+                .onLongPressGesture(
+                    minimumDuration: S2MediaMetrics.longPressMinimumDuration
+                ) {
+                    calibrationOverlayState.toggleAccessControls()
+                }
 
             Button {
                 guard let payload = machine.makeExitPayload() else {
@@ -2437,6 +2648,222 @@ enum S2ChromeVisibilityTransition {
 
     static func opacity(isVisible: Bool) -> Double {
         isVisible ? 1 : 0
+    }
+}
+
+/// IC-139（v19 回写决策 54）：当前照片的媒体类别 `m`。
+///
+/// 按资产派生，不是独立状态变量，不进六状态清单、不进交接快照。
+enum S2MediaKind: String, CaseIterable, Sendable {
+    case photo
+    case live
+    case video
+
+    /// 由全仓唯一的判别器结果映射而来（`AssetSizeProbeService.mediaKind(of:)`）。
+    /// 判别谓词**不在这里重写**——那会成为第三份分类实现。
+    init(probeKind: S2AssetSizeProbeMediaKind) {
+        switch probeKind {
+        case .video:
+            self = .video
+        case .livePhoto:
+            self = .live
+        case .photo:
+            self = .photo
+        }
+    }
+}
+
+/// IC-139：媒体播放视觉登记制常量（v19 §11.2「媒体播放」块，画布定稿 ④）。
+///
+/// 基准 393×852、安全区顶 59 / 底 34。**不进 `S2CalibrationConfiguration`、
+/// 不上标定面板**，因此本卡不动 `schemaVersion`。凡与既有 chrome 语汇同值的
+/// 一律**引用**既有常量而不复制数值——复制出来的数值日后会各改各的。
+enum S2MediaMetrics {
+    // MARK: - 实况胶囊（决策 54）
+
+    /// 胶囊上缘距顶排底缘 = 横栏到底排的既有间距（引用，非复制）。
+    static let livePillTopFromTopBarBottom = S2OverlayLayout
+        .stripToBottomRowSpacing
+    static let livePillHeight: CGFloat = 28
+    static let livePillCornerRadius: CGFloat = 14
+    /// 左边距 = chrome 既有横向边距（引用）。
+    static let livePillLeading = S2OverlayLayout.chromeHorizontalMargin
+    static let livePillPaddingLeading: CGFloat = 8
+    static let livePillPaddingTrailing: CGFloat = 10
+    static let livePillIconPointSize: CGFloat = 13
+    static let livePillFontSize: CGFloat = 12
+    static let livePillItemSpacing: CGFloat = 5
+    static let livePillSymbol = "livephoto"
+
+    /// 长按判定时长。分页器根视图那只识别器自 IC-113 起就写死 0.8，
+    /// 而本卡不得改分页器文件，故顶部中胶囊这只用本常量取同值——
+    /// 两处 0.8 目前各写各的，已在报告「发现但未处理」登记。
+    static let longPressMinimumDuration: TimeInterval = 0.8
+
+    // MARK: - 视频浮框（决策 56，本卡只做骨架）
+
+    static let videoBarHeight: CGFloat = 44
+    static let videoBarCornerRadius: CGFloat = 22
+    /// 左右边距 = chrome 既有横向边距（引用）。
+    static let videoBarHorizontalMargin = S2OverlayLayout
+        .chromeHorizontalMargin
+    /// 浮框底缘到横栏顶缘 = 横栏到底排的既有间距（引用）。
+    static let videoBarBottomToStripTop = S2OverlayLayout
+        .stripToBottomRowSpacing
+    static let videoBarHorizontalPadding: CGFloat = 14
+    static let videoBarItemSpacing: CGFloat = 12
+    static let videoBarButtonIconPointSize: CGFloat = 18
+    static let videoBarMuteIconPointSize: CGFloat = 20
+    static let videoBarTrackHeight: CGFloat = 4
+    static let videoBarTrackCornerRadius: CGFloat = 2
+    static let videoBarKnobDiameter: CGFloat = 12
+    static let videoBarTimeFontSize: CGFloat = 13
+    /// 轨底白 28%；填充白 100%（画布 ④）。
+    static let videoBarTrackOpacity: Double = 0.28
+    static let videoBarPlaySymbol = "play.fill"
+    static let videoBarPauseSymbol = "pause.fill"
+    static let videoBarMutedSymbol = "speaker.slash.fill"
+    static let videoBarUnmutedSymbol = "speaker.wave.2.fill"
+
+    // MARK: - 视频页几何（决策 57）
+
+    /// 显示态视频页主图适配区下缘上移量。**推导量**，不是独立取值：
+    /// = 浮框高 + 浮框到横栏间距 = 44 + 24 = 68。
+    static let videoPageFitBottomInset = videoBarHeight +
+        videoBarBottomToStripTop
+
+    // MARK: - 视觉锚（陷阱 14：视觉锚与触控锚是两套几何）
+
+    /// 胶囊上缘距视口顶 = 安全区顶 + 顶栏帧高 + 间距。
+    static func livePillTopFromViewportTop(safeAreaTop: CGFloat) -> CGFloat {
+        max(0, safeAreaTop) + S2OverlayLayout.topBarHeight +
+            livePillTopFromTopBarBottom
+    }
+
+    /// 浮框底缘距视口底 = 横栏底缘 + 横栏**视觉**带高 + 间距。
+    ///
+    /// 刻意不复用 `S2OverlayLayout.stripTopFromViewportBottom`——那条推导式里
+    /// 含 `max(最小触控边长, 横栏高)` 的**触控带**下限（陷阱 14，IC-104 C v3
+    /// 曾因此在真机上多出 14 pt）。浮框锚的是眼睛看到的横栏顶缘，
+    /// 故直接用传入的横栏视觉带高。
+    static func videoBarBottomFromViewportBottom(
+        safeAreaBottom: CGFloat,
+        bottomStripHeight: CGFloat
+    ) -> CGFloat {
+        S2OverlayLayout.stripBottomFromViewportBottom(
+            safeAreaBottom: safeAreaBottom
+        ) + max(0, bottomStripHeight) + videoBarBottomToStripTop
+    }
+}
+
+/// IC-139 A：实况胶囊口径模型。`nil` = 该页不构造胶囊。
+///
+/// 无点击动作、无 chevron——决策 54 明写「无下箭头、不可点」。
+struct S2LivePillPresentation: Equatable {
+    let symbolName: String
+    let text: String
+
+    static func make(
+        mediaKind: S2MediaKind,
+        interfaceVisibility: S2InterfaceVisibility
+    ) -> S2LivePillPresentation? {
+        guard mediaKind == .live, interfaceVisibility == .visible else {
+            return nil
+        }
+        return S2LivePillPresentation(
+            symbolName: S2MediaMetrics.livePillSymbol,
+            text: L10n.text("s2.media.live_badge")
+        )
+    }
+}
+
+/// IC-139 B：视频浮框骨架口径模型。`nil` = 该页不构造浮框。
+///
+/// 本卡三件恒为「播放」「进度 0」「静音」，且 `acceptsHits == false`；
+/// 播放状态与点击接线属 IC-141。
+struct S2VideoBarPresentation: Equatable {
+    let playSymbolName: String
+    let muteSymbolName: String
+    let progress: Double
+    let acceptsHits: Bool
+
+    static func make(
+        mediaKind: S2MediaKind,
+        interfaceVisibility: S2InterfaceVisibility
+    ) -> S2VideoBarPresentation? {
+        guard mediaKind == .video, interfaceVisibility == .visible else {
+            return nil
+        }
+        return S2VideoBarPresentation(
+            playSymbolName: S2MediaMetrics.videoBarPlaySymbol,
+            muteSymbolName: S2MediaMetrics.videoBarMutedSymbol,
+            progress: 0,
+            acceptsHits: false
+        )
+    }
+}
+
+/// IC-139 C：视频页显示态主图几何（决策 57）。
+struct S2MediaPageFit: Equatable {
+    let size: CGSize
+    let centerY: CGFloat
+}
+
+/// IC-139 D（v19 回写决策 58）：主图长按 0.8 s 的分派结果。
+///
+/// `m=实况` 全部让给实况播放；其余类别**不绑定任何产品操作**——
+/// 标定／诊断面板的入口已改到顶部中胶囊长按，主图长按不再开面板。
+enum S2MainPhotoLongPressAction: Equatable {
+    case livePhotoPlayback
+    /// 不绑定任何产品操作。刻意不叫 `none`——那个名字与 `Optional.none`
+    /// 在类型推导里会打架。
+    case unbound
+
+    static func resolve(mediaKind: S2MediaKind) -> S2MainPhotoLongPressAction {
+        mediaKind == .live ? .livePhotoPlayback : .unbound
+    }
+}
+
+/// IC-139 D：实况长按的一次性事件记录。
+///
+/// 本卡不接播放器，只登记「哪一张、请求了几次播放」，供 IC-140 接线时对齐；
+/// 也让分派确实发生这件事在夹具里可断言。
+final class S2LivePhotoLongPressRecorder: ObservableObject {
+    @Published private(set) var requestCount = 0
+    @Published private(set) var lastAssetID: String?
+
+    func record(assetID: String) {
+        requestCount += 1
+        lastAssetID = assetID
+    }
+}
+
+enum S2MediaPageGeometry {
+    /// `m=视频` 且 `V=显示` 时，适配区 = `[0, 视口高 − 68]`，上缘不变；
+    /// 资产等比适配于该区并**居中于该区**。其余一切情形返回 `nil`，
+    /// 由调用方沿用既有几何——照片页与隐藏态因此零改动。
+    static func videoPageFit(
+        viewportSize: CGSize,
+        assetAspectRatio: CGFloat,
+        mediaKind: S2MediaKind,
+        interfaceVisibility: S2InterfaceVisibility
+    ) -> S2MediaPageFit? {
+        guard mediaKind == .video, interfaceVisibility == .visible else {
+            return nil
+        }
+        let regionHeight = viewportSize.height -
+            S2MediaMetrics.videoPageFitBottomInset
+        guard regionHeight > 0, viewportSize.width > 0 else {
+            return nil
+        }
+        let size = S2Geometry.aspectFitSize(
+            viewportSize: CGSize(
+                width: viewportSize.width,
+                height: regionHeight
+            ),
+            assetAspectRatio: assetAspectRatio
+        )
+        return S2MediaPageFit(size: size, centerY: regionHeight / 2)
     }
 }
 

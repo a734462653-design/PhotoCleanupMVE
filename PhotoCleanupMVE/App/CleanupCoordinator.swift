@@ -351,6 +351,19 @@ final class CleanupCoordinator: ObservableObject {
         loadedAssets[assetID]?.mediaSubtypes.contains(.photoScreenshot) == true
     }
 
+    /// IC-139 A（v19 回写决策 54）：当前资产的媒体类别 `m`。
+    ///
+    /// 判别逻辑不在这里重写——`AssetSizeProbeService.mediaKind(of:)` 已经是
+    /// 全仓唯一一处「视频 / 实况 / 照片」判别（`Services/AssetSizeScanner.swift`），
+    /// 本方法只做类别到 S2 展示语汇的映射。资产不在册时按 `photo` 退化，
+    /// 与同族三个访问器（像素尺寸、截图、拍摄日期）的失败口径一致。
+    func s2AssetMediaKind(for assetID: String) -> S2MediaKind {
+        guard let asset = loadedAssets[assetID] else {
+            return .photo
+        }
+        return S2MediaKind(probeKind: AssetSizeProbeService.mediaKind(of: asset))
+    }
+
     /// IC-099 阶段二 R1：当前资产的拍摄日期（顶部信息区主行）。
     func s2AssetCreationDate(for assetID: String) -> Date? {
         loadedAssets[assetID]?.creationDate
