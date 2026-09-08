@@ -1,14 +1,22 @@
 import Foundation
+import ObjectiveC
 import XCTest
 @testable import PhotoCleanupMVE
 
 final class TransitionTableGuardTests: XCTestCase {
+    /// IC-138 A：矩阵在判定理由里挂的「事件已撤销」标记。撤销事件的单元格既不能
+    /// 提交事件、也不能断言拒绝——事件在类型层面已不存在——故按第三类处理，
+    /// 由本常量从表里读出，不在代码里按事件名写特判。
+    private static let retiredEventMark = "事件已撤销"
+
     private struct TransitionCell: Hashable {
         let clauseID: String
         let specification: String
         let event: String
         let sourceState: String
         let isUnreachable: Bool
+        /// 该单元格的事件是否已随条款撤销（读表得出，不由代码判定）。
+        let isRetiredEvent: Bool
 
         var coordinate: String {
             "\(specification)|\(event)|\(sourceState)"
@@ -27,7 +35,21 @@ final class TransitionTableGuardTests: XCTestCase {
         XCTAssertEqual(cells.count, 115, "迁移矩阵必须恰好包含 115 个数据单元格")
         XCTAssertEqual(Set(cells.map(\.coordinate)).count, 115, "迁移矩阵坐标不得重复")
         XCTAssertEqual(Set(cells.map(\.clauseID)).count, 115, "迁移矩阵条款编号不得重复")
+        // IC-138 A：行数不变（矩阵按 SPEC-S5 v5 行号编号，v6 晋级前编号保持稳定），
+        // 但 L3 整层撤销后有 5 个单元格的事件已不存在，按第三类单独计数；
+        // 其余 110 个照旧分可达 / 不可达两类。
+        XCTAssertEqual(cells.filter(\.isRetiredEvent).count, 5, "已撤销事件的单元格数量发生变化")
         XCTAssertEqual(cells.filter(\.isUnreachable).count, 63, "不可达标记数量发生变化")
+        XCTAssertEqual(
+            cells.filter { $0.isUnreachable && !$0.isRetiredEvent }.count,
+            59,
+            "存续事件里的不可达标记数量发生变化"
+        )
+        XCTAssertEqual(
+            cells.filter { !$0.isUnreachable && !$0.isRetiredEvent }.count,
+            51,
+            "存续事件里的可达标记数量发生变化"
+        )
         XCTAssertEqual(
             Set(cells.map(\.specification)),
             ["SPEC-S3-S4-20260813.v7.md", "SPEC-S5-20260812.v5.md"]
@@ -36,6 +58,9 @@ final class TransitionTableGuardTests: XCTestCase {
         var visited = Set<String>()
         for cell in cells {
             XCTAssertTrue(visited.insert(cell.coordinate).inserted, cell.diagnostic)
+            guard !cell.isRetiredEvent else {
+                continue
+            }
             guard cell.isUnreachable else {
                 continue
             }
@@ -59,14 +84,94 @@ final class TransitionTableGuardTests: XCTestCase {
         XCTAssertEqual(visited, Set(cells.map(\.coordinate)), "未遍历全部迁移单元格")
     }
 
-    private func loadTransitionCells() throws -> [TransitionCell] {
+    /// IC-138 A／B 断言 2、3：追溯矩阵引用的每个 XCTest 方法名都必须真实存在。
+    /// L3 整层撤销后矩阵里残留了 16 个已删方法名，正向矩阵、反向映射两处都有，
+    /// 靠人读发现不了；本断言把它钉死，日后再删测试会当场变红。
+    func testIC138EveryTraceabilityMethodNameStillExists() throws {
+        let referenced = try loadReferencedMethodNames()
+        let registered = loadRegisteredTestMethodNames()
+
+        // 两个集合任一为空都会让下面的差集断言空转，先各钉一个下界。
+        XCTAssertGreaterThan(referenced.count, 100, "矩阵方法名解析失败，断言会空转")
+        XCTAssertGreaterThan(registered.count, 100, "测试方法枚举失败，断言会空转")
+
+        let missing = referenced.subtracting(registered).sorted()
+        XCTAssertEqual(missing, [], "追溯矩阵引用了不存在的测试方法")
+    }
+
+    /// 全文扫描：凡以 `test` 开头的标识符 token 都算一次引用。比只读方法名列更严，
+    /// 反向映射、未命中测试清单与散文里的引用一并覆盖。
+    private func loadReferencedMethodNames() throws -> Set<String> {
+        let text = try loadTraceabilityText()
+        let wordCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
+        var names = Set<String>()
+        let tokens = text.components(separatedBy: wordCharacters.inverted)
+        for token in tokens {
+            guard token.hasPrefix("test"), token.count > 4 else {
+                continue
+            }
+            names.insert(token)
+        }
+        return names
+    }
+
+    /// 只枚举本测试包这一个 image 里的类，不扫全进程类表。
+    private func loadRegisteredTestMethodNames() -> Set<String> {
+        var names = Set<String>()
+        guard let imagePath = class_getImageName(Self.self) else {
+            return names
+        }
+        var classCount: UInt32 = 0
+        guard let classNames = objc_copyClassNamesForImage(imagePath, &classCount) else {
+            return names
+        }
+        defer { free(UnsafeMutableRawPointer(classNames)) }
+
+        for classIndex in 0..<Int(classCount) {
+            let className = String(cString: classNames[classIndex])
+            guard let candidate = objc_getClass(className) as? AnyClass else {
+                continue
+            }
+            var walker: AnyClass? = candidate
+            var isTestCase = false
+            while let current = walker {
+                if ObjectIdentifier(current) == ObjectIdentifier(XCTestCase.self) {
+                    isTestCase = true
+                    break
+                }
+                walker = class_getSuperclass(current)
+            }
+            guard isTestCase else {
+                continue
+            }
+
+            var methodCount: UInt32 = 0
+            guard let methods = class_copyMethodList(candidate, &methodCount) else {
+                continue
+            }
+            defer { free(UnsafeMutableRawPointer(methods)) }
+            for methodIndex in 0..<Int(methodCount) {
+                let selectorName = NSStringFromSelector(method_getName(methods[methodIndex]))
+                if selectorName.hasPrefix("test") {
+                    names.insert(selectorName)
+                }
+            }
+        }
+        return names
+    }
+
+    private func loadTraceabilityText() throws -> String {
         guard let url = Bundle(for: Self.self).url(
             forResource: "TRACEABILITY-S3-S5",
             withExtension: "md"
         ) else {
             throw TestError.missingTraceabilityResource
         }
-        let text = try String(contentsOf: url, encoding: .utf8)
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func loadTransitionCells() throws -> [TransitionCell] {
+        let text = try loadTraceabilityText()
         return text.split(separator: "\n", omittingEmptySubsequences: false).compactMap { line in
             let fields = line.split(
                 separator: "\t",
@@ -106,7 +211,8 @@ final class TransitionTableGuardTests: XCTestCase {
                 specification: fields[1],
                 event: String(event),
                 sourceState: String(sourceState),
-                isUnreachable: isUnreachable
+                isUnreachable: isUnreachable,
+                isRetiredEvent: reason.contains(Self.retiredEventMark)
             )
         }
     }
@@ -213,11 +319,6 @@ final class TransitionTableGuardTests: XCTestCase {
         var machine = try makeS5Machine(for: cell.sourceState)
         let transition: S5Transition
         switch cell.event {
-        case "用户点击“我已清空最近删除”":
-            // IC-134 F：L3 整层撤销后 `S5Event` 已没有这个事件，类型层面就提交不了，
-            // 故该行恒不可达。矩阵行本身保留——`TRACEABILITY-S3-S5.md` 在 Reports
-            // 目录，不在本卡白名单内；已在报告「发现但未处理」中登记。
-            return
         case "用户点击“返回确认页”":
             transition = try machine.handle(
                 .returnToConfirmation(cacheExists: true),

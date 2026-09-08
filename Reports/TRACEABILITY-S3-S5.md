@@ -16,11 +16,12 @@
 | 指标 | 数量 |
 |---|---:|
 | 条款总数 | 377 |
-| 已覆盖 | 266 |
-| 未覆盖 | 72 |
-| 不适用 | 39 |
+| 已覆盖 | 251 |
+| 未覆盖 | 68 |
+| 不适用 | 38 |
+| 条款已撤销 | 20 |
 | 第五类不适用 | 2 |
-| XCTest 方法总数 | 184 |
+| XCTest 方法总数 | 168 |
 | 未命中测试 | 8 |
 
 ## 三、正向矩阵
@@ -280,39 +281,39 @@ C5-016	SPEC-S5-20260812.v5.md	35	- 进入 `S5-T0` 时，应用内所有仍引用
 C5-017	SPEC-S5-20260812.v5.md	36	- S5 不读取也不清空系统「最近删除」。该边界只通过文字、截图与人工回归说明。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-018	SPEC-S5-20260812.v5.md	146	- 状态标题“已移入最近删除”。		不适用	该条款为纯文案
 C5-019	SPEC-S5-20260812.v5.md	147	- L1：“处理结果：成功 N 张，失败 0 张，未处理 0 张”。	testCell01SuccessEntry	未覆盖	方法断言成功集合等于原提交集合，未断言页面 L1 文案和三个计数的呈现。
-C5-020	SPEC-S5-20260812.v5.md	148	- 按第二节规则显示 L2。	testCell01SuccessEntry, testPersistedSessionCarriesTargetReadingsDeltaAndDeclarationTime	未覆盖	方法证明快照随成功上下文持久化，未断言页面按第二节显示 L2。
+C5-020	SPEC-S5-20260812.v5.md	148	- 按第二节规则显示 L2。	testCell01SuccessEntry	未覆盖	方法证明快照随成功上下文持久化，未断言页面按第二节显示 L2。
 C5-021	SPEC-S5-20260812.v5.md	149	- 第三节规定的边界文字与标注截图。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C5-022	SPEC-S5-20260812.v5.md	150	- 用户点击前显示“设备可用空间仍在等待你的系统操作”的说明，不显示 L3 数值。	testL3DisplayRemainsBlockedForEveryState	未覆盖	方法断言用户点击前不显示 L3，但未断言等待系统操作说明的页面文案。
-C5-023	SPEC-S5-20260812.v5.md	151	- 首次进入时取得一次 `L3基线读数`；只显示其取得状态，不显示读数本身。	testSuccessEntryReadsBaselineExactlyOnceAndPersistsIt	未覆盖	方法断言首次进入只读取并持久化一次基线，未断言页面只显示取得状态且隐藏读数本身。
-C5-024	SPEC-S5-20260812.v5.md	152	- 用户点击后按第二节与第五节规则显示 L3 数值或不含数字的说明。	testL3DisplayRemainsBlockedForEveryState	不适用	该条款为未定项阻断
-C5-025	SPEC-S5-20260812.v5.md	153	- 用户点击前显示主操作“我已清空最近删除”；完成该操作后隐藏。	testConfirmationButtonIsEnabledOnlyBeforeSuccessConfirmation, testRepeatedConfirmationDoesNotReadAgain	已覆盖	所列方法直接断言该条款。
+C5-022	SPEC-S5-20260812.v5.md	150	- 用户点击前显示“设备可用空间仍在等待你的系统操作”的说明，不显示 L3 数值。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	方法断言用户点击前不显示 L3，但未断言等待系统操作说明的页面文案。
+C5-023	SPEC-S5-20260812.v5.md	151	- 首次进入时取得一次 `L3基线读数`；只显示其取得状态，不显示读数本身。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	方法断言首次进入只读取并持久化一次基线，未断言页面只显示取得状态且隐藏读数本身。
+C5-024	SPEC-S5-20260812.v5.md	152	- 用户点击后按第二节与第五节规则显示 L3 数值或不含数字的说明。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	该条款为未定项阻断
+C5-025	SPEC-S5-20260812.v5.md	153	- 用户点击前显示主操作“我已清空最近删除”；完成该操作后隐藏。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	所列方法直接断言该条款。
 C5-026	SPEC-S5-20260812.v5.md	154	- “离开”操作。	testCell04LeaveFromSuccess	未覆盖	方法断言离开事件可用，未断言页面显示离开操作。
 C5-027	SPEC-S5-20260812.v5.md	158	- 浏览结果、边界文字与标注截图。		未覆盖	未发现直接断言该条款的 XCTest 方法。
-C5-028	SPEC-S5-20260812.v5.md	159	- 点击“我已清空最近删除”；该操作读取一次 `L3完成读数`、形成展示结论并留在 `S5-T0`。	testConfirmationReadsCompletionExactlyOnceAndPersistsDelta, testConfirmationButtonIsEnabledOnlyBeforeSuccessConfirmation, testUnavailableReadingsArePersistedWithoutDeltaOrRetry	未覆盖	方法断言单次读取、状态留存与按钮状态，但未直接断言形成页面展示结论。
+C5-028	SPEC-S5-20260812.v5.md	159	- 点击“我已清空最近删除”；该操作读取一次 `L3完成读数`、形成展示结论并留在 `S5-T0`。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	方法断言单次读取、状态留存与按钮状态，但未直接断言形成页面展示结论。
 C5-029	SPEC-S5-20260812.v5.md	160	- 点击“离开”。	testCell04LeaveFromSuccess	已覆盖	所列方法直接断言该条款。
-C5-030	SPEC-S5-20260812.v5.md	164	- 重复点击“我已清空最近删除”。	testRepeatedConfirmationDoesNotReadAgain	已覆盖	所列方法直接断言该条款。
-C5-031	SPEC-S5-20260812.v5.md	165	- 定时或重复读取 `freeDiskStrictGB`。	testRepeatedConfirmationDoesNotReadAgain, testLifecycleEventsDoNotReadFreeDiskAgain, testUnavailableReadingsArePersistedWithoutDeltaOrRetry, testC5_031RepeatedLifecycleTicksNeverPollFreeDisk	已覆盖	所列专项方法直接断言该条款。
-C5-032	SPEC-S5-20260812.v5.md	166	- 用户点击前显示 L3、0 或估算值。	testL3DisplayRemainsBlockedForEveryState	已覆盖	所列方法直接断言该条款。
+C5-030	SPEC-S5-20260812.v5.md	164	- 重复点击“我已清空最近删除”。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	所列方法直接断言该条款。
+C5-031	SPEC-S5-20260812.v5.md	165	- 定时或重复读取 `freeDiskStrictGB`。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	所列专项方法直接断言该条款。
+C5-032	SPEC-S5-20260812.v5.md	166	- 用户点击前显示 L3、0 或估算值。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	所列方法直接断言该条款。
 C5-033	SPEC-S5-20260812.v5.md	167	- 由应用打开、读取或清空系统「最近删除」。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-034	SPEC-S5-20260812.v5.md	168	- 再次提交、修改提交集合，或通过“离开”以外的方式结束本次结果页。	testSuccessPageCannotReturnToConfirmation, testC5_034SuccessOnlyLeavesThroughExitAndCannotModifySubmission	已覆盖	所列专项方法直接断言该条款。
-C5-035	SPEC-S5-20260812.v5.md	172	- 用户点击“我已清空最近删除”：持久化用户声明时间，读取一次 `L3完成读数`，计算并持久化展示结论；留在 `S5-T0`。	testConfirmationReadsCompletionExactlyOnceAndPersistsDelta, testUnavailableReadingsArePersistedWithoutDeltaOrRetry, testPersistedSessionCarriesTargetReadingsDeltaAndDeclarationTime	未覆盖	方法断言声明时间、完成读数和差值持久化并留在原状态，但未直接断言形成页面展示结论。
+C5-035	SPEC-S5-20260812.v5.md	172	- 用户点击“我已清空最近删除”：持久化用户声明时间，读取一次 `L3完成读数`，计算并持久化展示结论；留在 `S5-T0`。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	方法断言声明时间、完成读数和差值持久化并留在原状态，但未直接断言形成页面展示结论。
 C5-036	SPEC-S5-20260812.v5.md	173	- 用户点击“离开”：结束本次清理会话并迁至 `S5-EXIT`。	testCell04LeaveFromSuccess	已覆盖	所列方法直接断言该条款。
-C5-037	SPEC-S5-20260812.v5.md	174	- 应用进入非 active：留在 `S5-T0`，不新增磁盘读取。	testCell07InactiveFromSuccess, testLifecycleEventsDoNotReadFreeDiskAgain	已覆盖	所列方法直接断言该条款。
-C5-038	SPEC-S5-20260812.v5.md	175	- 应用恢复 active：留在 `S5-T0`，不新增磁盘读取。	testCell10ActiveFromSuccess, testLifecycleEventsDoNotReadFreeDiskAgain	已覆盖	所列方法直接断言该条款。
-C5-039	SPEC-S5-20260812.v5.md	176	- 应用被系统终止：持久化状态、两次读取的完成情况、已有读数、`Y` 与展示结论；下次启动恢复 `S5-T0`，不新增磁盘读取。	testCell13TerminationFromSuccess, testLifecycleEventsDoNotReadFreeDiskAgain, testPersistedSessionCarriesTargetReadingsDeltaAndDeclarationTime, testRestoreKeepsPersistedSuccessState, testC5_039CompletedReadingsSurviveTerminationAndRestoreWithoutNewRead	已覆盖	所列专项方法直接断言该条款。
+C5-037	SPEC-S5-20260812.v5.md	174	- 应用进入非 active：留在 `S5-T0`，不新增磁盘读取。	testCell07InactiveFromSuccess	已覆盖	所列方法直接断言该条款。
+C5-038	SPEC-S5-20260812.v5.md	175	- 应用恢复 active：留在 `S5-T0`，不新增磁盘读取。	testCell10ActiveFromSuccess	已覆盖	所列方法直接断言该条款。
+C5-039	SPEC-S5-20260812.v5.md	176	- 应用被系统终止：持久化状态、两次读取的完成情况、已有读数、`Y` 与展示结论；下次启动恢复 `S5-T0`，不新增磁盘读取。	testCell13TerminationFromSuccess, testRestoreKeepsPersistedSuccessState	已覆盖	所列专项方法直接断言该条款。
 C5-040	SPEC-S5-20260812.v5.md	182	- 状态标题“已取消删除”。		不适用	该条款为纯文案
 C5-041	SPEC-S5-20260812.v5.md	183	- 说明“照片都还在”。		不适用	该条款为纯文案
 C5-042	SPEC-S5-20260812.v5.md	184	- L1：“本次提交 N 张，全部未处理”，对应 `A = ∅`、`B = ∅`、`C = P`。	testCancellationEntryUsesDownstreamTargetWithoutReadingFailureCategory, testPhotoKitUserCancellationClassifiesWholeSetAsUnprocessed	未覆盖	方法断言取消分类为 A、B 空且 C 等于 P，未断言页面 L1 文案呈现。
 C5-043	SPEC-S5-20260812.v5.md	185	- 按第二节规则显示 L2，并显示其只描述原提交集合的旁注。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-044	SPEC-S5-20260812.v5.md	186	- 主操作“返回确认页”。	testCancellationReturnWithCacheCarriesOriginalSubmission, testCancellationReturnWithoutCacheCarriesOriginalSubmission	未覆盖	方法断言返回确认页事件可用，未断言页面显示主操作。
 C5-045	SPEC-S5-20260812.v5.md	187	- 不显示底层错误域或错误码。	testCancellationDoesNotShowSystemErrorDomainOrCode	已覆盖	所列方法直接断言该条款。
-C5-046	SPEC-S5-20260812.v5.md	188	- 不显示 L3。	testCancellationDoesNotShowL3	已覆盖	所列方法直接断言该条款。
+C5-046	SPEC-S5-20260812.v5.md	188	- 不显示 L3。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	所列方法直接断言该条款。
 C5-047	SPEC-S5-20260812.v5.md	192	- 浏览取消结果与原提交集合的数量、体积说明。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-048	SPEC-S5-20260812.v5.md	193	- 点击“返回确认页”。	testCancellationReturnWithCacheCarriesOriginalSubmission, testCancellationReturnWithoutCacheCarriesOriginalSubmission	已覆盖	所列方法直接断言该条款。
 C5-049	SPEC-S5-20260812.v5.md	197	- 在 S5 内再次提交全部或部分资产。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-050	SPEC-S5-20260812.v5.md	198	- 修改 `A`、`B`、`C`，或把未处理项目计入其他集合。	testCancellationEntryUsesDownstreamTargetWithoutReadingFailureCategory, testPhotoKitUserCancellationClassifiesWholeSetAsUnprocessed	已覆盖	所列方法直接断言该条款。
-C5-051	SPEC-S5-20260812.v5.md	199	- 读取 `freeDiskStrictGB` 或显示 L3。	testCancellationDoesNotReadFreeDiskStrictGB, testCancellationDoesNotShowL3	已覆盖	所列方法直接断言该条款。
-C5-052	SPEC-S5-20260812.v5.md	200	- 显示“我已清空最近删除”或结束本次结果页。	testCancellationDoesNotShowRecentlyDeletedConfirmationAction, testCancellationCannotLeaveThroughCompletionAction	已覆盖	所列方法直接断言该条款。
+C5-051	SPEC-S5-20260812.v5.md	199	- 读取 `freeDiskStrictGB` 或显示 L3。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	所列方法直接断言该条款。
+C5-052	SPEC-S5-20260812.v5.md	200	- 显示“我已清空最近删除”或结束本次结果页。	testCancellationCannotLeaveThroughCompletionAction	已覆盖	所列方法直接断言该条款。
 C5-053	SPEC-S5-20260812.v5.md	201	- 不得在用户可见文案中使用“失败”“未完成”等措辞。	testCancellationVisibleCopyAvoidsFailureAndIncompleteWording	已覆盖	所列方法直接断言该条款。
 C5-054	SPEC-S5-20260812.v5.md	205	- 用户点击“返回确认页”，且本会话的资产级结论缓存仍存在：携带原提交集合 `P` 迁至 `S3-2`。资产级结论缓存不绑定集合，返回后直接复用，不重扫。	testCancellationReturnWithCacheCarriesOriginalSubmission	已覆盖	所列方法直接断言该条款。
 C5-055	SPEC-S5-20260812.v5.md	206	- 用户点击“返回确认页”，但缓存已因会话结束而清空：携带原提交集合 `P` 迁至 `S3-1`，按 S3 扫描规则重新取得结论。	testCancellationReturnWithoutCacheCarriesOriginalSubmission	已覆盖	所列方法直接断言该条款。
@@ -324,13 +325,13 @@ C5-060	SPEC-S5-20260812.v5.md	216	- 非空失败原因；存在底层错误域�
 C5-061	SPEC-S5-20260812.v5.md	217	- 按第二节规则显示 L2，并显示其只描述原提交集合的旁注。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-062	SPEC-S5-20260812.v5.md	218	- “已保留原提交集合，可返回确认页再次尝试”的说明。		不适用	该条款为纯文案
 C5-063	SPEC-S5-20260812.v5.md	219	- 主操作“返回确认页”。	testCell05AReturnFromFailureWithCache, testCell05BReturnFromFailureWithoutCache	未覆盖	方法断言返回确认页事件可用，未断言页面显示主操作。
-C5-064	SPEC-S5-20260812.v5.md	220	- 不显示 L3。	testL3DisplayRemainsBlockedForEveryState	已覆盖	所列方法直接断言该条款。
+C5-064	SPEC-S5-20260812.v5.md	220	- 不显示 L3。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	所列方法直接断言该条款。
 C5-065	SPEC-S5-20260812.v5.md	224	- 浏览三个集合的数量与失败原因。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-066	SPEC-S5-20260812.v5.md	225	- 点击“返回确认页”。	testCell05AReturnFromFailureWithCache, testCell05BReturnFromFailureWithoutCache	已覆盖	所列方法直接断言该条款。
 C5-067	SPEC-S5-20260812.v5.md	229	- 在 S5 内再次提交全部或部分资产。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-068	SPEC-S5-20260812.v5.md	230	- 修改 `A`、`B`、`C`，或把失败、未处理项目计入成功。	testFailureEntryReusesPersistedClassificationWithoutModification	已覆盖	所列方法直接断言该条款。
-C5-069	SPEC-S5-20260812.v5.md	231	- 读取 `freeDiskStrictGB` 或显示 L3。	testL3DisplayRemainsBlockedForEveryState, testC5_069FailureNeverReadsFreeDiskOrDisplaysL3	已覆盖	所列专项方法直接断言该条款。
-C5-070	SPEC-S5-20260812.v5.md	232	- 显示“我已清空最近删除”或结束本次结果页。	testFailurePageCannotLeaveThroughCompletionAction, testConfirmationButtonIsEnabledOnlyBeforeSuccessConfirmation	已覆盖	所列方法直接断言该条款。
+C5-069	SPEC-S5-20260812.v5.md	231	- 读取 `freeDiskStrictGB` 或显示 L3。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	所列专项方法直接断言该条款。
+C5-070	SPEC-S5-20260812.v5.md	232	- 显示“我已清空最近删除”或结束本次结果页。	testFailurePageCannotLeaveThroughCompletionAction	已覆盖	所列方法直接断言该条款。
 C5-071	SPEC-S5-20260812.v5.md	236	- 用户点击“返回确认页”，且本会话的资产级结论缓存仍存在：携带原提交集合 `P` 迁至 `S3-2`。资产级结论缓存不绑定集合，返回后直接复用，不重扫。	testCell05AReturnFromFailureWithCache	已覆盖	所列方法直接断言该条款。
 C5-072	SPEC-S5-20260812.v5.md	237	- 用户点击“返回确认页”，但缓存已因会话结束而清空：携带原提交集合 `P` 迁至 `S3-1`，按 S3 扫描规则重新取得结论。	testCell05BReturnFromFailureWithoutCache	已覆盖	所列方法直接断言该条款。
 C5-073	SPEC-S5-20260812.v5.md	238	- 应用进入非 active 或恢复 active：留在 `S5-F`。	testCell08InactiveFromFailure, testCell11ActiveFromFailure	已覆盖	所列方法直接断言该条款。
@@ -342,16 +343,16 @@ C5-078	SPEC-S5-20260812.v5.md	248	- L1 显示“处理结果未知”，不显�
 C5-079	SPEC-S5-20260812.v5.md	249	- 按第二节规则显示 L2，并显示其只描述原提交集合的旁注。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-080	SPEC-S5-20260812.v5.md	250	- 第三节规定的边界文字与标注截图，用于人工核对原位置与系统「最近删除」。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-081	SPEC-S5-20260812.v5.md	251	- “完成”操作。		不适用	该条款为纯文案
-C5-082	SPEC-S5-20260812.v5.md	252	- 不显示 L3。	testL3DisplayRemainsBlockedForEveryState	已覆盖	所列方法直接断言该条款。
+C5-082	SPEC-S5-20260812.v5.md	252	- 不显示 L3。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	所列方法直接断言该条款。
 C5-083	SPEC-S5-20260812.v5.md	256	- 浏览提交上下文、未知原因与人工核对引导。		未覆盖	未发现直接断言该条款的 XCTest 方法。
 C5-084	SPEC-S5-20260812.v5.md	257	- 点击“完成”或使用页面提供的离开操作。	testCell06LeaveFromUnknown	已覆盖	所列方法直接断言该条款。
 C5-085	SPEC-S5-20260812.v5.md	261	- 推断或显示任一资产成功、失败或未处理。	testUnknownEntryDoesNotConstructClassificationSets	已覆盖	所列方法直接断言该条款。
-C5-086	SPEC-S5-20260812.v5.md	262	- 读取 `freeDiskStrictGB`，显示“我已清空最近删除”，或把人工核对结果写回为删除回调。	testConfirmationButtonIsEnabledOnlyBeforeSuccessConfirmation, testL3DisplayRemainsBlockedForEveryState, testC5_086UnknownCannotReadConfirmOrWriteBackManualResult	已覆盖	所列专项方法直接断言该条款。
+C5-086	SPEC-S5-20260812.v5.md	262	- 读取 `freeDiskStrictGB`，显示“我已清空最近删除”，或把人工核对结果写回为删除回调。	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	所列专项方法直接断言该条款。
 C5-087	SPEC-S5-20260812.v5.md	263	- 在 S5 内再次提交、修改 `P` 或返回确认页。	testUnknownPageCannotReturnToConfirmation, testC5_087UnknownCannotResubmitModifyPOrReturnToConfirmation	已覆盖	所列专项方法直接断言该条款。
 C5-088	SPEC-S5-20260812.v5.md	267	- 用户离开本页：结束本次清理会话并迁至 `S5-EXIT`。	testCell06LeaveFromUnknown	已覆盖	所列方法直接断言该条款。
 C5-089	SPEC-S5-20260812.v5.md	268	- 应用进入非 active 或恢复 active：留在 `S5-U`。	testCell09InactiveFromUnknown, testCell12ActiveFromUnknown	已覆盖	所列方法直接断言该条款。
 C5-090	SPEC-S5-20260812.v5.md	269	- 应用被系统终止：持久化终态；下次启动恢复 `S5-U`。	testCell15TerminationFromUnknown, testRestoreKeepsPersistedUnknownState	已覆盖	所列方法直接断言该条款。
-C5-091	SPEC-S5-20260812.v5.md	300	| 从 S4-E1 进入 | 成功终态与快照已持久化 → S5-T0；首次入场读取一次基线 | 不可达：S5-T0 已完成入场 | 不可达：取消页不接收成功终态 | 不可达：S4-E1 不是失败终态 | 不可达：S4-E1 不是未知终态 |	testCell01SuccessEntry, testSuccessEntryReadsBaselineExactlyOnceAndPersistsIt	已覆盖	可达单元格（事件“从 S4-E1 进入” × 起始状态“外部源”）：所列方法直接断言该单元格。
+C5-091	SPEC-S5-20260812.v5.md	300	| 从 S4-E1 进入 | 成功终态与快照已持久化 → S5-T0；首次入场读取一次基线 | 不可达：S5-T0 已完成入场 | 不可达：取消页不接收成功终态 | 不可达：S4-E1 不是失败终态 | 不可达：S4-E1 不是未知终态 |	testCell01SuccessEntry	已覆盖	可达单元格（事件“从 S4-E1 进入” × 起始状态“外部源”）：所列方法直接断言该单元格。
 C5-092	SPEC-S5-20260812.v5.md	300	| 从 S4-E1 进入 | 成功终态与快照已持久化 → S5-T0；首次入场读取一次基线 | 不可达：S5-T0 已完成入场 | 不可达：取消页不接收成功终态 | 不可达：S4-E1 不是失败终态 | 不可达：S4-E1 不是未知终态 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“从 S4-E1 进入” × 起始状态“S5-T0”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
 C5-093	SPEC-S5-20260812.v5.md	300	| 从 S4-E1 进入 | 成功终态与快照已持久化 → S5-T0；首次入场读取一次基线 | 不可达：S5-T0 已完成入场 | 不可达：取消页不接收成功终态 | 不可达：S4-E1 不是失败终态 | 不可达：S4-E1 不是未知终态 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“从 S4-E1 进入” × 起始状态“S5-C”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
 C5-094	SPEC-S5-20260812.v5.md	300	| 从 S4-E1 进入 | 成功终态与快照已持久化 → S5-T0；首次入场读取一次基线 | 不可达：S5-T0 已完成入场 | 不可达：取消页不接收成功终态 | 不可达：S4-E1 不是失败终态 | 不可达：S4-E1 不是未知终态 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“从 S4-E1 进入” × 起始状态“S5-F”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
@@ -366,11 +367,11 @@ C5-102	SPEC-S5-20260812.v5.md	302	| 从 S4-E3 进入 | 未知终态、触发原�
 C5-103	SPEC-S5-20260812.v5.md	302	| 从 S4-E3 进入 | 未知终态、触发原因与快照已持久化 → S5-U | 不可达：S4-E3 没有成功回调 | 不可达：S4-E3 没有取消回调 | 不可达：S4-E3 没有失败回调 | 不可达：S5-U 已完成入场 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“从 S4-E3 进入” × 起始状态“S5-C”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
 C5-104	SPEC-S5-20260812.v5.md	302	| 从 S4-E3 进入 | 未知终态、触发原因与快照已持久化 → S5-U | 不可达：S4-E3 没有成功回调 | 不可达：S4-E3 没有取消回调 | 不可达：S4-E3 没有失败回调 | 不可达：S5-U 已完成入场 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“从 S4-E3 进入” × 起始状态“S5-F”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
 C5-105	SPEC-S5-20260812.v5.md	302	| 从 S4-E3 进入 | 未知终态、触发原因与快照已持久化 → S5-U | 不可达：S4-E3 没有成功回调 | 不可达：S4-E3 没有取消回调 | 不可达：S4-E3 没有失败回调 | 不可达：S5-U 已完成入场 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“从 S4-E3 进入” × 起始状态“S5-U”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C5-106	SPEC-S5-20260812.v5.md	303	| 用户点击“我已清空最近删除” | 不可达：外部源没有该操作 | 读取一次完成读数、持久化展示结论 → S5-T0 | 不可达：取消页没有该操作 | 不可达：失败页没有该操作 | 不可达：未知页没有该操作 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“用户点击“我已清空最近删除”” × 起始状态“外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C5-107	SPEC-S5-20260812.v5.md	303	| 用户点击“我已清空最近删除” | 不可达：外部源没有该操作 | 读取一次完成读数、持久化展示结论 → S5-T0 | 不可达：取消页没有该操作 | 不可达：失败页没有该操作 | 不可达：未知页没有该操作 |	testConfirmationReadsCompletionExactlyOnceAndPersistsDelta	已覆盖	可达单元格（事件“用户点击“我已清空最近删除”” × 起始状态“S5-T0”）：所列方法直接断言该单元格。
-C5-108	SPEC-S5-20260812.v5.md	303	| 用户点击“我已清空最近删除” | 不可达：外部源没有该操作 | 读取一次完成读数、持久化展示结论 → S5-T0 | 不可达：取消页没有该操作 | 不可达：失败页没有该操作 | 不可达：未知页没有该操作 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“用户点击“我已清空最近删除”” × 起始状态“S5-C”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C5-109	SPEC-S5-20260812.v5.md	303	| 用户点击“我已清空最近删除” | 不可达：外部源没有该操作 | 读取一次完成读数、持久化展示结论 → S5-T0 | 不可达：取消页没有该操作 | 不可达：失败页没有该操作 | 不可达：未知页没有该操作 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“用户点击“我已清空最近删除”” × 起始状态“S5-F”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C5-110	SPEC-S5-20260812.v5.md	303	| 用户点击“我已清空最近删除” | 不可达：外部源没有该操作 | 读取一次完成读数、持久化展示结论 → S5-T0 | 不可达：取消页没有该操作 | 不可达：失败页没有该操作 | 不可达：未知页没有该操作 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“用户点击“我已清空最近删除”” × 起始状态“S5-U”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
+C5-106	SPEC-S5-20260812.v5.md	303	| 用户点击“我已清空最近删除” | 不可达：外部源没有该操作 | 读取一次完成读数、持久化展示结论 → S5-T0 | 不可达：取消页没有该操作 | 不可达：失败页没有该操作 | 不可达：未知页没有该操作 |	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	断言型条款（事件“用户点击“我已清空最近删除”” × 起始状态“外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。；事件已撤销（Decision_log 147，随 S5 v6 落文）
+C5-107	SPEC-S5-20260812.v5.md	303	| 用户点击“我已清空最近删除” | 不可达：外部源没有该操作 | 读取一次完成读数、持久化展示结论 → S5-T0 | 不可达：取消页没有该操作 | 不可达：失败页没有该操作 | 不可达：未知页没有该操作 |	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	可达单元格（事件“用户点击“我已清空最近删除”” × 起始状态“S5-T0”）：所列方法直接断言该单元格。；事件已撤销（Decision_log 147，随 S5 v6 落文）
+C5-108	SPEC-S5-20260812.v5.md	303	| 用户点击“我已清空最近删除” | 不可达：外部源没有该操作 | 读取一次完成读数、持久化展示结论 → S5-T0 | 不可达：取消页没有该操作 | 不可达：失败页没有该操作 | 不可达：未知页没有该操作 |	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	断言型条款（事件“用户点击“我已清空最近删除”” × 起始状态“S5-C”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。；事件已撤销（Decision_log 147，随 S5 v6 落文）
+C5-109	SPEC-S5-20260812.v5.md	303	| 用户点击“我已清空最近删除” | 不可达：外部源没有该操作 | 读取一次完成读数、持久化展示结论 → S5-T0 | 不可达：取消页没有该操作 | 不可达：失败页没有该操作 | 不可达：未知页没有该操作 |	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	断言型条款（事件“用户点击“我已清空最近删除”” × 起始状态“S5-F”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。；事件已撤销（Decision_log 147，随 S5 v6 落文）
+C5-110	SPEC-S5-20260812.v5.md	303	| 用户点击“我已清空最近删除” | 不可达：外部源没有该操作 | 读取一次完成读数、持久化展示结论 → S5-T0 | 不可达：取消页没有该操作 | 不可达：失败页没有该操作 | 不可达：未知页没有该操作 |	—	条款已撤销（Decision_log 147，随 S5 v6 落文）	断言型条款（事件“用户点击“我已清空最近删除”” × 起始状态“S5-U”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。；事件已撤销（Decision_log 147，随 S5 v6 落文）
 C5-111	SPEC-S5-20260812.v5.md	304	| 用户点击“返回确认页” | 不可达：外部源没有该操作 | 不可达：S5-T0 没有该操作 | 缓存存在 → S3-2；缓存已随会话清空 → S3-1；两条路径均携带 P | 缓存存在 → S3-2；缓存已随会话清空 → S3-1；两条路径均携带 P | 不可达：S5-U 没有该操作 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“用户点击“返回确认页”” × 起始状态“外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
 C5-112	SPEC-S5-20260812.v5.md	304	| 用户点击“返回确认页” | 不可达：外部源没有该操作 | 不可达：S5-T0 没有该操作 | 缓存存在 → S3-2；缓存已随会话清空 → S3-1；两条路径均携带 P | 缓存存在 → S3-2；缓存已随会话清空 → S3-1；两条路径均携带 P | 不可达：S5-U 没有该操作 |	testSuccessPageCannotReturnToConfirmation, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“用户点击“返回确认页”” × 起始状态“S5-T0”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
 C5-113	SPEC-S5-20260812.v5.md	304	| 用户点击“返回确认页” | 不可达：外部源没有该操作 | 不可达：S5-T0 没有该操作 | 缓存存在 → S3-2；缓存已随会话清空 → S3-1；两条路径均携带 P | 缓存存在 → S3-2；缓存已随会话清空 → S3-1；两条路径均携带 P | 不可达：S5-U 没有该操作 |	testCancellationReturnWithCacheCarriesOriginalSubmission, testCancellationReturnWithoutCacheCarriesOriginalSubmission	已覆盖	可达单元格（事件“用户点击“返回确认页”” × 起始状态“S5-C”）：所列方法直接断言该单元格。
@@ -382,12 +383,12 @@ C5-118	SPEC-S5-20260812.v5.md	305	| 用户离开页面 | 不可达：外部源�
 C5-119	SPEC-S5-20260812.v5.md	305	| 用户离开页面 | 不可达：外部源尚无 S5 页面 | 结束本次清理会话 → S5-EXIT | 不可达：取消页只提供返回确认页 | 不可达：失败页只提供返回确认页 | 结束会话 → S5-EXIT |	testFailurePageCannotLeaveThroughCompletionAction, testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“用户离开页面” × 起始状态“S5-F”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
 C5-120	SPEC-S5-20260812.v5.md	305	| 用户离开页面 | 不可达：外部源尚无 S5 页面 | 结束本次清理会话 → S5-EXIT | 不可达：取消页只提供返回确认页 | 不可达：失败页只提供返回确认页 | 结束会话 → S5-EXIT |	testCell06LeaveFromUnknown	不适用	可达单元格（事件“用户离开页面” × 起始状态“S5-U”）：MVE 范围外
 C5-121	SPEC-S5-20260812.v5.md	306	| 应用进入非 active | 不可达：尚未进入 S5 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“应用进入非 active” × 起始状态“外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C5-122	SPEC-S5-20260812.v5.md	306	| 应用进入非 active | 不可达：尚未进入 S5 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testCell07InactiveFromSuccess, testLifecycleEventsDoNotReadFreeDiskAgain	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S5-T0”）：所列方法直接断言该单元格。
+C5-122	SPEC-S5-20260812.v5.md	306	| 应用进入非 active | 不可达：尚未进入 S5 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testCell07InactiveFromSuccess	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S5-T0”）：所列方法直接断言该单元格。
 C5-123	SPEC-S5-20260812.v5.md	306	| 应用进入非 active | 不可达：尚未进入 S5 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testCancellationLifecycleAndTerminationKeepState	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S5-C”）：所列方法直接断言该单元格。
 C5-124	SPEC-S5-20260812.v5.md	306	| 应用进入非 active | 不可达：尚未进入 S5 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testCell08InactiveFromFailure	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S5-F”）：所列方法直接断言该单元格。
 C5-125	SPEC-S5-20260812.v5.md	306	| 应用进入非 active | 不可达：尚未进入 S5 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testCell09InactiveFromUnknown	已覆盖	可达单元格（事件“应用进入非 active” × 起始状态“S5-U”）：所列方法直接断言该单元格。
 C5-126	SPEC-S5-20260812.v5.md	307	| 应用恢复 active | 不可达：尚未进入 S5；S4 的恢复交接由上游处理 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testAll115TransitionCellsAndEveryUnreachableCombination	已覆盖	断言型条款（事件“应用恢复 active” × 起始状态“外部源”）：守卫测试在运行时读取本矩阵坐标并直接断言该不可达组合。
-C5-127	SPEC-S5-20260812.v5.md	307	| 应用恢复 active | 不可达：尚未进入 S5；S4 的恢复交接由上游处理 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testCell10ActiveFromSuccess, testLifecycleEventsDoNotReadFreeDiskAgain	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S5-T0”）：所列方法直接断言该单元格。
+C5-127	SPEC-S5-20260812.v5.md	307	| 应用恢复 active | 不可达：尚未进入 S5；S4 的恢复交接由上游处理 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testCell10ActiveFromSuccess	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S5-T0”）：所列方法直接断言该单元格。
 C5-128	SPEC-S5-20260812.v5.md	307	| 应用恢复 active | 不可达：尚未进入 S5；S4 的恢复交接由上游处理 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testCancellationLifecycleAndTerminationKeepState	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S5-C”）：所列方法直接断言该单元格。
 C5-129	SPEC-S5-20260812.v5.md	307	| 应用恢复 active | 不可达：尚未进入 S5；S4 的恢复交接由上游处理 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testCell11ActiveFromFailure	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S5-F”）：所列方法直接断言该单元格。
 C5-130	SPEC-S5-20260812.v5.md	307	| 应用恢复 active | 不可达：尚未进入 S5；S4 的恢复交接由上游处理 | → S5-T0；不新增磁盘读取 | → S5-C；保留取消上下文 | → S5-F；保留失败上下文 | → S5-U；保留未知上下文 |	testCell12ActiveFromUnknown	已覆盖	可达单元格（事件“应用恢复 active” × 起始状态“S5-U”）：所列方法直接断言该单元格。
@@ -404,7 +405,7 @@ C5-140	SPEC-S5-20260812.v5.md	324	- “返回确认页”始终携带原提交�
 C5-141	SPEC-S5-20260812.v5.md	325	- 本会话内，资产级结论缓存不因集合变化而失效；缓存仍存在时直接进入 `S3-2`，无需重扫。	testCancellationReturnWithCacheCarriesOriginalSubmission, testCell05AReturnFromFailureWithCache	已覆盖	所列方法直接断言该条款。
 C5-142	SPEC-S5-20260812.v5.md	326	- 缓存已因会话结束清空时进入 `S3-1`，由 S3 对 `P` 重新扫描。	testCancellationReturnWithoutCacheCarriesOriginalSubmission, testCell05BReturnFromFailureWithoutCache	已覆盖	所列方法直接断言该条款。
 C5-143	SPEC-S5-20260812.v5.md	327	- S5 本身不发起再次删除；后续提交仍须经过确认页冻结新的提交快照。	testSuccessPageCannotReturnToConfirmation, testUnknownPageCannotReturnToConfirmation, testCell14SubmitFromS3_2FreezesSnapshotForS4_1, testC5_143NewDeletionMustReturnToS3AndFreezeNewSnapshot	已覆盖	所列专项方法直接断言该条款。
-C5-144	SPEC-S5-20260812.v5.md	333	| S5-T0 | `S5-EXIT`，即应用的清理入口页 | 结束本次清理会话，清除本批 L3 读数与展示结论 |	testCell04LeaveFromSuccess, testPersistedSessionCarriesTargetReadingsDeltaAndDeclarationTime, testC5_144SuccessExitClearsPersistedL3Session	不适用	MVE 范围外
+C5-144	SPEC-S5-20260812.v5.md	333	| S5-T0 | `S5-EXIT`，即应用的清理入口页 | 结束本次清理会话，清除本批 L3 读数与展示结论 |	testCell04LeaveFromSuccess	不适用	MVE 范围外
 C5-145	SPEC-S5-20260812.v5.md	334	| S5-U | `S5-EXIT`，即应用的清理入口页 | 结束本次清理会话，不推断删除结果，不自动再次提交 |	testCell06LeaveFromUnknown, testUnknownEntryDoesNotConstructClassificationSets, testC5_145UnknownExitDoesNotInferResultOrResubmit	不适用	MVE 范围外
 C5-146	SPEC-S5-20260812.v5.md	336	`S5-C` 与 `S5-F` 不使用 `S5-EXIT`；二者只按本节第二部分返回确认页。	testCancellationCannotLeaveThroughCompletionAction, testFailurePageCannotLeaveThroughCompletionAction, testCancellationReturnWithCacheCarriesOriginalSubmission, testCell05AReturnFromFailureWithCache	已覆盖	所列方法直接断言该条款。
 ```
@@ -447,15 +448,10 @@ testC34_209SuccessTerminalContinuesHandoffAfterTerminationAndRestart	PhotoCleanu
 testC34_210FailureTerminalContinuesHandoffAfterTerminationAndRestart	PhotoCleanupMVETests/CoverageGapTests.swift	300	C34-210
 testC34_211UnknownTerminalContinuesHandoffAfterTerminationAndRestart	PhotoCleanupMVETests/CoverageGapTests.swift	309	C34-211
 testC5_006SuccessAndUnknownExitDoNotSubmitOrStartScanning	PhotoCleanupMVETests/CoverageGapTests.swift	318	C5-006
-testC5_031RepeatedLifecycleTicksNeverPollFreeDisk	PhotoCleanupMVETests/CoverageGapTests.swift	351	C5-031
 testC5_034SuccessOnlyLeavesThroughExitAndCannotModifySubmission	PhotoCleanupMVETests/CoverageGapTests.swift	381	C5-034
-testC5_039CompletedReadingsSurviveTerminationAndRestoreWithoutNewRead	PhotoCleanupMVETests/CoverageGapTests.swift	397	C5-039
-testC5_069FailureNeverReadsFreeDiskOrDisplaysL3	PhotoCleanupMVETests/CoverageGapTests.swift	428	C5-069
-testC5_086UnknownCannotReadConfirmOrWriteBackManualResult	PhotoCleanupMVETests/CoverageGapTests.swift	463	C5-086
 testC5_087UnknownCannotResubmitModifyPOrReturnToConfirmation	PhotoCleanupMVETests/CoverageGapTests.swift	492	C5-087
 testC5_101UnknownEntryPersistsReasonAndSnapshotBeforeReturning	PhotoCleanupMVETests/CoverageGapTests.swift	510	C5-101
 testC5_143NewDeletionMustReturnToS3AndFreezeNewSnapshot	PhotoCleanupMVETests/CoverageGapTests.swift	527	C5-143
-testC5_144SuccessExitClearsPersistedL3Session	PhotoCleanupMVETests/CoverageGapTests.swift	561	C5-144
 testC5_145UnknownExitDoesNotInferResultOrResubmit	PhotoCleanupMVETests/CoverageGapTests.swift	591	C5-145
 testIC045_001ProperSubsetShrinksEveryRangeThroughCoordinator	PhotoCleanupMVETests/S3ReturnRouteTests.swift	6	C34-231
 testIC045_002EmptyReturnClearsSessionSelections	PhotoCleanupMVETests/S3ReturnRouteTests.swift	43	C34-231
@@ -545,25 +541,14 @@ testCell12ActiveFromUnknown	PhotoCleanupMVETests/S5StateMachineTests.swift	169	C
 testCell13TerminationFromSuccess	PhotoCleanupMVETests/S5StateMachineTests.swift	181	C5-039, C5-132
 testCell14TerminationFromFailure	PhotoCleanupMVETests/S5StateMachineTests.swift	195	C5-074, C5-134
 testCell15TerminationFromUnknown	PhotoCleanupMVETests/S5StateMachineTests.swift	205	C5-090, C5-135
-testConfirmationButtonIsEnabledOnlyBeforeSuccessConfirmation	PhotoCleanupMVETests/S5StateMachineTests.swift	214	C5-025, C5-028, C5-070, C5-086
 testCancellationEntryUsesDownstreamTargetWithoutReadingFailureCategory	PhotoCleanupMVETests/S5StateMachineTests.swift	229	C5-001, C5-003, C5-012, C5-042, C5-050, C5-096, C5-137, C5-139
 testFailureEntryUsesDownstreamTargetWithoutReadingFailureCategory	PhotoCleanupMVETests/S5StateMachineTests.swift	248	C5-012, C5-096, C5-139
 testCancellationReturnWithCacheCarriesOriginalSubmission	PhotoCleanupMVETests/S5StateMachineTests.swift	265	C5-006, C5-015, C5-044, C5-048, C5-054, C5-113, C5-140, C5-141, C5-146
 testCancellationReturnWithoutCacheCarriesOriginalSubmission	PhotoCleanupMVETests/S5StateMachineTests.swift	278	C5-015, C5-044, C5-048, C5-055, C5-113, C5-140, C5-142
 testCancellationLifecycleAndTerminationKeepState	PhotoCleanupMVETests/S5StateMachineTests.swift	291	C5-056, C5-057, C5-123, C5-128, C5-133
 testCancellationCannotLeaveThroughCompletionAction	PhotoCleanupMVETests/S5StateMachineTests.swift	305	C5-006, C5-052, C5-118, C5-146
-testCancellationDoesNotReadFreeDiskStrictGB	PhotoCleanupMVETests/S5StateMachineTests.swift	313	C5-051
-testCancellationDoesNotShowL3	PhotoCleanupMVETests/S5StateMachineTests.swift	338	C5-046, C5-051
 testCancellationDoesNotShowSystemErrorDomainOrCode	PhotoCleanupMVETests/S5StateMachineTests.swift	344	C5-045
-testCancellationDoesNotShowRecentlyDeletedConfirmationAction	PhotoCleanupMVETests/S5StateMachineTests.swift	350	C5-052
 testCancellationVisibleCopyAvoidsFailureAndIncompleteWording	PhotoCleanupMVETests/S5StateMachineTests.swift	359	C5-053
-testSuccessEntryReadsBaselineExactlyOnceAndPersistsIt	PhotoCleanupMVETests/S5StateMachineTests.swift	374	C5-023, C5-091
-testConfirmationReadsCompletionExactlyOnceAndPersistsDelta	PhotoCleanupMVETests/S5StateMachineTests.swift	394	C5-028, C5-035, C5-107
-testRepeatedConfirmationDoesNotReadAgain	PhotoCleanupMVETests/S5StateMachineTests.swift	425	C5-025, C5-030, C5-031
-testLifecycleEventsDoNotReadFreeDiskAgain	PhotoCleanupMVETests/S5StateMachineTests.swift	459	C5-031, C5-037, C5-038, C5-039, C5-122, C5-127
-testUnavailableReadingsArePersistedWithoutDeltaOrRetry	PhotoCleanupMVETests/S5StateMachineTests.swift	494	C5-028, C5-031, C5-035
-testPersistedSessionCarriesTargetReadingsDeltaAndDeclarationTime	PhotoCleanupMVETests/S5StateMachineTests.swift	520	C5-020, C5-035, C5-039, C5-144
-testL3DisplayRemainsBlockedForEveryState	PhotoCleanupMVETests/S5StateMachineTests.swift	543	C5-022, C5-024, C5-032, C5-064, C5-069, C5-082, C5-086
 testMismatchedHandoffPayloadAndTargetIsRejected	PhotoCleanupMVETests/S5StateMachineTests.swift	551	C5-097, C5-139
 testFailurePageCannotLeaveThroughCompletionAction	PhotoCleanupMVETests/S5StateMachineTests.swift	572	C5-006, C5-070, C5-119, C5-146
 testSuccessPageCannotReturnToConfirmation	PhotoCleanupMVETests/S5StateMachineTests.swift	580	C5-034, C5-112, C5-143
@@ -655,13 +640,9 @@ testLargeGigabyteValueKeepsOneTruncatedDecimalPlace	PhotoCleanupMVETests/VolumeF
 | C5-019 | `SPEC-S5-20260812.v5.md:147` | 方法断言成功集合等于原提交集合，未断言页面 L1 文案和三个计数的呈现。 |
 | C5-020 | `SPEC-S5-20260812.v5.md:148` | 方法证明快照随成功上下文持久化，未断言页面按第二节显示 L2。 |
 | C5-021 | `SPEC-S5-20260812.v5.md:149` | 未发现直接断言该条款的 XCTest 方法。 |
-| C5-022 | `SPEC-S5-20260812.v5.md:150` | 方法断言用户点击前不显示 L3，但未断言等待系统操作说明的页面文案。 |
-| C5-023 | `SPEC-S5-20260812.v5.md:151` | 方法断言首次进入只读取并持久化一次基线，未断言页面只显示取得状态且隐藏读数本身。 |
 | C5-026 | `SPEC-S5-20260812.v5.md:154` | 方法断言离开事件可用，未断言页面显示离开操作。 |
 | C5-027 | `SPEC-S5-20260812.v5.md:158` | 未发现直接断言该条款的 XCTest 方法。 |
-| C5-028 | `SPEC-S5-20260812.v5.md:159` | 方法断言单次读取、状态留存与按钮状态，但未直接断言形成页面展示结论。 |
 | C5-033 | `SPEC-S5-20260812.v5.md:167` | 未发现直接断言该条款的 XCTest 方法。 |
-| C5-035 | `SPEC-S5-20260812.v5.md:172` | 方法断言声明时间、完成读数和差值持久化并留在原状态，但未直接断言形成页面展示结论。 |
 | C5-042 | `SPEC-S5-20260812.v5.md:184` | 方法断言取消分类为 A、B 空且 C 等于 P，未断言页面 L1 文案呈现。 |
 | C5-043 | `SPEC-S5-20260812.v5.md:185` | 未发现直接断言该条款的 XCTest 方法。 |
 | C5-044 | `SPEC-S5-20260812.v5.md:186` | 方法断言返回确认页事件可用，未断言页面显示主操作。 |
@@ -714,7 +695,6 @@ testLargeGigabyteValueKeepsOneTruncatedDecimalPlace	PhotoCleanupMVETests/VolumeF
 | C5-006 | `SPEC-S5-20260812.v5.md:23` | MVE 范围外 |
 | C5-016 | `SPEC-S5-20260812.v5.md:35` | MVE 范围外 |
 | C5-018 | `SPEC-S5-20260812.v5.md:146` | 该条款为纯文案 |
-| C5-024 | `SPEC-S5-20260812.v5.md:152` | 该条款为未定项阻断 |
 | C5-040 | `SPEC-S5-20260812.v5.md:182` | 该条款为纯文案 |
 | C5-041 | `SPEC-S5-20260812.v5.md:183` | 该条款为纯文案 |
 | C5-058 | `SPEC-S5-20260812.v5.md:214` | 该条款为纯文案 |
