@@ -121,12 +121,122 @@ final class IC139MediaBadgesTests: XCTestCase {
 
     // MARK: - 断言 4：视频浮框骨架
 
+    func testIC139B_VideoBarExistsOnlyOnVisibleVideoPageAndTakesNoHits() {
+        guard let model = S2VideoBarPresentation.make(
+            mediaKind: .video,
+            interfaceVisibility: .visible
+        ) else {
+            return XCTFail("视频页未构造浮框")
+        }
+        XCTAssertEqual(model.playSymbolName, "play.fill")
+        XCTAssertEqual(model.muteSymbolName, "speaker.slash.fill")
+        XCTAssertEqual(model.progress, 0)
+        // 本卡三件不接点击，IC-141 接线。
+        XCTAssertFalse(model.acceptsHits)
 
+        XCTAssertNil(
+            S2VideoBarPresentation.make(
+                mediaKind: .photo,
+                interfaceVisibility: .visible
+            )
+        )
+        XCTAssertNil(
+            S2VideoBarPresentation.make(
+                mediaKind: .live,
+                interfaceVisibility: .visible
+            )
+        )
+    }
 
+    func testIC139B_VideoBarGeometryReferencesRegisteredChromeConstants() {
+        XCTAssertEqual(
+            S2MediaMetrics.videoBarHorizontalMargin,
+            S2OverlayLayout.chromeHorizontalMargin
+        )
+        XCTAssertEqual(
+            S2MediaMetrics.videoBarBottomToStripTop,
+            S2OverlayLayout.stripToBottomRowSpacing
+        )
+
+        XCTAssertEqual(S2MediaMetrics.videoBarHeight, 44)
+        XCTAssertEqual(S2MediaMetrics.videoBarCornerRadius, 22)
+        XCTAssertEqual(S2MediaMetrics.videoBarHorizontalPadding, 14)
+        XCTAssertEqual(S2MediaMetrics.videoBarItemSpacing, 12)
+        XCTAssertEqual(S2MediaMetrics.videoBarButtonIconPointSize, 18)
+        XCTAssertEqual(S2MediaMetrics.videoBarMuteIconPointSize, 20)
+        XCTAssertEqual(S2MediaMetrics.videoBarTrackHeight, 4)
+        XCTAssertEqual(S2MediaMetrics.videoBarTrackCornerRadius, 2)
+        XCTAssertEqual(S2MediaMetrics.videoBarKnobDiameter, 12)
+        XCTAssertEqual(S2MediaMetrics.videoBarTimeFontSize, 13)
+        XCTAssertEqual(S2MediaMetrics.videoBarTrackOpacity, 0.28)
+    }
+
+    /// 陷阱 14：浮框是**视觉**锚，不得复用含触控带下限的推导式。
+    func testIC139B_VideoBarAnchorUsesVisualStripHeightNotTouchBandFloor() {
+        // 取一个小于最小触控边长的横栏高：两条推导式此时必然分叉。
+        let visualStripHeight = S2OverlayLayout.minimumTouchTarget - 10
+        let anchored = S2MediaMetrics.videoBarBottomFromViewportBottom(
+            safeAreaBottom: safeAreaBottom,
+            bottomStripHeight: visualStripHeight
+        )
+        let expected = S2OverlayLayout.stripBottomFromViewportBottom(
+            safeAreaBottom: safeAreaBottom
+        ) + visualStripHeight + S2OverlayLayout.stripToBottomRowSpacing
+        XCTAssertEqual(anchored, expected)
+
+        let touchBandAnchor = S2OverlayLayout.stripTopFromViewportBottom(
+            safeAreaBottom: safeAreaBottom,
+            bottomStripHeight: visualStripHeight
+        ) + S2OverlayLayout.stripToBottomRowSpacing
+        XCTAssertNotEqual(
+            anchored,
+            touchBandAnchor,
+            "浮框锚复用了含 max(最小触控边长, 横栏高) 的触控带推导式"
+        )
+    }
 
     // MARK: - 断言 5：隐藏态与显隐过渡
 
+    func testIC139B_HiddenInterfaceBuildsNeitherPillNorBar() {
+        for kind in S2MediaKind.allCases {
+            XCTAssertNil(
+                S2LivePillPresentation.make(
+                    mediaKind: kind,
+                    interfaceVisibility: .hidden
+                ),
+                "\(kind) 在隐藏态仍构造了胶囊"
+            )
+            XCTAssertNil(
+                S2VideoBarPresentation.make(
+                    mediaKind: kind,
+                    interfaceVisibility: .hidden
+                ),
+                "\(kind) 在隐藏态仍构造了浮框"
+            )
+        }
+    }
 
+    /// 显隐过渡不自造语汇：三个量必须落在既有 chrome 过渡常量上。
+    func testIC139B_MediaChromeUsesExistingVisibilityTransitionConstants() {
+        XCTAssertEqual(S2ChromeVisibilityTransition.durationSeconds, 0.2)
+        XCTAssertEqual(S2ChromeVisibilityTransition.hiddenScale, 1.06)
+        XCTAssertEqual(S2ChromeVisibilityTransition.hiddenBlurRadius, 8)
+
+        guard let text = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2View.swift"
+        ) else {
+            return XCTFail("读不到 S2View 源码")
+        }
+        // 媒体常量容器里不得出现自造的时长／缩放／模糊。
+        let container = mediaMetricsBlock(in: text)
+        XCTAssertFalse(container.isEmpty, "未截取到媒体常量容器")
+        for banned in ["durationSeconds", "hiddenScale", "hiddenBlurRadius"] {
+            XCTAssertFalse(
+                container.contains(banned),
+                "媒体常量容器自造了显隐过渡量 \(banned)"
+            )
+        }
+    }
 
     // MARK: - 断言 6：视频页几何（渲染帧）
 
@@ -146,6 +256,17 @@ final class IC139MediaBadgesTests: XCTestCase {
 
 
 
+    /// 截取 `S2MediaMetrics` 容器正文，供「不自造语汇」的源码扫描用。
+    private func mediaMetricsBlock(in text: String) -> String {
+        guard let start = text.range(of: "enum S2MediaMetrics {") else {
+            return ""
+        }
+        let rest = text[start.upperBound...]
+        guard let end = rest.range(of: "\n}\n") else {
+            return String(rest)
+        }
+        return String(rest[..<end.lowerBound])
+    }
 
     private func sourceText(_ relativePath: String) -> String? {
         let root = URL(fileURLWithPath: #filePath)

@@ -1144,6 +1144,28 @@ struct S2View: View {
                 )
         }
 
+        if let bar = S2VideoBarPresentation.make(
+            mediaKind: kind,
+            interfaceVisibility: visibility
+        ) {
+            videoBar(bar)
+                .padding(
+                    .horizontal,
+                    S2MediaMetrics.videoBarHorizontalMargin
+                )
+                .padding(
+                    .bottom,
+                    S2MediaMetrics.videoBarBottomFromViewportBottom(
+                        safeAreaBottom: safeAreaInsets.bottom,
+                        bottomStripHeight: bottomStripHeight
+                    )
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .bottom
+                )
+        }
     }
 
     /// 实况胶囊：实况符号 + 文字，玻璃跑道底。决策 54：**无下箭头、不可点**。
@@ -1170,6 +1192,76 @@ struct S2View: View {
         .allowsHitTesting(false)
         .accessibilityElement()
         .accessibilityLabel(model.text)
+    }
+
+    /// 视频浮框骨架：暂停／播放、进度条、静音三件。
+    /// 本卡三件都不响应点击（`acceptsHits == false`），IC-141 接线。
+    private func videoBar(_ model: S2VideoBarPresentation) -> some View {
+        HStack(spacing: S2MediaMetrics.videoBarItemSpacing) {
+            Image(systemName: model.playSymbolName)
+                .font(.system(
+                    size: S2MediaMetrics.videoBarButtonIconPointSize
+                ))
+                .accessibilityLabel(L10n.text("s2.media.video_play"))
+
+            videoBarTrack(progress: model.progress)
+
+            Image(systemName: model.muteSymbolName)
+                .font(.system(size: S2MediaMetrics.videoBarMuteIconPointSize))
+                .accessibilityLabel(L10n.text("s2.media.video_mute"))
+        }
+        .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+        .padding(.horizontal, S2MediaMetrics.videoBarHorizontalPadding)
+        .frame(maxWidth: .infinity)
+        .frame(height: S2MediaMetrics.videoBarHeight)
+        .s2ChromeGlassBackground(
+            in: RoundedRectangle(
+                cornerRadius: S2MediaMetrics.videoBarCornerRadius,
+                style: .continuous
+            )
+        )
+        .allowsHitTesting(model.acceptsHits)
+        .accessibilityLabel(L10n.text("s2.media.video_bar"))
+    }
+
+    /// 进度轨：轨白 28%、填充白 100%、右端拖动圆点。本卡填充恒为 0，
+    /// 圆点只画不接拖动（决策 56 的读数与拖动属 IC-141）。
+    private func videoBarTrack(progress: Double) -> some View {
+        let ratio = min(max(progress, 0), 1)
+        return GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(
+                        Color.white
+                            .opacity(S2MediaMetrics.videoBarTrackOpacity)
+                    )
+                    .frame(height: S2MediaMetrics.videoBarTrackHeight)
+
+                Capsule()
+                    .fill(Color.white)
+                    .frame(
+                        width: proxy.size.width * ratio,
+                        height: S2MediaMetrics.videoBarTrackHeight
+                    )
+
+                Circle()
+                    .fill(Color.white)
+                    .frame(
+                        width: S2MediaMetrics.videoBarKnobDiameter,
+                        height: S2MediaMetrics.videoBarKnobDiameter
+                    )
+                    .offset(
+                        x: proxy.size.width * ratio -
+                            S2MediaMetrics.videoBarKnobDiameter / 2
+                    )
+            }
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .leading
+            )
+        }
+        .frame(height: S2MediaMetrics.videoBarHeight)
     }
 
     /// IC-113 C：教程浮层抽成独立 builder。
@@ -2562,12 +2654,52 @@ enum S2MediaMetrics {
     static let livePillItemSpacing: CGFloat = 5
     static let livePillSymbol = "livephoto"
 
+    // MARK: - 视频浮框（决策 56，本卡只做骨架）
+
+    static let videoBarHeight: CGFloat = 44
+    static let videoBarCornerRadius: CGFloat = 22
+    /// 左右边距 = chrome 既有横向边距（引用）。
+    static let videoBarHorizontalMargin = S2OverlayLayout
+        .chromeHorizontalMargin
+    /// 浮框底缘到横栏顶缘 = 横栏到底排的既有间距（引用）。
+    static let videoBarBottomToStripTop = S2OverlayLayout
+        .stripToBottomRowSpacing
+    static let videoBarHorizontalPadding: CGFloat = 14
+    static let videoBarItemSpacing: CGFloat = 12
+    static let videoBarButtonIconPointSize: CGFloat = 18
+    static let videoBarMuteIconPointSize: CGFloat = 20
+    static let videoBarTrackHeight: CGFloat = 4
+    static let videoBarTrackCornerRadius: CGFloat = 2
+    static let videoBarKnobDiameter: CGFloat = 12
+    static let videoBarTimeFontSize: CGFloat = 13
+    /// 轨底白 28%；填充白 100%（画布 ④）。
+    static let videoBarTrackOpacity: Double = 0.28
+    static let videoBarPlaySymbol = "play.fill"
+    static let videoBarPauseSymbol = "pause.fill"
+    static let videoBarMutedSymbol = "speaker.slash.fill"
+    static let videoBarUnmutedSymbol = "speaker.wave.2.fill"
+
     // MARK: - 视觉锚（陷阱 14：视觉锚与触控锚是两套几何）
 
     /// 胶囊上缘距视口顶 = 安全区顶 + 顶栏帧高 + 间距。
     static func livePillTopFromViewportTop(safeAreaTop: CGFloat) -> CGFloat {
         max(0, safeAreaTop) + S2OverlayLayout.topBarHeight +
             livePillTopFromTopBarBottom
+    }
+
+    /// 浮框底缘距视口底 = 横栏底缘 + 横栏**视觉**带高 + 间距。
+    ///
+    /// 刻意不复用 `S2OverlayLayout.stripTopFromViewportBottom`——那条推导式里
+    /// 含 `max(最小触控边长, 横栏高)` 的**触控带**下限（陷阱 14，IC-104 C v3
+    /// 曾因此在真机上多出 14 pt）。浮框锚的是眼睛看到的横栏顶缘，
+    /// 故直接用传入的横栏视觉带高。
+    static func videoBarBottomFromViewportBottom(
+        safeAreaBottom: CGFloat,
+        bottomStripHeight: CGFloat
+    ) -> CGFloat {
+        S2OverlayLayout.stripBottomFromViewportBottom(
+            safeAreaBottom: safeAreaBottom
+        ) + max(0, bottomStripHeight) + videoBarBottomToStripTop
     }
 }
 
@@ -2588,6 +2720,32 @@ struct S2LivePillPresentation: Equatable {
         return S2LivePillPresentation(
             symbolName: S2MediaMetrics.livePillSymbol,
             text: L10n.text("s2.media.live_badge")
+        )
+    }
+}
+
+/// IC-139 B：视频浮框骨架口径模型。`nil` = 该页不构造浮框。
+///
+/// 本卡三件恒为「播放」「进度 0」「静音」，且 `acceptsHits == false`；
+/// 播放状态与点击接线属 IC-141。
+struct S2VideoBarPresentation: Equatable {
+    let playSymbolName: String
+    let muteSymbolName: String
+    let progress: Double
+    let acceptsHits: Bool
+
+    static func make(
+        mediaKind: S2MediaKind,
+        interfaceVisibility: S2InterfaceVisibility
+    ) -> S2VideoBarPresentation? {
+        guard mediaKind == .video, interfaceVisibility == .visible else {
+            return nil
+        }
+        return S2VideoBarPresentation(
+            playSymbolName: S2MediaMetrics.videoBarPlaySymbol,
+            muteSymbolName: S2MediaMetrics.videoBarMutedSymbol,
+            progress: 0,
+            acceptsHits: false
         )
     }
 }
