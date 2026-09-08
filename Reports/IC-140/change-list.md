@@ -15,12 +15,13 @@
 | 3 | `8ce30b5` | C · 分页器四处 | `Features/S2/S2NativePhotoPager.swift`、`PhotoCleanupMVETests/S2CalibrationHarnessTests.swift` |
 | 4 | `a998a9e` | D · S2View 接线 | `Features/S2/S2View.swift`、`PhotoCleanupMVETests/IC139MediaBadgesTests.swift` |
 | 5 | `12268a4` | E · 断言测试、pbxproj 登记与收尾 | `PhotoCleanupMVETests/IC140LivePhotoPlaybackTests.swift`（新）、`PhotoCleanupMVE.xcodeproj/project.pbxproj`、上述两个 S2 文件 |
-| 6 | `5bfdd91` | 修 #275 红 | `Features/S2/S2LivePhotoPlayback.swift`、`PhotoCleanupMVETests/IC140LivePhotoPlaybackTests.swift` |
+| 6 | `5bfdd91` | 修 #275 红（编译） | `Features/S2/S2LivePhotoPlayback.swift`、`PhotoCleanupMVETests/IC140LivePhotoPlaybackTests.swift` |
+| 7 | `4ca8770` | 修 #276 红（夹具） | `PhotoCleanupMVETests/IC140LivePhotoPlaybackTests.swift` |
 
 **与卡内「五个子项各自独立 commit」的两处偏离（如实登记）**
 
 1. **A 的提交同时改了 `S2View.swift`**：`S2MediaMetrics` 的两个新登记常量落在那里，而 A 的 reducer（`retentionSet`）编译期就要读 `livePhotoInstanceCap`。取值表属 A 的交付物，故与新文件同提交。
-2. **第 6 个提交**是 #275 编译红的修正 + 测试夹具加固，卡内未预留；按「三次 CI 上限」的第 2 次修复计。C 的提交同时改了 `S2CalibrationHarnessTests.swift` 的 T1 四处（机械跟随，不跟随则整棵测试树编不过）。
+2. **第 6、7 个提交**是两次 CI 红的修正（#275 编译、#276 夹具），卡内未预留；按「三次 CI 上限」的两次修复计，产品代码在第 7 次提交里未动。C 的提交同时改了 `S2CalibrationHarnessTests.swift` 的 T1 四处（机械跟随，不跟随则整棵测试树编不过）。
 
 卡内已注明「B～E 消费 A 的类型，不许诺可单独 cherry-pick」；A～D 各自单独不含 pbxproj 登记，单独 checkout 不构成可编译树，符合卡内约定。
 
