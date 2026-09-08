@@ -574,7 +574,7 @@ final class S2LivePhotoPlaybackCoordinator: ObservableObject {
 // MARK: - IC-140 B：宿主视图
 
 private extension S2LivePhotoPlaybackStyle {
-    var systemPlaybackStyle: PHLivePhotoView.PlaybackStyle {
+    var systemPlaybackStyle: PHLivePhotoViewPlaybackStyle {
         switch self {
         case .hint:
             return .hint
@@ -662,7 +662,7 @@ final class S2LivePhotoHostView: UIView,
 
     func livePhotoView(
         _ view: PHLivePhotoView,
-        didEndPlaybackWith playbackStyle: PHLivePhotoView.PlaybackStyle
+        didEndPlaybackWith playbackStyle: PHLivePhotoViewPlaybackStyle
     ) {
         _ = (view, playbackStyle)
         coordinator?.playbackEnded(assetID: assetID)

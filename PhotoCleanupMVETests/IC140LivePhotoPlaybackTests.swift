@@ -387,6 +387,8 @@ final class IC140LivePhotoPlaybackTests: XCTestCase {
             },
             onLongPressEnded: { endedCount += 1 }
         )
+        let window = attachWindow(to: controller)
+        defer { window.isHidden = true }
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
 
         XCTAssertTrue(controller.pagingScrollView.isScrollEnabled)
@@ -421,7 +423,13 @@ final class IC140LivePhotoPlaybackTests: XCTestCase {
             page.zoomScrollView.minimumZoomScale,
             "夹具的最大缩放不大于最小缩放，放大态正对照无法成立"
         )
-        page.zoomScrollView.zoomScale = page.zoomScrollView.maximumZoomScale
+        // 走既有的原生状态下发路径，不直写 zoomScale。
+        page.zoomScrollView.applyNativeState(scale: 2, viewportOffset: .zero)
+        XCTAssertGreaterThan(
+            page.zoomScrollView.zoomScale,
+            page.zoomScrollView.minimumZoomScale + 0.000_001,
+            "夹具未真正进入放大态，正对照无法成立"
+        )
         XCTAssertTrue(controller.beginLongPressSuspensionIfNeeded())
         XCTAssertFalse(page.zoomScrollView.panGestureRecognizer.isEnabled)
         controller.endLongPressSuspension()
@@ -440,6 +448,8 @@ final class IC140LivePhotoPlaybackTests: XCTestCase {
             onLongPressBegan: { false },
             onLongPressEnded: {}
         )
+        let window = attachWindow(to: controller)
+        defer { window.isHidden = true }
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
         let pagingBefore = controller.pagingScrollView.isScrollEnabled
         let verticalBefore = page.verticalSwipeRecognizer.isEnabled
@@ -495,15 +505,8 @@ final class IC140LivePhotoPlaybackTests: XCTestCase {
             onLongPressEnded: {},
             onPagingSettled: { settledCount += 1 }
         )
-        let window = UIWindow(
-            frame: CGRect(origin: .zero, size: physicalSize)
-        )
-        window.rootViewController = controller
-        window.isHidden = false
+        let window = attachWindow(to: controller)
         defer { window.isHidden = true }
-        controller.view.setNeedsLayout()
-        controller.view.layoutIfNeeded()
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
 
         // 初始布局不触发。
         XCTAssertEqual(settledCount, 0, "进场首帧就报了停稳")
@@ -613,7 +616,7 @@ final class IC140LivePhotoPlaybackTests: XCTestCase {
     }
 
     private func hintPlays(_ effects: [S2LivePhotoPlaybackEffect]) -> [String] {
-        effects.compactMap { effect in
+        effects.compactMap { (effect) -> String? in
             if case let .playHint(assetID) = effect {
                 return assetID
             }
@@ -622,7 +625,7 @@ final class IC140LivePhotoPlaybackTests: XCTestCase {
     }
 
     private func fullPlays(_ effects: [S2LivePhotoPlaybackEffect]) -> [String] {
-        effects.compactMap { effect in
+        effects.compactMap { (effect) -> String? in
             if case let .playFull(assetID) = effect {
                 return assetID
             }
@@ -631,7 +634,7 @@ final class IC140LivePhotoPlaybackTests: XCTestCase {
     }
 
     private func stops(_ effects: [S2LivePhotoPlaybackEffect]) -> [String] {
-        effects.compactMap { effect in
+        effects.compactMap { (effect) -> String? in
             if case let .stop(assetID) = effect {
                 return assetID
             }
@@ -696,6 +699,21 @@ final class IC140LivePhotoPlaybackTests: XCTestCase {
             initialRecentAlbum: nil,
             pendingDeletionDidChange: { _ in }
         )!
+    }
+
+    /// 与既有分页器夹具同源：挂窗口、跑一次布局与 runloop，页控制器才成形。
+    private func attachWindow(
+        to controller: S2NativePagerViewController
+    ) -> UIWindow {
+        let window = UIWindow(
+            frame: CGRect(origin: .zero, size: physicalSize)
+        )
+        window.rootViewController = controller
+        window.isHidden = false
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        return window
     }
 
     /// 与 `S2CalibrationHarnessTests.makeNativePagerController` 同源的构造：
