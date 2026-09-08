@@ -174,6 +174,10 @@ enum S3ActionBarMetrics {
     static let volumePrimaryFontSize: CGFloat = 13
     static let volumeSecondaryFontSize: CGFloat = 11
     static let scanningIndicatorSize: CGFloat = 16
+    /// ④ IC-134 取定：扫描行里「转圈 ↔ 文案」的间距，取与组头同值 8 的一半，
+    /// 使两者读起来成组。IC-138 C 自体积明细的常量容器迁入——明细随 IC-136 A
+    /// 撤销后那个容器只剩这一个取值、名与实不符，容器已删；取值未变。
+    static let scanningPairSpacing: CGFloat = 4
     static let submitHeight: CGFloat = 44
     static let submitCornerRadius: CGFloat = 22
     static let submitFontSize: CGFloat = 15
@@ -220,7 +224,6 @@ enum S3CellBadgeMetrics {
     static let favoriteLeadingInset: CGFloat = 6
     static let favoriteBottomInset: CGFloat = 6
     static let volumeHeight: CGFloat = 18
-    static let volumeCornerRadius: CGFloat = 9
     static let volumeHorizontalPadding: CGFloat = 6
     static let volumeFontSize: CGFloat = 11
     static let volumeTrailingInset: CGFloat = 5
@@ -293,12 +296,6 @@ struct S3CellBadgeModel: Equatable {
             volumeText: volumeText
         )
     }
-}
-
-/// ④ IC-134 取定、IC-136 A 后仅存的一个取值：操作条扫描行里「转圈 ↔ 文案」
-/// 的间距，取与组头同值 8 的一半，使两者读起来成组。
-enum S3VolumeDetailMetrics {
-    static let pairSpacing: CGFloat = 4
 }
 
 /// 三列网格的分行口径：按 3 分块，行内顺序即该组过滤后的顺序。
@@ -534,7 +531,7 @@ struct S3View: View {
         VStack(alignment: .trailing, spacing: 0) {
             switch model.volume {
             case let .scanning(primary, knownSoFar):
-                HStack(spacing: S3VolumeDetailMetrics.pairSpacing) {
+                HStack(spacing: S3ActionBarMetrics.scanningPairSpacing) {
                     ProgressView()
                         .controlSize(.mini)
                         .frame(
