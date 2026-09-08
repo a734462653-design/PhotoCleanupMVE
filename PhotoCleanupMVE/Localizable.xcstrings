@@ -584,6 +584,17 @@
         }
       }
     },
+    "s2.media.live_badge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实况"
+          }
+        }
+      }
+    },
     "s2.preview.album" : {
       "extractionState" : "manual",
       "localizations" : {

@@ -455,6 +455,9 @@ struct S2View: View {
 
     private let assetAspectRatio: (String) -> CGFloat
     private let assetIsScreenshot: (String) -> Bool
+    /// IC-139 A：媒体类别取数。默认全判 `photo`——既有 5 处测试构造点因此
+    /// 一行不用改，且照片路径的默认行为与本卡前逐字相同。
+    private let assetMediaKind: (String) -> S2MediaKind
     private let assetPixelSize: (String) -> CGSize
     /// IC-078：`pinchMaxScale` 的 1:1 像素倍率按屏幕倍率换算。
     @Environment(\.displayScale) private var displayScale
@@ -533,6 +536,7 @@ struct S2View: View {
         calibration: S2CalibrationModel,
         assetAspectRatio: @escaping (String) -> CGFloat,
         assetIsScreenshot: @escaping (String) -> Bool = { _ in false },
+        assetMediaKind: @escaping (String) -> S2MediaKind = { _ in .photo },
         assetPixelSize: @escaping (String) -> CGSize = { _ in .zero },
         assetCreationDate: @escaping (String) -> Date? = { _ in nil },
         assetVolumeProvider: S2AssetVolumeProviding? = nil,
@@ -566,6 +570,7 @@ struct S2View: View {
         self.calibration = calibration
         self.assetAspectRatio = assetAspectRatio
         self.assetIsScreenshot = assetIsScreenshot
+        self.assetMediaKind = assetMediaKind
         self.assetPixelSize = assetPixelSize
         self.photoContent = photoContent
         self.stripItemContent = stripItemContent
@@ -1089,9 +1094,82 @@ struct S2View: View {
                         safeAreaBottom: safeAreaInsets.bottom
                     )
                 )
+
+            // IC-139 A／B：媒体标识层。放在最后一个兄弟层，既有三层的
+            // 帧与锚点一字未动。
+            mediaChromeLayer(
+                bottomStripHeight: bottomStripHeight,
+                safeAreaInsets: safeAreaInsets
+            )
         }
         .padding(.leading, safeAreaInsets.leading)
         .padding(.trailing, safeAreaInsets.trailing)
+    }
+
+    /// IC-139 A：当前页的媒体类别 `m`（按当前资产 `c` 派生）。
+    private var currentMediaKind: S2MediaKind {
+        assetMediaKind(machine.currentAssetID)
+    }
+
+    /// IC-139 A／B：实况胶囊与视频浮框。
+    ///
+    /// 两件挂在 `interfaceOverlay` 的 ZStack 里作为**独立兄弟层**——ZStack 子层
+    /// 互不影响布局，顶排、横栏与操作条的几何因此一字未动（陷阱 13）；
+    /// 显隐过渡由外层 `.s2ChromeVisibilityTransition` 统一施加，本层不自造语汇，
+    /// 时长／缩放／模糊三个量全部落在 `S2ChromeVisibilityTransition` 上。
+    @ViewBuilder
+    private func mediaChromeLayer(
+        bottomStripHeight: CGFloat,
+        safeAreaInsets: S2OverlaySafeAreaInsets
+    ) -> some View {
+        let visibility = machine.interfaceVisibility
+        let kind = currentMediaKind
+
+        if let pill = S2LivePillPresentation.make(
+            mediaKind: kind,
+            interfaceVisibility: visibility
+        ) {
+            livePill(pill)
+                .padding(.leading, S2MediaMetrics.livePillLeading)
+                .padding(
+                    .top,
+                    S2MediaMetrics.livePillTopFromViewportTop(
+                        safeAreaTop: safeAreaInsets.top
+                    )
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .topLeading
+                )
+        }
+
+    }
+
+    /// 实况胶囊：实况符号 + 文字，玻璃跑道底。决策 54：**无下箭头、不可点**。
+    private func livePill(_ model: S2LivePillPresentation) -> some View {
+        HStack(spacing: S2MediaMetrics.livePillItemSpacing) {
+            Image(systemName: model.symbolName)
+                .font(.system(size: S2MediaMetrics.livePillIconPointSize))
+            Text(verbatim: model.text)
+                .font(.system(
+                    size: S2MediaMetrics.livePillFontSize,
+                    weight: .semibold
+                ))
+        }
+        .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+        .padding(.leading, S2MediaMetrics.livePillPaddingLeading)
+        .padding(.trailing, S2MediaMetrics.livePillPaddingTrailing)
+        .frame(height: S2MediaMetrics.livePillHeight)
+        .s2ChromeGlassBackground(
+            in: RoundedRectangle(
+                cornerRadius: S2MediaMetrics.livePillCornerRadius,
+                style: .continuous
+            )
+        )
+        .allowsHitTesting(false)
+        .accessibilityElement()
+        .accessibilityLabel(model.text)
     }
 
     /// IC-113 C：教程浮层抽成独立 builder。
@@ -2437,6 +2515,80 @@ enum S2ChromeVisibilityTransition {
 
     static func opacity(isVisible: Bool) -> Double {
         isVisible ? 1 : 0
+    }
+}
+
+/// IC-139（v19 回写决策 54）：当前照片的媒体类别 `m`。
+///
+/// 按资产派生，不是独立状态变量，不进六状态清单、不进交接快照。
+enum S2MediaKind: String, CaseIterable, Sendable {
+    case photo
+    case live
+    case video
+
+    /// 由全仓唯一的判别器结果映射而来（`AssetSizeProbeService.mediaKind(of:)`）。
+    /// 判别谓词**不在这里重写**——那会成为第三份分类实现。
+    init(probeKind: S2AssetSizeProbeMediaKind) {
+        switch probeKind {
+        case .video:
+            self = .video
+        case .livePhoto:
+            self = .live
+        case .photo:
+            self = .photo
+        }
+    }
+}
+
+/// IC-139：媒体播放视觉登记制常量（v19 §11.2「媒体播放」块，画布定稿 ④）。
+///
+/// 基准 393×852、安全区顶 59 / 底 34。**不进 `S2CalibrationConfiguration`、
+/// 不上标定面板**，因此本卡不动 `schemaVersion`。凡与既有 chrome 语汇同值的
+/// 一律**引用**既有常量而不复制数值——复制出来的数值日后会各改各的。
+enum S2MediaMetrics {
+    // MARK: - 实况胶囊（决策 54）
+
+    /// 胶囊上缘距顶排底缘 = 横栏到底排的既有间距（引用，非复制）。
+    static let livePillTopFromTopBarBottom = S2OverlayLayout
+        .stripToBottomRowSpacing
+    static let livePillHeight: CGFloat = 28
+    static let livePillCornerRadius: CGFloat = 14
+    /// 左边距 = chrome 既有横向边距（引用）。
+    static let livePillLeading = S2OverlayLayout.chromeHorizontalMargin
+    static let livePillPaddingLeading: CGFloat = 8
+    static let livePillPaddingTrailing: CGFloat = 10
+    static let livePillIconPointSize: CGFloat = 13
+    static let livePillFontSize: CGFloat = 12
+    static let livePillItemSpacing: CGFloat = 5
+    static let livePillSymbol = "livephoto"
+
+    // MARK: - 视觉锚（陷阱 14：视觉锚与触控锚是两套几何）
+
+    /// 胶囊上缘距视口顶 = 安全区顶 + 顶栏帧高 + 间距。
+    static func livePillTopFromViewportTop(safeAreaTop: CGFloat) -> CGFloat {
+        max(0, safeAreaTop) + S2OverlayLayout.topBarHeight +
+            livePillTopFromTopBarBottom
+    }
+}
+
+/// IC-139 A：实况胶囊口径模型。`nil` = 该页不构造胶囊。
+///
+/// 无点击动作、无 chevron——决策 54 明写「无下箭头、不可点」。
+struct S2LivePillPresentation: Equatable {
+    let symbolName: String
+    let text: String
+
+    static func make(
+        mediaKind: S2MediaKind,
+        interfaceVisibility: S2InterfaceVisibility
+    ) -> S2LivePillPresentation? {
+        guard mediaKind == .live, interfaceVisibility == .visible else {
+            return nil
+        }
+        return S2LivePillPresentation(
+            symbolName: S2MediaMetrics.livePillSymbol,
+            text: L10n.text("s2.media.live_badge")
+        )
     }
 }
 
