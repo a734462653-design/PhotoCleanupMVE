@@ -249,19 +249,9 @@ final class IC139MediaBadgesTests: XCTestCase {
         )
     }
 
-    func testIC139D_LivePhotoLongPressRecordsOncePerPress() {
-        let recorder = S2LivePhotoLongPressRecorder()
-        XCTAssertEqual(recorder.requestCount, 0)
-        XCTAssertNil(recorder.lastAssetID)
-
-        recorder.record(assetID: "asset-A")
-        XCTAssertEqual(recorder.requestCount, 1)
-        XCTAssertEqual(recorder.lastAssetID, "asset-A")
-
-        recorder.record(assetID: "asset-B")
-        XCTAssertEqual(recorder.requestCount, 2)
-        XCTAssertEqual(recorder.lastAssetID, "asset-B")
-    }
+    // IC-140 D：`testIC139D_LivePhotoLongPressRecordsOncePerPress` 随
+    // `S2LivePhotoLongPressRecorder` 一并删除——长按落点已改为实况播放协调器，
+    // 事件记录器不再存在。替代覆盖见 `IC140LivePhotoPlaybackTests` 断言 5。
 
     func testIC139D_CalibrationPanelToggleLeavesTheMainPhotoLongPressPath() {
         // 面板本身的开关语义未改：一次调用翻转一次。
