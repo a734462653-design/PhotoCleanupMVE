@@ -1,4 +1,5 @@
 import Photos
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -420,6 +421,16 @@ final class S2LivePhotoPlaybackCoordinator: ObservableObject {
         if let livePhoto = livePhotos[assetID] {
             surface.attach(livePhoto: livePhoto)
         }
+        // 播放层晚于起播效果到位时补一次——播放态仍以状态机为唯一真相
+        // （陷阱 19），这里只是把已经生效的状态投到新到的那层上。
+        switch machine.state(for: assetID) {
+        case .playingHint:
+            surface.play(style: .hint)
+        case .playingFull:
+            surface.play(style: .full)
+        case .idle, .requesting, .ready, .failed:
+            break
+        }
     }
 
     func unregister(assetID: String) {
@@ -565,5 +576,201 @@ final class S2LivePhotoPlaybackCoordinator: ObservableObject {
         cancelRequest(assetID: assetID)
         livePhotos.removeValue(forKey: assetID)
         surface(for: assetID)?.detachLivePhoto()
+    }
+}
+
+// MARK: - IC-140 B：宿主视图
+
+private extension S2LivePhotoPlaybackStyle {
+    var systemPlaybackStyle: PHLivePhotoView.PlaybackStyle {
+        switch self {
+        case .hint:
+            return .hint
+        case .full:
+            return .full
+        }
+    }
+}
+
+/// 承载 `PHLivePhotoView` 的页内播放层。
+///
+/// 几何纪律（规格第 1 条）：不设约束、不设自动尺寸掩码、不写自己的几何。
+/// 子视图尺寸只在 `layoutSubviews` 里从 `bounds` 读——`bounds` 是分页器那条
+/// 几何链写进来的，1x 与 Nx 两套尺寸都由那条链给。子层的隐式动画一律关掉，
+/// 照 `fitBorderLayer` 的先例，否则每次链上写入都会带一段动画，与外层的
+/// 无动画提交错拍。
+///
+/// **不播时整层隐藏**：静止态下播放层完全不上屏，主图那条既有链路
+/// （含 Nx 高清重取）一字未动；只有起播的那一刻才露出。这是实装取舍，
+/// 规格只要求「松手回到静态帧」，未指定静止态由哪一层出图。
+///
+/// 本视图**不自行起播**（陷阱 19）：`play` / `stop` 只由协调器的效果执行调用，
+/// 播放结束的代理回调也只把事件回给协调器，不在本地改播放态。
+final class S2LivePhotoHostView: UIView,
+    PHLivePhotoViewDelegate,
+    S2LivePhotoPlaybackSurface {
+    private let livePhotoView = PHLivePhotoView(frame: .zero)
+    private weak var coordinator: S2LivePhotoPlaybackCoordinator?
+    private(set) var assetID: String
+
+    init(assetID: String, coordinator: S2LivePhotoPlaybackCoordinator) {
+        self.assetID = assetID
+        self.coordinator = coordinator
+        super.init(frame: .zero)
+        backgroundColor = .clear
+        // 长按由分页器根视图那只识别器统一分派（决策 58），播放层不接触控。
+        isUserInteractionEnabled = false
+        livePhotoView.isUserInteractionEnabled = false
+        livePhotoView.contentMode = .scaleAspectFit
+        livePhotoView.isHidden = true
+        livePhotoView.delegate = self
+        addSubview(livePhotoView)
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    /// 页控制器被复用到另一张资产时改绑。旧资产的资源不在这里卸——
+    /// 卸载是协调器按半径决定的效果，本视图只换身份。
+    func rebind(assetID: String, coordinator: S2LivePhotoPlaybackCoordinator) {
+        self.assetID = assetID
+        self.coordinator = coordinator
+        detachLivePhoto()
+    }
+
+    // MARK: S2LivePhotoPlaybackSurface
+
+    func attach(livePhoto: PHLivePhoto) {
+        livePhotoView.livePhoto = livePhoto
+    }
+
+    func detachLivePhoto() {
+        livePhotoView.stopPlayback()
+        livePhotoView.isHidden = true
+        livePhotoView.livePhoto = nil
+    }
+
+    func play(style: S2LivePhotoPlaybackStyle) {
+        guard livePhotoView.livePhoto != nil else {
+            return
+        }
+        livePhotoView.isMuted = style.isMuted
+        livePhotoView.isHidden = false
+        livePhotoView.startPlayback(with: style.systemPlaybackStyle)
+    }
+
+    func stop() {
+        livePhotoView.stopPlayback()
+        livePhotoView.isHidden = true
+    }
+
+    // MARK: PHLivePhotoViewDelegate
+
+    func livePhotoView(
+        _: PHLivePhotoView,
+        didEndPlaybackWith _: PHLivePhotoView.PlaybackStyle
+    ) {
+        coordinator?.playbackEnded(assetID: assetID)
+    }
+
+    // MARK: 布局
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        livePhotoView.frame = bounds
+        CATransaction.commit()
+    }
+}
+
+// MARK: - IC-140 B：页内容里的播放层
+
+/// 页内容树里的播放层包装。挂在既有页内容的 `.overlay` 上，因此自动坐在
+/// 缩放容器内、随 1x／Nx 变换——一行几何都不用自己写（IC-137 报告第二节）。
+struct S2LivePhotoPlaybackContentView: UIViewRepresentable {
+    let playback: S2LivePhotoPlaybackCoordinator
+    let assetID: String
+    /// 取资源的目标尺寸（点）。协调器换算成像素后交给 `PHImageManager`。
+    let targetSize: CGSize
+
+    /// 只为把 assetID 带进 `dismantleUIView`——它是 static，
+    /// `Coordinator == Void` 时拿不到任何页身份，拆卸就无处收口。
+    final class Coordinator {
+        let playback: S2LivePhotoPlaybackCoordinator
+        var assetID: String
+
+        init(playback: S2LivePhotoPlaybackCoordinator, assetID: String) {
+            self.playback = playback
+            self.assetID = assetID
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(playback: playback, assetID: assetID)
+    }
+
+    func makeUIView(context: Context) -> S2LivePhotoHostView {
+        let view = S2LivePhotoHostView(
+            assetID: assetID,
+            coordinator: playback
+        )
+        context.coordinator.assetID = assetID
+        playback.register(
+            surface: view,
+            for: assetID,
+            targetSize: pixelTargetSize(context: context)
+        )
+        return view
+    }
+
+    func updateUIView(_ view: S2LivePhotoHostView, context: Context) {
+        guard view.assetID != assetID else {
+            return
+        }
+        playback.unregister(assetID: view.assetID)
+        view.rebind(assetID: assetID, coordinator: playback)
+        context.coordinator.assetID = assetID
+        playback.register(
+            surface: view,
+            for: assetID,
+            targetSize: pixelTargetSize(context: context)
+        )
+    }
+
+    static func dismantleUIView(
+        _ view: S2LivePhotoHostView,
+        coordinator: Coordinator
+    ) {
+        coordinator.playback.unregister(assetID: view.assetID)
+    }
+
+    private func pixelTargetSize(context: Context) -> CGSize {
+        let scale = context.environment.displayScale
+        let resolved = scale > 0 ? scale : 1
+        return CGSize(
+            width: targetSize.width * resolved,
+            height: targetSize.height * resolved
+        )
+    }
+}
+
+// MARK: - IC-140 B：挂载口径
+
+/// 页内播放层的挂载口径。`nil` = 该页不构造播放层。
+///
+/// 决策 55／58：只有 `m=实况` 的页携带播放层；照片页与视频页不构造
+/// （视频播放层属 IC-141，另建）。
+struct S2LivePhotoLayerPresentation: Equatable {
+    /// 播放层不接触控——长按由分页器根视图那只识别器统一分派。
+    let acceptsHits: Bool
+
+    static func make(mediaKind: S2MediaKind) -> S2LivePhotoLayerPresentation? {
+        guard mediaKind == .live else {
+            return nil
+        }
+        return S2LivePhotoLayerPresentation(acceptsHits: false)
     }
 }
