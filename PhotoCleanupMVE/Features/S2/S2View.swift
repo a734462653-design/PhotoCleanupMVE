@@ -2681,10 +2681,19 @@ enum S2MediaMetrics {
     static let livePillItemSpacing: CGFloat = 5
     static let livePillSymbol = "livephoto"
 
-    /// 长按判定时长。分页器根视图那只识别器自 IC-113 起就写死 0.8，
-    /// 而本卡不得改分页器文件，故顶部中胶囊这只用本常量取同值——
-    /// 两处 0.8 目前各写各的，已在报告「发现但未处理」登记。
+    /// 长按判定时长。分页器根视图那只识别器与顶部中胶囊这只共用本常量。
     static let longPressMinimumDuration: TimeInterval = 0.8
+
+    // MARK: - 实况播放（决策 55，IC-140）
+    //
+    // 两个量都不是视觉量，H64b 真机后可调。
+
+    /// 当前页 ±该半径内的实况页提前请求资源，保证到页时短动效能立即起播。
+    static let livePhotoPrefetchRadius = 1
+
+    /// 同时持有的实况资源上限；超出时先退离当前最远的一页
+    /// （取消其在飞请求、卸资源）。
+    static let livePhotoInstanceCap = 3
 
     // MARK: - 视频浮框（决策 56，本卡只做骨架）
 
