@@ -490,6 +490,11 @@ struct S2View: View {
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
+    /// IC-137 探针（本分支不合并）：播放层与读数的持有者。
+    /// 用 `@State` 而不是 `@StateObject`：后者会让 500 ms 的内存采样把
+    /// 本 body 卷进来，每半秒重算一次 `apply()` —— 正好造出陷阱 5 说的
+    /// 「静止状态几何写入」。只有叠层自己用 `@ObservedObject` 订阅它。
+    @State private var mediaProbe = S2MediaPlaybackProbeCoordinator.shared
     @State private var safeAreaInsets = S2OverlaySafeAreaInsets.zero
     @State private var statusBarHidden: Bool
     @StateObject private var geometryDiagnostics:
@@ -631,6 +636,10 @@ struct S2View: View {
                     safeAreaInsets: safeAreaInsets
                 )
 
+                // IC-137 探针叠层：在缩放容器**之外**，因此不随捏合缩放、
+                // 不被几何链改写 bounds、双击过渡期间也不会被整块隐去。
+                mediaProbeOverlay
+
                 feedbackToastOverlay(
                     bottomInset: S2OverlayLayout
                         .toastBottomFromViewportBottom(
@@ -684,6 +693,8 @@ struct S2View: View {
             applyStatusBarAppearance(for: visibility)
             // IC-112 B：中央指示随 chrome 同显隐（V=隐藏 时不显示）。
             refreshCenterIndicator(animated: true)
+            // IC-137 探针（临时）：单击在视频页兼停／播。
+            handleProbeInterfaceVisibilityChange()
         }
         .onChange(of: machine.semanticNotice) { _, notice in
             guard notice != nil else {
@@ -753,6 +764,10 @@ struct S2View: View {
             }
         }
         .onChange(of: machine.currentAssetID) { _, assetID in
+            // IC-137 探针：页生命周期的唯一驱动点。起播不在这里——
+            // 协调器再去抖 250 ms 才算「停稳」，因此拖动中不播（系统 C1）、
+            // 进入后的首张也不自动播（系统 C2）。
+            mediaProbe.pageBecameCurrent(assetID: assetID)
             // IC-110 D 第 3 步：等用户真实翻回刚标记那张。
             tutorial.currentAssetDidChange(to: assetID)
             // IC-112 B：翻页即随新页状态刷新，且**不带动画**（卡内 ④）。
@@ -891,7 +906,9 @@ struct S2View: View {
             viewportSize: viewportSize,
             pages: pages,
             onLongPress: {
-                calibrationOverlayState.toggleAccessControls()
+                // IC-137 探针（临时改变产品行为，本分支不合并）。
+                // 代价：实况页上标定面板无入口（它本来就只有这一个入口）。
+                handleProbeLongPress()
             },
             diagnosticsCoordinator: geometryDiagnostics,
             transitionDiagnosticsCoordinator: transitionDiagnostics,
@@ -911,6 +928,54 @@ struct S2View: View {
         )
         .frame(width: viewportSize.width, height: viewportSize.height)
         .clipped()
+    }
+
+    /// IC-137 探针叠层的构造点。外提成 builder：S2View 的 body 已经很大，
+    /// 新构造一律不内联（陷阱 16，本仓库已因此红过三次）。
+    private var mediaProbeOverlay: some View {
+        S2MediaPlaybackProbeOverlay(
+            probe: mediaProbe,
+            topInset: safeAreaInsets.top
+        )
+    }
+
+    /// IC-137 探针：长按分派。实况页改派给播放，其余页照旧开标定面板。
+    private func handleProbeLongPress() {
+        let assetID = machine.currentAssetID
+        if mediaProbe.mediaKind(for: assetID) == .livePhoto {
+            mediaProbe.userRequestedPlay(assetID: assetID)
+        } else {
+            calibrationOverlayState.toggleAccessControls()
+        }
+    }
+
+    /// IC-137 探针：单击在视频页兼停／播。chrome 显隐照旧生效，
+    /// 两个语义同时在场——冲突就是这么记的（卡内「只记录不求解决」）。
+    private func handleProbeInterfaceVisibilityChange() {
+        let assetID = machine.currentAssetID
+        guard mediaProbe.mediaKind(for: assetID) == .video else {
+            return
+        }
+        mediaProbe.userToggledPlayback(assetID: assetID)
+    }
+
+    /// IC-137 探针：每页都挂一层播放层，取图路径一字未改。
+    ///
+    /// **不能按类别条件挂**：类别是异步解析的，到页头一趟一律还是回退值
+    /// `.photo`；而页内容只在内容版本变化时才重挂 rootView，条件分支一旦选错
+    /// 就没有第二次机会。照片页上这层是空壳（背景 clear、不接命中、不建
+    /// 任何播放器）。用 `.overlay` 而不是 `ZStack`：前者的尺寸取基准内容的尺寸，
+    /// 照片页的摆放因此一分不变（陷阱 13：尺寸断言不等于摆放断言）。
+    private func mediaProbeWrapped(
+        _ content: AnyView,
+        assetID: String
+    ) -> some View {
+        content.overlay {
+            S2MediaPlaybackProbeContentView(
+                probe: mediaProbe,
+                assetID: assetID
+            )
+        }
     }
 
     private func pageContent(
@@ -1013,7 +1078,7 @@ struct S2View: View {
                     requestStrategy: machine.imageRequestStrategy,
                     requestRevision: requestRevision
                 ),
-                content: AnyView(content),
+                content: AnyView(mediaProbeWrapped(content, assetID: assetID)),
                 zoomGeometry: S2AssetZoomGeometry(
                     assetPixelSize: pixelSize,
                     fitSize: pageMetrics.nativeZoomBaseSize,
