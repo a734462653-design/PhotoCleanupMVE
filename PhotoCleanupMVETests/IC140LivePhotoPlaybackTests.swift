@@ -33,6 +33,9 @@ final class IC140LivePhotoPlaybackTests: XCTestCase {
         )
         let generationB = requestGeneration(in: becameB, for: "B")
         XCTAssertNotNil(generationB, "换页未为新当前页发请求")
+        // 邻居 A 与当前页 B 同批预取（半径 1），代次在这一批里就发出去了。
+        let generationA = requestGeneration(in: becameB, for: "A")
+        XCTAssertNotNil(generationA, "半径内的邻居未被预取")
         XCTAssertTrue(
             machine.handle(
                 .requestSucceeded(assetID: "B", generation: generationB ?? 0)
@@ -44,12 +47,15 @@ final class IC140LivePhotoPlaybackTests: XCTestCase {
         // 同页反复停稳不重播。
         XCTAssertTrue(hintPlays(machine.handle(.pagingSettled)).isEmpty)
 
-        // 翻回入口那张也算「变更后」，照播。
+        // 翻回入口那张也算「变更后」，照播。A 的请求自预取起一直在飞，
+        // 翻回时**不重发**——重发会让上一批的回调变成旧代次而被丢弃。
         let becameA = machine.handle(
             .becameCurrent(assetID: "A", neighbours: ["B"])
         )
-        let generationA = requestGeneration(in: becameA, for: "A")
-        XCTAssertNotNil(generationA)
+        XCTAssertNil(
+            requestGeneration(in: becameA, for: "A"),
+            "在飞的邻居请求被重复发起"
+        )
         _ = machine.handle(
             .requestSucceeded(assetID: "A", generation: generationA ?? 0)
         )
