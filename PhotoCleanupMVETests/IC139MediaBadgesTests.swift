@@ -344,8 +344,64 @@ final class IC139MediaBadgesTests: XCTestCase {
 
     // MARK: - 断言 8、9：长按分派
 
+    func testIC139D_LongPressGoesToLivePlaybackOnlyOnLivePages() {
+        XCTAssertEqual(
+            S2MainPhotoLongPressAction.resolve(mediaKind: .live),
+            .livePhotoPlayback
+        )
+        XCTAssertEqual(
+            S2MainPhotoLongPressAction.resolve(mediaKind: .photo),
+            .unbound
+        )
+        XCTAssertEqual(
+            S2MainPhotoLongPressAction.resolve(mediaKind: .video),
+            .unbound
+        )
+    }
 
+    func testIC139D_LivePhotoLongPressRecordsOncePerPress() {
+        let recorder = S2LivePhotoLongPressRecorder()
+        XCTAssertEqual(recorder.requestCount, 0)
+        XCTAssertNil(recorder.lastAssetID)
 
+        recorder.record(assetID: "asset-A")
+        XCTAssertEqual(recorder.requestCount, 1)
+        XCTAssertEqual(recorder.lastAssetID, "asset-A")
+
+        recorder.record(assetID: "asset-B")
+        XCTAssertEqual(recorder.requestCount, 2)
+        XCTAssertEqual(recorder.lastAssetID, "asset-B")
+    }
+
+    func testIC139D_CalibrationPanelToggleLeavesTheMainPhotoLongPressPath() {
+        // 面板本身的开关语义未改：一次调用翻转一次。
+        var state = S2CalibrationOverlayState.initial
+        XCTAssertFalse(state.controlsVisible)
+        state.toggleAccessControls()
+        XCTAssertTrue(state.controlsVisible)
+        state.toggleAccessControls()
+        XCTAssertFalse(state.controlsVisible)
+
+        guard let text = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2View.swift"
+        ) else {
+            return XCTFail("读不到 S2View 源码")
+        }
+        // 断言 9：产品源码里 `toggleAccessControls()` 恰一处调用点，
+        // 且它挂在中胶囊长按上，不在主图长按闭包里。
+        let callSites = text.components(
+            separatedBy: "calibrationOverlayState.toggleAccessControls()"
+        ).count - 1
+        XCTAssertEqual(callSites, 1, "标定面板入口不再恰为一处")
+        XCTAssertTrue(
+            text.contains("onLongPressGesture("),
+            "中胶囊长按未接线"
+        )
+        XCTAssertTrue(
+            text.contains("handleMainPhotoLongPress()"),
+            "主图长按未改派"
+        )
+    }
 
     // MARK: - 夹具
 

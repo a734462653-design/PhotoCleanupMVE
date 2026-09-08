@@ -463,6 +463,9 @@ struct S2View: View {
     @Environment(\.displayScale) private var displayScale
     /// IC-079 R1：各资产图像加载态登记，仅供诊断录制场景 D 读取。
     @StateObject private var imageLoadStateRegistry = S2ImageLoadStateRegistry()
+    /// IC-139 D：实况长按事件记录（本卡不接播放器，IC-140 接线时读它对齐）。
+    @StateObject private var livePhotoLongPress =
+        S2LivePhotoLongPressRecorder()
     private let photoContent: PhotoContent
     private let stripItemContent: StripItemContent
     private let albumPickerContent: AlbumPickerContent
@@ -895,8 +898,10 @@ struct S2View: View {
             configuration: calibration.configuration,
             viewportSize: viewportSize,
             pages: pages,
+            // IC-139 D（v19 回写决策 58）：主图长按改派。识别器本身不动
+            // （装在分页器根视图上，本卡不改那个文件），只改闭包语义。
             onLongPress: {
-                calibrationOverlayState.toggleAccessControls()
+                handleMainPhotoLongPress()
             },
             diagnosticsCoordinator: geometryDiagnostics,
             transitionDiagnosticsCoordinator: transitionDiagnostics,
@@ -1123,6 +1128,20 @@ struct S2View: View {
     /// IC-139 A：当前页的媒体类别 `m`（按当前资产 `c` 派生）。
     private var currentMediaKind: S2MediaKind {
         assetMediaKind(machine.currentAssetID)
+    }
+
+    /// IC-139 D：主图长按 0.8 s 的落点。分派规则本身是纯函数
+    /// （`S2MainPhotoLongPressAction.resolve`），这里只负责执行。
+    ///
+    /// **夹具驱动不到这条路径**——它由分页器根视图的 UIKit 识别器触发，
+    /// 真机落点由 H63a 第 3 项兜底（陷阱 1）。
+    private func handleMainPhotoLongPress() {
+        switch S2MainPhotoLongPressAction.resolve(mediaKind: currentMediaKind) {
+        case .livePhotoPlayback:
+            livePhotoLongPress.record(assetID: machine.currentAssetID)
+        case .unbound:
+            break
+        }
     }
 
     /// IC-139 A／B：实况胶囊与视频浮框。
@@ -1527,6 +1546,14 @@ struct S2View: View {
             topInfoArea
                 .s2ChromeCapsuleGlass()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // IC-139 D（v19 回写决策 58）：标定／诊断面板的入口从主图长按
+                // 改到这里，所有页一致、与 `m` 无关。该面板不属产品行为，
+                // 只是入口登记变更。
+                .onLongPressGesture(
+                    minimumDuration: S2MediaMetrics.longPressMinimumDuration
+                ) {
+                    calibrationOverlayState.toggleAccessControls()
+                }
 
             Button {
                 guard let payload = machine.makeExitPayload() else {
@@ -2668,6 +2695,11 @@ enum S2MediaMetrics {
     static let livePillItemSpacing: CGFloat = 5
     static let livePillSymbol = "livephoto"
 
+    /// 长按判定时长。分页器根视图那只识别器自 IC-113 起就写死 0.8，
+    /// 而本卡不得改分页器文件，故顶部中胶囊这只用本常量取同值——
+    /// 两处 0.8 目前各写各的，已在报告「发现但未处理」登记。
+    static let longPressMinimumDuration: TimeInterval = 0.8
+
     // MARK: - 视频浮框（决策 56，本卡只做骨架）
 
     static let videoBarHeight: CGFloat = 44
@@ -2775,6 +2807,35 @@ struct S2VideoBarPresentation: Equatable {
 struct S2MediaPageFit: Equatable {
     let size: CGSize
     let centerY: CGFloat
+}
+
+/// IC-139 D（v19 回写决策 58）：主图长按 0.8 s 的分派结果。
+///
+/// `m=实况` 全部让给实况播放；其余类别**不绑定任何产品操作**——
+/// 标定／诊断面板的入口已改到顶部中胶囊长按，主图长按不再开面板。
+enum S2MainPhotoLongPressAction: Equatable {
+    case livePhotoPlayback
+    /// 不绑定任何产品操作。刻意不叫 `none`——那个名字与 `Optional.none`
+    /// 在类型推导里会打架。
+    case unbound
+
+    static func resolve(mediaKind: S2MediaKind) -> S2MainPhotoLongPressAction {
+        mediaKind == .live ? .livePhotoPlayback : .unbound
+    }
+}
+
+/// IC-139 D：实况长按的一次性事件记录。
+///
+/// 本卡不接播放器，只登记「哪一张、请求了几次播放」，供 IC-140 接线时对齐；
+/// 也让分派确实发生这件事在夹具里可断言。
+final class S2LivePhotoLongPressRecorder: ObservableObject {
+    @Published private(set) var requestCount = 0
+    @Published private(set) var lastAssetID: String?
+
+    func record(assetID: String) {
+        requestCount += 1
+        lastAssetID = assetID
+    }
 }
 
 enum S2MediaPageGeometry {
