@@ -1764,7 +1764,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 configuration: configuration,
                 viewportSize: viewportSize,
                 pages: pages,
-                onLongPress: {}
+                onLongPressBegan: { false },
+                onLongPressEnded: {},
+                onPagingSettled: {}
             )
             controller.view.setNeedsLayout()
             controller.view.layoutIfNeeded()
@@ -2205,7 +2207,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 configuration: configuration,
                 viewportSize: physicalSize,
                 pages: (firstIndex...lastIndex).compactMap(page(at:)),
-                onLongPress: {},
+                onLongPressBegan: { false },
+                onLongPressEnded: {},
+                onPagingSettled: {},
                 pageContentProvider: page(at:)
             )
             controller.view.setNeedsLayout()
@@ -2353,7 +2357,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
                 configuration: configuration,
                 viewportSize: physicalSize,
                 pages: pages,
-                onLongPress: {}
+                onLongPressBegan: { false },
+                onLongPressEnded: {},
+                onPagingSettled: {}
             )
             controller.view.setNeedsLayout()
             controller.view.layoutIfNeeded()
@@ -10345,7 +10351,9 @@ final class S2CalibrationHarnessTests: XCTestCase {
             configuration: configuration,
             viewportSize: resolvedViewportSize,
             pages: pages,
-            onLongPress: {}
+            onLongPressBegan: { false },
+            onLongPressEnded: {},
+            onPagingSettled: {}
         )
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
