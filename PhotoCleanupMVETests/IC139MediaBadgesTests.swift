@@ -7,15 +7,9 @@ import XCTest
 /// **本卡不接任何播放器**，故这里没有一条断言涉及播放状态。
 /// 真机落点由 H63a 三项兜底，见 `Reports/IC-139/self-check.md`。
 final class IC139MediaBadgesTests: XCTestCase {
-    /// 画布基准视口（393×852，安全区顶 59 / 底 34）。
-    private let viewport = CGSize(width: 393, height: 852)
     private let safeAreaTop: CGFloat = 59
     private let safeAreaBottom: CGFloat = 34
 
-    /// 竖向受限（高度吃满）的资产：适配尺寸的高等于可用区高。
-    private let heightBoundRatio: CGFloat = 0.4
-    /// 横向受限（宽度吃满）的资产：适配尺寸的宽等于视口宽。
-    private let widthBoundRatio: CGFloat = 1.5
 
     // MARK: - 断言 1：三类资产映射
 
@@ -238,110 +232,6 @@ final class IC139MediaBadgesTests: XCTestCase {
         }
     }
 
-    // MARK: - 断言 6：视频页几何（渲染帧）
-
-    func testIC139C_VideoPageFitInsetIsDerivedNotIndependent() {
-        // 推导量恒等式：68 = 44 + 24。
-        XCTAssertEqual(
-            S2MediaMetrics.videoPageFitBottomInset,
-            S2MediaMetrics.videoBarHeight +
-                S2MediaMetrics.videoBarBottomToStripTop
-        )
-        XCTAssertEqual(S2MediaMetrics.videoPageFitBottomInset, 68)
-    }
-
-    /// 竖向受限资产：视频页显示态渲染帧 `maxY` 比照片页小 68、`minY` 相同。
-    func testIC139C_VisibleVideoPageRenderFrameLiftsBottomEdgeBy68() {
-        let photo = renderedOneXFrame(
-            mediaKind: .photo,
-            visibility: .visible,
-            ratio: heightBoundRatio
-        )
-        let video = renderedOneXFrame(
-            mediaKind: .video,
-            visibility: .visible,
-            ratio: heightBoundRatio
-        )
-
-        XCTAssertEqual(photo.minY, video.minY, accuracy: 0.001)
-        XCTAssertEqual(
-            photo.maxY - video.maxY,
-            S2MediaMetrics.videoPageFitBottomInset,
-            accuracy: 0.001
-        )
-        // 上缘不变：该资产竖向吃满，两页顶缘都贴视口顶。
-        XCTAssertEqual(video.minY, 0, accuracy: 0.001)
-        XCTAssertEqual(
-            video.height,
-            viewport.height - S2MediaMetrics.videoPageFitBottomInset,
-            accuracy: 0.001
-        )
-    }
-
-    /// 横向受限资产：适配尺寸不变，整帧在缩短后的适配区里重新居中（上移 34）。
-    ///
-    /// 卡内断言 6 的措辞（`maxY` 小 68、`minY` 相同）只对竖向受限资产成立，
-    /// 见 self-check「卡内前提与实测的出入」。这里把真实行为一并钉住。
-    func testIC139C_WidthBoundVideoPageRecentersInsideShortenedRegion() {
-        let photo = renderedOneXFrame(
-            mediaKind: .photo,
-            visibility: .visible,
-            ratio: widthBoundRatio
-        )
-        let video = renderedOneXFrame(
-            mediaKind: .video,
-            visibility: .visible,
-            ratio: widthBoundRatio
-        )
-
-        XCTAssertEqual(photo.size.width, video.size.width, accuracy: 0.001)
-        XCTAssertEqual(photo.size.height, video.size.height, accuracy: 0.001)
-        let lift = S2MediaMetrics.videoPageFitBottomInset / 2
-        XCTAssertEqual(photo.minY - video.minY, lift, accuracy: 0.001)
-        XCTAssertEqual(photo.maxY - video.maxY, lift, accuracy: 0.001)
-    }
-
-    /// 断言 7 的一半：隐藏态视频页与照片页渲染帧逐值相同（几何回满）。
-    func testIC139C_HiddenVideoPageGeometryMatchesPhotoPage() {
-        for ratio in [heightBoundRatio, widthBoundRatio] {
-            let photo = renderedOneXFrame(
-                mediaKind: .photo,
-                visibility: .hidden,
-                ratio: ratio
-            )
-            let video = renderedOneXFrame(
-                mediaKind: .video,
-                visibility: .hidden,
-                ratio: ratio
-            )
-            XCTAssertEqual(photo, video, "比例 \(ratio) 的隐藏态几何发生了变化")
-        }
-    }
-
-    /// 断言 7 的另一半：照片页与实况页几何零改动（两个可见性都核）。
-    func testIC139C_PhotoAndLivePagesKeepBaselineGeometry() {
-        for visibility in [S2InterfaceVisibility.visible, .hidden] {
-            for ratio in [heightBoundRatio, widthBoundRatio] {
-                let baseline = baselineOneXFrame(
-                    visibility: visibility,
-                    ratio: ratio
-                )
-                for kind in [S2MediaKind.photo, .live] {
-                    let actual = renderedOneXFrame(
-                        mediaKind: kind,
-                        visibility: visibility,
-                        ratio: ratio
-                    )
-                    XCTAssertEqual(
-                        actual,
-                        baseline,
-                        "\(kind) 页 \(visibility) 态几何偏离基线"
-                    )
-                }
-            }
-        }
-    }
-
     // MARK: - 断言 8、9：长按分派
 
     func testIC139D_LongPressGoesToLivePlaybackOnlyOnLivePages() {
@@ -403,89 +293,72 @@ final class IC139MediaBadgesTests: XCTestCase {
         )
     }
 
+    // MARK: - IC-142 断言 1：撤销钉住（带正对照）
+
+    /// 决策 57 作废（④ Lynn 2026-09-08 H63a 第 2 项改判）：视频页两态几何
+    /// 与照片页相同，浮框如 chrome 一样压在主图之上。
+    ///
+    /// 正对照取 IC-139 之前的基线 `db318fc`：那时三处赋值恰是 2 + 1。
+    /// 只断言「符号消失」会在赋值被误删时同样通过，故两侧一起钉。
+    func testIC142_VideoPageSharesPhotoPageGeometryInBothVisibilityStates() {
+        guard let view = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2View.swift"
+        ) else {
+            return XCTFail("读不到 S2View 源码")
+        }
+
+        // 正对照：逐页几何回到基线的两个入口。
+        XCTAssertEqual(
+            occurrences(of: "fittedSize: pageMetrics.oneXDisplaySize", in: view),
+            2,
+            "逐页 fittedSize 未回到基线口径"
+        )
+        XCTAssertEqual(
+            occurrences(
+                of: "fittedCenterY: pageMetrics.oneXDisplayCenterY",
+                in: view
+            ),
+            1,
+            "逐页 fittedCenterY 未回到基线口径"
+        )
+
+        // 撤销：三个串在**产品源码全目录**归零。名字拼接构造，
+        // 否则本断言会抓到自己所在文件之外的注释。
+        let removed = [
+            "S2MediaPage" + "Geometry",
+            "videoPage" + "Fit(",
+            "videoPageFit" + "BottomInset",
+        ]
+        for relativePath in [
+            "PhotoCleanupMVE/Features/S2/S2View.swift",
+            "PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift",
+            "PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift",
+            "PhotoCleanupMVE/App/CleanupCoordinator.swift",
+        ] {
+            guard let text = sourceText(relativePath) else {
+                return XCTFail("读不到 \(relativePath)")
+            }
+            for symbol in removed {
+                XCTAssertEqual(
+                    occurrences(of: symbol, in: text),
+                    0,
+                    "\(relativePath) 仍引用 \(symbol)"
+                )
+            }
+        }
+
+        // B 的两个常量必须**留着**——浮框本身没撤，只撤几何。
+        XCTAssertEqual(S2MediaMetrics.videoBarHeight, 44)
+        XCTAssertEqual(
+            S2MediaMetrics.videoBarBottomToStripTop,
+            S2OverlayLayout.stripToBottomRowSpacing
+        )
+    }
+
     // MARK: - 夹具
 
-    /// 用真实的 `S2NativeZoomScrollView` 跑一遍几何链，读**渲染帧**
-    /// （视口坐标）。这条路径与产品完全同源：`configure` → 几何链写入 →
-    /// `oneXPresentationFrame`。
-    ///
-    /// **夹具驱动**：它证明的是几何链在给定输入下的落点，不证明真机上
-    /// 手势与分帧时序（陷阱 1），后者由 H63a 兜底。
-    private func renderedOneXFrame(
-        mediaKind: S2MediaKind,
-        visibility: S2InterfaceVisibility,
-        ratio: CGFloat
-    ) -> CGRect {
-        let base = baselineMetrics(visibility: visibility, ratio: ratio)
-        let fit = S2MediaPageGeometry.videoPageFit(
-            viewportSize: viewport,
-            assetAspectRatio: ratio,
-            mediaKind: mediaKind,
-            interfaceVisibility: visibility
-        )
-        return renderedFrame(
-            fittedSize: fit?.size ?? base.oneXDisplaySize,
-            fittedCenterY: fit?.centerY ?? base.oneXDisplayCenterY,
-            nativeZoomBaseSize: base.nativeZoomBaseSize
-        )
-    }
-
-    /// 本卡改动前的几何：直接取 `S2ViewportLayout.metrics` 的输出。
-    private func baselineOneXFrame(
-        visibility: S2InterfaceVisibility,
-        ratio: CGFloat
-    ) -> CGRect {
-        let base = baselineMetrics(visibility: visibility, ratio: ratio)
-        return renderedFrame(
-            fittedSize: base.oneXDisplaySize,
-            fittedCenterY: base.oneXDisplayCenterY,
-            nativeZoomBaseSize: base.nativeZoomBaseSize
-        )
-    }
-
-    private func renderedFrame(
-        fittedSize: CGSize,
-        fittedCenterY: CGFloat,
-        nativeZoomBaseSize: CGSize
-    ) -> CGRect {
-        let scrollView = S2NativeZoomScrollView(
-            frame: CGRect(origin: .zero, size: viewport)
-        )
-        let contentView = UIView()
-        scrollView.configure(
-            contentView: contentView,
-            fittedSize: fittedSize,
-            nativeZoomBaseSize: nativeZoomBaseSize,
-            viewportSize: viewport,
-            maximumZoomScale: 1,
-            fittedCenterY: fittedCenterY
-        )
-        scrollView.layoutIfNeeded()
-        scrollView.applyNativeState(scale: 1, viewportOffset: .zero)
-        return scrollView.oneXPresentationFrame
-    }
-
-    private func baselineMetrics(
-        visibility: S2InterfaceVisibility,
-        ratio: CGFloat
-    ) -> S2ViewportMetrics {
-        S2ViewportLayout.metrics(
-            physicalSize: viewport,
-            presentationState: S2ViewportPresentationState(
-                interfaceVisibility: visibility,
-                bottomStripState: .idle,
-                sheetState: .closed
-            ),
-            assetAspectRatio: ratio,
-            isScreenshot: false,
-            configuration: .factoryPlaceholder,
-            safeAreaInsets: S2OverlaySafeAreaInsets(
-                top: safeAreaTop,
-                leading: 0,
-                bottom: safeAreaBottom,
-                trailing: 0
-            )
-        )
+    private func occurrences(of needle: String, in haystack: String) -> Int {
+        haystack.components(separatedBy: needle).count - 1
     }
 
     /// 截取 `S2MediaMetrics` 容器正文，供「不自造语汇」的源码扫描用。

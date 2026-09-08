@@ -938,27 +938,13 @@ struct S2View: View {
                 // IC-104 C：同上，逐页几何也必须用真实安全区。
                 safeAreaInsets: safeAreaInsets
             )
-            // IC-139 C（v19 回写决策 57）：视频页显示态适配区下缘上移 68。
-            // 走 `S2NativePageContent` 既有的逐页 `fittedSize` / `fittedCenterY`
-            // 两个入口（IC-104 C v3 为截图带建的同一套机制），因此
-            // `S2NativePhotoPager.swift` 与 `S2Calibration.swift` 都不用动；
-            // `nativeZoomBaseSize` 不受影响，Nx 基准与照片页一致。
-            let mediaFit = S2MediaPageGeometry.videoPageFit(
-                viewportSize: viewportSize,
-                assetAspectRatio: assetAspectRatio(assetID),
-                mediaKind: assetMediaKind(assetID),
-                interfaceVisibility: machine.interfaceVisibility
-            )
-            let fittedSize = mediaFit?.size ?? pageMetrics.oneXDisplaySize
-            let fittedCenterY = mediaFit?.centerY
-                ?? pageMetrics.oneXDisplayCenterY
             let requestRevision = machine.imageRequestAssetID == assetID
                 ? machine.imageRequestRevision
                 : 0
             let pixelSize = assetPixelSize(assetID)
             let content = photoContent(S2ImageContentContext(
                 assetID: assetID,
-                fittedSize: fittedSize,
+                fittedSize: pageMetrics.oneXDisplaySize,
                 requestBaseSize: pageMetrics.nativeZoomBaseSize,
                 contentMode: .fit,
                 scale: index == machine.currentIndex
@@ -1024,8 +1010,8 @@ struct S2View: View {
                 assetID: assetID,
                 interfaceVisibility: machine.interfaceVisibility,
                 isFramedPhoto: pageMetrics.isFramedPhoto,
-                fittedSize: fittedSize,
-                fittedCenterY: fittedCenterY,
+                fittedSize: pageMetrics.oneXDisplaySize,
+                fittedCenterY: pageMetrics.oneXDisplayCenterY,
                 nativeZoomBaseSize: pageMetrics.nativeZoomBaseSize,
                 cornerRadius: pageMetrics.oneXCornerRadius,
                 doubleTapTargetScale: pageMetrics.doubleTapTargetScale,
@@ -2725,13 +2711,6 @@ enum S2MediaMetrics {
     static let videoBarMutedSymbol = "speaker.slash.fill"
     static let videoBarUnmutedSymbol = "speaker.wave.2.fill"
 
-    // MARK: - 视频页几何（决策 57）
-
-    /// 显示态视频页主图适配区下缘上移量。**推导量**，不是独立取值：
-    /// = 浮框高 + 浮框到横栏间距 = 44 + 24 = 68。
-    static let videoPageFitBottomInset = videoBarHeight +
-        videoBarBottomToStripTop
-
     // MARK: - 视觉锚（陷阱 14：视觉锚与触控锚是两套几何）
 
     /// 胶囊上缘距视口顶 = 安全区顶 + 顶栏帧高 + 间距。
@@ -2803,12 +2782,6 @@ struct S2VideoBarPresentation: Equatable {
     }
 }
 
-/// IC-139 C：视频页显示态主图几何（决策 57）。
-struct S2MediaPageFit: Equatable {
-    let size: CGSize
-    let centerY: CGFloat
-}
-
 /// IC-139 D（v19 回写决策 58）：主图长按 0.8 s 的分派结果。
 ///
 /// `m=实况` 全部让给实况播放；其余类别**不绑定任何产品操作**——
@@ -2835,35 +2808,6 @@ final class S2LivePhotoLongPressRecorder: ObservableObject {
     func record(assetID: String) {
         requestCount += 1
         lastAssetID = assetID
-    }
-}
-
-enum S2MediaPageGeometry {
-    /// `m=视频` 且 `V=显示` 时，适配区 = `[0, 视口高 − 68]`，上缘不变；
-    /// 资产等比适配于该区并**居中于该区**。其余一切情形返回 `nil`，
-    /// 由调用方沿用既有几何——照片页与隐藏态因此零改动。
-    static func videoPageFit(
-        viewportSize: CGSize,
-        assetAspectRatio: CGFloat,
-        mediaKind: S2MediaKind,
-        interfaceVisibility: S2InterfaceVisibility
-    ) -> S2MediaPageFit? {
-        guard mediaKind == .video, interfaceVisibility == .visible else {
-            return nil
-        }
-        let regionHeight = viewportSize.height -
-            S2MediaMetrics.videoPageFitBottomInset
-        guard regionHeight > 0, viewportSize.width > 0 else {
-            return nil
-        }
-        let size = S2Geometry.aspectFitSize(
-            viewportSize: CGSize(
-                width: viewportSize.width,
-                height: regionHeight
-            ),
-            assetAspectRatio: assetAspectRatio
-        )
-        return S2MediaPageFit(size: size, centerY: regionHeight / 2)
     }
 }
 
