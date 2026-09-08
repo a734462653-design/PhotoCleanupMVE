@@ -17,6 +17,9 @@
 | 5 | `12268a4` | E · 断言测试、pbxproj 登记与收尾 | `PhotoCleanupMVETests/IC140LivePhotoPlaybackTests.swift`（新）、`PhotoCleanupMVE.xcodeproj/project.pbxproj`、上述两个 S2 文件 |
 | 6 | `5bfdd91` | 修 #275 红（编译） | `Features/S2/S2LivePhotoPlayback.swift`、`PhotoCleanupMVETests/IC140LivePhotoPlaybackTests.swift` |
 | 7 | `4ca8770` | 修 #276 红（夹具） | `PhotoCleanupMVETests/IC140LivePhotoPlaybackTests.swift` |
+| 8 | `e272b05` | 报告（分支内 docs 提交） | `Reports/IC-140/self-check.md`、`Reports/IC-140/change-list.md` |
+
+合并提交：**`6503e35c4fa3243871a185b5b4f6cc6c8dd707aa`**（`--no-ff`，`main`）。合并后 `main` 自动运行 **#278**（run id `34253588385`）绿，707 项 0 失败。G814／G815 详见自验报告第十五节。
 
 **与卡内「五个子项各自独立 commit」的两处偏离（如实登记）**
 
