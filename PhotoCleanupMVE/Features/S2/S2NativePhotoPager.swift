@@ -3757,9 +3757,7 @@ final class S2NativePagerViewController: UIViewController,
             beginLongPressSuspensionIfNeeded()
         case .ended, .cancelled, .failed:
             endLongPressSuspension()
-        case .possible, .changed:
-            break
-        @unknown default:
+        default:
             break
         }
     }

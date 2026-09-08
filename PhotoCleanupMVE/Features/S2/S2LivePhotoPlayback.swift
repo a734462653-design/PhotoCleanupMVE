@@ -371,39 +371,35 @@ final class S2LivePhotoPlaybackCoordinator: ObservableObject {
     // MARK: 事件入口（S2View 与分页器只经这些方法）
 
     func enter(assetID: String?) {
-        apply(machine.handle(.entered(assetID: assetID)))
+        send(.entered(assetID: assetID))
     }
 
     func pageBecameCurrent(assetID: String?, neighbours: [String]) {
-        apply(
-            machine.handle(
-                .becameCurrent(assetID: assetID, neighbours: neighbours)
-            )
-        )
+        send(.becameCurrent(assetID: assetID, neighbours: neighbours))
     }
 
     func pagingSettled() {
-        apply(machine.handle(.pagingSettled))
+        send(.pagingSettled)
     }
 
     /// 返回值 = 是否挂起手势。当前页非实况时为 false，分页器据此不挂起。
     func longPressBegan() -> Bool {
         let suspends = machine.currentAssetID != nil
-        apply(machine.handle(.longPressBegan))
+        send(.longPressBegan)
         return suspends
     }
 
     func longPressEnded() {
-        apply(machine.handle(.longPressEnded))
+        send(.longPressEnded)
     }
 
     func playbackEnded(assetID: String) {
-        apply(machine.handle(.playbackEnded(assetID: assetID)))
+        send(.playbackEnded(assetID: assetID))
     }
 
     /// 离开 S2：当前页与邻居都清空，等同于翻到一个没有实况的页。
     func leave() {
-        apply(machine.handle(.becameCurrent(assetID: nil, neighbours: [])))
+        send(.becameCurrent(assetID: nil, neighbours: []))
     }
 
     // MARK: 播放层登记
@@ -445,6 +441,12 @@ final class S2LivePhotoPlaybackCoordinator: ObservableObject {
 
     // MARK: 效果执行
 
+    /// 事件的唯一入口：先归约，再执行。两步分开写，不把归约嵌在实参里。
+    private func send(_ event: S2LivePhotoPlaybackEvent) {
+        let effects = machine.handle(event)
+        apply(effects)
+    }
+
     private func apply(_ effects: [S2LivePhotoPlaybackEffect]) {
         for effect in effects {
             switch effect {
@@ -481,12 +483,10 @@ final class S2LivePhotoPlaybackCoordinator: ObservableObject {
                     return
                 }
                 guard let asset = fetched else {
-                    self.apply(
-                        self.machine.handle(
-                            .requestFailed(
-                                assetID: assetID,
-                                generation: generation
-                            )
+                    self.send(
+                        .requestFailed(
+                            assetID: assetID,
+                            generation: generation
                         )
                     )
                     return
@@ -546,11 +546,7 @@ final class S2LivePhotoPlaybackCoordinator: ObservableObject {
                 return
             }
             requestIDs.removeValue(forKey: assetID)
-            apply(
-                machine.handle(
-                    .requestFailed(assetID: assetID, generation: generation)
-                )
-            )
+            send(.requestFailed(assetID: assetID, generation: generation))
             return
         }
         livePhotos[assetID] = livePhoto
@@ -559,11 +555,7 @@ final class S2LivePhotoPlaybackCoordinator: ObservableObject {
             return
         }
         requestIDs.removeValue(forKey: assetID)
-        apply(
-            machine.handle(
-                .requestSucceeded(assetID: assetID, generation: generation)
-            )
-        )
+        send(.requestSucceeded(assetID: assetID, generation: generation))
     }
 
     private func cancelRequest(assetID: String) {
@@ -669,9 +661,10 @@ final class S2LivePhotoHostView: UIView,
     // MARK: PHLivePhotoViewDelegate
 
     func livePhotoView(
-        _: PHLivePhotoView,
-        didEndPlaybackWith _: PHLivePhotoView.PlaybackStyle
+        _ view: PHLivePhotoView,
+        didEndPlaybackWith playbackStyle: PHLivePhotoView.PlaybackStyle
     ) {
+        _ = (view, playbackStyle)
         coordinator?.playbackEnded(assetID: assetID)
     }
 
