@@ -94,6 +94,13 @@ final class TransitionTableGuardTests: XCTestCase {
         // 两个集合任一为空都会让下面的差集断言空转，先各钉一个下界。
         XCTAssertGreaterThan(referenced.count, 100, "矩阵方法名解析失败，断言会空转")
         XCTAssertGreaterThan(registered.count, 100, "测试方法枚举失败，断言会空转")
+        // 自校验：下面这个方法是 throws，选择子带 `AndReturnError:` 后缀。
+        // 枚举到名字但还原错了会让差集整片飘红而两条下界断言照过（#268 即此），
+        // 故直接钉住一个已知 throws 方法必须以 Swift 名出现。
+        XCTAssertTrue(
+            registered.contains("testAll115TransitionCellsAndEveryUnreachableCombination"),
+            "选择子未还原为 Swift 方法名，差集断言的结论不可信"
+        )
 
         let missing = referenced.subtracting(registered).sorted()
         XCTAssertEqual(missing, [], "追溯矩阵引用了不存在的测试方法")
@@ -113,6 +120,21 @@ final class TransitionTableGuardTests: XCTestCase {
             names.insert(token)
         }
         return names
+    }
+
+    /// ObjC 选择子还原成 Swift 方法名。`func testFoo() throws` 暴露给 ObjC 运行时的
+    /// 选择子是 `testFooAndReturnError:`，`async` 则是 `…WithCompletionHandler:`；
+    /// 本仓库 168 个被矩阵引用的方法里有 108 个是 throws，不还原就会整片对不上
+    /// （#268 即此，读数是「枚举到了 100+ 个名字，但一个都对不上」）。
+    private static func swiftName(ofTestSelector selector: String) -> String {
+        var name = selector
+        if let colon = name.firstIndex(of: ":") {
+            name = String(name[..<colon])
+        }
+        for suffix in ["AndReturnError", "WithCompletionHandler"] where name.hasSuffix(suffix) {
+            name = String(name.dropLast(suffix.count))
+        }
+        return name
     }
 
     /// 只枚举本测试包这一个 image 里的类，不扫全进程类表。
@@ -152,9 +174,10 @@ final class TransitionTableGuardTests: XCTestCase {
             defer { free(UnsafeMutableRawPointer(methods)) }
             for methodIndex in 0..<Int(methodCount) {
                 let selectorName = NSStringFromSelector(method_getName(methods[methodIndex]))
-                if selectorName.hasPrefix("test") {
-                    names.insert(selectorName)
+                guard selectorName.hasPrefix("test") else {
+                    continue
                 }
+                names.insert(Self.swiftName(ofTestSelector: selectorName))
             }
         }
         return names
