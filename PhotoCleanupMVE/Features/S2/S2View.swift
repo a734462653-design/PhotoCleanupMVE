@@ -463,9 +463,9 @@ struct S2View: View {
     @Environment(\.displayScale) private var displayScale
     /// IC-079 R1：各资产图像加载态登记，仅供诊断录制场景 D 读取。
     @StateObject private var imageLoadStateRegistry = S2ImageLoadStateRegistry()
-    /// IC-139 D：实况长按事件记录（本卡不接播放器，IC-140 接线时读它对齐）。
-    @StateObject private var livePhotoLongPress =
-        S2LivePhotoLongPressRecorder()
+    /// IC-140 D（决策 55）：实况播放协调器。到页短动效、长按全段与资源
+    /// 请求代次全部在它里面；本视图只把五处事件递进去。
+    @StateObject private var livePlayback = S2LivePhotoPlaybackCoordinator()
     private let photoContent: PhotoContent
     private let stripItemContent: StripItemContent
     private let albumPickerContent: AlbumPickerContent
@@ -669,10 +669,17 @@ struct S2View: View {
                 refreshCenterIndicator(animated: false)
                 // IC-110 D：首次进入 S2 放一次；已完成/已跳过过不再放。
                 tutorial.startIfNeeded()
+                // IC-140 D（规格第 3 条）：记住入口资产——入口那张不自动播
+                // 短动效，直到发生过至少一次页变更。
+                let (entryAssetID, _) = liveCurrentAssetAndNeighbours()
+                livePlayback.enter(assetID: entryAssetID)
+                notifyLivePlaybackOfCurrentPage()
             }
             .onDisappear {
                 // IC-110 D：中途离开 S2 视为跳过，不拦截。
                 tutorial.leaveScreen()
+                // IC-140 D：离开即停播、取消在飞请求、卸资源。
+                livePlayback.leave()
             }
             .onChange(of: calibration.configuration) { _, configuration in
                 _ = machine.applyCalibration(configuration)
@@ -768,6 +775,9 @@ struct S2View: View {
             // 记录重算（本会话加过相簿的照片翻回即显示已加入 + 撤回钮）。
             centerIndicatorState = nil
             refreshCenterIndicator(animated: false)
+            // IC-140 D（规格第 2、8 条）：换页即停前页、按半径请求／取消资源。
+            // 起播不在这里——拖动进行中不播，短动效只由停稳触发。
+            notifyLivePlaybackOfCurrentPage()
         }
         // IC-111 B：模型值变化时——有残影在途就压住，等落点再跟上（卡内「同帧」）；
         // 没有在途残影（取消标记、确认页回来等）就立即跟上，不留滞后。
@@ -898,10 +908,17 @@ struct S2View: View {
             configuration: calibration.configuration,
             viewportSize: viewportSize,
             pages: pages,
-            // IC-139 D（v19 回写决策 58）：主图长按改派。识别器本身不动
-            // （装在分页器根视图上，本卡不改那个文件），只改闭包语义。
-            onLongPress: {
+            // IC-139 D（v19 回写决策 58）：主图长按改派。
+            // IC-140 D（决策 55）：开始返回是否挂起手势，结束收口播放。
+            onLongPressBegan: {
                 handleMainPhotoLongPress()
+            },
+            onLongPressEnded: {
+                livePlayback.longPressEnded()
+            },
+            // IC-140 D：停稳是到页短动效唯一的起播时机（规格第 3 条）。
+            onPagingSettled: {
+                livePlayback.pagingSettled()
             },
             diagnosticsCoordinator: geometryDiagnostics,
             transitionDiagnosticsCoordinator: transitionDiagnostics,
@@ -1023,7 +1040,13 @@ struct S2View: View {
                     requestStrategy: machine.imageRequestStrategy,
                     requestRevision: requestRevision
                 ),
-                content: AnyView(content),
+                content: AnyView(
+                    photoContentWithPlaybackLayer(
+                        assetID: assetID,
+                        baseSize: pageMetrics.nativeZoomBaseSize,
+                        content: AnyView(content)
+                    )
+                ),
                 zoomGeometry: S2AssetZoomGeometry(
                     assetPixelSize: pixelSize,
                     fitSize: pageMetrics.nativeZoomBaseSize,
@@ -1120,13 +1143,82 @@ struct S2View: View {
     /// （`S2MainPhotoLongPressAction.resolve`），这里只负责执行。
     ///
     /// **夹具驱动不到这条路径**——它由分页器根视图的 UIKit 识别器触发，
-    /// 真机落点由 H63a 第 3 项兜底（陷阱 1）。
-    private func handleMainPhotoLongPress() {
+    /// 真机落点由 H63a 第 3 项、H64b 第 3 项兜底（陷阱 1）。
+    ///
+    /// IC-140 D：返回值 = 是否挂起手势。`m≠实况` 走 `.unbound`，返回 `false`，
+    /// 分页器三个开关一字不动（规格第 5 条）。
+    private func handleMainPhotoLongPress() -> Bool {
         switch S2MainPhotoLongPressAction.resolve(mediaKind: currentMediaKind) {
         case .livePhotoPlayback:
-            livePhotoLongPress.record(assetID: machine.currentAssetID)
+            return livePlayback.longPressBegan()
         case .unbound:
-            break
+            return false
+        }
+    }
+
+    /// IC-140 D：当前页的实况资产（非实况页为 nil）与半径内其余实况资产，
+    /// 按距当前页的距离升序（规格第 2 条）。
+    private func liveCurrentAssetAndNeighbours() -> (String?, [String]) {
+        let identifiers = machine.orderedAssetIDs
+        let index = machine.currentIndex
+        guard identifiers.indices.contains(index) else {
+            return (nil, [])
+        }
+        let currentID = identifiers[index]
+        let current = assetMediaKind(currentID) == .live ? currentID : nil
+        var neighbours: [String] = []
+        for offset in stride(
+            from: 1,
+            through: S2MediaMetrics.livePhotoPrefetchRadius,
+            by: 1
+        ) {
+            for candidate in [index - offset, index + offset]
+            where identifiers.indices.contains(candidate) {
+                let candidateID = identifiers[candidate]
+                if assetMediaKind(candidateID) == .live {
+                    neighbours.append(candidateID)
+                }
+            }
+        }
+        return (current, neighbours)
+    }
+
+    /// IC-140 D：把当前页与邻居递给协调器。翻页与进场两处共用。
+    private func notifyLivePlaybackOfCurrentPage() {
+        let (current, neighbours) = liveCurrentAssetAndNeighbours()
+        livePlayback.pageBecameCurrent(
+            assetID: current,
+            neighbours: neighbours
+        )
+    }
+
+    /// IC-140 D：页内容外层的实况播放层（规格第 1 条）。
+    ///
+    /// 照片页与视频页原样返回既有内容——那两条路径的视图树因此一字未动
+    /// （视频播放层属 IC-141，另建）。播放层包在 `.overlay` 里，尺寸随基准
+    /// 内容尺寸，因此自动坐在缩放容器内、随 1x／Nx 变换，不写任何几何。
+    ///
+    /// `make(mediaKind:)` 是「哪些类别有播放层」的唯一判别；外层条件与它同值，
+    /// 供门禁扫描钉住「只有实况页构造播放层」这一条。
+    @ViewBuilder
+    private func photoContentWithPlaybackLayer(
+        assetID: String,
+        baseSize: CGSize,
+        content: AnyView
+    ) -> some View {
+        if assetMediaKind(assetID) == .live,
+           let layer = S2LivePhotoLayerPresentation.make(mediaKind: .live) {
+            content.overlay {
+                S2LivePhotoPlaybackContentView(
+                    playback: livePlayback,
+                    assetID: assetID,
+                    targetSize: baseSize
+                )
+                .id(assetID)
+                .allowsHitTesting(layer.acceptsHits)
+            }
+        } else {
+            content
         }
     }
 
@@ -2681,10 +2773,19 @@ enum S2MediaMetrics {
     static let livePillItemSpacing: CGFloat = 5
     static let livePillSymbol = "livephoto"
 
-    /// 长按判定时长。分页器根视图那只识别器自 IC-113 起就写死 0.8，
-    /// 而本卡不得改分页器文件，故顶部中胶囊这只用本常量取同值——
-    /// 两处 0.8 目前各写各的，已在报告「发现但未处理」登记。
+    /// 长按判定时长。分页器根视图那只识别器与顶部中胶囊这只共用本常量。
     static let longPressMinimumDuration: TimeInterval = 0.8
+
+    // MARK: - 实况播放（决策 55，IC-140）
+    //
+    // 两个量都不是视觉量，H64b 真机后可调。
+
+    /// 当前页 ±该半径内的实况页提前请求资源，保证到页时短动效能立即起播。
+    static let livePhotoPrefetchRadius = 1
+
+    /// 同时持有的实况资源上限；超出时先退离当前最远的一页
+    /// （取消其在飞请求、卸资源）。
+    static let livePhotoInstanceCap = 3
 
     // MARK: - 视频浮框（决策 56，本卡只做骨架）
 
@@ -2794,20 +2895,6 @@ enum S2MainPhotoLongPressAction: Equatable {
 
     static func resolve(mediaKind: S2MediaKind) -> S2MainPhotoLongPressAction {
         mediaKind == .live ? .livePhotoPlayback : .unbound
-    }
-}
-
-/// IC-139 D：实况长按的一次性事件记录。
-///
-/// 本卡不接播放器，只登记「哪一张、请求了几次播放」，供 IC-140 接线时对齐；
-/// 也让分派确实发生这件事在夹具里可断言。
-final class S2LivePhotoLongPressRecorder: ObservableObject {
-    @Published private(set) var requestCount = 0
-    @Published private(set) var lastAssetID: String?
-
-    func record(assetID: String) {
-        requestCount += 1
-        lastAssetID = assetID
     }
 }
 

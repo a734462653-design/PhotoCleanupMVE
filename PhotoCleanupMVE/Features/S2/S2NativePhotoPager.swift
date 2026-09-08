@@ -89,7 +89,13 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
     let configuration: S2CalibrationConfiguration
     let viewportSize: CGSize
     let pages: [S2NativePageContent]
-    let onLongPress: () -> Void
+    /// IC-140 C：主图长按开始。返回 `true` ⟹ 本次长按由页内容接管
+    /// （实况播放），分页器随即挂起横向翻页、上下滑与 Nx 平移。
+    let onLongPressBegan: () -> Bool
+    /// IC-140 C：主图长按结束。`.ended`／`.cancelled`／`.failed` 三态都走这里。
+    let onLongPressEnded: () -> Void
+    /// IC-140 C：翻页停稳。到页短动效唯一的起播时机。
+    let onPagingSettled: () -> Void
     let diagnosticsCoordinator: S2GeometryDiagnosticsCoordinator
     let transitionDiagnosticsCoordinator:
         S2OnDeviceTransitionDiagnosticsCoordinator
@@ -128,7 +134,9 @@ struct S2NativePhotoPager: UIViewControllerRepresentable {
             configuration: configuration,
             viewportSize: viewportSize,
             pages: pages,
-            onLongPress: onLongPress,
+            onLongPressBegan: onLongPressBegan,
+            onLongPressEnded: onLongPressEnded,
+            onPagingSettled: onPagingSettled,
             pageContentProvider: pageContentProvider
         )
         transitionDiagnosticsCoordinator.recordUpdateUIView(
@@ -2868,7 +2876,13 @@ final class S2NativePagerViewController: UIViewController,
     private weak var machine: S2StateMachine?
     private var configuration = S2CalibrationConfiguration.factoryPlaceholder
     private var viewportSize = CGSize.zero
-    private var onLongPress: (() -> Void)?
+    /// IC-140 C：长按开始／结束与翻页停稳。三者与旧 `onLongPress` 同形
+    /// （声明、透传、存储、init 形参、赋值、释放六处）。
+    private var onLongPressBegan: (() -> Bool)?
+    private var onLongPressEnded: (() -> Void)?
+    private var onPagingSettled: (() -> Void)?
+    /// IC-140 C：长按挂起中。三个识别器开关的**唯一**状态来源（陷阱 19）。
+    private(set) var isLongPressSuspending = false
     /// IC-111 B：标记残影协调器。nil ⟹ 不放残影。
     var markAfterimages: S2MarkAfterimageCoordinator?
     private var isApplyingSnapshot = false
@@ -2922,7 +2936,8 @@ final class S2NativePagerViewController: UIViewController,
             target: self,
             action: #selector(handleLongPress(_:))
         )
-        longPress.minimumPressDuration = 0.8
+        // IC-140 C：与顶部中胶囊那只识别器归一到同一个登记常量。
+        longPress.minimumPressDuration = S2MediaMetrics.longPressMinimumDuration
         longPress.cancelsTouchesInView = false
         view.addGestureRecognizer(longPress)
     }
@@ -2977,14 +2992,18 @@ final class S2NativePagerViewController: UIViewController,
         configuration: S2CalibrationConfiguration,
         viewportSize: CGSize,
         pages: [S2NativePageContent],
-        onLongPress: @escaping () -> Void,
+        onLongPressBegan: @escaping () -> Bool,
+        onLongPressEnded: @escaping () -> Void,
+        onPagingSettled: @escaping () -> Void,
         pageContentProvider: ((Int) -> S2NativePageContent?)? = nil
     ) {
         loadViewIfNeeded()
         self.machine = machine
         self.configuration = configuration
         self.viewportSize = viewportSize
-        self.onLongPress = onLongPress
+        self.onLongPressBegan = onLongPressBegan
+        self.onLongPressEnded = onLongPressEnded
+        self.onPagingSettled = onPagingSettled
         self.pageContentProvider = pageContentProvider
         isApplyingSnapshot = true
 
@@ -3191,7 +3210,9 @@ final class S2NativePagerViewController: UIViewController,
         pendingPresentationTapPageIndex = nil
         presentationTapStartTimestamp = nil
         lastOuterTranslation = .zero
-        onLongPress = nil
+        onLongPressBegan = nil
+        onLongPressEnded = nil
+        onPagingSettled = nil
         diagnosticsRun?.cancel()
         diagnosticsRun = nil
     }
@@ -3731,10 +3752,58 @@ final class S2NativePagerViewController: UIViewController,
     }
 
     @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
-        guard recognizer.state == .began else {
+        switch recognizer.state {
+        case .began:
+            beginLongPressSuspensionIfNeeded()
+        case .ended, .cancelled, .failed:
+            endLongPressSuspension()
+        default:
+            break
+        }
+    }
+
+    /// IC-140 C（决策 55）：长按开始的**汇集口**。识别器回调与夹具都只经这里，
+    /// 三个识别器开关没有第二个写入点（陷阱 19）。
+    ///
+    /// 返回 `true` ⟹ 页内容接管本次长按（实况播放），横向翻页、上下滑与
+    /// Nx 平移三者随即挂起；返回 `false` 时三者一字不动。
+    @discardableResult
+    func beginLongPressSuspensionIfNeeded() -> Bool {
+        guard onLongPressBegan?() == true else {
+            return false
+        }
+        guard !isLongPressSuspending else {
+            return true
+        }
+        isLongPressSuspending = true
+        pagingScrollView.isScrollEnabled = false
+        if let page = currentPageController {
+            page.verticalSwipeRecognizer.isEnabled = false
+            page.zoomScrollView.panGestureRecognizer.isEnabled = false
+        }
+        return true
+    }
+
+    /// IC-140 C：长按结束的汇集口。恢复时 Nx 平移**不直接写 true**，
+    /// 交给 `updatePanAvailability()` 按 `zoomScale` 判定（1x 仍禁、Nx 才开）。
+    func endLongPressSuspension() {
+        onLongPressEnded?()
+        guard isLongPressSuspending else {
             return
         }
-        onLongPress?()
+        isLongPressSuspending = false
+        pagingScrollView.isScrollEnabled = true
+        if let page = currentPageController {
+            page.verticalSwipeRecognizer.isEnabled = true
+            page.zoomScrollView.updatePanAvailability()
+        }
+    }
+
+    private var currentPageController: S2NativeZoomPageController? {
+        guard let machine else {
+            return nil
+        }
+        return pageControllers[machine.currentIndex]
     }
 
     /// IC-095 R2：`layoutNativePages` 的重排输入。这些量全部相等时，重排的每一步
@@ -3952,6 +4021,9 @@ final class S2NativePagerViewController: UIViewController,
         synchronizeNativeStateToMachine(animatedPaging: false)
         outerDragStartDate = nil
         didAdvanceIndexDuringScroll = false
+        // IC-140 C（决策 55）：停稳是到页短动效唯一的起播时机。初始布局不经
+        // 本函数（两个调用点都是滚动结束回调），因此进场首帧不会触发。
+        onPagingSettled?()
     }
 
     private func synchronizeNativeStateToMachine(animatedPaging: Bool) {
