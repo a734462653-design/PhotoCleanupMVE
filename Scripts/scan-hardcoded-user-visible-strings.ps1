@@ -162,7 +162,7 @@ foreach ($file in $swiftFiles) {
                     Path = $relativePath
                     LineNumber = $lineNumber
                     Value = $value
-                    Reason = "十进制 MB/GB 向下截断由规格锁定，本卡禁止本地化改造"
+                    Reason = "十进制换算由规格锁定（≥ 1 MB 整数截断、< 1 MB 一位小数四舍五入、≥ 1 GB 一位小数截断，见 DecimalVolumeFormatter），禁止本地化改造"
                 })
             }
             elseif ($isLockedAssetVolumeFormat) {
@@ -170,7 +170,7 @@ foreach ($file in $swiftFiles) {
                     Path = $relativePath
                     LineNumber = $lineNumber
                     Value = $value
-                    Reason = "S2 单张 KB/MB/GB 向下截断由规格锁定，禁止本地化改造"
+                    Reason = "S2 单张 KB/MB/GB 换算由规格锁定（见 S2AssetVolumeFormatter；与 DecimalVolumeFormatter 是两套口径，互不影响），禁止本地化改造"
                 })
             }
             elseif ($catalogKeys -notcontains $value) {
