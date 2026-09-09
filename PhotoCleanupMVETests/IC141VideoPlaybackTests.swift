@@ -767,6 +767,102 @@ final class IC141VideoPlaybackTests: XCTestCase {
         )
     }
 
+    // MARK: - 断言 6：挂载口径 + 单击不碰播放
+
+    func testIC141B_OnlyVideoPagesCarryALayerAndSingleTapNeverTouchesPlayback() {
+        XCTAssertNotNil(S2VideoLayerPresentation.make(mediaKind: .video))
+        XCTAssertNil(S2VideoLayerPresentation.make(mediaKind: .photo))
+        XCTAssertNil(S2VideoLayerPresentation.make(mediaKind: .live))
+        XCTAssertFalse(
+            tryUnwrap(S2VideoLayerPresentation.make(mediaKind: .video))
+                .acceptsHits,
+            "播放层接了触控"
+        )
+
+        guard let text = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2View.swift"
+        ) else {
+            return XCTFail("读不到 S2View 源码")
+        }
+
+        // 决策 56：单击只切 `V`，播放状态不变——`V` 的落点里不得有视频协调器。
+        let visibilityBody = onChangeBody(
+            of: "machine.interfaceVisibility",
+            in: text
+        )
+        XCTAssertFalse(visibilityBody.isEmpty, "未截取到 V 变化的闭包体")
+        XCTAssertEqual(
+            occurrences(of: "videoPlayback", in: visibilityBody),
+            0,
+            "单击切 V 的落点里出现了视频协调器"
+        )
+
+        // 正对照：页变更的落点里恰有一次。
+        let assetBody = onChangeBody(of: "machine.currentAssetID", in: text)
+        XCTAssertFalse(assetBody.isEmpty, "未截取到页变更的闭包体")
+        XCTAssertEqual(
+            occurrences(of: "videoPlayback", in: assetBody),
+            1,
+            "页变更的落点未恰调一次视频协调器"
+        )
+    }
+
+    // MARK: - 断言 14：S2View 接线（源码扫描带正对照）
+
+    func testIC141D_VideoWiringSitsBesideTheLivePhotoWiring() {
+        guard let text = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2View.swift"
+        ) else {
+            return XCTFail("读不到 S2View 源码")
+        }
+
+        // 视频侧三处接线各恰一次，且与实况侧同名调用并列（正对照）。
+        for needle in [
+            "videoPlayback.pageBecameCurrent(",
+            "videoPlayback.pagingSettled()",
+            "livePlayback.pageBecameCurrent(",
+            "livePlayback.pagingSettled()"
+        ] {
+            XCTAssertEqual(
+                occurrences(of: needle, in: text),
+                1,
+                "\(needle) 的调用点不是恰一处"
+            )
+        }
+
+        // 播放层只在各自的类别分支里构造。
+        XCTAssertEqual(
+            occurrences(of: "assetMediaKind(assetID) == .video", in: text),
+            1,
+            "视频播放层的构造条件不是恰一处"
+        )
+        XCTAssertEqual(
+            occurrences(of: "assetMediaKind(assetID) == .live", in: text),
+            1,
+            "实况播放层的构造条件不是恰一处"
+        )
+        XCTAssertEqual(
+            occurrences(of: "S2VideoPlaybackContentView(", in: text),
+            1
+        )
+        XCTAssertEqual(
+            occurrences(of: "S2LivePhotoPlaybackContentView(", in: text),
+            1
+        )
+
+        // 实况侧零改动：本卡不引用实况协调器的任何新方法。
+        guard let live = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2LivePhotoPlayback.swift"
+        ) else {
+            return XCTFail("读不到实况播放源码")
+        }
+        XCTAssertEqual(
+            occurrences(of: "S2Video", in: live),
+            0,
+            "实况文件里出现了视频侧符号"
+        )
+    }
+
     // MARK: - 夹具
 
     private func plays(_ effects: [S2VideoPlaybackEffect]) -> [String] {
@@ -798,6 +894,19 @@ final class IC141VideoPlaybackTests: XCTestCase {
             }
             return nil
         }.first
+    }
+
+    /// 截取某个 `.onChange(of:)` 的闭包体（截到下一个 `.onChange(` 为止）。
+    private func onChangeBody(of expression: String, in text: String) -> String {
+        let head = ".onChange(of: " + expression + ") {"
+        guard let start = text.range(of: head) else {
+            return ""
+        }
+        let rest = text[start.upperBound...]
+        guard let end = rest.range(of: ".onChange(") else {
+            return String(rest)
+        }
+        return String(rest[..<end.lowerBound])
     }
 
     private func occurrences(of needle: String, in haystack: String) -> Int {

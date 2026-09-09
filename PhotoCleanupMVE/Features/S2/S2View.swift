@@ -683,12 +683,18 @@ struct S2View: View {
                 let (entryAssetID, _) = liveCurrentAssetAndNeighbours()
                 livePlayback.enter(assetID: entryAssetID)
                 notifyLivePlaybackOfCurrentPage()
+                // IC-141 D（规格第 3 条）：视频侧同款入口守卫。
+                let (videoEntryAssetID, _) = videoCurrentAssetAndNeighbours()
+                videoPlayback.enter(assetID: videoEntryAssetID)
+                notifyVideoPlaybackOfCurrentPage()
             }
             .onDisappear {
                 // IC-110 D：中途离开 S2 视为跳过，不拦截。
                 tutorial.leaveScreen()
                 // IC-140 D：离开即停播、取消在飞请求、卸资源。
                 livePlayback.leave()
+                // IC-141 D：视频侧同款收口。
+                videoPlayback.leave()
             }
             .onChange(of: calibration.configuration) { _, configuration in
                 _ = machine.applyCalibration(configuration)
@@ -787,6 +793,9 @@ struct S2View: View {
             // IC-140 D（规格第 2、8 条）：换页即停前页、按半径请求／取消资源。
             // 起播不在这里——拖动进行中不播，短动效只由停稳触发。
             notifyLivePlaybackOfCurrentPage()
+            // IC-141 D（规格第 2、7 条）：视频侧同款。前页暂停并回 0、
+            // 声音随之关闭；起播同样只由停稳触发。
+            notifyVideoPlaybackOfCurrentPage()
         }
         // IC-111 B：模型值变化时——有残影在途就压住，等落点再跟上（卡内「同帧」）；
         // 没有在途残影（取消标记、确认页回来等）就立即跟上，不留滞后。
@@ -926,8 +935,10 @@ struct S2View: View {
                 livePlayback.longPressEnded()
             },
             // IC-140 D：停稳是到页短动效唯一的起播时机（规格第 3 条）。
+            // IC-141 D：视频自动播放同样只在停稳时起（决策 56／58）。
             onPagingSettled: {
                 livePlayback.pagingSettled()
+                videoPlayback.pagingSettled()
             },
             diagnosticsCoordinator: geometryDiagnostics,
             transitionDiagnosticsCoordinator: transitionDiagnostics,
@@ -1189,6 +1200,42 @@ struct S2View: View {
         return (current, neighbours)
     }
 
+    /// IC-141 D：当前页的视频资产（非视频页为 nil）与半径内其余视频资产，
+    /// 按距当前页的距离升序（规格第 2 条）。与实况那只并列，各查各的类别。
+    private func videoCurrentAssetAndNeighbours() -> (String?, [String]) {
+        let identifiers = machine.orderedAssetIDs
+        let index = machine.currentIndex
+        guard identifiers.indices.contains(index) else {
+            return (nil, [])
+        }
+        let currentID = identifiers[index]
+        let current = assetMediaKind(currentID) == .video ? currentID : nil
+        var neighbours: [String] = []
+        for offset in stride(
+            from: 1,
+            through: S2MediaMetrics.videoPrefetchRadius,
+            by: 1
+        ) {
+            for candidate in [index - offset, index + offset]
+            where identifiers.indices.contains(candidate) {
+                let candidateID = identifiers[candidate]
+                if assetMediaKind(candidateID) == .video {
+                    neighbours.append(candidateID)
+                }
+            }
+        }
+        return (current, neighbours)
+    }
+
+    /// IC-141 D：把当前页与邻居递给视频协调器。翻页与进场两处共用。
+    private func notifyVideoPlaybackOfCurrentPage() {
+        let (current, neighbours) = videoCurrentAssetAndNeighbours()
+        videoPlayback.pageBecameCurrent(
+            assetID: current,
+            neighbours: neighbours
+        )
+    }
+
     /// IC-140 D：把当前页与邻居递给协调器。翻页与进场两处共用。
     private func notifyLivePlaybackOfCurrentPage() {
         let (current, neighbours) = liveCurrentAssetAndNeighbours()
@@ -1198,14 +1245,19 @@ struct S2View: View {
         )
     }
 
-    /// IC-140 D：页内容外层的实况播放层（规格第 1 条）。
+    /// IC-140 D／IC-141 D：页内容外层的播放层（两卡规格各自的第 1 条）。
     ///
-    /// 照片页与视频页原样返回既有内容——那两条路径的视图树因此一字未动
-    /// （视频播放层属 IC-141，另建）。播放层包在 `.overlay` 里，尺寸随基准
-    /// 内容尺寸，因此自动坐在缩放容器内、随 1x／Nx 变换，不写任何几何。
+    /// 实况页包实况播放层，视频页包视频播放层，照片页返回既有内容。
     ///
-    /// `make(mediaKind:)` 是「哪些类别有播放层」的唯一判别；外层条件与它同值，
-    /// 供门禁扫描钉住「只有实况页构造播放层」这一条。
+    /// IC-140 上报 (c) 订正：这里说「原样返回」指的是**不构造任何播放视图**，
+    /// 不是视图树逐字未动——走 `@ViewBuilder` 的分支本身会多一层布局透明的
+    /// 包裹（`_ConditionalContent`），它不参与布局、不改尺寸，但确实存在。
+    ///
+    /// 播放层包在 `.overlay` 里，尺寸随基准内容尺寸，因此自动坐在缩放容器内、
+    /// 随 1x／Nx 变换，不写任何几何。
+    ///
+    /// 两个 `make(mediaKind:)` 是「哪些类别有播放层」的唯一判别；外层条件与
+    /// 它们同值，供门禁扫描钉住「只有该类页构造该播放层」这一条。
     @ViewBuilder
     private func photoContentWithPlaybackLayer(
         assetID: String,
@@ -1219,6 +1271,18 @@ struct S2View: View {
                     playback: livePlayback,
                     assetID: assetID,
                     targetSize: baseSize
+                )
+                .id(assetID)
+                .allowsHitTesting(layer.acceptsHits)
+            }
+        } else if assetMediaKind(assetID) == .video,
+                  let layer = S2VideoLayerPresentation.make(
+                      mediaKind: .video
+                  ) {
+            content.overlay {
+                S2VideoPlaybackContentView(
+                    playback: videoPlayback,
+                    assetID: assetID
                 )
                 .id(assetID)
                 .allowsHitTesting(layer.acceptsHits)
