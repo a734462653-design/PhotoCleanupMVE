@@ -293,8 +293,12 @@ final class IC141VideoPlaybackTests: XCTestCase {
         sentinel.resetLog()
 
         // P1 残影快照：捕获期间隐藏，捕获后恢复调用前的值（false）。
-        let afterimage = page.makeMarkAfterimageSnapshot(in: controller.view)
-        XCTAssertNotNil(afterimage, "残影快照未取到")
+        //
+        // **不断言快照非 nil**：离屏夹具里 `snapshotView(afterScreenUpdates:)`
+        // 取不到已渲染内容，有无播放层都返回 nil（#279 实测）。那一半留给
+        // H65 第 6 项真机判定；这里钉的是「退场与恢复」本身，以及下面那条
+        // 「有无播放层结果一致」的不变性。
+        let withLayer = page.makeMarkAfterimageSnapshot(in: controller.view)
         XCTAssertEqual(
             sentinel.hiddenLog,
             [true, false],
@@ -321,11 +325,20 @@ final class IC141VideoPlaybackTests: XCTestCase {
         XCTAssertTrue(sentinel.isHidden, "快照把本来隐着的层放出来了")
         XCTAssertEqual(sentinel.hiddenLog, [], "对已隐藏的层做了多余写入")
 
-        // 照片页路径（无遵循者）：快照照常取到，行为与基线相同。
+        // 照片页路径（无遵循者）：行为与基线相同。夹具取不到快照内容，
+        // 故钉**不变性**——带播放层与不带播放层的结果一致，说明这层包裹
+        // 没有改变快照本身的成败。
         sentinel.removeFromSuperview()
-        XCTAssertNotNil(
-            page.makeMarkAfterimageSnapshot(in: controller.view),
-            "无播放层的页取不到残影快照"
+        let withoutLayer = page.makeMarkAfterimageSnapshot(in: controller.view)
+        XCTAssertEqual(
+            withLayer == nil,
+            withoutLayer == nil,
+            "播放层的有无改变了残影快照的取到与否"
+        )
+        XCTAssertEqual(
+            sentinel.hiddenLog,
+            [],
+            "已移出子树的层仍被快照写了 isHidden"
         )
     }
 
@@ -785,25 +798,40 @@ final class IC141VideoPlaybackTests: XCTestCase {
             return XCTFail("读不到 S2View 源码")
         }
 
-        // 决策 56：单击只切 `V`，播放状态不变——`V` 的落点里不得有视频协调器。
+        // 决策 56：单击只切 `V`，播放状态不变——`V` 的落点里不得有视频协调器，
+        // 直调与经夹具调都不行（两种大小写各扫一遍）。
         let visibilityBody = onChangeBody(
             of: "machine.interfaceVisibility",
             in: text
         )
         XCTAssertFalse(visibilityBody.isEmpty, "未截取到 V 变化的闭包体")
-        XCTAssertEqual(
-            occurrences(of: "videoPlayback", in: visibilityBody),
-            0,
-            "单击切 V 的落点里出现了视频协调器"
-        )
+        for needle in ["videoPlayback", "VideoPlayback"] {
+            XCTAssertEqual(
+                occurrences(of: needle, in: visibilityBody),
+                0,
+                "单击切 V 的落点里出现了视频协调器（\(needle)）"
+            )
+        }
 
-        // 正对照：页变更的落点里恰有一次。
+        // 正对照：页变更的落点里恰调一次视频侧的夹具。
         let assetBody = onChangeBody(of: "machine.currentAssetID", in: text)
         XCTAssertFalse(assetBody.isEmpty, "未截取到页变更的闭包体")
         XCTAssertEqual(
-            occurrences(of: "videoPlayback", in: assetBody),
+            occurrences(
+                of: "notifyVideoPlaybackOfCurrentPage()",
+                in: assetBody
+            ),
             1,
             "页变更的落点未恰调一次视频协调器"
+        )
+        // 同一处也仍在喂实况侧（IC-140 未被本卡挤掉）。
+        XCTAssertEqual(
+            occurrences(
+                of: "notifyLivePlaybackOfCurrentPage()",
+                in: assetBody
+            ),
+            1,
+            "页变更的落点丢了实况侧的接线"
         )
     }
 
