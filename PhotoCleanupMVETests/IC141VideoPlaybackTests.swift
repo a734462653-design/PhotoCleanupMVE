@@ -4,6 +4,22 @@ import UIKit
 import XCTest
 @testable import PhotoCleanupMVE
 
+/// 断言 7 的哨兵：遵循快照排除协议，并在 `isHidden` 的 didSet 里记录每一次
+/// 写入，好在捕获**期间**就看到它确实退场了。
+private final class SnapshotSentinelView: UIView, S2SnapshotExcludedView {
+    private(set) var hiddenLog: [Bool] = []
+
+    override var isHidden: Bool {
+        didSet {
+            hiddenLog.append(isHidden)
+        }
+    }
+
+    func resetLog() {
+        hiddenLog = []
+    }
+}
+
 /// IC-141：视频播放（自动静音循环、浮框接线、快照取封面帧）。
 ///
 /// **本卡只做视频**：`S2LivePhotoPlayback.swift` 零改动，实况行为与 IC-140 相同。
@@ -194,6 +210,273 @@ final class IC141VideoPlaybackTests: XCTestCase {
         )
     }
 
+    // MARK: - 断言 5：几何纪律与播放动作单一写入点（源码扫描带正对照）
+
+    func testIC141B_PlaybackLayerWritesNoGeometryAndDrivesPlaybackFromOnePlace() {
+        guard let text = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2VideoPlayback.swift"
+        ) else {
+            return XCTFail("读不到视频播放源码")
+        }
+
+        // 不设约束、不设自动尺寸掩码（串按名字拼，免得本断言抓到自己）。
+        for banned in [
+            "translatesAutoresizing" + "MaskIntoConstraints",
+            "NSLayout" + "Constraint"
+        ] {
+            XCTAssertEqual(
+                occurrences(of: banned, in: text),
+                0,
+                "播放层自己写了约束：\(banned)"
+            )
+        }
+
+        // 唯一的几何写入是 `layoutSubviews` 里从 bounds 读的那一次。
+        XCTAssertEqual(occurrences(of: ".frame = ", in: text), 1)
+        XCTAssertEqual(occurrences(of: ".frame = bounds", in: text), 1)
+        let layoutBody = layoutSubviewsBody(in: text)
+        XCTAssertFalse(layoutBody.isEmpty, "未截取到 layoutSubviews 函数体")
+        XCTAssertEqual(
+            occurrences(of: "CATransaction.setDisableActions(true)", in: text),
+            1
+        )
+        XCTAssertEqual(
+            occurrences(
+                of: "CATransaction.setDisableActions(true)",
+                in: layoutBody
+            ),
+            1,
+            "隐式动画开关不在 layoutSubviews 里"
+        )
+        XCTAssertEqual(occurrences(of: ".frame = bounds", in: layoutBody), 1)
+
+        // 图层隐式动画三键各关一次（正对照：三键都在）。
+        for key in ["\"bounds\"", "\"position\"", "\"frame\""] {
+            XCTAssertEqual(
+                occurrences(of: key, in: text),
+                1,
+                "图层隐式动画未关 \(key)"
+            )
+        }
+
+        // 陷阱 19：播放动作只在协调器效果执行处，各一个写入点。
+        XCTAssertEqual(occurrences(of: "player.play()", in: text), 1)
+        XCTAssertEqual(occurrences(of: "player.pause()", in: text), 1)
+        XCTAssertEqual(occurrences(of: "player.seek(", in: text), 1)
+
+        guard let pager = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift"
+        ) else {
+            return XCTFail("读不到分页器源码")
+        }
+        XCTAssertEqual(
+            occurrences(of: "writePhotoGeometry", in: pager),
+            5,
+            "几何链的声明或调用点数量变了"
+        )
+    }
+
+    // MARK: - 断言 7：两个快照都取封面帧
+
+    func testIC141B_SnapshotsHideExcludedLayersAndRestoreTheirOriginalValue() {
+        let machine = makeMachine()
+        let controller = makePagerController()
+        applyPager(controller, machine: machine)
+        let window = attachWindow(to: controller)
+        defer { window.isHidden = true }
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let content = tryUnwrap(page.zoomScrollView.presentationContentView)
+
+        let sentinel = SnapshotSentinelView()
+        sentinel.frame = CGRect(x: 0, y: 0, width: 10, height: 10)
+        content.addSubview(sentinel)
+        sentinel.resetLog()
+
+        // P1 残影快照：捕获期间隐藏，捕获后恢复调用前的值（false）。
+        let afterimage = page.makeMarkAfterimageSnapshot(in: controller.view)
+        XCTAssertNotNil(afterimage, "残影快照未取到")
+        XCTAssertEqual(
+            sentinel.hiddenLog,
+            [true, false],
+            "残影快照期间播放层未退场或未恢复原值"
+        )
+        XCTAssertFalse(sentinel.isHidden)
+
+        // P2 双击快照：同样的一进一出。
+        sentinel.resetLog()
+        _ = page.makeDoubleTapSnapshot()
+        XCTAssertEqual(
+            sentinel.hiddenLog,
+            [true, false],
+            "双击快照期间播放层未退场或未恢复原值"
+        )
+        XCTAssertFalse(sentinel.isHidden)
+
+        // 正对照：调用前本来就隐着的层，结束后仍然隐着（恢复的是原值，
+        // 不是一律置 false）。此时两次快照都不该再写 isHidden。
+        sentinel.isHidden = true
+        sentinel.resetLog()
+        _ = page.makeMarkAfterimageSnapshot(in: controller.view)
+        _ = page.makeDoubleTapSnapshot()
+        XCTAssertTrue(sentinel.isHidden, "快照把本来隐着的层放出来了")
+        XCTAssertEqual(sentinel.hiddenLog, [], "对已隐藏的层做了多余写入")
+
+        // 照片页路径（无遵循者）：快照照常取到，行为与基线相同。
+        sentinel.removeFromSuperview()
+        XCTAssertNotNil(
+            page.makeMarkAfterimageSnapshot(in: controller.view),
+            "无播放层的页取不到残影快照"
+        )
+    }
+
+    // MARK: - 断言 8：挂起中一律禁 Nx 平移
+
+    func testIC141B_PanStaysDisabledWhileSuspendedEvenWhenZoomedIn() {
+        let machine = makeMachine()
+        let controller = makePagerController()
+        applyPager(controller, machine: machine)
+        let window = attachWindow(to: controller)
+        defer { window.isHidden = true }
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let zoom = page.zoomScrollView
+        XCTAssertGreaterThan(
+            zoom.maximumZoomScale,
+            zoom.minimumZoomScale,
+            "夹具的最大缩放不大于最小缩放，放大态正对照无法成立"
+        )
+
+        // 未挂起时按 P3 原规则：1x 禁、Nx 开（正对照两种缩放各一）。
+        zoom.isPanSuspended = false
+        zoom.updatePanAvailability()
+        XCTAssertFalse(zoom.panGestureRecognizer.isEnabled, "1x 时平移未禁")
+
+        zoom.applyNativeState(scale: 2, viewportOffset: .zero)
+        XCTAssertGreaterThan(
+            zoom.zoomScale,
+            zoom.minimumZoomScale + 0.000_001,
+            "夹具未真正进入放大态"
+        )
+        zoom.updatePanAvailability()
+        XCTAssertTrue(zoom.panGestureRecognizer.isEnabled, "Nx 时平移未开")
+
+        // 挂起中：即便在放大态也一律禁（IC-140 上报 (a) 的修复点）。
+        zoom.isPanSuspended = true
+        zoom.updatePanAvailability()
+        XCTAssertFalse(
+            zoom.panGestureRecognizer.isEnabled,
+            "挂起中放大态的平移仍被打开"
+        )
+
+        // 清除后回到 P3 原规则。
+        zoom.isPanSuspended = false
+        zoom.updatePanAvailability()
+        XCTAssertTrue(zoom.panGestureRecognizer.isEnabled)
+
+        zoom.applyNativeState(scale: 1, viewportOffset: .zero)
+        zoom.isPanSuspended = true
+        zoom.updatePanAvailability()
+        XCTAssertFalse(zoom.panGestureRecognizer.isEnabled)
+    }
+
+    // MARK: - 断言 9：缩放与双击过渡不重建播放层
+
+    func testIC141B_RepeatedContentMountDoesNotRebindThePlaybackLayer() {
+        let playback = S2VideoPlaybackCoordinator()
+        let host = UIHostingController(
+            rootView: AnyView(
+                S2VideoPlaybackContentView(
+                    playback: playback,
+                    assetID: "asset-2"
+                )
+                .id("asset-2")
+            )
+        )
+        let window = UIWindow(
+            frame: CGRect(origin: .zero, size: physicalSize)
+        )
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+
+        let surface = tryUnwrap(playback.registeredSurface(for: "asset-2"))
+        let hostView = tryUnwrap(surface as? S2VideoHostView)
+        XCTAssertEqual(playback.surfaceRegistrationCount, 1)
+        XCTAssertEqual(playback.surfaceUnregistrationCount, 0)
+
+        // 同一资产重挂内容树（`applyPhotoContent` 在缩放路径上做的就是这件事）：
+        // 走 `updateUIView` 的同资产分支，既不注销也不改绑。
+        host.rootView = AnyView(
+            S2VideoPlaybackContentView(
+                playback: playback,
+                assetID: "asset-2"
+            )
+            .id("asset-2")
+        )
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+
+        XCTAssertTrue(
+            playback.registeredSurface(for: "asset-2") === surface,
+            "重挂内容树换掉了播放层实例"
+        )
+        XCTAssertEqual(playback.surfaceRegistrationCount, 1, "播放层被重复登记")
+        XCTAssertEqual(playback.surfaceUnregistrationCount, 0, "播放层被注销")
+        XCTAssertEqual(hostView.rebindCount, 0, "同资产重挂触发了改绑")
+    }
+
+    func testIC141B_ZoomAndDoubleTapTransitionKeepThePlaybackLayerAlive() {
+        let machine = makeMachine()
+        let controller = makePagerController()
+        applyPager(controller, machine: machine)
+        let window = attachWindow(to: controller)
+        defer { window.isHidden = true }
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let content = tryUnwrap(page.zoomScrollView.presentationContentView)
+
+        // 播放层按产品口径登记，再放进页内容子树里。
+        let playback = S2VideoPlaybackCoordinator()
+        let hostView = S2VideoHostView(assetID: machine.currentAssetID)
+        hostView.frame = content.bounds
+        content.addSubview(hostView)
+        playback.register(surface: hostView, for: machine.currentAssetID)
+        XCTAssertEqual(playback.surfaceRegistrationCount, 1)
+
+        // 放大：走既有的原生状态下发路径，不直写 zoomScale。
+        page.zoomScrollView.applyNativeState(scale: 2, viewportOffset: .zero)
+        page.view.setNeedsLayout()
+        page.view.layoutIfNeeded()
+
+        // 双击过渡：开始与收口都走既有 harness 路径。
+        let started = page.startDoubleTapTransition(
+            enteringNx: false,
+            targetScale: 1,
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
+            configuration: .factoryPlaceholder,
+            durationOverrideSeconds: 0
+        )
+        XCTAssertTrue(started, "双击过渡未起飞，断言 9 无从成立")
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        XCTAssertTrue(
+            playback.registeredSurface(for: machine.currentAssetID)
+                === hostView,
+            "缩放或双击过渡换掉了播放层实例"
+        )
+        XCTAssertEqual(playback.surfaceRegistrationCount, 1, "播放层被重复登记")
+        XCTAssertEqual(playback.surfaceUnregistrationCount, 0, "播放层被注销")
+        XCTAssertEqual(hostView.rebindCount, 0, "缩放触发了改绑")
+        // 缩放不进状态机：不产生 pause／unload，状态原样。
+        XCTAssertEqual(
+            playback.playbackState(for: machine.currentAssetID),
+            .idle,
+            "缩放路径改动了播放状态"
+        )
+    }
+
     // MARK: - 夹具
 
     private func plays(_ effects: [S2VideoPlaybackEffect]) -> [String] {
@@ -237,6 +520,142 @@ final class IC141VideoPlaybackTests: XCTestCase {
             .deletingLastPathComponent()
         let url = root.appendingPathComponent(relativePath)
         return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    /// 截取宿主视图 `layoutSubviews` 的函数体，供几何纪律的同函数体断言用。
+    private func layoutSubviewsBody(in text: String) -> String {
+        guard let start = text.range(
+            of: "override func layoutSubviews() {"
+        ) else {
+            return ""
+        }
+        let rest = text[start.upperBound...]
+        guard let end = rest.range(of: "\n    }\n") else {
+            return String(rest)
+        }
+        return String(rest[..<end.lowerBound])
+    }
+
+    private func makeMachine(
+        orderedAssetIDs: [String] = ["asset-1", "asset-2", "asset-3"],
+        currentIndex: Int = 1
+    ) -> S2StateMachine {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let resolvedCurrentIndex = min(
+            max(0, currentIndex),
+            orderedAssetIDs.count - 1
+        )
+        return S2StateMachine(
+            entry: S2EntryContext(
+                sessionID: "session-141",
+                rangeDisplayInformation: S2RangeDisplayInformation(
+                    rangeID: "range-141",
+                    displayName: "IC-141",
+                    totalAssetCount: orderedAssetIDs.count
+                ),
+                orderedAssetIDs: orderedAssetIDs,
+                currentAssetID: orderedAssetIDs[resolvedCurrentIndex],
+                pendingDeletionAssetIDs: [],
+                sessionMergedPendingDeletionCountProvider: { 0 }
+            ),
+            initialPresentation: S2InitialPresentation(
+                interfaceVisibility: .visible,
+                scale: 1,
+                viewportOffset: .zero
+            ),
+            parameters: tryUnwrap(configuration.resolvedParameters),
+            imageRequestStrategy: configuration.imageRequestStrategy,
+            initialFavoriteAssetIDs: [],
+            initialRecentAlbum: nil,
+            pendingDeletionDidChange: { _ in }
+        )!
+    }
+
+    /// 与既有分页器夹具同源：挂窗口、跑一次布局与 runloop，页控制器才成形。
+    private func attachWindow(
+        to controller: S2NativePagerViewController
+    ) -> UIWindow {
+        let window = UIWindow(
+            frame: CGRect(origin: .zero, size: physicalSize)
+        )
+        window.rootViewController = controller
+        window.isHidden = false
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        return window
+    }
+
+    /// 与 `S2CalibrationHarnessTests.makeNativePagerController` 同源的构造：
+    /// 直接建控制器、给视口尺寸，再走 `apply`。那个夹具是 private，
+    /// 跨测试类调不到，故在这里按同一形状复刻（IC-140 同做）。
+    private func makePagerController() -> S2NativePagerViewController {
+        let controller = S2NativePagerViewController()
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(origin: .zero, size: physicalSize)
+        return controller
+    }
+
+    private func applyPager(
+        _ controller: S2NativePagerViewController,
+        machine: S2StateMachine,
+        onPagingSettled: @escaping () -> Void = {}
+    ) {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let state = S2ViewportPresentationState(
+            interfaceVisibility: machine.interfaceVisibility,
+            bottomStripState: machine.bottomStripState,
+            sheetState: machine.sheetState
+        )
+        let pages = machine.orderedAssetIDs.enumerated().map { index, assetID in
+            let value = S2ViewportLayout.metrics(
+                physicalSize: physicalSize,
+                presentationState: state,
+                assetAspectRatio: screenAspectRatio,
+                isScreenshot: true,
+                configuration: configuration
+            )
+            return S2NativePageContent(
+                index: index,
+                assetID: assetID,
+                interfaceVisibility: machine.interfaceVisibility,
+                isFramedPhoto: value.isFramedPhoto,
+                fittedSize: value.oneXDisplaySize,
+                fittedCenterY: value.oneXDisplayCenterY,
+                nativeZoomBaseSize: value.nativeZoomBaseSize,
+                cornerRadius: value.oneXCornerRadius,
+                doubleTapTargetScale: value.doubleTapTargetScale,
+                assetPixelSize: CGSize(
+                    width: screenAspectRatio * 1_000,
+                    height: 1_000
+                ),
+                contentVersion: S2NativePhotoContentVersion(
+                    requestedScale: index == machine.currentIndex
+                        ? machine.imageRequestScale
+                        : 1,
+                    requestStrategy: configuration.imageRequestStrategy,
+                    requestRevision: 0
+                ),
+                content: AnyView(
+                    Color.clear.frame(
+                        width: value.oneXDisplaySize.width,
+                        height: value.oneXDisplaySize.height
+                    )
+                ),
+                zoomGeometry: nil
+            )
+        }
+        controller.apply(
+            machine: machine,
+            configuration: configuration,
+            viewportSize: physicalSize,
+            pages: pages,
+            onLongPressBegan: { false },
+            onLongPressEnded: {},
+            onPagingSettled: onPagingSettled
+        )
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
     }
 
     private func tryUnwrap<T>(

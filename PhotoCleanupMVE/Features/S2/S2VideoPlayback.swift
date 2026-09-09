@@ -439,6 +439,9 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
     private var endObservers: [String: NSObjectProtocol] = [:]
     private var timeObserver: Any?
     private var observedAssetID: String?
+    /// 断言入口（仅供 XCTest）：播放层登记／注销次数。
+    private(set) var surfaceRegistrationCount = 0
+    private(set) var surfaceUnregistrationCount = 0
     private let imageManager: PHImageManager
     private let fetchQueue = DispatchQueue(
         label: "com.photocleanupmve.s2.video.fetch"
@@ -508,6 +511,7 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
 
     func register(surface: any S2VideoPlaybackSurface, for assetID: String) {
         surfaces[assetID] = SurfaceBox(surface)
+        surfaceRegistrationCount += 1
         // 播放器可能早于播放层到位（预取），登记时补挂一次。
         if let player = players[assetID] {
             surface.attach(player: player)
@@ -515,13 +519,23 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
     }
 
     func unregister(assetID: String) {
-        surfaces.removeValue(forKey: assetID)
+        guard surfaces.removeValue(forKey: assetID) != nil else {
+            return
+        }
+        surfaceUnregistrationCount += 1
     }
 
     // MARK: 断言入口（仅供 XCTest）
 
     func playbackState(for assetID: String) -> S2VideoPlaybackState {
         machine.state(for: assetID)
+    }
+
+    /// 断言 9：缩放与双击过渡期间播放层不得被重建——比对对象身份。
+    func registeredSurface(
+        for assetID: String
+    ) -> (any S2VideoPlaybackSurface)? {
+        surfaces[assetID]?.surface
     }
 
     // MARK: 效果执行
@@ -741,5 +755,183 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
                 durationSeconds: duration
             )
         )
+    }
+}
+
+// MARK: - IC-141 B：快照排除
+
+/// 快照捕获期间需要临时让位的视图。
+///
+/// 决策 56：视频页的双击过渡快照与标记残影快照取**封面帧**——
+/// `AVPlayerLayer` 的内容不进 `snapshotView`，留在快照里的会是一块黑；
+/// 捕获瞬间把播放层隐掉，露出底下那张静止图。实况页与照片页没有遵循者，
+/// 两个快照函数的行为与基线逐字相同。
+protocol S2SnapshotExcludedView: UIView {}
+
+enum S2SnapshotExclusion {
+    /// 捕获期间隐藏子树里的遵循者，捕获后逐个恢复**原值**。
+    ///
+    /// 恢复的是原值而不是一律置 `false`——调用前本来就隐着的层必须仍然隐着，
+    /// 否则快照会把一个不该上屏的层放出来。
+    static func capturing<T>(in root: UIView, _ capture: () -> T) -> T {
+        let excluded = excludedViews(in: root)
+        let wasHidden = excluded.map(\.isHidden)
+        for view in excluded where !view.isHidden {
+            view.isHidden = true
+        }
+        defer {
+            for (view, original) in zip(excluded, wasHidden)
+            where view.isHidden != original {
+                view.isHidden = original
+            }
+        }
+        return capture()
+    }
+
+    private static func excludedViews(in root: UIView) -> [UIView] {
+        var found: [UIView] = []
+        if root is any S2SnapshotExcludedView {
+            found.append(root)
+        }
+        for subview in root.subviews {
+            found.append(contentsOf: excludedViews(in: subview))
+        }
+        return found
+    }
+}
+
+// MARK: - IC-141 B：宿主视图
+
+/// 承载 `AVPlayerLayer` 的页内播放层。
+///
+/// 几何纪律（同 IC-140）：**不设约束、不设自动尺寸掩码、不写自己的几何**。
+/// 子层尺寸只在 `layoutSubviews` 里从 `bounds` 读——`bounds` 是几何链
+/// （`writePhotoGeometry`）写进来的，1x 与 Nx 两套尺寸都由那条链给。
+/// 子层的隐式动画一律关掉，否则链上每次写入都会带一段动画，与外层的
+/// 无动画提交错拍。
+///
+/// 本视图**不驱动播放**（陷阱 19）：`AVPlayer` 由协调器持有并驱动，
+/// 这里只把它接到图层上。
+final class S2VideoHostView: UIView,
+    S2VideoPlaybackSurface,
+    S2SnapshotExcludedView {
+    private let playerLayer = AVPlayerLayer()
+    private(set) var assetID: String
+    /// 断言入口（仅供 XCTest）：页控制器复用到别的资产时的改绑次数。
+    private(set) var rebindCount = 0
+
+    init(assetID: String) {
+        self.assetID = assetID
+        super.init(frame: .zero)
+        backgroundColor = .clear
+        // 浮框是唯一的播放控件（决策 56），播放层不接触控。
+        isUserInteractionEnabled = false
+        playerLayer.videoGravity = .resizeAspect
+        playerLayer.actions = [
+            "bounds": NSNull(),
+            "position": NSNull(),
+            "frame": NSNull()
+        ]
+        layer.addSublayer(playerLayer)
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    /// 页控制器被复用到另一段视频时改绑。旧资产的播放器不在这里卸——
+    /// 卸载是协调器按半径决定的效果，本视图只换身份。
+    func rebind(assetID: String) {
+        self.assetID = assetID
+        rebindCount += 1
+        detachPlayer()
+    }
+
+    // MARK: S2VideoPlaybackSurface
+
+    func attach(player: AVPlayer) {
+        playerLayer.player = player
+    }
+
+    func detachPlayer() {
+        playerLayer.player = nil
+    }
+
+    // MARK: 布局
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        playerLayer.frame = bounds
+        CATransaction.commit()
+    }
+}
+
+// MARK: - IC-141 B：页内容里的播放层
+
+/// 页内容树里的视频播放层包装。挂在既有页内容的 `.overlay` 上，因此自动坐在
+/// 缩放容器内、随 1x／Nx 变换——一行几何都不用自己写（IC-137 报告第二节）。
+struct S2VideoPlaybackContentView: UIViewRepresentable {
+    let playback: S2VideoPlaybackCoordinator
+    let assetID: String
+
+    /// 只为把 assetID 带进 `dismantleUIView`——它是 static，
+    /// `Coordinator == Void` 时拿不到任何页身份，拆卸就无处收口。
+    final class Coordinator {
+        let playback: S2VideoPlaybackCoordinator
+        var assetID: String
+
+        init(playback: S2VideoPlaybackCoordinator, assetID: String) {
+            self.playback = playback
+            self.assetID = assetID
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(playback: playback, assetID: assetID)
+    }
+
+    func makeUIView(context: Context) -> S2VideoHostView {
+        let view = S2VideoHostView(assetID: assetID)
+        context.coordinator.assetID = assetID
+        playback.register(surface: view, for: assetID)
+        return view
+    }
+
+    func updateUIView(_ view: S2VideoHostView, context: Context) {
+        guard view.assetID != assetID else {
+            return
+        }
+        playback.unregister(assetID: view.assetID)
+        view.rebind(assetID: assetID)
+        context.coordinator.assetID = assetID
+        playback.register(surface: view, for: assetID)
+    }
+
+    static func dismantleUIView(
+        _ view: S2VideoHostView,
+        coordinator: Coordinator
+    ) {
+        coordinator.playback.unregister(assetID: view.assetID)
+    }
+}
+
+// MARK: - IC-141 B：挂载口径
+
+/// 页内视频播放层的挂载口径。`nil` = 该页不构造播放层。
+///
+/// 决策 56：只有 `m=视频` 的页携带视频播放层；照片页与实况页不构造
+/// （实况播放层属 IC-140，另建）。
+struct S2VideoLayerPresentation: Equatable {
+    /// 播放层不接触控——播放动作只经浮框三件。
+    let acceptsHits: Bool
+
+    static func make(mediaKind: S2MediaKind) -> S2VideoLayerPresentation? {
+        guard mediaKind == .video else {
+            return nil
+        }
+        return S2VideoLayerPresentation(acceptsHits: false)
     }
 }
