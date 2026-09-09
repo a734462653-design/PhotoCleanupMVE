@@ -2812,6 +2812,15 @@ enum S2MediaMetrics {
     static let videoBarMutedSymbol = "speaker.slash.fill"
     static let videoBarUnmutedSymbol = "speaker.wave.2.fill"
 
+    // MARK: - 视频播放（IC-141，决策 56；非视觉量）
+
+    /// 当前页 ±1 的视频页提前请求 `AVPlayerItem`。
+    static let videoPrefetchRadius = 1
+    /// 同时持有的 `AVPlayer` 上限；超出先退离当前最远的一页。
+    static let videoInstanceCap = 3
+    /// 进度 tick 间隔。只驱动浮框读数，不写任何几何（陷阱 5）。
+    static let videoProgressTickSeconds: TimeInterval = 0.1
+
     // MARK: - 视觉锚（陷阱 14：视觉锚与触控锚是两套几何）
 
     /// 胶囊上缘距视口顶 = 安全区顶 + 顶栏帧高 + 间距。
