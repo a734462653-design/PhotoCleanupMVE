@@ -754,8 +754,16 @@ final class S2NativeZoomScrollView: UIScrollView {
         )
     }
 
+    /// IC-141 B（IC-140 上报 (a)）：长按挂起中一律禁 Nx 平移。
+    ///
+    /// 改前本函数只看 `zoomScale`，任何一处调用（缩放回调族）都会在挂起期间
+    /// 把平移重新打开——挂起因此不是闭合的。标志由分页控制器的挂起／恢复
+    /// 汇集口置位与清除，本函数仍是 `isEnabled` 的唯一写入点。
+    var isPanSuspended = false
+
     func updatePanAvailability() {
-        let shouldEnable = zoomScale > minimumZoomScale + 0.000_001
+        let shouldEnable = !isPanSuspended &&
+            zoomScale > minimumZoomScale + 0.000_001
         if panGestureRecognizer.isEnabled != shouldEnable {
             panGestureRecognizer.isEnabled = shouldEnable
         }
@@ -2057,9 +2065,14 @@ final class S2NativeZoomPageController: UIViewController,
     func makeMarkAfterimageSnapshot(
         in targetView: UIView
     ) -> (view: UIView, frame: CGRect)? {
-        guard let content = zoomScrollView.presentationContentView,
-              let snapshot = content.snapshotView(afterScreenUpdates: false)
-        else {
+        guard let content = zoomScrollView.presentationContentView else {
+            return nil
+        }
+        // IC-141 B（决策 56）：捕获瞬间让视频播放层退场，残影因此取封面帧
+        // 而不是一块黑。实况页与照片页没有遵循者，这条与基线逐字等价。
+        guard let snapshot = S2SnapshotExclusion.capturing(in: content, {
+            content.snapshotView(afterScreenUpdates: false)
+        }) else {
             return nil
         }
         let frame = content.convert(content.bounds, to: targetView)
@@ -2070,19 +2083,22 @@ final class S2NativeZoomPageController: UIViewController,
         return (snapshot, frame)
     }
 
-    private func makeDoubleTapSnapshot() -> UIView {
-        if let snapshot = hostingController.view.snapshotView(
-            afterScreenUpdates: false
-        ) {
-            return snapshot
+    /// IC-141 B（决策 56）：与残影快照同理，双击过渡的快照也取封面帧——
+    /// 捕获期间视频播放层退场，捕获后恢复原值。
+    func makeDoubleTapSnapshot() -> UIView {
+        // 显式标注类型：`view` 是隐式解包可选，绑到 `let` 会退化成
+        // `UIView?`，后面的 `bounds`／`snapshotView` 就取不到了。
+        let root: UIView = hostingController.view
+        return S2SnapshotExclusion.capturing(in: root) { () -> UIView in
+            if let snapshot = root.snapshotView(afterScreenUpdates: false) {
+                return snapshot
+            }
+            let renderer = UIGraphicsImageRenderer(bounds: root.bounds)
+            let image = renderer.image { context in
+                root.layer.render(in: context.cgContext)
+            }
+            return UIImageView(image: image)
         }
-        let renderer = UIGraphicsImageRenderer(
-            bounds: hostingController.view.bounds
-        )
-        let image = renderer.image { context in
-            hostingController.view.layer.render(in: context.cgContext)
-        }
-        return UIImageView(image: image)
     }
 
     private func applyDoubleTapTransitionProgress(_ progress: CGFloat) {
@@ -3779,7 +3795,10 @@ final class S2NativePagerViewController: UIViewController,
         pagingScrollView.isScrollEnabled = false
         if let page = currentPageController {
             page.verticalSwipeRecognizer.isEnabled = false
-            page.zoomScrollView.panGestureRecognizer.isEnabled = false
+            // IC-141 B：改经挂起标志 + `updatePanAvailability()`，
+            // 挂起期间任何一次缩放回调都不会把平移重新打开。
+            page.zoomScrollView.isPanSuspended = true
+            page.zoomScrollView.updatePanAvailability()
         }
         return true
     }
@@ -3795,6 +3814,7 @@ final class S2NativePagerViewController: UIViewController,
         pagingScrollView.isScrollEnabled = true
         if let page = currentPageController {
             page.verticalSwipeRecognizer.isEnabled = true
+            page.zoomScrollView.isPanSuspended = false
             page.zoomScrollView.updatePanAvailability()
         }
     }

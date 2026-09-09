@@ -115,29 +115,35 @@ final class IC139MediaBadgesTests: XCTestCase {
 
     // MARK: - 断言 4：视频浮框骨架
 
-    func testIC139B_VideoBarExistsOnlyOnVisibleVideoPageAndTakesNoHits() {
+    /// IC-141 C 改口径：三件自本卡起接点击、符号与进度随播放状态走。
+    /// 「只在视频页显示态构造」这一条不变，仍在这里守。
+    func testIC139B_VideoBarExistsOnlyOnVisibleVideoPage() {
+        let idle = S2VideoPlaybackSnapshot.idle
         guard let model = S2VideoBarPresentation.make(
             mediaKind: .video,
-            interfaceVisibility: .visible
+            interfaceVisibility: .visible,
+            playback: idle
         ) else {
             return XCTFail("视频页未构造浮框")
         }
+        // 未起播时是「播放」+「静音」两个符号，进度 0。
         XCTAssertEqual(model.playSymbolName, "play.fill")
         XCTAssertEqual(model.muteSymbolName, "speaker.slash.fill")
         XCTAssertEqual(model.progress, 0)
-        // 本卡三件不接点击，IC-141 接线。
-        XCTAssertFalse(model.acceptsHits)
+        XCTAssertTrue(model.acceptsHits)
 
         XCTAssertNil(
             S2VideoBarPresentation.make(
                 mediaKind: .photo,
-                interfaceVisibility: .visible
+                interfaceVisibility: .visible,
+                playback: idle
             )
         )
         XCTAssertNil(
             S2VideoBarPresentation.make(
                 mediaKind: .live,
-                interfaceVisibility: .visible
+                interfaceVisibility: .visible,
+                playback: idle
             )
         )
     }
@@ -203,7 +209,8 @@ final class IC139MediaBadgesTests: XCTestCase {
             XCTAssertNil(
                 S2VideoBarPresentation.make(
                     mediaKind: kind,
-                    interfaceVisibility: .hidden
+                    interfaceVisibility: .hidden,
+                    playback: .idle
                 ),
                 "\(kind) 在隐藏态仍构造了浮框"
             )
