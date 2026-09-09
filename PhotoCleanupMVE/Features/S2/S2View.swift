@@ -2922,9 +2922,13 @@ private struct S2VideoBarOverlay: View {
     /// 而 `onChanged` 第一帧就得知道该不该发 `scrubBegan`。
     @State private var isDragging = false
 
+    /// 陷阱 17：常态的键与拖动态的读数是两个身份，且左右两侧各算各的
+    /// ——同一个 `.id` 值出现在两个兄弟位上会让差分对不准。
     private enum ItemIdentity: Hashable {
-        case controls
-        case readouts
+        case leadingControl
+        case leadingReadout
+        case trailingControl
+        case trailingReadout
     }
 
     var body: some View {
@@ -2979,10 +2983,10 @@ private struct S2VideoBarOverlay: View {
                     .font(
                         .system(size: scrub.fontSize).monospacedDigit()
                     )
-                    .id(ItemIdentity.readouts)
+                    .id(ItemIdentity.leadingReadout)
             } else if let bar {
                 playPauseButton(bar)
-                    .id(ItemIdentity.controls)
+                    .id(ItemIdentity.leadingControl)
             }
 
             progressTrack(
@@ -2995,10 +2999,10 @@ private struct S2VideoBarOverlay: View {
                         .system(size: scrub.fontSize).monospacedDigit()
                     )
                     .opacity(scrub.trailingOpacity)
-                    .id(ItemIdentity.readouts)
+                    .id(ItemIdentity.trailingReadout)
             } else if let bar {
                 muteButton(bar)
-                    .id(ItemIdentity.controls)
+                    .id(ItemIdentity.trailingControl)
             }
         }
         .foregroundStyle(S2ChromeForeground.onGlassPrimary)
