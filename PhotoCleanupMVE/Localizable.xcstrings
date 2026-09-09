@@ -617,6 +617,17 @@
         }
       }
     },
+    "s2.media.video_pause" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂停"
+          }
+        }
+      }
+    },
     "s2.media.video_play" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -624,6 +635,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "播放"
+          }
+        }
+      }
+    },
+    "s2.media.video_progress" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "进度"
+          }
+        }
+      }
+    },
+    "s2.media.video_unmute" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有声"
           }
         }
       }
