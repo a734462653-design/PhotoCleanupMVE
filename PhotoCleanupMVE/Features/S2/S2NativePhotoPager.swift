@@ -2086,7 +2086,9 @@ final class S2NativeZoomPageController: UIViewController,
     /// IC-141 B（决策 56）：与残影快照同理，双击过渡的快照也取封面帧——
     /// 捕获期间视频播放层退场，捕获后恢复原值。
     func makeDoubleTapSnapshot() -> UIView {
-        let root = hostingController.view
+        // 显式标注类型：`view` 是隐式解包可选，绑到 `let` 会退化成
+        // `UIView?`，后面的 `bounds`／`snapshotView` 就取不到了。
+        let root: UIView = hostingController.view
         return S2SnapshotExclusion.capturing(in: root) { () -> UIView in
             if let snapshot = root.snapshotView(afterScreenUpdates: false) {
                 return snapshot

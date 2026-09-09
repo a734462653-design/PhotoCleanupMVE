@@ -741,7 +741,18 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
     private func refreshReadout() {
         guard let assetID = machine.currentAssetID,
               let player = players[assetID] else {
-            readout.update(.idle)
+            // 拖动态要照发：拖动是界面状态，与播放器在不在手无关。
+            // 少了这一条，尚未取到播放器时起拖会让拖动态浮框整层消失
+            // ——手势随之被掐断，`V` 就卡在隐藏态回不来了。
+            readout.update(
+                S2VideoPlaybackSnapshot(
+                    isPlaying: false,
+                    isMuted: true,
+                    isScrubbing: machine.isScrubbing,
+                    currentSeconds: 0,
+                    durationSeconds: 0
+                )
+            )
             return
         }
         let duration = durationSeconds(of: player) ?? 0
