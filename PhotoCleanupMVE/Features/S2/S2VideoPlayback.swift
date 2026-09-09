@@ -935,3 +935,93 @@ struct S2VideoLayerPresentation: Equatable {
         return S2VideoLayerPresentation(acceptsHits: false)
     }
 }
+
+// MARK: - IC-141 C：浮框口径
+
+/// 进度读数格式化。`m:ss`，超 1 小时 `h:mm:ss`；秒数向下取整
+/// （59.4 s 读作 0:59，不四舍五入到 1:00）。
+enum S2VideoTimeFormatter {
+    static func text(seconds: Double) -> String {
+        let bounded = seconds.isFinite && seconds > 0 ? seconds : 0
+        let total = Int(bounded)
+        let hours = total / 3_600
+        let minutes = (total % 3_600) / 60
+        let remainder = total % 60
+        guard hours > 0 else {
+            return String(format: "%d:%02d", minutes, remainder)
+        }
+        return String(format: "%d:%02d:%02d", hours, minutes, remainder)
+    }
+}
+
+/// IC-139 B → IC-141 C：视频浮框口径模型。`nil` = 该页不构造常态浮框。
+///
+/// IC-139 时三件恒为「播放」「进度 0」「静音」且不接点击；本卡改为**状态驱动**
+/// ——符号、进度与可点性全部来自播放快照（决策 56）。拖动态由
+/// `S2VideoScrubPresentation` 另出一份口径，两者互斥。
+struct S2VideoBarPresentation: Equatable {
+    let playSymbolName: String
+    let muteSymbolName: String
+    let progress: Double
+    let acceptsHits: Bool
+    let isPlaying: Bool
+    let isMuted: Bool
+
+    static func make(
+        mediaKind: S2MediaKind,
+        interfaceVisibility: S2InterfaceVisibility,
+        playback: S2VideoPlaybackSnapshot
+    ) -> S2VideoBarPresentation? {
+        guard mediaKind == .video,
+              interfaceVisibility == .visible,
+              !playback.isScrubbing else {
+            return nil
+        }
+        return S2VideoBarPresentation(
+            playSymbolName: playback.isPlaying
+                ? S2MediaMetrics.videoBarPauseSymbol
+                : S2MediaMetrics.videoBarPlaySymbol,
+            muteSymbolName: playback.isMuted
+                ? S2MediaMetrics.videoBarMutedSymbol
+                : S2MediaMetrics.videoBarUnmutedSymbol,
+            progress: playback.progress,
+            acceptsHits: true,
+            isPlaying: playback.isPlaying,
+            isMuted: playback.isMuted
+        )
+    }
+}
+
+/// IC-141 C：拖动态浮框口径。`nil` = 当前不在拖动。
+///
+/// 决策 56：拖动期间只剩两端读数与圆点，无播放键、无静音键；
+/// 且**不随 `V` 隐藏**——它是 `V=隐藏` 期间唯一可见的 chrome，
+/// 故这份口径不看 `interfaceVisibility`。
+struct S2VideoScrubPresentation: Equatable {
+    let currentText: String
+    let durationText: String
+    let progress: Double
+    let fontSize: CGFloat
+    /// 左端白、右端白 72%（v19 §11.2 原文）。
+    let trailingOpacity: Double
+
+    static func make(
+        mediaKind: S2MediaKind,
+        playback: S2VideoPlaybackSnapshot
+    ) -> S2VideoScrubPresentation? {
+        guard mediaKind == .video, playback.isScrubbing else {
+            return nil
+        }
+        return S2VideoScrubPresentation(
+            currentText: S2VideoTimeFormatter.text(
+                seconds: playback.currentSeconds
+            ),
+            durationText: S2VideoTimeFormatter.text(
+                seconds: playback.durationSeconds
+            ),
+            progress: playback.progress,
+            fontSize: S2MediaMetrics.videoBarTimeFontSize,
+            trailingOpacity: S2MediaMetrics.videoBarTimeTrailingOpacity
+        )
+    }
+}

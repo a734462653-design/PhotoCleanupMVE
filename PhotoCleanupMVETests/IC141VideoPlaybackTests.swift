@@ -477,6 +477,296 @@ final class IC141VideoPlaybackTests: XCTestCase {
         )
     }
 
+    // MARK: - 断言 10：浮框改为状态驱动
+
+    func testIC141C_VideoBarModelFollowsPlaybackStateOnVideoPagesOnly() {
+        let playing = S2VideoPlaybackSnapshot(
+            isPlaying: true,
+            isMuted: true,
+            isScrubbing: false,
+            currentSeconds: 5,
+            durationSeconds: 20
+        )
+        let bar = tryUnwrap(
+            S2VideoBarPresentation.make(
+                mediaKind: .video,
+                interfaceVisibility: .visible,
+                playback: playing
+            )
+        )
+        XCTAssertEqual(bar.playSymbolName, S2MediaMetrics.videoBarPauseSymbol)
+        XCTAssertEqual(bar.muteSymbolName, S2MediaMetrics.videoBarMutedSymbol)
+        XCTAssertEqual(bar.progress, 0.25, accuracy: 0.000_001)
+        XCTAssertTrue(bar.acceptsHits, "浮框仍不接点击")
+
+        // 暂停 + 有声：两个符号一起换。
+        let paused = S2VideoPlaybackSnapshot(
+            isPlaying: false,
+            isMuted: false,
+            isScrubbing: false,
+            currentSeconds: 0,
+            durationSeconds: 20
+        )
+        let pausedBar = tryUnwrap(
+            S2VideoBarPresentation.make(
+                mediaKind: .video,
+                interfaceVisibility: .visible,
+                playback: paused
+            )
+        )
+        XCTAssertEqual(
+            pausedBar.playSymbolName,
+            S2MediaMetrics.videoBarPlaySymbol
+        )
+        XCTAssertEqual(
+            pausedBar.muteSymbolName,
+            S2MediaMetrics.videoBarUnmutedSymbol
+        )
+
+        // 照片页、实况页、隐藏态都不构造常态浮框。
+        for kind in [S2MediaKind.photo, .live] {
+            XCTAssertNil(
+                S2VideoBarPresentation.make(
+                    mediaKind: kind,
+                    interfaceVisibility: .visible,
+                    playback: playing
+                ),
+                "\(kind) 构造了视频浮框"
+            )
+        }
+        XCTAssertNil(
+            S2VideoBarPresentation.make(
+                mediaKind: .video,
+                interfaceVisibility: .hidden,
+                playback: playing
+            )
+        )
+
+        // 拖动中常态浮框让位给拖动态（断言 11）。
+        let scrubbing = S2VideoPlaybackSnapshot(
+            isPlaying: false,
+            isMuted: true,
+            isScrubbing: true,
+            currentSeconds: 5,
+            durationSeconds: 20
+        )
+        XCTAssertNil(
+            S2VideoBarPresentation.make(
+                mediaKind: .video,
+                interfaceVisibility: .visible,
+                playback: scrubbing
+            ),
+            "拖动态仍构造了常态浮框"
+        )
+    }
+
+    // MARK: - 断言 11：拖动态
+
+    func testIC141C_ScrubbingHidesChromeTransientlyAndRestoresOnRelease() {
+        // 状态机侧：进入前 `.visible` → 进入 `.hidden` → 结束回 `.visible`。
+        let machine = makeMachine()
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        machine.beginTransientInterfaceHide()
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        XCTAssertEqual(machine.recordedVisibilityBeforeTransientHide, .visible)
+        machine.endTransientInterfaceHide()
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertNil(machine.recordedVisibilityBeforeTransientHide)
+
+        // 进入前本来就隐着：结束后仍然隐着。
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        machine.beginTransientInterfaceHide()
+        XCTAssertEqual(machine.interfaceVisibility, .hidden)
+        machine.endTransientInterfaceHide()
+        XCTAssertEqual(machine.interfaceVisibility, .hidden, "临时隐藏把 V 放了出来")
+
+        // 重入：begin 两次要 end 两次才恢复。
+        XCTAssertTrue(machine.handleSingleTap())
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        machine.beginTransientInterfaceHide()
+        machine.beginTransientInterfaceHide()
+        XCTAssertEqual(machine.transientInterfaceHideDepth, 2)
+        machine.endTransientInterfaceHide()
+        XCTAssertEqual(machine.interfaceVisibility, .hidden, "第一次 end 就恢复了")
+        machine.endTransientInterfaceHide()
+        XCTAssertEqual(machine.interfaceVisibility, .visible)
+        XCTAssertEqual(machine.transientInterfaceHideDepth, 0)
+
+        // 拖动态口径：只有两端读数与圆点，无播放键无静音键。
+        let scrubbing = S2VideoPlaybackSnapshot(
+            isPlaying: false,
+            isMuted: true,
+            isScrubbing: true,
+            currentSeconds: 61,
+            durationSeconds: 125
+        )
+        let scrub = tryUnwrap(
+            S2VideoScrubPresentation.make(
+                mediaKind: .video,
+                playback: scrubbing
+            )
+        )
+        XCTAssertEqual(scrub.currentText, "1:01")
+        XCTAssertEqual(scrub.durationText, "2:05")
+        XCTAssertEqual(scrub.fontSize, S2MediaMetrics.videoBarTimeFontSize)
+        XCTAssertEqual(scrub.trailingOpacity, 0.72, accuracy: 0.000_001)
+        XCTAssertEqual(
+            scrub.trailingOpacity,
+            S2MediaMetrics.videoBarTimeTrailingOpacity
+        )
+        // 不看 `V`——拖动态是 `V=隐藏` 期间唯一可见的 chrome。
+        XCTAssertNotNil(
+            S2VideoScrubPresentation.make(
+                mediaKind: .video,
+                playback: scrubbing
+            )
+        )
+        XCTAssertNil(
+            S2VideoScrubPresentation.make(
+                mediaKind: .photo,
+                playback: scrubbing
+            )
+        )
+
+        // reducer 侧：拖动开始暂停，结束回拖动前状态。
+        var playback = S2VideoPlaybackMachine()
+        _ = playback.handle(.entered(assetID: nil))
+        let became = playback.handle(
+            .becameCurrent(assetID: "B", neighbours: [])
+        )
+        let generation = tryUnwrap(requestGeneration(in: became, for: "B"))
+        _ = playback.handle(
+            .requestSucceeded(assetID: "B", generation: generation)
+        )
+        _ = playback.handle(.pagingSettled)
+        XCTAssertEqual(playback.state(for: "B"), .playing)
+
+        XCTAssertEqual(
+            playback.handle(.scrubBegan),
+            [.pause(assetID: "B")],
+            "拖动开始未暂停"
+        )
+        XCTAssertEqual(
+            playback.handle(.scrubMoved(fraction: 0.5)),
+            [.seek(assetID: "B", fraction: 0.5)]
+        )
+        // 越界的 fraction 被夹到 [0, 1]。
+        XCTAssertEqual(
+            playback.handle(.scrubMoved(fraction: 1.4)),
+            [.seek(assetID: "B", fraction: 1)]
+        )
+        XCTAssertEqual(
+            playback.handle(.scrubEnded),
+            [.play(assetID: "B")],
+            "拖动前在播，松手未续播"
+        )
+
+        // 拖动前是暂停：松手保持暂停。
+        _ = playback.handle(.userToggledPlayPause)
+        XCTAssertEqual(playback.state(for: "B"), .paused)
+        XCTAssertTrue(playback.handle(.scrubBegan).isEmpty, "暂停态拖动仍发了暂停")
+        XCTAssertTrue(playback.handle(.scrubEnded).isEmpty, "暂停态松手自己播了")
+        XCTAssertEqual(playback.state(for: "B"), .paused)
+    }
+
+    func testIC141C_ScrubHandlersAreTheOnlyTransientHideCallSites() {
+        guard let text = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2View.swift"
+        ) else {
+            return XCTFail("读不到 S2View 源码")
+        }
+        XCTAssertEqual(
+            occurrences(of: "machine.beginTransientInterfaceHide()", in: text),
+            1,
+            "临时隐藏的调用点不止拖动开始一处"
+        )
+        XCTAssertEqual(
+            occurrences(of: "machine.endTransientInterfaceHide()", in: text),
+            1,
+            "临时隐藏的恢复点不止拖动结束一处"
+        )
+    }
+
+    // MARK: - 断言 12：读数格式
+
+    func testIC141C_TimeFormatterUsesMinuteSecondAndHourWhenNeeded() {
+        XCTAssertEqual(S2VideoTimeFormatter.text(seconds: 0), "0:00")
+        XCTAssertEqual(S2VideoTimeFormatter.text(seconds: 59.4), "0:59")
+        XCTAssertEqual(S2VideoTimeFormatter.text(seconds: 60), "1:00")
+        XCTAssertEqual(S2VideoTimeFormatter.text(seconds: 3_599), "59:59")
+        XCTAssertEqual(S2VideoTimeFormatter.text(seconds: 3_600), "1:00:00")
+        // 非法值退化为 0，不产生负号或 NaN 文本。
+        XCTAssertEqual(S2VideoTimeFormatter.text(seconds: -3), "0:00")
+        XCTAssertEqual(
+            S2VideoTimeFormatter.text(seconds: .nan),
+            "0:00"
+        )
+
+        guard let text = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2View.swift"
+        ) else {
+            return XCTFail("读不到 S2View 源码")
+        }
+        // 两端读数用等宽数字，拖动中位数跳动不会让浮框宽度抖。
+        // 按「取拖动态字号的那处」计数，避开顶部信息区既有的那一处。
+        XCTAssertEqual(
+            occurrences(
+                of: ".system(size: scrub.fontSize).monospacedDigit()",
+                in: text
+            ),
+            2,
+            "拖动态两端读数未各用一次等宽数字"
+        )
+    }
+
+    // MARK: - 断言 13：有声只作用于当前页
+
+    func testIC141C_UnmutingAppliesToTheCurrentPageAndResetsOnPageChange() {
+        var machine = S2VideoPlaybackMachine()
+        _ = machine.handle(.entered(assetID: nil))
+        let became = machine.handle(
+            .becameCurrent(assetID: "B", neighbours: [])
+        )
+        let generation = tryUnwrap(requestGeneration(in: became, for: "B"))
+        _ = machine.handle(
+            .requestSucceeded(assetID: "B", generation: generation)
+        )
+        _ = machine.handle(.pagingSettled)
+
+        XCTAssertEqual(
+            machine.handle(.userToggledMute),
+            [.setMuted(assetID: "B", muted: false)],
+            "点「有声」未解除静音"
+        )
+        XCTAssertTrue(machine.isUnmutedByUser)
+        // 再点一次回到静音。
+        XCTAssertEqual(
+            machine.handle(.userToggledMute),
+            [.setMuted(assetID: "B", muted: true)]
+        )
+        _ = machine.handle(.userToggledMute)
+
+        // 翻页：前页恢复静音，新页起播也静音（决策 58：无开关、无记忆）。
+        let becameC = machine.handle(
+            .becameCurrent(assetID: "C", neighbours: ["B"])
+        )
+        XCTAssertTrue(
+            becameC.contains(.setMuted(assetID: "B", muted: true)),
+            "翻走未把前页恢复静音"
+        )
+        XCTAssertFalse(machine.isUnmutedByUser, "有声跟着翻到了下一页")
+        let generationC = tryUnwrap(requestGeneration(in: becameC, for: "C"))
+        _ = machine.handle(
+            .requestSucceeded(assetID: "C", generation: generationC)
+        )
+        let settled = machine.handle(.pagingSettled)
+        XCTAssertTrue(
+            settled.contains(.setMuted(assetID: "C", muted: true)),
+            "新页起播未静音"
+        )
+    }
+
     // MARK: - 夹具
 
     private func plays(_ effects: [S2VideoPlaybackEffect]) -> [String] {

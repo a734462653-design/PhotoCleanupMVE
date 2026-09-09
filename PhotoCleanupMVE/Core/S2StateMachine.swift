@@ -632,6 +632,9 @@ final class S2StateMachine: ObservableObject {
     /// IC-114 D（⑤a ④）：放大前的 `V`。`s` 由 1 进入 >1 时记下，
     /// 回到 1 时据此恢复；不在放大中时为 nil。
     private var visibilityBeforeZoom: S2InterfaceVisibility?
+    /// IC-141 C：进度拖动期间的临时隐藏——进入前的 `V` 与嵌套深度。
+    private var visibilityBeforeTransientHide: S2InterfaceVisibility?
+    private var transientHideDepth = 0
     @Published private(set) var viewportOffset: CGSize
     @Published private(set) var bottomStripState: S2BottomStripState = .idle
     @Published private(set) var sheetState: S2SheetState = .closed
@@ -2073,6 +2076,48 @@ final class S2StateMachine: ObservableObject {
     /// 测试可见：当前记下的「进入前 V」。
     var recordedVisibilityBeforeZoom: S2InterfaceVisibility? {
         visibilityBeforeZoom
+    }
+
+    /// IC-141 C（v19 回写决策 56）：进度拖动期间的**临时** `V=隐藏`。
+    ///
+    /// 记住进入前的 `V`，进入置隐藏，结束恢复。与放大自动隐藏是两套记录：
+    /// 那一套挂在 `s` 的写入口上，这一套只由拖动开始／结束驱动，互不覆盖。
+    ///
+    /// 嵌套按深度计数——`begin` 两次要 `end` 两次才恢复，重入不会把
+    /// 「进入前」记成中途那次的隐藏态。不加状态枚举，不改 `handleSingleTap`
+    /// 与 `V`／`s`／`c` 的语义。
+    func beginTransientInterfaceHide() {
+        transientHideDepth += 1
+        guard transientHideDepth == 1 else {
+            return
+        }
+        visibilityBeforeTransientHide = interfaceVisibility
+        if interfaceVisibility == .visible {
+            interfaceVisibility = .hidden
+        }
+    }
+
+    func endTransientInterfaceHide() {
+        guard transientHideDepth > 0 else {
+            return
+        }
+        transientHideDepth -= 1
+        guard transientHideDepth == 0 else {
+            return
+        }
+        if let remembered = visibilityBeforeTransientHide {
+            interfaceVisibility = remembered
+        }
+        visibilityBeforeTransientHide = nil
+    }
+
+    /// 测试可见：当前记下的「拖动前 V」与嵌套深度。
+    var recordedVisibilityBeforeTransientHide: S2InterfaceVisibility? {
+        visibilityBeforeTransientHide
+    }
+
+    var transientInterfaceHideDepth: Int {
+        transientHideDepth
     }
 
     private func setRecentAlbum(_ album: S2AlbumReference?) {

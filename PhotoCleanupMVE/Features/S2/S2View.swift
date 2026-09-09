@@ -466,6 +466,9 @@ struct S2View: View {
     /// IC-140 D（决策 55）：实况播放协调器。到页短动效、长按全段与资源
     /// 请求代次全部在它里面；本视图只把五处事件递进去。
     @StateObject private var livePlayback = S2LivePhotoPlaybackCoordinator()
+    /// IC-141（决策 56）：视频播放协调器。与实况那只**并列**，互不知情——
+    /// 一页只可能是其中一类，两边的事件流各走各的。
+    @StateObject private var videoPlayback = S2VideoPlaybackCoordinator()
     private let photoContent: PhotoContent
     private let stripItemContent: StripItemContent
     private let albumPickerContent: AlbumPickerContent
@@ -629,6 +632,12 @@ struct S2View: View {
                 // 命中测试与无障碍隐藏语义原样包含在内，未改变。
                 .s2ChromeVisibilityTransition(
                     isVisible: machine.interfaceVisibility == .visible
+                )
+
+                // IC-141 C（决策 56）：视频浮框独立成兄弟层，压在 chrome 之上。
+                videoBarOverlay(
+                    bottomStripHeight: viewportMetrics.bottomStripHeight,
+                    safeAreaInsets: safeAreaInsets
                 )
 
                 // IC-112 B：旧右上角角标移除，改为主图几何中心的状态指示。
@@ -1125,10 +1134,7 @@ struct S2View: View {
 
             // IC-139 A／B：媒体标识层。放在最后一个兄弟层，既有三层的
             // 帧与锚点一字未动。
-            mediaChromeLayer(
-                bottomStripHeight: bottomStripHeight,
-                safeAreaInsets: safeAreaInsets
-            )
+            mediaChromeLayer(safeAreaInsets: safeAreaInsets)
         }
         .padding(.leading, safeAreaInsets.leading)
         .padding(.trailing, safeAreaInsets.trailing)
@@ -1230,15 +1236,13 @@ struct S2View: View {
     /// 时长／缩放／模糊三个量全部落在 `S2ChromeVisibilityTransition` 上。
     @ViewBuilder
     private func mediaChromeLayer(
-        bottomStripHeight: CGFloat,
         safeAreaInsets: S2OverlaySafeAreaInsets
     ) -> some View {
-        let visibility = machine.interfaceVisibility
-        let kind = currentMediaKind
-
+        // IC-141 C：视频浮框已迁出为独立兄弟层（`videoBarOverlay`）——
+        // 拖动态要在 `V=隐藏` 期间可见，不能留在整体随 `V` 淡出的这一层里。
         if let pill = S2LivePillPresentation.make(
-            mediaKind: kind,
-            interfaceVisibility: visibility
+            mediaKind: currentMediaKind,
+            interfaceVisibility: machine.interfaceVisibility
         ) {
             livePill(pill)
                 .padding(.leading, S2MediaMetrics.livePillLeading)
@@ -1252,29 +1256,6 @@ struct S2View: View {
                     maxWidth: .infinity,
                     maxHeight: .infinity,
                     alignment: .topLeading
-                )
-        }
-
-        if let bar = S2VideoBarPresentation.make(
-            mediaKind: kind,
-            interfaceVisibility: visibility
-        ) {
-            videoBar(bar)
-                .padding(
-                    .horizontal,
-                    S2MediaMetrics.videoBarHorizontalMargin
-                )
-                .padding(
-                    .bottom,
-                    S2MediaMetrics.videoBarBottomFromViewportBottom(
-                        safeAreaBottom: safeAreaInsets.bottom,
-                        bottomStripHeight: bottomStripHeight
-                    )
-                )
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .bottom
                 )
         }
     }
@@ -1305,74 +1286,40 @@ struct S2View: View {
         .accessibilityLabel(model.text)
     }
 
-    /// 视频浮框骨架：暂停／播放、进度条、静音三件。
-    /// 本卡三件都不响应点击（`acceptsHits == false`），IC-141 接线。
-    private func videoBar(_ model: S2VideoBarPresentation) -> some View {
-        HStack(spacing: S2MediaMetrics.videoBarItemSpacing) {
-            Image(systemName: model.playSymbolName)
-                .font(.system(
-                    size: S2MediaMetrics.videoBarButtonIconPointSize
-                ))
-                .accessibilityLabel(L10n.text("s2.media.video_play"))
-
-            videoBarTrack(progress: model.progress)
-
-            Image(systemName: model.muteSymbolName)
-                .font(.system(size: S2MediaMetrics.videoBarMuteIconPointSize))
-                .accessibilityLabel(L10n.text("s2.media.video_mute"))
-        }
-        .foregroundStyle(S2ChromeForeground.onGlassPrimary)
-        .padding(.horizontal, S2MediaMetrics.videoBarHorizontalPadding)
-        .frame(maxWidth: .infinity)
-        .frame(height: S2MediaMetrics.videoBarHeight)
-        .s2ChromeGlassBackground(
-            in: RoundedRectangle(
-                cornerRadius: S2MediaMetrics.videoBarCornerRadius,
-                style: .continuous
-            )
-        )
-        .allowsHitTesting(model.acceptsHits)
-        .accessibilityLabel(L10n.text("s2.media.video_bar"))
-    }
-
-    /// 进度轨：轨白 28%、填充白 100%、右端拖动圆点。本卡填充恒为 0，
-    /// 圆点只画不接拖动（决策 56 的读数与拖动属 IC-141）。
-    private func videoBarTrack(progress: Double) -> some View {
-        let ratio = min(max(progress, 0), 1)
-        return GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(
-                        Color.white
-                            .opacity(S2MediaMetrics.videoBarTrackOpacity)
-                    )
-                    .frame(height: S2MediaMetrics.videoBarTrackHeight)
-
-                Capsule()
-                    .fill(Color.white)
-                    .frame(
-                        width: proxy.size.width * ratio,
-                        height: S2MediaMetrics.videoBarTrackHeight
-                    )
-
-                Circle()
-                    .fill(Color.white)
-                    .frame(
-                        width: S2MediaMetrics.videoBarKnobDiameter,
-                        height: S2MediaMetrics.videoBarKnobDiameter
-                    )
-                    .offset(
-                        x: proxy.size.width * ratio -
-                            S2MediaMetrics.videoBarKnobDiameter / 2
-                    )
+    /// IC-141 C（决策 56）：视频浮框层。
+    ///
+    /// 它**不能**留在 `interfaceOverlay` 里：那一层整体挂着
+    /// `.s2ChromeVisibilityTransition`，`V=隐藏` 时不透明度为 0 且不接命中，
+    /// 而拖动态浮框恰恰是 `V=隐藏` 期间唯一该看得见的 chrome（规格第 6 条）。
+    /// 迁出后横向边距、底缘锚与填满对齐逐字照搬，几何零变化（陷阱 13／14）。
+    ///
+    /// 逐 tick 的进度读数只在 `S2VideoBarOverlay` 内部观察，
+    /// 不经 `S2View.body`——否则 0.1 s 一次会连带重进分页器（陷阱 5）。
+    private func videoBarOverlay(
+        bottomStripHeight: CGFloat,
+        safeAreaInsets: S2OverlaySafeAreaInsets
+    ) -> some View {
+        S2VideoBarOverlay(
+            readout: videoPlayback.readout,
+            mediaKind: currentMediaKind,
+            interfaceVisibility: machine.interfaceVisibility,
+            bottomStripHeight: bottomStripHeight,
+            safeAreaInsets: safeAreaInsets,
+            onTogglePlayPause: { videoPlayback.togglePlayPause() },
+            onToggleMute: { videoPlayback.toggleMute() },
+            onScrubBegan: {
+                // 顺序：先隐 chrome 再进拖动态，浮框因此不会闪一帧常态。
+                machine.beginTransientInterfaceHide()
+                videoPlayback.scrubBegan()
+            },
+            onScrubMoved: { fraction in
+                videoPlayback.scrubMoved(fraction: fraction)
+            },
+            onScrubEnded: {
+                videoPlayback.scrubEnded()
+                machine.endTransientInterfaceHide()
             }
-            .frame(
-                maxWidth: .infinity,
-                maxHeight: .infinity,
-                alignment: .leading
-            )
-        }
-        .frame(height: S2MediaMetrics.videoBarHeight)
+        )
     }
 
     /// IC-113 C：教程浮层抽成独立 builder。
@@ -2820,6 +2767,11 @@ enum S2MediaMetrics {
     static let videoInstanceCap = 3
     /// 进度 tick 间隔。只驱动浮框读数，不写任何几何（陷阱 5）。
     static let videoProgressTickSeconds: TimeInterval = 0.1
+    /// 拖动态右端读数不透明度（v19 §11.2「左白、右白 72%」）。
+    static let videoBarTimeTrailingOpacity: Double = 0.72
+    /// 进度拖动的起手位移。轻点轨道不该触发一次「隐去 chrome 再复原」的闪动，
+    /// 故不取 0；也不取手势默认的 10，那会让第一次 seek 跳得太远。
+    static let videoBarScrubMinimumDistance: CGFloat = 2
 
     // MARK: - 视觉锚（陷阱 14：视觉锚与触控锚是两套几何）
 
@@ -2866,32 +2818,6 @@ struct S2LivePillPresentation: Equatable {
     }
 }
 
-/// IC-139 B：视频浮框骨架口径模型。`nil` = 该页不构造浮框。
-///
-/// 本卡三件恒为「播放」「进度 0」「静音」，且 `acceptsHits == false`；
-/// 播放状态与点击接线属 IC-141。
-struct S2VideoBarPresentation: Equatable {
-    let playSymbolName: String
-    let muteSymbolName: String
-    let progress: Double
-    let acceptsHits: Bool
-
-    static func make(
-        mediaKind: S2MediaKind,
-        interfaceVisibility: S2InterfaceVisibility
-    ) -> S2VideoBarPresentation? {
-        guard mediaKind == .video, interfaceVisibility == .visible else {
-            return nil
-        }
-        return S2VideoBarPresentation(
-            playSymbolName: S2MediaMetrics.videoBarPlaySymbol,
-            muteSymbolName: S2MediaMetrics.videoBarMutedSymbol,
-            progress: 0,
-            acceptsHits: false
-        )
-    }
-}
-
 /// IC-139 D（v19 回写决策 58）：主图长按 0.8 s 的分派结果。
 ///
 /// `m=实况` 全部让给实况播放；其余类别**不绑定任何产品操作**——
@@ -2904,6 +2830,230 @@ enum S2MainPhotoLongPressAction: Equatable {
 
     static func resolve(mediaKind: S2MediaKind) -> S2MainPhotoLongPressAction {
         mediaKind == .live ? .livePhotoPlayback : .unbound
+    }
+}
+
+/// IC-141 C（v19 回写决策 56）：视频浮框层——常态三件与拖动态两端读数。
+///
+/// 单独成一个 `View` 是为了把逐 tick 的进度读数关在这里：`readout` 每 0.1 s
+/// 变一次，只有本视图重算；`S2View.body` 不观察它，因此不会连带重进分页器
+/// （陷阱 5：静止态不得有几何写入）。
+///
+/// 常态与拖动态**共用同一条进度轨**——轨的视图身份跨两态不变，拖动中途切态
+/// 才不会把正在进行的手势掐断（掐断则 `onEnded` 不来，`V` 会卡在隐藏态）。
+/// 两侧的件是两个身份，按陷阱 17 各自带 `.id`。
+private struct S2VideoBarOverlay: View {
+    @ObservedObject var readout: S2VideoPlaybackReadout
+    let mediaKind: S2MediaKind
+    let interfaceVisibility: S2InterfaceVisibility
+    let bottomStripHeight: CGFloat
+    let safeAreaInsets: S2OverlaySafeAreaInsets
+    let onTogglePlayPause: () -> Void
+    let onToggleMute: () -> Void
+    let onScrubBegan: () -> Void
+    let onScrubMoved: (Double) -> Void
+    let onScrubEnded: () -> Void
+
+    /// 手势自己的在途标志。不读模型：模型要等效果回来才翻转，
+    /// 而 `onChanged` 第一帧就得知道该不该发 `scrubBegan`。
+    @State private var isDragging = false
+
+    private enum ItemIdentity: Hashable {
+        case controls
+        case readouts
+    }
+
+    var body: some View {
+        let snapshot = readout.snapshot
+        let bar = S2VideoBarPresentation.make(
+            mediaKind: mediaKind,
+            interfaceVisibility: interfaceVisibility,
+            playback: snapshot
+        )
+        let scrub = S2VideoScrubPresentation.make(
+            mediaKind: mediaKind,
+            playback: snapshot
+        )
+
+        ZStack(alignment: .bottom) {
+            if bar != nil || scrub != nil {
+                barBody(bar: bar, scrub: scrub)
+                    .padding(
+                        .horizontal,
+                        S2MediaMetrics.videoBarHorizontalMargin
+                    )
+                    .padding(
+                        .bottom,
+                        S2MediaMetrics.videoBarBottomFromViewportBottom(
+                            safeAreaBottom: safeAreaInsets.bottom,
+                            bottomStripHeight: bottomStripHeight
+                        )
+                    )
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: .bottom
+                    )
+                    // 拖动态不随 `V` 隐藏；常态沿用既有过渡语汇，不自造。
+                    .s2ChromeVisibilityTransition(
+                        isVisible: scrub != nil ||
+                            interfaceVisibility == .visible
+                    )
+            }
+        }
+        .padding(.leading, safeAreaInsets.leading)
+        .padding(.trailing, safeAreaInsets.trailing)
+    }
+
+    private func barBody(
+        bar: S2VideoBarPresentation?,
+        scrub: S2VideoScrubPresentation?
+    ) -> some View {
+        HStack(spacing: S2MediaMetrics.videoBarItemSpacing) {
+            if let scrub {
+                Text(verbatim: scrub.currentText)
+                    .font(
+                        .system(size: scrub.fontSize).monospacedDigit()
+                    )
+                    .id(ItemIdentity.readouts)
+            } else if let bar {
+                playPauseButton(bar)
+                    .id(ItemIdentity.controls)
+            }
+
+            progressTrack(
+                progress: scrub?.progress ?? bar?.progress ?? 0
+            )
+
+            if let scrub {
+                Text(verbatim: scrub.durationText)
+                    .font(
+                        .system(size: scrub.fontSize).monospacedDigit()
+                    )
+                    .opacity(scrub.trailingOpacity)
+                    .id(ItemIdentity.readouts)
+            } else if let bar {
+                muteButton(bar)
+                    .id(ItemIdentity.controls)
+            }
+        }
+        .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+        .padding(.horizontal, S2MediaMetrics.videoBarHorizontalPadding)
+        .frame(maxWidth: .infinity)
+        .frame(height: S2MediaMetrics.videoBarHeight)
+        .s2ChromeGlassBackground(
+            in: RoundedRectangle(
+                cornerRadius: S2MediaMetrics.videoBarCornerRadius,
+                style: .continuous
+            )
+        )
+        .accessibilityLabel(L10n.text("s2.media.video_bar"))
+    }
+
+    private func playPauseButton(
+        _ model: S2VideoBarPresentation
+    ) -> some View {
+        Button(action: onTogglePlayPause) {
+            Image(systemName: model.playSymbolName)
+                .font(
+                    .system(size: S2MediaMetrics.videoBarButtonIconPointSize)
+                )
+                // 命中区高取浮框带高（≥ 44），不靠图标自身尺寸。
+                .frame(height: S2MediaMetrics.videoBarHeight)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(
+            model.isPlaying
+                ? L10n.text("s2.media.video_pause")
+                : L10n.text("s2.media.video_play")
+        )
+    }
+
+    private func muteButton(_ model: S2VideoBarPresentation) -> some View {
+        Button(action: onToggleMute) {
+            Image(systemName: model.muteSymbolName)
+                .font(
+                    .system(size: S2MediaMetrics.videoBarMuteIconPointSize)
+                )
+                .frame(height: S2MediaMetrics.videoBarHeight)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(
+            model.isMuted
+                ? L10n.text("s2.media.video_unmute")
+                : L10n.text("s2.media.video_mute")
+        )
+    }
+
+    /// 进度轨：轨白 28%、填充白 100%、右端拖动圆点。
+    /// 可拖区取整条浮框带高，远大于「轨高 + 圆点直径」（规格第 5 条）。
+    private func progressTrack(progress: Double) -> some View {
+        let ratio = min(max(progress, 0), 1)
+        return GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(
+                        Color.white
+                            .opacity(S2MediaMetrics.videoBarTrackOpacity)
+                    )
+                    .frame(height: S2MediaMetrics.videoBarTrackHeight)
+
+                Capsule()
+                    .fill(Color.white)
+                    .frame(
+                        width: proxy.size.width * ratio,
+                        height: S2MediaMetrics.videoBarTrackHeight
+                    )
+
+                Circle()
+                    .fill(Color.white)
+                    .frame(
+                        width: S2MediaMetrics.videoBarKnobDiameter,
+                        height: S2MediaMetrics.videoBarKnobDiameter
+                    )
+                    .offset(
+                        x: proxy.size.width * ratio -
+                            S2MediaMetrics.videoBarKnobDiameter / 2
+                    )
+            }
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .leading
+            )
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(
+                    minimumDistance: S2MediaMetrics
+                        .videoBarScrubMinimumDistance
+                )
+                .onChanged { value in
+                    if !isDragging {
+                        isDragging = true
+                        onScrubBegan()
+                    }
+                    onScrubMoved(
+                        fraction(at: value.location.x, width: proxy.size.width)
+                    )
+                }
+                .onEnded { value in
+                    onScrubMoved(
+                        fraction(at: value.location.x, width: proxy.size.width)
+                    )
+                    isDragging = false
+                    onScrubEnded()
+                }
+            )
+        }
+        .frame(height: S2MediaMetrics.videoBarHeight)
+        .accessibilityLabel(L10n.text("s2.media.video_progress"))
+    }
+
+    private func fraction(at x: CGFloat, width: CGFloat) -> Double {
+        guard width > 0 else {
+            return 0
+        }
+        return min(max(Double(x / width), 0), 1)
     }
 }
 
