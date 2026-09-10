@@ -446,10 +446,15 @@ final class S2SystemAudioSession: S2AudioSessionControlling {
     }
 
     func setActive(_ active: Bool) {
-        try? AVAudioSession.sharedInstance().setActive(
-            active,
-            options: active ? [] : .notifyOthersOnDeactivation
-        )
+        guard active else {
+            // 停用时通知其他应用：别的 App 被压下去的音频可以恢复了。
+            try? AVAudioSession.sharedInstance().setActive(
+                false,
+                options: .notifyOthersOnDeactivation
+            )
+            return
+        }
+        try? AVAudioSession.sharedInstance().setActive(true)
     }
 }
 
