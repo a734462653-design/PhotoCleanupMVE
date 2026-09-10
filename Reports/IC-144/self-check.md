@@ -21,7 +21,7 @@ H67 四项真机判定**留给 Lynn**，本报告不代为下结论。**A 的真
 | 项 | 值 |
 |---|---|
 | 任务卡 | `Tasks/IC-20260910-144-video-exit-transition.md` |
-| 基线 `main` | `e55937bfe4a4b9d0b4b8ee2ff1a5b0d1d0a8fd9c`（标题 `docs: IC-143` 开头 ✅，短 SHA `e55937b`） |
+| 基线 `main` | `e55937b7bc87b3f535a46b06038372ccbe90a07f`（`git rev-parse main` 实读，标题 `docs: IC-143` 开头 ✅） |
 | 祖先核对 | `git merge-base --is-ancestor e498a28… main` → **真** ✅ |
 | 开工工作树 | `git status --porcelain` 空 ✅（纪律 8） |
 | 分支 | `feature/ic-144-video-exit-transition` |
