@@ -416,11 +416,24 @@ final class IC143VideoPolishTests: XCTestCase {
                 transitionView === hostView,
                 "承载者仍是宿主视图"
             )
-            XCTAssertEqual(
-                hostView.diagnosticPlaybackLayerFrame,
-                transitionView.bounds,
-                "借出的播放层未贴满过渡视图"
-            )
+            // IC-144 A 起借出层改用「不改尺寸 + 变换缩放」摆放：落位仍与过渡
+            // 视图重合，但缩放比是浮点除法，`CGRect` 逐位相等不再成立——
+            // 按规格第 1 条的 0.5 pt 容差比对（旧口径为逐位相等）。
+            let borrowed = hostView.diagnosticPlaybackLayerFrame
+            let target = transitionView.bounds
+            for (lhs, rhs, axis) in [
+                (borrowed.minX, target.minX, "minX"),
+                (borrowed.minY, target.minY, "minY"),
+                (borrowed.width, target.width, "width"),
+                (borrowed.height, target.height, "height")
+            ] {
+                XCTAssertEqual(
+                    lhs,
+                    rhs,
+                    accuracy: 0.5,
+                    "借出的播放层未贴满过渡视图（\(axis)）"
+                )
+            }
 
             // 收口：交还宿主、帧回宿主 bounds、层序与过渡前相同。
             page.finishActiveDoubleTapTransition()

@@ -1415,14 +1415,25 @@ private final class S2DoubleTapTransitionView: UIView {
         return nil
     }
 
-    /// IC-143 C：把借来的播放层贴满自身，压在封面帧快照之上。
+    /// IC-143 C：把借来的播放层摆满自身，压在封面帧快照之上。
     ///
     /// 过渡靠 `transform` 推进，`bounds` 全程不变，故这里只摆一次即可；
     /// 隐式动画关掉，免得挂上去的瞬间自带一段缩放与外层的推进错拍。
+    ///
+    /// IC-144 A（H66 第 2 项）：**不改借出层的尺寸**，只摆位置与均匀缩放。
+    /// 改前这里写的是 `frame`：进 Nx 时起始帧恰是主图 1x 帧、与宿主 bounds 同
+    /// 尺寸，写下去是空转；回 1x 时起始帧是放大后的帧，一写就把
+    /// `AVPlayerLayer` 的 `bounds` 从 1x 尺寸改成 Nx 尺寸，收口再改回来——
+    /// 两次改尺寸让视频层重建渲染表面，画面定格。这正是「进 Nx 连续、
+    /// 回 1x 卡顿」那条不对称的来源（① 探针：退出每次只丢 1 帧，
+    /// 过渡动画本身没停摆，卡的是图层内容）。
     func attachPlaybackLayer(_ playbackLayer: CALayer) {
+        let layerWidth = playbackLayer.bounds.width
+        let scale = layerWidth > 0 ? bounds.width / layerWidth : 1
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        playbackLayer.frame = bounds
+        playbackLayer.transform = CATransform3DMakeScale(scale, scale, 1)
+        playbackLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
         layer.addSublayer(playbackLayer)
         CATransaction.commit()
     }
