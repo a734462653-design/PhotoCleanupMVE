@@ -325,7 +325,12 @@ struct S2VideoPlaybackMachine {
                 .seek(assetID: assetID, fraction: 0),
                 .setMuted(assetID: assetID, muted: true)
             ]
-        case .idle, .requesting, .ready, .failed:
+        case .ready:
+            // IC-144 B（IC-143 报告第十一节第 2 条结清）：已就绪但从未起播的
+            // 页，翻走时也要收回静音——用户可能在它上面点过「有声」。
+            // 没有在播，故**不发** `pause`／`seek`，状态仍是 `.ready`。
+            return [.setMuted(assetID: assetID, muted: true)]
+        case .idle, .requesting, .failed:
             return []
         }
     }
@@ -995,6 +1000,8 @@ final class S2VideoHostView: UIView,
         guard isLendingPlaybackLayer else {
             return
         }
+        // 先清标志再布局：`layoutSubviews` 的守卫靠它放行，
+        // 复位变换与写帧都在那一处完成。
         isLendingPlaybackLayer = false
         layer.addSublayer(playerLayer)
         // 几何**不在这里写**：挂回来后强制走一次 `layoutSubviews`，
@@ -1017,12 +1024,33 @@ final class S2VideoHostView: UIView,
         layer.sublayers?.firstIndex(of: playerLayer)
     }
 
+    /// IC-144 A：借出前后比对尺寸用——`frame` 含 transform，`bounds` 不含。
+    var diagnosticPlaybackLayerBounds: CGRect {
+        playerLayer.bounds
+    }
+
+    var diagnosticPlaybackLayerPosition: CGPoint {
+        playerLayer.position
+    }
+
+    var diagnosticPlaybackLayerIsIdentityTransform: Bool {
+        CATransform3DIsIdentity(playerLayer.transform)
+    }
+
     // MARK: 布局
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // IC-144 A（规格第 1 条）：借出期间那一层由过渡视图摆放，布局回调
+        // 一律不碰它的 bounds／position／transform——否则退出路径上刚摆好的
+        // Nx 落位会被这里又改回 1x，等于把「不改尺寸」的收益抵消掉。
+        guard !isLendingPlaybackLayer else {
+            return
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        // 先复位变换再写帧：带非恒等 transform 时写 frame 是未定义行为。
+        playerLayer.transform = CATransform3DIdentity
         playerLayer.frame = bounds
         CATransaction.commit()
     }
