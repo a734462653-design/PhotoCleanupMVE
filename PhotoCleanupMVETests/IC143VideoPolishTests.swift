@@ -530,17 +530,26 @@ final class IC143VideoPolishTests: XCTestCase {
         let window = attachWindow(to: controller)
         defer { window.isHidden = true }
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let content = tryUnwrap(page.zoomScrollView.presentationContentView)
 
-        // 残影快照在无遵循者时照常取到（与基线同）。
+        // 残影快照与 C 的借层路径互不相干：树里有没有可借出的播放层宿主，
+        // P8 的结果都一样。
         //
-        // 取在过渡**之前**：`snapshotView(afterScreenUpdates: false)` 只复制
-        // 渲染层现成的内容，双击过渡刚在同一轮里增删过视图，夹具还没来得及
-        // 出一帧就取不到——#282 实测如此。这是夹具的取帧时机，不是产品行为，
-        // 故与 IC-141 那条绿测同源，在新鲜页上取。
-        XCTAssertNotNil(
-            page.makeMarkAfterimageSnapshot(in: controller.view),
-            "照片页取不到残影快照"
+        // **不断言非 nil**——离屏夹具里 `snapshotView(afterScreenUpdates:)`
+        // 取不到已渲染内容，恒为 nil（IC-141 #279 实测已立此例，那条绿测
+        // 因此也只钉不变性）。#282／#283 两次红都栽在这条上，本卡照 IC-141
+        // 的先例改钉不变性；「快照确实是封面帧」那一半留给 H66 第 2 项真机判定。
+        let withoutHost = page.makeMarkAfterimageSnapshot(in: controller.view)
+        let hostView = S2VideoHostView(assetID: machine.currentAssetID)
+        hostView.frame = content.bounds
+        content.addSubview(hostView)
+        let withHost = page.makeMarkAfterimageSnapshot(in: controller.view)
+        XCTAssertEqual(
+            withoutHost == nil,
+            withHost == nil,
+            "有无播放层宿主时残影快照的结果不一致"
         )
+        hostView.removeFromSuperview()
 
         // 照片页：页内容树里没有遵循者，过渡的同步读数仍在既有阈值内。
         page.zoomScrollView.applyNativeState(scale: 2, viewportOffset: .zero)
