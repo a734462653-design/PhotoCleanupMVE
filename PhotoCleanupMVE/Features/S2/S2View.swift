@@ -461,6 +461,8 @@ struct S2View: View {
     private let assetPixelSize: (String) -> CGSize
     /// IC-078：`pinchMaxScale` 的 1:1 像素倍率按屏幕倍率换算。
     @Environment(\.displayScale) private var displayScale
+    /// IC-143 B：应用失活（来电、控制中心、多任务）是拖动异常终止的入口之一。
+    @Environment(\.scenePhase) private var scenePhase
     /// IC-079 R1：各资产图像加载态登记，仅供诊断录制场景 D 读取。
     @StateObject private var imageLoadStateRegistry = S2ImageLoadStateRegistry()
     /// IC-140 D（决策 55）：实况播放协调器。到页短动效、长按全段与资源
@@ -710,6 +712,14 @@ struct S2View: View {
                 timestamp: CACurrentMediaTime()
             )
         }
+        // IC-143 B 入口一：应用失活（来电、控制中心／通知中心、多任务切换）。
+        // SwiftUI 的 `DragGesture` 没有取消回调，这是这类中断唯一的可观测点。
+        .onChange(of: scenePhase) { _, phase in
+            guard phase != .active else {
+                return
+            }
+            cancelVideoScrub()
+        }
         .onChange(of: machine.interfaceVisibility) { _, visibility in
             applyStatusBarAppearance(for: visibility)
             // IC-112 B：中央指示随 chrome 同显隐（V=隐藏 时不显示）。
@@ -790,6 +800,9 @@ struct S2View: View {
             // 记录重算（本会话加过相簿的照片翻回即显示已加入 + 撤回钮）。
             centerIndicatorState = nil
             refreshCenterIndicator(animated: false)
+            // IC-143 B 入口二：当前页在拖动中被换掉（外部驱动的翻页）。
+            // reducer 侧 `becameCurrent` 已经把前页收回起点，但 `V` 还欠一次收口。
+            cancelVideoScrub()
             // IC-140 D（规格第 2、8 条）：换页即停前页、按半径请求／取消资源。
             // 起播不在这里——拖动进行中不播，短动效只由停稳触发。
             notifyLivePlaybackOfCurrentPage()
@@ -1350,6 +1363,17 @@ struct S2View: View {
         .accessibilityLabel(model.text)
     }
 
+    /// IC-143 B（Decision_log 第 158 条 ③）：进度拖动**异常终止**的唯一收口。
+    ///
+    /// 正常松手仍走 `onScrubEnded`（H65 第 4 项已过，那条路径一字不动）；
+    /// 这里只管非正常路径：应用失活、当前页被换掉、浮框视图被移除。
+    /// 两个调用都幂等，因此三处入口可以重复触发而不互相干扰。
+    /// 顺序与正常收口一致：先回播放状态，再收 `V`。
+    private func cancelVideoScrub() {
+        videoPlayback.scrubCancelled()
+        machine.cancelTransientInterfaceHide()
+    }
+
     /// IC-141 C（决策 56）：视频浮框层。
     ///
     /// 它**不能**留在 `interfaceOverlay` 里：那一层整体挂着
@@ -1382,6 +1406,10 @@ struct S2View: View {
             onScrubEnded: {
                 videoPlayback.scrubEnded()
                 machine.endTransientInterfaceHide()
+            },
+            // IC-143 B 入口三：浮框整条被移除（翻到非视频页、离开 S2）。
+            onScrubCancelled: {
+                cancelVideoScrub()
             }
         )
     }
@@ -2928,6 +2956,8 @@ private struct S2VideoBarOverlay: View {
     let onScrubBegan: () -> Void
     let onScrubMoved: (Double) -> Void
     let onScrubEnded: () -> Void
+    /// IC-143 B：浮框被移除时的异常终止收口。
+    let onScrubCancelled: () -> Void
 
     /// 手势自己的在途标志。不读模型：模型要等效果回来才翻转，
     /// 而 `onChanged` 第一帧就得知道该不该发 `scrubBegan`。
@@ -2957,6 +2987,9 @@ private struct S2VideoBarOverlay: View {
         ZStack(alignment: .bottom) {
             if bar != nil || scrub != nil {
                 barBody(bar: bar, scrub: scrub)
+                    // IC-143 B：浮框在拖动中被移除时收口。非拖动态是空操作，
+                    // 故常规的「单击隐 chrome」把浮框摘掉时不产生任何副作用。
+                    .onDisappear(perform: onScrubCancelled)
                     .padding(
                         .horizontal,
                         S2MediaMetrics.videoBarHorizontalMargin
@@ -2982,6 +3015,14 @@ private struct S2VideoBarOverlay: View {
         }
         .padding(.leading, safeAreaInsets.leading)
         .padding(.trailing, safeAreaInsets.trailing)
+        // IC-143 B：模型退出拖动态时把手势的在途标志一并复位，
+        // 否则异常终止后手指再落下不会重新发 `scrubBegan`。
+        .onChange(of: snapshot.isScrubbing) { _, scrubbing in
+            guard !scrubbing else {
+                return
+            }
+            isDragging = false
+        }
     }
 
     private func barBody(

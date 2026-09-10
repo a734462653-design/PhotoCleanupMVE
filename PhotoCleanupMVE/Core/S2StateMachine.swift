@@ -2111,6 +2111,22 @@ final class S2StateMachine: ObservableObject {
         visibilityBeforeTransientHide = nil
     }
 
+    /// IC-143 B（Decision_log 第 158 条 ③ 立卡）：**无条件收口**。
+    ///
+    /// 拖动被系统取消、应用失活、当前页被换掉时，配对的 `end` 不会来，
+    /// 深度计数就会把 `V` 永久卡在隐藏态。这个方法把深度直接归 0 并恢复
+    /// 记住的 `V`，不管进过几层。未进入时调用无效果（幂等）。
+    func cancelTransientInterfaceHide() {
+        guard transientHideDepth > 0 else {
+            return
+        }
+        transientHideDepth = 0
+        if let remembered = visibilityBeforeTransientHide {
+            interfaceVisibility = remembered
+        }
+        visibilityBeforeTransientHide = nil
+    }
+
     /// 测试可见：当前记下的「拖动前 V」与嵌套深度。
     var recordedVisibilityBeforeTransientHide: S2InterfaceVisibility? {
         visibilityBeforeTransientHide

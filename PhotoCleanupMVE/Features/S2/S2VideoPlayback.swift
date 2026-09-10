@@ -45,6 +45,10 @@ enum S2VideoPlaybackEvent: Equatable {
     case scrubBegan
     case scrubMoved(fraction: Double)
     case scrubEnded
+    /// IC-143 B：拖动**异常终止**——手势被系统取消、应用失活、当前页被换掉、
+    /// 浮框视图被移除。收口与 `scrubEnded` 等价（回拖动前的播放状态），
+    /// 非拖动态收到它无效果（幂等，可以随便多调）。
+    case scrubCancelled
     /// 播到尾（`AVPlayerItemDidPlayToEndTime`）。循环的唯一驱动点。
     case reachedEnd(assetID: String)
 }
@@ -194,7 +198,9 @@ struct S2VideoPlaybackMachine {
                 .seek(assetID: assetID, fraction: Self.clamped(fraction))
             ]
 
-        case .scrubEnded:
+        case .scrubEnded, .scrubCancelled:
+            // 两者收口完全一致：正常松手与异常终止都回到拖动前的播放状态。
+            // 差别只在调用方——异常终止那条还要把 `V` 无条件收回（S2View 侧）。
             guard isScrubbing else {
                 return []
             }
@@ -500,6 +506,11 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
 
     func scrubEnded() {
         send(.scrubEnded)
+    }
+
+    /// IC-143 B：拖动异常终止。幂等——非拖动态调用不产生任何效果。
+    func scrubCancelled() {
+        send(.scrubCancelled)
     }
 
     /// 离开 S2：当前页与邻居都清空，等同于翻到一个没有视频的页。
