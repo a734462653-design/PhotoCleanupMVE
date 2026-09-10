@@ -248,6 +248,89 @@ final class IC144VideoExitTransitionTests: XCTestCase {
         )
     }
 
+    // MARK: - 断言 6：`park` 对 `.ready` 态发静音
+
+    func testIC144B_ParkingAReadyPageMutesItWithoutPausingOrSeeking() {
+        var machine = S2VideoPlaybackMachine()
+        _ = machine.handle(.entered(assetID: nil))
+        let became = machine.handle(
+            .becameCurrent(assetID: "B", neighbours: [])
+        )
+        let generation = tryUnwrap(requestGeneration(in: became, for: "B"))
+        _ = machine.handle(
+            .requestSucceeded(assetID: "B", generation: generation)
+        )
+        // 未停稳、未起播 ⟹ 停在 `.ready`。
+        XCTAssertEqual(machine.state(for: "B"), .ready)
+
+        // 在这一页上点「有声」。
+        XCTAssertEqual(
+            machine.handle(.userToggledMute),
+            [.setMuted(assetID: "B", muted: false)]
+        )
+
+        // 翻走：收回静音，但**不**发 pause／seek，状态仍是 `.ready`。
+        let becameC = machine.handle(
+            .becameCurrent(assetID: "C", neighbours: ["B"])
+        )
+        XCTAssertTrue(
+            becameC.contains(.setMuted(assetID: "B", muted: true)),
+            "翻走未把已就绪那页收回静音"
+        )
+        XCTAssertFalse(
+            becameC.contains(.pause(assetID: "B")),
+            "已就绪那页并未在播，不该发 pause"
+        )
+        XCTAssertFalse(
+            becameC.contains(.seek(assetID: "B", fraction: 0)),
+            "已就绪那页并未在播，不该发 seek"
+        )
+        XCTAssertEqual(machine.state(for: "B"), .ready, "park 改了就绪态")
+        XCTAssertFalse(machine.isUnmutedByUser, "「有声」跟着翻到了下一页")
+
+        // 翻回 B 停稳：静音仍排在起播之前（IC-141 断言 1 口径不变）。
+        _ = machine.handle(.becameCurrent(assetID: "B", neighbours: ["C"]))
+        let settled = machine.handle(.pagingSettled)
+        let muteIndex = tryUnwrap(
+            settled.firstIndex(of: .setMuted(assetID: "B", muted: true))
+        )
+        let playIndex = tryUnwrap(
+            settled.firstIndex(of: .play(assetID: "B"))
+        )
+        XCTAssertLessThan(muteIndex, playIndex, "翻回起播早于静音")
+
+        // 正对照：`.requesting` 与 `.failed` 的页翻走仍为空。
+        var pending = S2VideoPlaybackMachine()
+        _ = pending.handle(.entered(assetID: nil))
+        _ = pending.handle(.becameCurrent(assetID: "P", neighbours: []))
+        XCTAssertEqual(pending.state(for: "P"), .requesting)
+        let leftPending = pending.handle(
+            .becameCurrent(assetID: "Q", neighbours: ["P"])
+        )
+        XCTAssertFalse(
+            leftPending.contains(.setMuted(assetID: "P", muted: true)),
+            "在请求中的页被当成已就绪收了静音"
+        )
+
+        var failed = S2VideoPlaybackMachine()
+        _ = failed.handle(.entered(assetID: nil))
+        let becameF = failed.handle(
+            .becameCurrent(assetID: "F", neighbours: [])
+        )
+        let generationF = tryUnwrap(requestGeneration(in: becameF, for: "F"))
+        _ = failed.handle(
+            .requestFailed(assetID: "F", generation: generationF)
+        )
+        XCTAssertEqual(failed.state(for: "F"), .failed)
+        let leftFailed = failed.handle(
+            .becameCurrent(assetID: "G", neighbours: ["F"])
+        )
+        XCTAssertFalse(
+            leftFailed.contains(.setMuted(assetID: "F", muted: true)),
+            "失败页被收了静音"
+        )
+    }
+
     // MARK: - 夹具
 
     private func assertRectsClose(

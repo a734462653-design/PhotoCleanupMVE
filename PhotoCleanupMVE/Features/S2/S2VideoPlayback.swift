@@ -325,7 +325,12 @@ struct S2VideoPlaybackMachine {
                 .seek(assetID: assetID, fraction: 0),
                 .setMuted(assetID: assetID, muted: true)
             ]
-        case .idle, .requesting, .ready, .failed:
+        case .ready:
+            // IC-144 B（IC-143 报告第十一节第 2 条结清）：已就绪但从未起播的
+            // 页，翻走时也要收回静音——用户可能在它上面点过「有声」。
+            // 没有在播，故**不发** `pause`／`seek`，状态仍是 `.ready`。
+            return [.setMuted(assetID: assetID, muted: true)]
+        case .idle, .requesting, .failed:
             return []
         }
     }
