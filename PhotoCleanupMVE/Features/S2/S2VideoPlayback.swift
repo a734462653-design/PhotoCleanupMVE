@@ -822,6 +822,37 @@ enum S2SnapshotExclusion {
     }
 }
 
+// MARK: - IC-143 C：双击过渡期间把活的播放层借出去
+
+/// 过渡期间可以把播放层交给过渡视图承载的播放层。
+///
+/// 决策 56 让双击过渡的快照取封面帧（`S2SnapshotExcludedView`），而过渡期间
+/// 页内容整棵树是隐藏的——于是视频页在那 0.3 s 里看到的是一张不动的封面帧，
+/// 收口时播放层带着已前进的进度重新出现，观感即 H65 第 6 项的「卡顿暂停一会
+/// 再播放」。把活的图层借给过渡视图，封面帧快照留在其下作兜底，画面就连续了。
+protocol S2TransitionLendableView: UIView {
+    /// 交出播放层（调用方负责摆放）。已借出或无可借时返回 nil。
+    func lendPlaybackLayer() -> CALayer?
+    /// 收回播放层：挂回自身，几何仍由 `layoutSubviews` 那唯一一处写。
+    func reclaimPlaybackLayer()
+}
+
+enum S2PlaybackLayerLending {
+    /// 子树里所有可借出的播放层宿主。照片页与实况页没有遵循者，返回空。
+    static func lendableViews(
+        in root: UIView
+    ) -> [any S2TransitionLendableView] {
+        var found: [any S2TransitionLendableView] = []
+        if let lendable = root as? any S2TransitionLendableView {
+            found.append(lendable)
+        }
+        for subview in root.subviews {
+            found.append(contentsOf: lendableViews(in: subview))
+        }
+        return found
+    }
+}
+
 // MARK: - IC-141 B：宿主视图
 
 /// 承载 `AVPlayerLayer` 的页内播放层。
@@ -836,11 +867,14 @@ enum S2SnapshotExclusion {
 /// 这里只把它接到图层上。
 final class S2VideoHostView: UIView,
     S2VideoPlaybackSurface,
-    S2SnapshotExcludedView {
+    S2SnapshotExcludedView,
+    S2TransitionLendableView {
     private let playerLayer = AVPlayerLayer()
     private(set) var assetID: String
     /// 断言入口（仅供 XCTest）：页控制器复用到别的资产时的改绑次数。
     private(set) var rebindCount = 0
+    /// IC-143 C：播放层是否正借给双击过渡视图。
+    private(set) var isLendingPlaybackLayer = false
 
     init(assetID: String) {
         self.assetID = assetID
@@ -878,6 +912,42 @@ final class S2VideoHostView: UIView,
 
     func detachPlayer() {
         playerLayer.player = nil
+    }
+
+    // MARK: S2TransitionLendableView
+
+    func lendPlaybackLayer() -> CALayer? {
+        guard !isLendingPlaybackLayer else {
+            return nil
+        }
+        isLendingPlaybackLayer = true
+        return playerLayer
+    }
+
+    func reclaimPlaybackLayer() {
+        guard isLendingPlaybackLayer else {
+            return
+        }
+        isLendingPlaybackLayer = false
+        layer.addSublayer(playerLayer)
+        // 几何**不在这里写**：挂回来后强制走一次 `layoutSubviews`，
+        // 播放层的帧因此仍只有那一个写入点（IC-141 断言 5）。
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+
+    // MARK: 断言入口（仅供 XCTest）
+
+    var diagnosticPlaybackLayerSuperlayer: CALayer? {
+        playerLayer.superlayer
+    }
+
+    var diagnosticPlaybackLayerFrame: CGRect {
+        playerLayer.frame
+    }
+
+    var diagnosticPlaybackLayerIndex: Int? {
+        layer.sublayers?.firstIndex(of: playerLayer)
     }
 
     // MARK: 布局

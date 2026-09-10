@@ -332,7 +332,320 @@ final class IC143VideoPolishTests: XCTestCase {
         XCTAssertEqual(machine.interfaceVisibility, .visible)
     }
 
+    // MARK: - 断言 8：过渡期间播放层归过渡视图，收口交还（夹具驱动，真机未覆盖）
+
+    func testIC143C_PlaybackLayerRidesTheDoubleTapTransitionAndComesBack() {
+        for enteringNx in [true, false] {
+            let machine = makeStateMachine()
+            let controller = makePagerController()
+            applyPager(controller, machine: machine)
+            let window = attachWindow(to: controller)
+            defer { window.isHidden = true }
+            let page = tryUnwrap(
+                controller.pageControllers[machine.currentIndex]
+            )
+            let content = tryUnwrap(page.zoomScrollView.presentationContentView)
+
+            let hostView = S2VideoHostView(assetID: machine.currentAssetID)
+            hostView.frame = content.bounds
+            content.addSubview(hostView)
+            hostView.layoutIfNeeded()
+
+            // 过渡前：播放层挂在宿主上，层序第 0。
+            XCTAssertTrue(
+                hostView.diagnosticPlaybackLayerSuperlayer === hostView.layer,
+                "过渡前播放层就不在宿主上"
+            )
+            let indexBefore = hostView.diagnosticPlaybackLayerIndex
+            XCTAssertEqual(indexBefore, 0)
+            XCTAssertFalse(hostView.isLendingPlaybackLayer)
+
+            if !enteringNx {
+                page.zoomScrollView.applyNativeState(
+                    scale: 2,
+                    viewportOffset: .zero
+                )
+                page.view.setNeedsLayout()
+                page.view.layoutIfNeeded()
+            }
+
+            // 时长给足，过渡留在进行中，好观察借出态。
+            let started = page.startDoubleTapTransition(
+                enteringNx: enteringNx,
+                targetScale: enteringNx ? 2 : 1,
+                at: CGPoint(
+                    x: physicalSize.width / 2,
+                    y: physicalSize.height / 2
+                ),
+                configuration: .factoryPlaceholder,
+                durationOverrideSeconds: 1
+            )
+            XCTAssertTrue(started, "双击过渡未起飞（enteringNx=\(enteringNx)）")
+
+            // 过渡中：承载者换成过渡视图，帧贴满它的 bounds。
+            let superlayer = tryUnwrap(
+                hostView.diagnosticPlaybackLayerSuperlayer
+            )
+            XCTAssertFalse(
+                superlayer === hostView.layer,
+                "过渡期间播放层仍留在被隐藏的页内容里（enteringNx=\(enteringNx)）"
+            )
+            XCTAssertTrue(hostView.isLendingPlaybackLayer)
+            let transitionView = tryUnwrap(
+                controller.view.subviews.last
+            )
+            XCTAssertTrue(
+                superlayer === transitionView.layer,
+                "播放层没挂到过渡视图上"
+            )
+            XCTAssertEqual(
+                hostView.diagnosticPlaybackLayerFrame,
+                transitionView.bounds,
+                "借出的播放层未贴满过渡视图"
+            )
+
+            // 收口：交还宿主、帧回宿主 bounds、层序与过渡前相同。
+            page.finishActiveDoubleTapTransition()
+            XCTAssertTrue(
+                hostView.diagnosticPlaybackLayerSuperlayer === hostView.layer,
+                "收口后播放层未交还宿主（enteringNx=\(enteringNx)）"
+            )
+            XCTAssertFalse(hostView.isLendingPlaybackLayer)
+            XCTAssertEqual(
+                hostView.diagnosticPlaybackLayerFrame,
+                hostView.bounds,
+                "交还后播放层的帧不等于宿主 bounds"
+            )
+            XCTAssertEqual(
+                hostView.diagnosticPlaybackLayerIndex,
+                indexBefore,
+                "交还后层序变了"
+            )
+        }
+    }
+
+    func testIC143C_EarlyCollapsedTransitionAlsoReturnsThePlaybackLayer() {
+        let machine = makeStateMachine()
+        let controller = makePagerController()
+        applyPager(controller, machine: machine)
+        let window = attachWindow(to: controller)
+        defer { window.isHidden = true }
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let content = tryUnwrap(page.zoomScrollView.presentationContentView)
+
+        let hostView = S2VideoHostView(assetID: machine.currentAssetID)
+        hostView.frame = content.bounds
+        content.addSubview(hostView)
+        hostView.layoutIfNeeded()
+
+        // 时长 0 ⟹ 走 P4 早收口路径：起飞即收口，同样必须交还。
+        let started = page.startDoubleTapTransition(
+            enteringNx: true,
+            targetScale: 2,
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
+            configuration: .factoryPlaceholder,
+            durationOverrideSeconds: 0
+        )
+        XCTAssertTrue(started, "零时长过渡未起飞")
+        XCTAssertTrue(
+            hostView.diagnosticPlaybackLayerSuperlayer === hostView.layer,
+            "早收口路径没交还播放层"
+        )
+        XCTAssertFalse(hostView.isLendingPlaybackLayer)
+        XCTAssertEqual(hostView.diagnosticPlaybackLayerFrame, hostView.bounds)
+    }
+
+    // MARK: - 断言 9：过渡全程不碰播放（扩展 IC-141 断言 9）
+
+    func testIC143C_TheTransitionNeverTouchesPlaybackState() {
+        let machine = makeStateMachine()
+        let controller = makePagerController()
+        applyPager(controller, machine: machine)
+        let window = attachWindow(to: controller)
+        defer { window.isHidden = true }
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+        let content = tryUnwrap(page.zoomScrollView.presentationContentView)
+
+        let playback = S2VideoPlaybackCoordinator()
+        let hostView = S2VideoHostView(assetID: machine.currentAssetID)
+        hostView.frame = content.bounds
+        content.addSubview(hostView)
+        playback.register(surface: hostView, for: machine.currentAssetID)
+        XCTAssertEqual(playback.surfaceRegistrationCount, 1)
+
+        page.zoomScrollView.applyNativeState(scale: 2, viewportOffset: .zero)
+        page.view.setNeedsLayout()
+        page.view.layoutIfNeeded()
+        XCTAssertTrue(page.startDoubleTapTransition(
+            enteringNx: false,
+            targetScale: 1,
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
+            configuration: .factoryPlaceholder,
+            durationOverrideSeconds: 1
+        ))
+        // 过渡进行中就查一次——借出发生在这里，不该带出任何播放事件。
+        XCTAssertEqual(playback.surfaceRegistrationCount, 1, "过渡中重复登记")
+        XCTAssertEqual(playback.surfaceUnregistrationCount, 0, "过渡中注销了")
+        page.finishActiveDoubleTapTransition()
+
+        XCTAssertTrue(
+            playback.registeredSurface(for: machine.currentAssetID)
+                === hostView,
+            "过渡换掉了播放层实例"
+        )
+        XCTAssertEqual(playback.surfaceRegistrationCount, 1)
+        XCTAssertEqual(playback.surfaceUnregistrationCount, 0)
+        XCTAssertEqual(hostView.rebindCount, 0, "过渡触发了改绑")
+        XCTAssertEqual(
+            playback.playbackState(for: machine.currentAssetID),
+            .idle,
+            "过渡改动了播放状态"
+        )
+    }
+
+    // MARK: - 断言 10：照片页与残影快照零变化
+
+    func testIC143C_PhotoPageTransitionAndAfterimageSnapshotAreUnchanged() {
+        let machine = makeStateMachine()
+        let controller = makePagerController()
+        applyPager(controller, machine: machine)
+        let window = attachWindow(to: controller)
+        defer { window.isHidden = true }
+        let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
+
+        // 照片页：页内容树里没有遵循者，过渡的同步读数仍在既有阈值内。
+        page.zoomScrollView.applyNativeState(scale: 2, viewportOffset: .zero)
+        page.view.setNeedsLayout()
+        page.view.layoutIfNeeded()
+        XCTAssertTrue(page.startDoubleTapTransition(
+            enteringNx: false,
+            targetScale: 1,
+            at: CGPoint(x: physicalSize.width / 2, y: physicalSize.height / 2),
+            configuration: .factoryPlaceholder,
+            durationOverrideSeconds: 0
+        ))
+        XCTAssertLessThanOrEqual(
+            tryUnwrap(page.lastDoubleTapSynchronization).maximumDifference,
+            0.5,
+            "照片页双击过渡的同步读数越界"
+        )
+        // 残影快照在无遵循者时照常取到（与基线同）。
+        XCTAssertNotNil(
+            page.makeMarkAfterimageSnapshot(in: controller.view),
+            "照片页取不到残影快照"
+        )
+
+        guard let pager = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift"
+        ) else {
+            return XCTFail("读不到分页器源码")
+        }
+        // P8 残影快照仍只经一次封面帧排除；几何链计数不变。
+        let afterimage = functionBody(
+            of: "makeMarkAfterimageSnapshot",
+            in: pager,
+            keyword: "func "
+        )
+        XCTAssertFalse(afterimage.isEmpty, "未截取到残影快照函数体")
+        XCTAssertEqual(
+            occurrences(of: "S2SnapshotExclusion.capturing", in: afterimage),
+            1,
+            "残影快照的封面帧排除不是恰一处"
+        )
+        XCTAssertEqual(
+            occurrences(of: "lendPlaybackLayer", in: afterimage),
+            0,
+            "残影快照被卷进了借层路径"
+        )
+        XCTAssertEqual(occurrences(of: "writePhotoGeometry", in: pager), 5)
+    }
+
     // MARK: - 夹具
+
+    /// 与既有分页器夹具同源：挂窗口、跑一次布局与 runloop，页控制器才成形。
+    private func attachWindow(
+        to controller: S2NativePagerViewController
+    ) -> UIWindow {
+        let window = UIWindow(
+            frame: CGRect(origin: .zero, size: physicalSize)
+        )
+        window.rootViewController = controller
+        window.isHidden = false
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        return window
+    }
+
+    /// 与 `S2CalibrationHarnessTests.makeNativePagerController` 同源的构造
+    /// （那个夹具是 private，跨测试类调不到，故按同一形状复刻；IC-140／141 同做）。
+    private func makePagerController() -> S2NativePagerViewController {
+        let controller = S2NativePagerViewController()
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(origin: .zero, size: physicalSize)
+        return controller
+    }
+
+    private func applyPager(
+        _ controller: S2NativePagerViewController,
+        machine: S2StateMachine
+    ) {
+        let configuration = S2CalibrationConfiguration.factoryPlaceholder
+        let state = S2ViewportPresentationState(
+            interfaceVisibility: machine.interfaceVisibility,
+            bottomStripState: machine.bottomStripState,
+            sheetState: machine.sheetState
+        )
+        let pages = machine.orderedAssetIDs.enumerated().map { index, assetID in
+            let value = S2ViewportLayout.metrics(
+                physicalSize: physicalSize,
+                presentationState: state,
+                assetAspectRatio: screenAspectRatio,
+                isScreenshot: true,
+                configuration: configuration
+            )
+            return S2NativePageContent(
+                index: index,
+                assetID: assetID,
+                interfaceVisibility: machine.interfaceVisibility,
+                isFramedPhoto: value.isFramedPhoto,
+                fittedSize: value.oneXDisplaySize,
+                fittedCenterY: value.oneXDisplayCenterY,
+                nativeZoomBaseSize: value.nativeZoomBaseSize,
+                cornerRadius: value.oneXCornerRadius,
+                doubleTapTargetScale: value.doubleTapTargetScale,
+                assetPixelSize: CGSize(
+                    width: screenAspectRatio * 1_000,
+                    height: 1_000
+                ),
+                contentVersion: S2NativePhotoContentVersion(
+                    requestedScale: index == machine.currentIndex
+                        ? machine.imageRequestScale
+                        : 1,
+                    requestStrategy: configuration.imageRequestStrategy,
+                    requestRevision: 0
+                ),
+                content: AnyView(
+                    Color.clear.frame(
+                        width: value.oneXDisplaySize.width,
+                        height: value.oneXDisplaySize.height
+                    )
+                ),
+                zoomGeometry: nil
+            )
+        }
+        controller.apply(
+            machine: machine,
+            configuration: configuration,
+            viewportSize: physicalSize,
+            pages: pages,
+            onLongPressBegan: { false },
+            onLongPressEnded: {},
+            onPagingSettled: {}
+        )
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+    }
 
     /// 造一个「B 在播」的 reducer：入口非视频 → 翻到 B → 就绪 → 停稳起播。
     private func makeMachinePlaying(assetID: String) -> S2VideoPlaybackMachine {
@@ -443,9 +756,13 @@ final class IC143VideoPolishTests: XCTestCase {
         return collected
     }
 
-    /// 截取某个 `private func` 的函数体（到同缩进的收口括号为止）。
-    private func functionBody(of name: String, in text: String) -> String {
-        guard let start = text.range(of: "private func " + name) else {
+    /// 截取某个函数的函数体（到同缩进的收口括号为止）。
+    private func functionBody(
+        of name: String,
+        in text: String,
+        keyword: String = "private func "
+    ) -> String {
+        guard let start = text.range(of: keyword + name) else {
             return ""
         }
         let rest = text[start.upperBound...]
