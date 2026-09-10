@@ -531,6 +531,17 @@ final class IC143VideoPolishTests: XCTestCase {
         defer { window.isHidden = true }
         let page = tryUnwrap(controller.pageControllers[machine.currentIndex])
 
+        // 残影快照在无遵循者时照常取到（与基线同）。
+        //
+        // 取在过渡**之前**：`snapshotView(afterScreenUpdates: false)` 只复制
+        // 渲染层现成的内容，双击过渡刚在同一轮里增删过视图，夹具还没来得及
+        // 出一帧就取不到——#282 实测如此。这是夹具的取帧时机，不是产品行为，
+        // 故与 IC-141 那条绿测同源，在新鲜页上取。
+        XCTAssertNotNil(
+            page.makeMarkAfterimageSnapshot(in: controller.view),
+            "照片页取不到残影快照"
+        )
+
         // 照片页：页内容树里没有遵循者，过渡的同步读数仍在既有阈值内。
         page.zoomScrollView.applyNativeState(scale: 2, viewportOffset: .zero)
         page.view.setNeedsLayout()
@@ -546,11 +557,6 @@ final class IC143VideoPolishTests: XCTestCase {
             tryUnwrap(page.lastDoubleTapSynchronization).maximumDifference,
             0.5,
             "照片页双击过渡的同步读数越界"
-        )
-        // 残影快照在无遵循者时照常取到（与基线同）。
-        XCTAssertNotNil(
-            page.makeMarkAfterimageSnapshot(in: controller.view),
-            "照片页取不到残影快照"
         )
 
         guard let pager = sourceText(
@@ -732,9 +738,9 @@ final class IC143VideoPolishTests: XCTestCase {
     // MARK: - 断言 13：IC-141 的「有声只作用当前页」口径不变
 
     func testIC143D_UnmutingStillAppliesOnlyToTheCurrentPage() {
-        var machine = S2VideoPlaybackMachine()
-        _ = machine.handle(.entered(assetID: nil))
-        _ = machine.handle(.becameCurrent(assetID: "B", neighbours: []))
+        // B 必须真的在播：`park` 只对 `.playing`／`.paused` 发 setMuted，
+        // 尚在请求中的页没有播放器可静音（#282 实测暴露的夹具前提）。
+        var machine = makeMachinePlaying(assetID: "B")
         XCTAssertEqual(
             machine.handle(.userToggledMute),
             [.setMuted(assetID: "B", muted: false)]
