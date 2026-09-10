@@ -2802,16 +2802,27 @@ enum S2MediaMetrics {
 
     static let videoBarHeight: CGFloat = 44
     static let videoBarCornerRadius: CGFloat = 22
-    /// 左右边距 = chrome 既有横向边距（引用）。
+    /// 左右边距 = chrome 既有横向边距的两倍（引用，非裸数）。
+    ///
+    /// IC-143 A（H65 第 1 项 ①「整条浮框可以短一点」）：由 1 倍改 2 倍，
+    /// 整条短 32、两侧各多让出 16 给主图。底缘锚与带高不变（H65 第 10 项已过）。
     static let videoBarHorizontalMargin = S2OverlayLayout
-        .chromeHorizontalMargin
+        .chromeHorizontalMargin * 2
     /// 浮框底缘到横栏顶缘 = 横栏到底排的既有间距（引用）。
     static let videoBarBottomToStripTop = S2OverlayLayout
         .stripToBottomRowSpacing
     static let videoBarHorizontalPadding: CGFloat = 14
     static let videoBarItemSpacing: CGFloat = 12
-    static let videoBarButtonIconPointSize: CGFloat = 18
-    static let videoBarMuteIconPointSize: CGFloat = 20
+    /// IC-143 A（H65 第 1 项 ①「左右两键大一点」）：18 → 20。
+    static let videoBarButtonIconPointSize: CGFloat = 20
+    /// 同上：20 → 22。
+    static let videoBarMuteIconPointSize: CGFloat = 22
+    /// IC-143 A：两键命中区宽 = 最小触控边长（引用，非复制）。
+    ///
+    /// 改前两键**只定高不定宽**，命中区宽等于图标自身宽（约 18～20 pt），
+    /// 图标以外的水平区域全归进度轨的可拖区——轻点落在那里既不是按钮
+    /// 也不成拖动，即 H65 第 1 项的「经常按不到」。高仍取 `videoBarHeight`。
+    static let videoBarButtonHitWidth = S2OverlayLayout.minimumTouchTarget
     static let videoBarTrackHeight: CGFloat = 4
     static let videoBarTrackCornerRadius: CGFloat = 2
     static let videoBarKnobDiameter: CGFloat = 12
@@ -3026,8 +3037,12 @@ private struct S2VideoBarOverlay: View {
                 .font(
                     .system(size: S2MediaMetrics.videoBarButtonIconPointSize)
                 )
-                // 命中区高取浮框带高（≥ 44），不靠图标自身尺寸。
-                .frame(height: S2MediaMetrics.videoBarHeight)
+                // IC-143 A：命中区宽高都不靠图标自身尺寸——宽取最小触控边长，
+                // 高取浮框带高，两键之间才是进度轨的可拖区。
+                .frame(
+                    width: S2MediaMetrics.videoBarButtonHitWidth,
+                    height: S2MediaMetrics.videoBarHeight
+                )
                 .contentShape(Rectangle())
         }
         .accessibilityLabel(
@@ -3043,7 +3058,10 @@ private struct S2VideoBarOverlay: View {
                 .font(
                     .system(size: S2MediaMetrics.videoBarMuteIconPointSize)
                 )
-                .frame(height: S2MediaMetrics.videoBarHeight)
+                .frame(
+                    width: S2MediaMetrics.videoBarButtonHitWidth,
+                    height: S2MediaMetrics.videoBarHeight
+                )
                 .contentShape(Rectangle())
         }
         .accessibilityLabel(

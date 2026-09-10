@@ -149,9 +149,11 @@ final class IC139MediaBadgesTests: XCTestCase {
     }
 
     func testIC139B_VideoBarGeometryReferencesRegisteredChromeConstants() {
+        // IC-143 A（H65 第 1 项 ④）：浮框整条短 32，边距由 1 倍改 2 倍。
+        // 仍是「引用登记值」而不是裸数，本断言的原意（不自造几何）不变。
         XCTAssertEqual(
             S2MediaMetrics.videoBarHorizontalMargin,
-            S2OverlayLayout.chromeHorizontalMargin
+            S2OverlayLayout.chromeHorizontalMargin * 2
         )
         XCTAssertEqual(
             S2MediaMetrics.videoBarBottomToStripTop,
@@ -162,8 +164,9 @@ final class IC139MediaBadgesTests: XCTestCase {
         XCTAssertEqual(S2MediaMetrics.videoBarCornerRadius, 22)
         XCTAssertEqual(S2MediaMetrics.videoBarHorizontalPadding, 14)
         XCTAssertEqual(S2MediaMetrics.videoBarItemSpacing, 12)
-        XCTAssertEqual(S2MediaMetrics.videoBarButtonIconPointSize, 18)
-        XCTAssertEqual(S2MediaMetrics.videoBarMuteIconPointSize, 20)
+        // IC-143 A：两个图标字号各加 2（18 → 20、20 → 22）。
+        XCTAssertEqual(S2MediaMetrics.videoBarButtonIconPointSize, 20)
+        XCTAssertEqual(S2MediaMetrics.videoBarMuteIconPointSize, 22)
         XCTAssertEqual(S2MediaMetrics.videoBarTrackHeight, 4)
         XCTAssertEqual(S2MediaMetrics.videoBarTrackCornerRadius, 2)
         XCTAssertEqual(S2MediaMetrics.videoBarKnobDiameter, 12)
