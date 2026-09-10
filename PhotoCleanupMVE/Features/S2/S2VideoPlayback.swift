@@ -45,6 +45,10 @@ enum S2VideoPlaybackEvent: Equatable {
     case scrubBegan
     case scrubMoved(fraction: Double)
     case scrubEnded
+    /// IC-143 B：拖动**异常终止**——手势被系统取消、应用失活、当前页被换掉、
+    /// 浮框视图被移除。收口与 `scrubEnded` 等价（回拖动前的播放状态），
+    /// 非拖动态收到它无效果（幂等，可以随便多调）。
+    case scrubCancelled
     /// 播到尾（`AVPlayerItemDidPlayToEndTime`）。循环的唯一驱动点。
     case reachedEnd(assetID: String)
 }
@@ -194,7 +198,9 @@ struct S2VideoPlaybackMachine {
                 .seek(assetID: assetID, fraction: Self.clamped(fraction))
             ]
 
-        case .scrubEnded:
+        case .scrubEnded, .scrubCancelled:
+            // 两者收口完全一致：正常松手与异常终止都回到拖动前的播放状态。
+            // 差别只在调用方——异常终止那条还要把 `V` 无条件收回（S2View 侧）。
             guard isScrubbing else {
                 return []
             }
@@ -421,6 +427,37 @@ protocol S2VideoPlaybackSurface: AnyObject {
     func detachPlayer()
 }
 
+// MARK: - IC-143 D：音频会话
+
+/// 音频会话的最小接口。**唯一**碰系统会话单例的地方是下面那个生产实现，
+/// 测试注入记录器即可核对调用次序与次数。
+protocol S2AudioSessionControlling: AnyObject {
+    /// 置为播放类别——侧面静音拨片拨到静音时也出声，与系统「照片」一致
+    /// （④ H65 第 8 项判定）。
+    func setPlaybackCategory()
+    /// 激活／停用。停用时通知其他应用可以恢复自己的音频。
+    func setActive(_ active: Bool)
+}
+
+/// 生产实现。系统会话单例只在这两个方法里出现（断言 11）。
+final class S2SystemAudioSession: S2AudioSessionControlling {
+    func setPlaybackCategory() {
+        try? AVAudioSession.sharedInstance().setCategory(.playback)
+    }
+
+    func setActive(_ active: Bool) {
+        guard active else {
+            // 停用时通知其他应用：别的 App 被压下去的音频可以恢复了。
+            try? AVAudioSession.sharedInstance().setActive(
+                false,
+                options: .notifyOthersOnDeactivation
+            )
+            return
+        }
+        try? AVAudioSession.sharedInstance().setActive(true)
+    }
+}
+
 // MARK: - 协调器
 
 /// 效果执行与 `PHImageManager`／`AVPlayer` 接线。**不做任何判定**
@@ -443,6 +480,11 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
     private(set) var surfaceRegistrationCount = 0
     private(set) var surfaceUnregistrationCount = 0
     private let imageManager: PHImageManager
+    /// IC-143 D：音频会话适配。生产走系统实现，测试注入记录器。
+    private let audioSession: any S2AudioSessionControlling
+    /// 会话当前是否处于激活态。静音自动播放期间恒为 false——
+    /// 不激活就不打断别的应用在放的音频（规格第 4 条）。
+    private var audioSessionIsActive = false
     private let fetchQueue = DispatchQueue(
         label: "com.photocleanupmve.s2.video.fetch"
     )
@@ -455,8 +497,12 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
         }
     }
 
-    init(imageManager: PHImageManager = .default()) {
+    init(
+        imageManager: PHImageManager = .default(),
+        audioSession: any S2AudioSessionControlling = S2SystemAudioSession()
+    ) {
         self.imageManager = imageManager
+        self.audioSession = audioSession
     }
 
     deinit {
@@ -502,6 +548,11 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
         send(.scrubEnded)
     }
 
+    /// IC-143 B：拖动异常终止。幂等——非拖动态调用不产生任何效果。
+    func scrubCancelled() {
+        send(.scrubCancelled)
+    }
+
     /// 离开 S2：当前页与邻居都清空，等同于翻到一个没有视频的页。
     func leave() {
         send(.becameCurrent(assetID: nil, neighbours: []))
@@ -541,10 +592,37 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
     // MARK: 效果执行
 
     /// 事件的唯一入口：先归约，再执行，最后刷新读数。
+    ///
+    /// 音频会话跟着 reducer 的 `isUnmutedByUser` 走，**不挂在 `.setMuted` 效果上**：
+    /// 翻页把一段卸掉时（`retire`）根本不发 `setMuted`，挂在效果上会让会话在
+    /// 翻走后仍停在激活态，别的应用的音频就再也不恢复（H66 第 3 项要核的正是这条）。
+    /// 顺序：出声前先备好会话，收声则先让播放器静音再停用会话。
     private func send(_ event: S2VideoPlaybackEvent) {
         let effects = machine.handle(event)
+        let unmuted = machine.isUnmutedByUser
+        if unmuted {
+            updateAudioSession(unmuted: true)
+        }
         apply(effects)
+        if !unmuted {
+            updateAudioSession(unmuted: false)
+        }
         refreshReadout()
+    }
+
+    /// 会话状态的唯一写入点（陷阱 19）。两侧都带幂等守卫：
+    /// 连续多次「要出声」只激活一次，连续多次「收声」只停用一次。
+    private func updateAudioSession(unmuted: Bool) {
+        guard audioSessionIsActive != unmuted else {
+            return
+        }
+        audioSessionIsActive = unmuted
+        guard unmuted else {
+            audioSession.setActive(false)
+            return
+        }
+        audioSession.setPlaybackCategory()
+        audioSession.setActive(true)
     }
 
     private func apply(_ effects: [S2VideoPlaybackEffect]) {
@@ -811,6 +889,37 @@ enum S2SnapshotExclusion {
     }
 }
 
+// MARK: - IC-143 C：双击过渡期间把活的播放层借出去
+
+/// 过渡期间可以把播放层交给过渡视图承载的播放层。
+///
+/// 决策 56 让双击过渡的快照取封面帧（`S2SnapshotExcludedView`），而过渡期间
+/// 页内容整棵树是隐藏的——于是视频页在那 0.3 s 里看到的是一张不动的封面帧，
+/// 收口时播放层带着已前进的进度重新出现，观感即 H65 第 6 项的「卡顿暂停一会
+/// 再播放」。把活的图层借给过渡视图，封面帧快照留在其下作兜底，画面就连续了。
+protocol S2TransitionLendableView: UIView {
+    /// 交出播放层（调用方负责摆放）。已借出或无可借时返回 nil。
+    func lendPlaybackLayer() -> CALayer?
+    /// 收回播放层：挂回自身，几何仍由 `layoutSubviews` 那唯一一处写。
+    func reclaimPlaybackLayer()
+}
+
+enum S2PlaybackLayerLending {
+    /// 子树里所有可借出的播放层宿主。照片页与实况页没有遵循者，返回空。
+    static func lendableViews(
+        in root: UIView
+    ) -> [any S2TransitionLendableView] {
+        var found: [any S2TransitionLendableView] = []
+        if let lendable = root as? any S2TransitionLendableView {
+            found.append(lendable)
+        }
+        for subview in root.subviews {
+            found.append(contentsOf: lendableViews(in: subview))
+        }
+        return found
+    }
+}
+
 // MARK: - IC-141 B：宿主视图
 
 /// 承载 `AVPlayerLayer` 的页内播放层。
@@ -825,11 +934,14 @@ enum S2SnapshotExclusion {
 /// 这里只把它接到图层上。
 final class S2VideoHostView: UIView,
     S2VideoPlaybackSurface,
-    S2SnapshotExcludedView {
+    S2SnapshotExcludedView,
+    S2TransitionLendableView {
     private let playerLayer = AVPlayerLayer()
     private(set) var assetID: String
     /// 断言入口（仅供 XCTest）：页控制器复用到别的资产时的改绑次数。
     private(set) var rebindCount = 0
+    /// IC-143 C：播放层是否正借给双击过渡视图。
+    private(set) var isLendingPlaybackLayer = false
 
     init(assetID: String) {
         self.assetID = assetID
@@ -867,6 +979,42 @@ final class S2VideoHostView: UIView,
 
     func detachPlayer() {
         playerLayer.player = nil
+    }
+
+    // MARK: S2TransitionLendableView
+
+    func lendPlaybackLayer() -> CALayer? {
+        guard !isLendingPlaybackLayer else {
+            return nil
+        }
+        isLendingPlaybackLayer = true
+        return playerLayer
+    }
+
+    func reclaimPlaybackLayer() {
+        guard isLendingPlaybackLayer else {
+            return
+        }
+        isLendingPlaybackLayer = false
+        layer.addSublayer(playerLayer)
+        // 几何**不在这里写**：挂回来后强制走一次 `layoutSubviews`，
+        // 播放层的帧因此仍只有那一个写入点（IC-141 断言 5）。
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+
+    // MARK: 断言入口（仅供 XCTest）
+
+    var diagnosticPlaybackLayerSuperlayer: CALayer? {
+        playerLayer.superlayer
+    }
+
+    var diagnosticPlaybackLayerFrame: CGRect {
+        playerLayer.frame
+    }
+
+    var diagnosticPlaybackLayerIndex: Int? {
+        layer.sublayers?.firstIndex(of: playerLayer)
     }
 
     // MARK: 布局

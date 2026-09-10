@@ -1414,6 +1414,18 @@ private final class S2DoubleTapTransitionView: UIView {
     required init?(coder: NSCoder) {
         return nil
     }
+
+    /// IC-143 C：把借来的播放层贴满自身，压在封面帧快照之上。
+    ///
+    /// 过渡靠 `transform` 推进，`bounds` 全程不变，故这里只摆一次即可；
+    /// 隐式动画关掉，免得挂上去的瞬间自带一段缩放与外层的推进错拍。
+    func attachPlaybackLayer(_ playbackLayer: CALayer) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        playbackLayer.frame = bounds
+        layer.addSublayer(playbackLayer)
+        CATransaction.commit()
+    }
 }
 
 final class S2NativeZoomPageController: UIViewController,
@@ -1460,6 +1472,8 @@ final class S2NativeZoomPageController: UIViewController,
     private var presentationSourcePosition: CGPoint = .zero
     private var presentationTargetPosition: CGPoint = .zero
     private(set) var isPresentationTransitionActive = false
+    /// IC-143 C：本次双击过渡借出了播放层的宿主，收口时逐个交还。
+    private var lentPlaybackViews: [any S2TransitionLendableView] = []
     private(set) var presentationTransitionCount = 0
     private(set) var presentationGeometryCommitCount = 0
     private(set) var isDoubleTapTransitionActive = false
@@ -1930,6 +1944,18 @@ final class S2NativeZoomPageController: UIViewController,
             : 0
         isDoubleTapTransitionActive = true
         presentationContentView.isHidden = true
+        // IC-143 C（H65 第 6 项）：页内容整棵树刚被隐藏，其中就包括活的播放层。
+        // 把它借给过渡视图，用户在这 0.3 s 里看到的仍是连续播放的画面；
+        // 封面帧快照留在其下作兜底。照片页与实况页没有遵循者，此段为空转。
+        lentPlaybackViews = S2PlaybackLayerLending.lendableViews(
+            in: presentationContentView
+        )
+        for lendable in lentPlaybackViews {
+            guard let playbackLayer = lendable.lendPlaybackLayer() else {
+                continue
+            }
+            transitionView.attachPlaybackLayer(playbackLayer)
+        }
         zoomScrollView.isUserInteractionEnabled = false
         doubleTapProbe?.recordDoubleTapBegan(
             enteringNx: enteringNx,
@@ -2046,6 +2072,12 @@ final class S2NativeZoomPageController: UIViewController,
         )
         lastDoubleTapSynchronization = reading
 
+        // IC-143 C：先交还播放层再放开页内容——两步同一轮提交，
+        // 中间不会出现「两边都没有播放层」的一帧。
+        for lendable in lentPlaybackViews {
+            lendable.reclaimPlaybackLayer()
+        }
+        lentPlaybackViews = []
         presentationContentView.isHidden = false
         transitionView.removeFromSuperview()
         doubleTapTransitionView = nil

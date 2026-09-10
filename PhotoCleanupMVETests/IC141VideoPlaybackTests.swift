@@ -699,6 +699,16 @@ final class IC141VideoPlaybackTests: XCTestCase {
             1,
             "临时隐藏的恢复点不止拖动结束一处"
         )
+        // IC-143 B 起多出**一个**收口点：异常终止的无条件归零。
+        // 三个写入点各恰一处，仍然「只有拖动路径碰临时隐藏」。
+        XCTAssertEqual(
+            occurrences(
+                of: "machine.cancelTransientInterfaceHide()",
+                in: text
+            ),
+            1,
+            "异常终止的收口点不止一处"
+        )
     }
 
     // MARK: - 断言 12：读数格式
