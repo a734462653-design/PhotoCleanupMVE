@@ -427,6 +427,32 @@ protocol S2VideoPlaybackSurface: AnyObject {
     func detachPlayer()
 }
 
+// MARK: - IC-143 D：音频会话
+
+/// 音频会话的最小接口。**唯一**碰系统会话单例的地方是下面那个生产实现，
+/// 测试注入记录器即可核对调用次序与次数。
+protocol S2AudioSessionControlling: AnyObject {
+    /// 置为播放类别——侧面静音拨片拨到静音时也出声，与系统「照片」一致
+    /// （④ H65 第 8 项判定）。
+    func setPlaybackCategory()
+    /// 激活／停用。停用时通知其他应用可以恢复自己的音频。
+    func setActive(_ active: Bool)
+}
+
+/// 生产实现。系统会话单例只在这两个方法里出现（断言 11）。
+final class S2SystemAudioSession: S2AudioSessionControlling {
+    func setPlaybackCategory() {
+        try? AVAudioSession.sharedInstance().setCategory(.playback)
+    }
+
+    func setActive(_ active: Bool) {
+        try? AVAudioSession.sharedInstance().setActive(
+            active,
+            options: active ? [] : .notifyOthersOnDeactivation
+        )
+    }
+}
+
 // MARK: - 协调器
 
 /// 效果执行与 `PHImageManager`／`AVPlayer` 接线。**不做任何判定**
@@ -449,6 +475,11 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
     private(set) var surfaceRegistrationCount = 0
     private(set) var surfaceUnregistrationCount = 0
     private let imageManager: PHImageManager
+    /// IC-143 D：音频会话适配。生产走系统实现，测试注入记录器。
+    private let audioSession: any S2AudioSessionControlling
+    /// 会话当前是否处于激活态。静音自动播放期间恒为 false——
+    /// 不激活就不打断别的应用在放的音频（规格第 4 条）。
+    private var audioSessionIsActive = false
     private let fetchQueue = DispatchQueue(
         label: "com.photocleanupmve.s2.video.fetch"
     )
@@ -461,8 +492,12 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
         }
     }
 
-    init(imageManager: PHImageManager = .default()) {
+    init(
+        imageManager: PHImageManager = .default(),
+        audioSession: any S2AudioSessionControlling = S2SystemAudioSession()
+    ) {
         self.imageManager = imageManager
+        self.audioSession = audioSession
     }
 
     deinit {
@@ -552,10 +587,37 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
     // MARK: 效果执行
 
     /// 事件的唯一入口：先归约，再执行，最后刷新读数。
+    ///
+    /// 音频会话跟着 reducer 的 `isUnmutedByUser` 走，**不挂在 `.setMuted` 效果上**：
+    /// 翻页把一段卸掉时（`retire`）根本不发 `setMuted`，挂在效果上会让会话在
+    /// 翻走后仍停在激活态，别的应用的音频就再也不恢复（H66 第 3 项要核的正是这条）。
+    /// 顺序：出声前先备好会话，收声则先让播放器静音再停用会话。
     private func send(_ event: S2VideoPlaybackEvent) {
         let effects = machine.handle(event)
+        let unmuted = machine.isUnmutedByUser
+        if unmuted {
+            updateAudioSession(unmuted: true)
+        }
         apply(effects)
+        if !unmuted {
+            updateAudioSession(unmuted: false)
+        }
         refreshReadout()
+    }
+
+    /// 会话状态的唯一写入点（陷阱 19）。两侧都带幂等守卫：
+    /// 连续多次「要出声」只激活一次，连续多次「收声」只停用一次。
+    private func updateAudioSession(unmuted: Bool) {
+        guard audioSessionIsActive != unmuted else {
+            return
+        }
+        audioSessionIsActive = unmuted
+        guard unmuted else {
+            audioSession.setActive(false)
+            return
+        }
+        audioSession.setPlaybackCategory()
+        audioSession.setActive(true)
     }
 
     private func apply(_ effects: [S2VideoPlaybackEffect]) {

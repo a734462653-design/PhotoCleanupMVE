@@ -4,6 +4,23 @@ import UIKit
 import XCTest
 @testable import PhotoCleanupMVE
 
+/// 断言 12 的音频会话记录器。只记调用，不碰系统会话。
+private final class AudioSessionRecorder: S2AudioSessionControlling {
+    private(set) var calls: [String] = []
+
+    func setPlaybackCategory() {
+        calls.append("setCategory(.playback)")
+    }
+
+    func setActive(_ active: Bool) {
+        calls.append(
+            active
+                ? "setActive(true)"
+                : "setActive(false, notifyOthersOnDeactivation)"
+        )
+    }
+}
+
 /// IC-143：视频页三处修正 + 「有声」接音频会话。
 ///
 /// **本卡只做视频页**：`S2LivePhotoPlayback.swift` 零改动。
@@ -560,7 +577,198 @@ final class IC143VideoPolishTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "writePhotoGeometry", in: pager), 5)
     }
 
+    // MARK: - 断言 11：系统会话只在协调器的适配处出现
+
+    func testIC143D_TheAudioSessionIsTouchedInExactlyOnePlace() {
+        guard let video = sourceText(
+            "PhotoCleanupMVE/Features/S2/S2VideoPlayback.swift"
+        ) else {
+            return XCTFail("读不到视频播放源码")
+        }
+        // 串按名字拼，免得本断言把自己所在文件的写法也算进去。
+        let symbol = "AVAudio" + "Session"
+        let adapter = typeBody(of: "S2SystemAudioSession", in: video)
+        XCTAssertFalse(adapter.isEmpty, "未截取到音频会话适配器")
+        XCTAssertEqual(
+            occurrences(of: symbol, in: adapter),
+            2,
+            "适配器里的会话调用不是两处（类别 + 激活）"
+        )
+        XCTAssertEqual(
+            occurrences(of: symbol, in: video),
+            occurrences(of: symbol, in: adapter),
+            "适配器之外还有地方碰系统会话"
+        )
+
+        // 其余三个文件零命中。
+        for path in [
+            "PhotoCleanupMVE/Features/S2/S2View.swift",
+            "PhotoCleanupMVE/Features/S2/S2LivePhotoPlayback.swift",
+            "PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift"
+        ] {
+            guard let text = sourceText(path) else {
+                return XCTFail("读不到 \(path)")
+            }
+            XCTAssertEqual(
+                occurrences(of: symbol, in: text),
+                0,
+                "\(path) 碰了系统会话"
+            )
+        }
+    }
+
+    // MARK: - 断言 12：出声才激活，收声即停用（可注入协议记录调用）
+
+    func testIC143D_UnmutingActivatesTheSessionAndEveryMutePathDeactivates() {
+        // 自动起播（静音）全程零调用——不打断别的应用在放的音频。
+        let autoplay = AudioSessionRecorder()
+        let autoplayCoordinator = makeCoordinator(audioSession: autoplay)
+        autoplayCoordinator.enter(assetID: nil)
+        autoplayCoordinator.pageBecameCurrent(assetID: "B", neighbours: [])
+        autoplayCoordinator.pagingSettled()
+        XCTAssertEqual(autoplay.calls, [], "静音自动播放动了音频会话")
+
+        // 路径一：用户再点一次静音。
+        let retap = AudioSessionRecorder()
+        let retapCoordinator = makeCoordinator(audioSession: retap)
+        retapCoordinator.enter(assetID: nil)
+        retapCoordinator.pageBecameCurrent(assetID: "B", neighbours: [])
+        retapCoordinator.toggleMute()
+        XCTAssertEqual(
+            retap.calls,
+            ["setCategory(.playback)", "setActive(true)"],
+            "点「有声」未按「先置类别再激活」备好会话"
+        )
+        retapCoordinator.toggleMute()
+        XCTAssertEqual(
+            retap.calls.last,
+            "setActive(false, notifyOthersOnDeactivation)",
+            "再点静音未停用会话"
+        )
+        XCTAssertEqual(retap.calls.count, 3)
+
+        // 路径二：翻页（`becameCurrent` 把「有声」清掉）。
+        let pageChange = AudioSessionRecorder()
+        let pageCoordinator = makeCoordinator(audioSession: pageChange)
+        pageCoordinator.enter(assetID: nil)
+        pageCoordinator.pageBecameCurrent(assetID: "B", neighbours: [])
+        pageCoordinator.toggleMute()
+        pageCoordinator.pageBecameCurrent(assetID: "C", neighbours: ["B"])
+        XCTAssertEqual(
+            pageChange.calls,
+            [
+                "setCategory(.playback)",
+                "setActive(true)",
+                "setActive(false, notifyOthersOnDeactivation)"
+            ],
+            "翻走后未停用会话，别的应用的音频不会恢复"
+        )
+
+        // 路径三：翻出半径把播放器卸掉。这条路径上 reducer **不发** setMuted
+        // ——先在 reducer 层把这个缺口钉住，正是它决定了会话不能挂在效果上。
+        var reducer = makeMachinePlaying(assetID: "B")
+        _ = reducer.handle(.userToggledMute)
+        let retired = reducer.handle(
+            .becameCurrent(assetID: "C", neighbours: [])
+        )
+        XCTAssertTrue(
+            retired.contains(.unload(assetID: "B")),
+            "翻出半径未卸播放器"
+        )
+        XCTAssertFalse(
+            retired.contains(.setMuted(assetID: "B", muted: true)),
+            "退页路径已经发 setMuted 了，本断言的前提要重写"
+        )
+        // 协调器仍然收声：会话跟的是 `isUnmutedByUser`，不是效果。
+        let unload = AudioSessionRecorder()
+        let unloadCoordinator = makeCoordinator(audioSession: unload)
+        unloadCoordinator.enter(assetID: nil)
+        unloadCoordinator.pageBecameCurrent(assetID: "B", neighbours: [])
+        unloadCoordinator.toggleMute()
+        unloadCoordinator.pageBecameCurrent(assetID: "C", neighbours: [])
+        XCTAssertEqual(
+            unload.calls.last,
+            "setActive(false, notifyOthersOnDeactivation)",
+            "卸播放器这条路径漏掉了会话停用"
+        )
+
+        // 离开 S2 同样收声。
+        let leaving = AudioSessionRecorder()
+        let leaveCoordinator = makeCoordinator(audioSession: leaving)
+        leaveCoordinator.enter(assetID: nil)
+        leaveCoordinator.pageBecameCurrent(assetID: "B", neighbours: [])
+        leaveCoordinator.toggleMute()
+        leaveCoordinator.leave()
+        XCTAssertEqual(
+            leaving.calls.last,
+            "setActive(false, notifyOthersOnDeactivation)",
+            "离开 S2 未停用会话"
+        )
+
+        // 幂等：重复「有声」不重复激活，重复「静音」不重复停用。
+        let repeated = AudioSessionRecorder()
+        let repeatCoordinator = makeCoordinator(audioSession: repeated)
+        repeatCoordinator.enter(assetID: nil)
+        repeatCoordinator.pageBecameCurrent(assetID: "B", neighbours: [])
+        repeatCoordinator.toggleMute()
+        let afterFirstUnmute = repeated.calls.count
+        repeatCoordinator.pagingSettled()
+        repeatCoordinator.togglePlayPause()
+        XCTAssertEqual(
+            repeated.calls.count,
+            afterFirstUnmute,
+            "出声期间的其他事件重复激活了会话"
+        )
+        repeatCoordinator.toggleMute()
+        repeatCoordinator.leave()
+        XCTAssertEqual(
+            repeated.calls.count,
+            afterFirstUnmute + 1,
+            "重复收声重复停用了会话"
+        )
+    }
+
+    // MARK: - 断言 13：IC-141 的「有声只作用当前页」口径不变
+
+    func testIC143D_UnmutingStillAppliesOnlyToTheCurrentPage() {
+        var machine = S2VideoPlaybackMachine()
+        _ = machine.handle(.entered(assetID: nil))
+        _ = machine.handle(.becameCurrent(assetID: "B", neighbours: []))
+        XCTAssertEqual(
+            machine.handle(.userToggledMute),
+            [.setMuted(assetID: "B", muted: false)]
+        )
+        XCTAssertTrue(machine.isUnmutedByUser)
+
+        let becameC = machine.handle(
+            .becameCurrent(assetID: "C", neighbours: ["B"])
+        )
+        XCTAssertTrue(
+            becameC.contains(.setMuted(assetID: "B", muted: true)),
+            "翻走未把前页收回静音"
+        )
+        XCTAssertFalse(machine.isUnmutedByUser, "「有声」被记住了")
+    }
+
     // MARK: - 夹具
+
+    private func makeCoordinator(
+        audioSession: any S2AudioSessionControlling
+    ) -> S2VideoPlaybackCoordinator {
+        S2VideoPlaybackCoordinator(audioSession: audioSession)
+    }
+
+    /// 截取某个类型的正文（到列首的收口括号为止）。
+    private func typeBody(of name: String, in text: String) -> String {
+        guard let start = text.range(of: "final class " + name) else {
+            return ""
+        }
+        let rest = text[start.upperBound...]
+        guard let end = rest.range(of: "\n}\n") else {
+            return String(rest)
+        }
+        return String(rest[..<end.lowerBound])
+    }
 
     /// 与既有分页器夹具同源：挂窗口、跑一次布局与 runloop，页控制器才成形。
     private func attachWindow(
