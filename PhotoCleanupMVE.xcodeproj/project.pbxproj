@@ -47,6 +47,7 @@
 		200000000000000000000042 /* IC146ChromeRoundTwoTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000045 /* IC146ChromeRoundTwoTests.swift */; };
 		200000000000000000000044 /* S0StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000047 /* S0StateMachine.swift */; };
 		200000000000000000000045 /* S0TabContainer.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000048 /* S0TabContainer.swift */; };
+		200000000000000000000046 /* S0View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000049 /* S0View.swift */; };
 		20000000000000000000001F /* S1StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* S1StateMachine.swift */; };
 		200000000000000000000020 /* S1View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* S1View.swift */; };
 		200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* S1StateMachineTests.swift */; };
@@ -131,6 +132,7 @@
 		100000000000000000000045 /* IC146ChromeRoundTwoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC146ChromeRoundTwoTests.swift; sourceTree = "<group>"; };
 		100000000000000000000047 /* S0StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000048 /* S0TabContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0TabContainer.swift; sourceTree = "<group>"; };
+		100000000000000000000049 /* S0View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0View.swift; sourceTree = "<group>"; };
 		100000000000000000000022 /* S1StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000023 /* S1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1View.swift; sourceTree = "<group>"; };
 		100000000000000000000024 /* S1StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachineTests.swift; sourceTree = "<group>"; };
@@ -259,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000048 /* S0TabContainer.swift */,
+				100000000000000000000049 /* S0View.swift */,
 			);
 			path = S0;
 			sourceTree = "<group>";
@@ -476,6 +479,7 @@
 				20000000000000000000001C /* SessionStore.swift（源码） */,
 				200000000000000000000044 /* S0StateMachine.swift（源码） */,
 				200000000000000000000045 /* S0TabContainer.swift（源码） */,
+				200000000000000000000046 /* S0View.swift（源码） */,
 				20000000000000000000001F /* S1StateMachine.swift（源码） */,
 				200000000000000000000022 /* S2StateMachine.swift（源码） */,
 				200000000000000000000004 /* S3StateMachine.swift（源码） */,
