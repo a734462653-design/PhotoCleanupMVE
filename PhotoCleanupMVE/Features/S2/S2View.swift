@@ -498,6 +498,9 @@ struct S2View: View {
     /// 用现成对象而不是工厂闭包：闭包体是非隔离的，在里面调 `@MainActor` 的
     /// 协调器方法会触发隔离检查；由 App 层在自身的主线程上下文里造好传进来。
     private let assetSizeProber: S2AssetSizeProbing?
+    /// IC-145 A：屏幕录制识别启发式探针的取数实现。未接线（nil）时按钮禁用。
+    /// 与 `assetSizeProber` 同理传现成对象，不传工厂闭包。
+    private let screenRecordingProber: ScreenRecordingProbing?
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
@@ -510,6 +513,9 @@ struct S2View: View {
     @StateObject private var primaryMark: S2PrimaryMarkPresenter
     /// IC-099b R2：字节数探针。**只在面板按钮触发时才取数**；未接线时按钮不可用。
     @StateObject private var assetSizeProbe = S2AssetSizeProbeCoordinator()
+    /// IC-145 A：屏幕录制识别启发式探针。关闭态零副作用，按钮触发才取数。
+    @StateObject private var screenRecordingProbe =
+        ScreenRecordingProbeCoordinator()
     /// IC-108 B：双击丝滑度探针。默认关闭；关闭时不向 pager 传引用，埋点零开销。
     @StateObject private var doubleTapProbe =
         S2DoubleTapSmoothnessProbeCoordinator()
@@ -549,6 +555,7 @@ struct S2View: View {
         assetCreationDate: @escaping (String) -> Date? = { _ in nil },
         assetVolumeProvider: S2AssetVolumeProviding? = nil,
         assetSizeProber: S2AssetSizeProbing? = nil,
+        screenRecordingProber: ScreenRecordingProbing? = nil,
         photoContent: @escaping PhotoContent,
         stripItemContent: @escaping StripItemContent,
         albumPickerContent: @escaping AlbumPickerContent,
@@ -594,6 +601,7 @@ struct S2View: View {
         self.assetCreationDate = assetCreationDate
         self.assetVolumeProvider = assetVolumeProvider
         self.assetSizeProber = assetSizeProber
+        self.screenRecordingProber = screenRecordingProber
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
             wrappedValue: transitionDiagnostics
@@ -2313,6 +2321,7 @@ struct S2View: View {
                 }
                 assetSizeProbeSection
                 doubleTapProbeSection
+                screenRecordingProbeSection
                 // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
                 // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
@@ -2392,6 +2401,36 @@ struct S2View: View {
             }
             .s2MinimumTouchTarget()
             Text(verbatim: doubleTapProbe.reportText)
+                .font(.system(.caption2, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    }
+
+    /// IC-145 A：调试面板的屏幕录制识别探针段。模式照 IC-099b：
+    /// 按钮 → 进度 → 复制入口 → 只读文本。只出数，不改任何产品行为。
+    @ViewBuilder
+    private var screenRecordingProbeSection: some View {
+        Divider()
+        Text(L10n.text("s2.calibration.screen_recording_probe.title"))
+        Button(L10n.text("s2.calibration.screen_recording_probe.start")) {
+            guard let prober = screenRecordingProber else {
+                return
+            }
+            screenRecordingProbe.run(using: prober)
+        }
+        .disabled(
+            screenRecordingProber == nil || screenRecordingProbe.isRunning
+        )
+        .s2MinimumTouchTarget()
+        if screenRecordingProbe.isRunning {
+            ProgressView(screenRecordingProbe.progressText)
+        }
+        if !screenRecordingProbe.reportText.isEmpty {
+            ShareLink(item: screenRecordingProbe.reportText) {
+                Text(L10n.text("s2.calibration.screen_recording_probe.share"))
+            }
+            .s2MinimumTouchTarget()
+            Text(verbatim: screenRecordingProbe.reportText)
                 .font(.system(.caption2, design: .monospaced))
                 .textSelection(.enabled)
         }

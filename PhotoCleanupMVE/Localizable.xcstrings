@@ -1035,6 +1035,39 @@
         }
       }
     },
+    "s2.calibration.screen_recording_probe.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕录制识别探针（IC-145 A）"
+          }
+        }
+      }
+    },
+    "s2.calibration.screen_recording_probe.start" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行屏幕录制识别探针"
+          }
+        }
+      }
+    },
+    "s2.calibration.screen_recording_probe.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出屏幕录制识别报告"
+          }
+        }
+      }
+    },
     "s2.calibration.double_tap_probe.title" : {
       "extractionState" : "manual",
       "localizations" : {
