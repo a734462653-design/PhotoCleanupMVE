@@ -720,6 +720,8 @@ struct S2View: View {
     private let assetSizeProber: S2AssetSizeProbing?
     /// IC-146 A：分享取项实现。默认走 PhotoKit；测试注入桩。
     private let shareItemResolver: any S2ShareItemResolving
+    /// IC-146 B：氛围底取图实现。默认走 PhotoKit 缩略级请求；测试注入桩。
+    private let ambientImageLoader: any S2AmbientImageLoading
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
@@ -756,6 +758,9 @@ struct S2View: View {
     @State private var albumCapsuleEntrance: CGFloat = 1
     /// IC-146 A：分享的呈现态。视图层状态，不入状态机。
     @State private var sharePreparation = S2SharePreparation()
+    /// IC-146 B：氛围底取图协调器。**自身不发布任何变更**——发布的是它的
+    /// `readout`，且只有氛围底视图观察那一个（陷阱 5）。
+    @StateObject private var ambientBackdrop = S2AmbientBackdropStore()
     /// IC-110 D：首次引导教程（未定项 20 ④）。持久化走 `UserDefaults`，
     /// 不入标定出厂值、`schemaVersion` 不动。
     @StateObject private var tutorial = S2TutorialCoordinator(
@@ -775,6 +780,8 @@ struct S2View: View {
         assetSizeProber: S2AssetSizeProbing? = nil,
         shareItemResolver: any S2ShareItemResolving =
             S2PhotoKitShareItemResolver(),
+        ambientImageLoader: any S2AmbientImageLoading =
+            S2PhotoKitAmbientImageLoader(),
         photoContent: @escaping PhotoContent,
         stripItemContent: @escaping StripItemContent,
         albumPickerContent: @escaping AlbumPickerContent,
@@ -821,6 +828,7 @@ struct S2View: View {
         self.assetVolumeProvider = assetVolumeProvider
         self.assetSizeProber = assetSizeProber
         self.shareItemResolver = shareItemResolver
+        self.ambientImageLoader = ambientImageLoader
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
             wrappedValue: transitionDiagnostics
@@ -846,7 +854,12 @@ struct S2View: View {
             )
 
             ZStack {
-                S2ViewportBackground.color
+                // IC-146 B（决策 61）：主图之外的区域由 systemBackground
+                // 改为**当前照片的强模糊氛围底**。层次一字未动：它仍是
+                // 这一层，主图与 interfaceOverlay 的相对次序不变。
+                // `V=隐藏` 时照常显示——它是内容背景，不是 chrome，
+                // 故不挂 `.s2ChromeVisibilityTransition`。
+                S2AmbientBackdropView(readout: ambientBackdrop.readout)
                     .ignoresSafeArea()
 
                 mainPhoto(
@@ -904,6 +917,11 @@ struct S2View: View {
             )
             .onAppear {
                 _ = machine.applyCalibration(calibration.configuration)
+                // IC-146 B：进场即为当前张取一次氛围底源图。
+                ambientBackdrop.load(
+                    assetID: machine.currentAssetID,
+                    using: ambientImageLoader
+                )
                 // IC-111 B：进场时显示值与模型值对齐（无残影在途）。
                 displayedPendingCount =
                     machine.sessionMergedPendingDeletionCount
@@ -950,6 +968,10 @@ struct S2View: View {
                 return
             }
             cancelVideoScrub()
+        }
+        // IC-146 B（规格第 9 条）：氛围底随当前张切换。
+        .onChange(of: machine.currentAssetID) { _, assetID in
+            ambientBackdrop.load(assetID: assetID, using: ambientImageLoader)
         }
         .onChange(of: machine.interfaceVisibility) { _, visibility in
             applyStatusBarAppearance(for: visibility)

@@ -321,6 +321,213 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         XCTAssertTrue(stale.isResolving, "仍在等 asset-1 的结果")
     }
 
+    // MARK: - 断言 6：层次与命中
+
+    /// 氛围底在主图之下、`interfaceOverlay` 之上的次序不变；氛围底不接触控；
+    /// 分页器各层仍 `.clear`。
+    func testIC146B_AmbientSitsBelowPhotoAndTakesNoTouches() throws {
+        let view = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2View.swift")
+        )
+        let ambientIndex = try XCTUnwrap(
+            view.range(of: "S2AmbientBackdropView(readout:")
+        ).lowerBound
+        let photoIndex = try XCTUnwrap(
+            view.range(of: "mainPhoto(\n", range: ambientIndex..<view.endIndex)
+        ).lowerBound
+        let overlayIndex = try XCTUnwrap(
+            view.range(
+                of: "interfaceOverlay(\n",
+                range: photoIndex..<view.endIndex
+            )
+        ).lowerBound
+        // ZStack 内自下而上：氛围底 → 主图 → interfaceOverlay。
+        XCTAssertLessThan(ambientIndex, photoIndex)
+        XCTAssertLessThan(photoIndex, overlayIndex)
+        // 旧的视口底色层已不在 ZStack 里（决策 61 的唯一落点已替换）。
+        XCTAssertEqual(
+            occurrences(of: "S2ViewportBackground.color\n", in: view),
+            0
+        )
+
+        let ambient = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2AmbientBackdrop.swift")
+        )
+        // 规格第 12 条：不接触控。
+        XCTAssertEqual(
+            occurrences(of: ".allowsHitTesting(false)", in: ambient),
+            1
+        )
+
+        // 分页器各层仍 .clear，计数与改前相同（B3：本卡不得改这些）。
+        let pager = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift")
+        )
+        XCTAssertEqual(
+            occurrences(of: "backgroundColor = .clear", in: pager),
+            7
+        )
+        XCTAssertEqual(occurrences(of: ".clear", in: pager), 8)
+    }
+
+    // MARK: - 断言 7：零几何写入
+
+    /// 氛围底是 ZStack 里的一层兄弟，**不碰几何链**：几何链的声明与调用点
+    /// 数量仍为 5（口径沿 IC-141 断言 5）。
+    ///
+    /// 结构性保证：氛围底的读数是独立的 `ObservableObject`，只有氛围底视图
+    /// 观察它——协调器自身不发布任何变更，故换图不会让 `S2View.body` 重算，
+    /// 也就不会经 `updateUIViewController` 重进分页器（陷阱 5）。
+    func testIC146B_AmbientAddsNoGeometryWrite() throws {
+        let pager = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift")
+        )
+        XCTAssertEqual(
+            occurrences(of: "writePhotoGeometry", in: pager),
+            5,
+            "几何链的声明或调用点数量变了"
+        )
+
+        let ambient = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2AmbientBackdrop.swift")
+        )
+        // 氛围底一侧不得出现任何几何写入或分页器引用。
+        XCTAssertEqual(occurrences(of: "writePhotoGeometry", in: ambient), 0)
+        XCTAssertEqual(occurrences(of: "S2NativePager", in: ambient), 0)
+        // 协调器自身不发布：`@Published` 只出现在读数类型里，恰 1 处。
+        XCTAssertEqual(occurrences(of: "@Published", in: ambient), 1)
+    }
+
+    // MARK: - 断言 8：取值引用 SPEC-S0 v1 S0Ambient
+
+    func testIC146B_AmbientMetricsMatchS0AmbientRegistry() throws {
+        XCTAssertEqual(S2AmbientMetrics.blurRadius, 34, accuracy: 0.000_001)
+        XCTAssertEqual(S2AmbientMetrics.saturation, 1.15, accuracy: 0.000_001)
+        XCTAssertEqual(S2AmbientMetrics.opacity, 0.62, accuracy: 0.000_001)
+        XCTAssertEqual(
+            S2AmbientMetrics.veilTopOpacity,
+            0.30,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2AmbientMetrics.veilMidOpacity,
+            0.66,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2AmbientMetrics.veilBottomOpacity,
+            0.94,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(S2AmbientMetrics.tintRadius, 0.70, accuracy: 0.000_001)
+        XCTAssertEqual(S2AmbientMetrics.tintOpacity, 0.30, accuracy: 0.000_001)
+        XCTAssertEqual(S2AmbientMetrics.grainOpacity, 0.90, accuracy: 0.000_001)
+        // ambientBaseColor = #050507。
+        let base = UIColor(S2AmbientMetrics.baseColor)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        XCTAssertTrue(base.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+        XCTAssertEqual(red * 255, 5, accuracy: 0.6)
+        XCTAssertEqual(green * 255, 5, accuracy: 0.6)
+        XCTAssertEqual(blue * 255, 7, accuracy: 0.6)
+        XCTAssertEqual(alpha, 1, accuracy: 0.000_001)
+
+        let ambient = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2AmbientBackdrop.swift")
+        )
+        // 每个常量的定义处都写明出处（十个量 + 幕底色共十处以上）。
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: "取值出处：SPEC-S0 v1 第十四节", in: ambient),
+            10
+        )
+        // 正对照：视图体内一个裸数都不写，全部经 `S2AmbientMetrics`。
+        let viewBody = try XCTUnwrap(
+            slice(
+                ambient,
+                from: "struct S2AmbientBackdropView: View {",
+                to: "\n}\n"
+            )
+        )
+        for bare in ["34", "1.15", "0.62", "0.66", "0.94", "0.70", "0.90"] {
+            XCTAssertEqual(
+                occurrences(of: bare, in: viewBody),
+                0,
+                "氛围底视图体内出现裸数 " + bare
+            )
+        }
+    }
+
+    // MARK: - 断言 9：外观不跟随
+
+    /// 决策 61：氛围底恒为深色配方，不随系统外观切换。
+    func testIC146B_AmbientRecipeIsIdenticalInBothColorSchemes() throws {
+        let base = UIColor(S2AmbientMetrics.baseColor)
+        let dark = base.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: .dark)
+        )
+        let light = base.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: .light)
+        )
+        XCTAssertEqual(dark, light, "幕底色随外观解析出了两个值")
+
+        let ambient = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2AmbientBackdrop.swift")
+        )
+        // 配方里不得出现任何随外观解析的色源。
+        for dynamic in [
+            "colorScheme",
+            "systemBackground",
+            "UIColor.label",
+            ".primary",
+            "S2ChromeForeground"
+        ] {
+            XCTAssertEqual(
+                occurrences(of: dynamic, in: ambient),
+                0,
+                "氛围底引用了随外观变化的 " + dynamic
+            )
+        }
+    }
+
+    // MARK: - 断言 10：取图失败回落
+
+    /// 取不到源图 ⟹ 氛围底为 `ambientBaseColor` 纯色（读数为 nil），
+    /// 且**主图呈现不被延迟**——`load` 同步返回，取图在独立任务里做。
+    @MainActor
+    func testIC146B_AmbientFallsBackToBaseColorWhenLoadFails() async {
+        let store = S2AmbientBackdropStore()
+        let loader = S2AmbientLoaderStub(image: nil)
+
+        XCTAssertNil(store.readout.image, "关闭态零副作用：未取图前就是纯色")
+        XCTAssertEqual(loader.requestCount, 0, "init 不得发请求")
+
+        store.load(assetID: "asset-1", using: loader)
+        // 同步返回，读数仍是纯色——主图呈现不等氛围底。
+        XCTAssertNil(store.readout.image)
+        XCTAssertEqual(store.loadedAssetID, "asset-1")
+
+        let settled = await waitUntil { store.failureCount == 1 }
+        XCTAssertTrue(settled, "取图任务未在期限内收口")
+        XCTAssertEqual(loader.requestCount, 1)
+        XCTAssertNil(store.readout.image, "取图失败后仍是纯色回落")
+
+        // 同一张不重复取图。
+        store.load(assetID: "asset-1", using: loader)
+        XCTAssertEqual(loader.requestCount, 1)
+
+        // 换张即重新取；取到图则读数变为该图。
+        let image = UIImage()
+        let second = S2AmbientLoaderStub(image: image)
+        store.load(assetID: "asset-2", using: second)
+        XCTAssertNil(store.readout.image, "切换瞬间先回落，不留上一张的图")
+        let arrived = await waitUntil { store.readout.image != nil }
+        XCTAssertTrue(arrived, "第二张的氛围底未在期限内到达")
+        XCTAssertTrue(store.readout.image === image)
+        XCTAssertEqual(store.failureCount, 1, "成功一次不计失败")
+    }
+
     // MARK: - 夹具
 
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)
@@ -373,6 +580,46 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
             initialRecentAlbum: nil,
             pendingDeletionDidChange: { _ in }
         )!
+    }
+
+    /// 氛围底取图桩。计数用锁保护——`load` 的取图调用不保证落在主线程
+    /// （陷阱 10：并发驱动的 helper 必须并发安全）。
+    private final class S2AmbientLoaderStub: S2AmbientImageLoading {
+        private let image: UIImage?
+        private let lock = NSLock()
+        private var count = 0
+
+        init(image: UIImage?) {
+            self.image = image
+        }
+
+        var requestCount: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+
+        func ambientImage(assetID _: String) async -> UIImage? {
+            lock.lock()
+            count += 1
+            lock.unlock()
+            return image
+        }
+    }
+
+    /// 有界轮询等待。异步收口的到达时机不由测试掌控，故给期限而不是数让出次数。
+    private func waitUntil(
+        timeout: TimeInterval = 2,
+        _ condition: @escaping () -> Bool
+    ) async -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while Date() < deadline {
+            if condition() {
+                return true
+            }
+            await Task.yield()
+        }
+        return condition()
     }
 
     private func repoRoot() -> URL {
