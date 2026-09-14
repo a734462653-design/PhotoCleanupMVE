@@ -356,3 +356,34 @@ IC147S0BehaviorTests.swift       4
 | 迁移表行数与断言数对账 | ✅ 13 : 13，见第三节 |
 | 工作树净 | ✅ `git status --porcelain` 仅有未跟踪的 `Reports/IC-147/`（本卡报告，随后以 docs 提交入库） |
 | `main` 未被他人推进 | ✅ `git ls-remote origin refs/heads/main` = `dc1d0f0f9f7d59f5617b2b857f52520a2a43e98a`，与继承提交一致 |
+
+**G845 判定：满足。** 但**合并未执行**——见下节。
+
+---
+
+## 十三、合并与 G846 的现状：合并被权限层拦下，未执行
+
+任务卡写「**合并授权**：G845 满足则 `--no-ff` 合并入 `main` 并推送」。G845 已满足（第十二节），但 `--no-ff` 合并在本机被 auto 模式权限分类器拒绝，**两种工具都拒**：
+
+| 尝试 | 命令 | 结果 |
+|---|---|---|
+| 1 | Bash：`git merge --no-ff feature/ic-147-s0-behavior-layer -m "…"` | 拒绝，`Reason: [Merge Without Review]` |
+| 2 | PowerShell：`git merge --no-ff -F <msgfile> feature/ic-147-s0-behavior-layer` | 拒绝，同一理由 |
+
+（`git switch main` 本身未被拦。按既有注记「换一次工具重试同一条单一用途命令」已试过，两侧同拒，遂停手不再改写命令绕行。）
+
+**当前仓库状态（①实测）**：
+
+- `main` 本地与远端同为 `dc1d0f0f9f7d59f5617b2b857f52520a2a43e98a`，**未被本卡推进**；
+- 无 `.git/MERGE_HEAD`，合并**从未开始**，工作树干净，`main` 一字未动；
+- 分支 `feature/ic-147-s0-behavior-layer` 已推送，远端 tip = `3d8a97f2bba0bbbb482937ad4490e47ffbe7f1d5`（本报告所在的 docs 提交）。
+
+**因此本报告无法提供「合并提交 SHA」与「G846 合并后 `main` 自动运行编号与结果」**——这两项待合并实际发生后补记。合并需由 Lynn 或决策会话执行（或授予该权限后由执行会话补做）：
+
+```
+git switch main
+git merge --no-ff -F <msg> feature/ic-147-s0-behavior-layer
+git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 push origin main
+```
+
+合并提交会改动产品代码路径，因而**会**触发 `main` 上的一次 CI（即 G846）；本卡报告所在的 docs 提交按 `paths-ignore`（`Reports/**`、`**.md`）**不触发**，这是预期行为。
