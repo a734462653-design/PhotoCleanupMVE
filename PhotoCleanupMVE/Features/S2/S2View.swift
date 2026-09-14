@@ -968,6 +968,9 @@ struct S2View: View {
                 return
             }
             cancelVideoScrub()
+            // IC-146 D（第 161 条 ③）：失活即收声并停用音频会话，
+            // 别的应用被压下去的音频就此恢复。回到 active 不自动重新激活。
+            videoPlayback.applicationDidResignActive()
         }
         // IC-146 B（规格第 9 条）：氛围底随当前张切换。
         .onChange(of: machine.currentAssetID) { _, assetID in

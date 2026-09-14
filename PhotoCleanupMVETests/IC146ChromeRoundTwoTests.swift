@@ -1,7 +1,36 @@
+import AVFoundation
 import SwiftUI
 import UIKit
 import XCTest
 @testable import PhotoCleanupMVE
+
+/// IC-146 D 的音频会话记录器。只记调用，不碰系统会话。
+/// 与 IC-143 那只同形不同名——两份夹具各自文件私有，不互相依赖。
+private final class IC146AudioSessionRecorder: S2AudioSessionControlling {
+    private(set) var calls: [String] = []
+
+    var activateCount: Int {
+        calls.filter { $0 == "setActive(true)" }.count
+    }
+
+    var deactivateCount: Int {
+        calls.filter {
+            $0 == "setActive(false, notifyOthersOnDeactivation)"
+        }.count
+    }
+
+    func setPlaybackCategory() {
+        calls.append("setCategory(.playback)")
+    }
+
+    func setActive(_ active: Bool) {
+        calls.append(
+            active
+                ? "setActive(true)"
+                : "setActive(false, notifyOthersOnDeactivation)"
+        )
+    }
+}
 
 /// IC-146：S2 chrome 二轮——底排改组（相簿跑道圆 + 分享）、氛围底、
 /// 「已标记 · 撤销」、退后台停用音频会话。
@@ -744,6 +773,136 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
                 lastAction: .mark
             )
         )
+    }
+
+    // MARK: - 断言 15：失活即停用
+
+    /// 会话处于激活态时失活 ⟹ 恰 1 次 `setActive(false)`；
+    /// 未激活时失活 ⟹ 0 次（幂等，可以随便多调）。
+    func testIC146D_ResignActiveDeactivatesTheSessionExactlyOnce() {
+        let active = IC146AudioSessionRecorder()
+        let coordinator = S2VideoPlaybackCoordinator(audioSession: active)
+        coordinator.enter(assetID: nil)
+        coordinator.pageBecameCurrent(assetID: "B", neighbours: [])
+        coordinator.toggleMute()
+        XCTAssertEqual(
+            active.calls,
+            ["setCategory(.playback)", "setActive(true)"],
+            "点「有声」未按「先置类别再激活」备好会话"
+        )
+
+        coordinator.applicationDidResignActive()
+        XCTAssertEqual(
+            active.calls,
+            [
+                "setCategory(.playback)",
+                "setActive(true)",
+                "setActive(false, notifyOthersOnDeactivation)"
+            ],
+            "失活未停用会话，别的应用的音频不会恢复"
+        )
+        XCTAssertEqual(
+            active.deactivateCount,
+            1,
+            "停用不是恰 1 次"
+        )
+
+        // 幂等：再失活几次一律零新增。
+        coordinator.applicationDidResignActive()
+        coordinator.applicationDidResignActive()
+        XCTAssertEqual(active.deactivateCount, 1)
+
+        // 未激活时失活：全程零调用。
+        let idle = IC146AudioSessionRecorder()
+        let idleCoordinator = S2VideoPlaybackCoordinator(audioSession: idle)
+        idleCoordinator.enter(assetID: nil)
+        idleCoordinator.pageBecameCurrent(assetID: "B", neighbours: [])
+        idleCoordinator.pagingSettled()
+        idleCoordinator.applicationDidResignActive()
+        XCTAssertEqual(idle.calls, [], "静音态失活动了音频会话")
+    }
+
+    // MARK: - 断言 16：回 active 不自动激活
+
+    /// 回到 active 不自动重新激活；**再点「有声」才激活**。
+    func testIC146D_ReturningToActiveDoesNotReactivateUntilUserTapsUnmute() {
+        let recorder = IC146AudioSessionRecorder()
+        let coordinator = S2VideoPlaybackCoordinator(audioSession: recorder)
+        coordinator.enter(assetID: nil)
+        coordinator.pageBecameCurrent(assetID: "B", neighbours: [])
+        coordinator.toggleMute()
+        coordinator.applicationDidResignActive()
+        let callsAfterResign = recorder.calls
+
+        // 回到 active：S2View 的 onChange 只在 phase != .active 时动作，
+        // 故这里**不发任何事件**——记录器不该多出一条。
+        XCTAssertEqual(recorder.calls, callsAfterResign)
+        XCTAssertEqual(recorder.activateCount, 1, "回 active 自动重新激活了")
+
+        // 再点「有声」才激活。失活时已把「用户要出声」清掉，
+        // 故这一次点的是「从静音到出声」，不是「从出声到静音」。
+        coordinator.toggleMute()
+        XCTAssertEqual(recorder.activateCount, 2)
+        XCTAssertEqual(
+            Array(recorder.calls.suffix(2)),
+            ["setCategory(.playback)", "setActive(true)"]
+        )
+    }
+
+    /// reducer 侧：失活把「用户要出声」清掉并让播放器静音；
+    /// 本来就静音时无效果（幂等）。
+    func testIC146D_ResignActiveClearsUnmuteIntentInTheReducer() {
+        var machine = S2VideoPlaybackMachine()
+        _ = machine.handle(.entered(assetID: nil))
+        _ = machine.handle(.becameCurrent(assetID: "B", neighbours: []))
+        _ = machine.handle(.userToggledMute)
+        XCTAssertTrue(machine.isUnmutedByUser)
+
+        let effects = machine.handle(.applicationDidResignActive)
+        XCTAssertFalse(machine.isUnmutedByUser, "失活未清掉「要出声」的意图")
+        XCTAssertEqual(effects, [.setMuted(assetID: "B", muted: true)])
+
+        // 幂等：再来一次零效果。
+        XCTAssertEqual(machine.handle(.applicationDidResignActive), [])
+        XCTAssertFalse(machine.isUnmutedByUser)
+    }
+
+    // MARK: - 断言 17：`AVAudioSession` 的唯一写入点
+
+    func testIC146D_AVAudioSessionStaysInsideTheProductionImplementation()
+        throws {
+        let playback = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2VideoPlayback.swift")
+        )
+        let production = try XCTUnwrap(
+            slice(
+                playback,
+                from: "final class S2SystemAudioSession: S2AudioSessionControlling {",
+                to: "\n}\n"
+            )
+        )
+        let totalHits = occurrences(of: "AVAudioSession", in: playback)
+        let productionHits = occurrences(of: "AVAudioSession", in: production)
+        XCTAssertGreaterThan(productionHits, 0, "生产实现里反而没有")
+        XCTAssertEqual(
+            totalHits,
+            productionHits,
+            "AVAudioSession 出现在生产实现之外"
+        )
+
+        // 三个文件零命中（IC-143 断言 11 口径不变）。
+        for relativePath in [
+            "PhotoCleanupMVE/Features/S2/S2View.swift",
+            "PhotoCleanupMVE/Features/S2/S2LivePhotoPlayback.swift",
+            "PhotoCleanupMVE/Features/S2/S2NativePhotoPager.swift"
+        ] {
+            let source = try XCTUnwrap(sourceText(relativePath))
+            XCTAssertEqual(
+                occurrences(of: "AVAudioSession", in: source),
+                0,
+                relativePath + " 出现了 AVAudioSession"
+            )
+        }
     }
 
     // MARK: - 夹具
