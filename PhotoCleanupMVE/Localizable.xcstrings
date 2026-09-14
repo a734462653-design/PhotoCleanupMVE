@@ -144,6 +144,28 @@
         }
       }
     },
+    "s0.tab.cleanup" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空间清理"
+          }
+        }
+      }
+    },
+    "s0.tab.organize" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "逐张整理"
+          }
+        }
+      }
+    },
     "s1.chrome.subtitle_format" : {
       "extractionState" : "manual",
       "localizations" : {
