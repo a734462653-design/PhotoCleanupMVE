@@ -485,6 +485,17 @@
         }
       }
     },
+    "s2.action.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享"
+          }
+        }
+      }
+    },
     "s2.action.unfavorite" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -734,6 +745,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已加入「{album}」"
+          }
+        }
+      }
+    },
+    "s2.center.marked" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已标记"
           }
         }
       }

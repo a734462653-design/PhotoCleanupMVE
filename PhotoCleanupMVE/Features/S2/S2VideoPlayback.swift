@@ -51,6 +51,12 @@ enum S2VideoPlaybackEvent: Equatable {
     case scrubCancelled
     /// 播到尾（`AVPlayerItemDidPlayToEndTime`）。循环的唯一驱动点。
     case reachedEnd(assetID: String)
+    /// IC-146 D（第 161 条 ③）：应用失活（`scenePhase != .active`）。
+    /// 收声——把「用户要出声」的意图清掉并让播放器静音，
+    /// 会话随之由 `updateAudioSession` 那个唯一写入点停用。
+    /// 回到 active **不自动恢复**：重新出声仍须用户再点「有声」。
+    /// 非出声态收到它无效果（幂等，可以随便多调）。
+    case applicationDidResignActive
 }
 
 enum S2VideoPlaybackEffect: Equatable {
@@ -169,6 +175,17 @@ struct S2VideoPlaybackMachine {
             case .idle, .requesting, .failed:
                 return []
             }
+
+        case .applicationDidResignActive:
+            // 幂等：本来就静音就什么都不做，会话侧的守卫也不会多发一次停用。
+            guard isUnmutedByUser else {
+                return []
+            }
+            isUnmutedByUser = false
+            guard let assetID = currentAssetID else {
+                return []
+            }
+            return [.setMuted(assetID: assetID, muted: true)]
 
         case .userToggledMute:
             guard let assetID = currentAssetID else {
@@ -527,6 +544,12 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
 
     func pageBecameCurrent(assetID: String?, neighbours: [String]) {
         send(.becameCurrent(assetID: assetID, neighbours: neighbours))
+    }
+
+    /// IC-146 D（第 161 条 ③）：应用失活即收声并停用音频会话，
+    /// 通知其他应用可恢复自己的音频。回到 active 不自动重新激活。
+    func applicationDidResignActive() {
+        send(.applicationDidResignActive)
     }
 
     func pagingSettled() {

@@ -1557,9 +1557,13 @@ final class S2ActionBarWiringTests: XCTestCase {
         }
     }
 
-    // IC-113 B G284（硬闸门，语义不变）：命中测试——**仅撤回钮可点**。
-    // 撤回钮只在「已加入相簿」态存在；「已标记」与撤回后的短提示态
-    // 都没有任何可点元素，整块纯展示、手势全部穿透。
+    // IC-113 B G284（硬闸门）：命中测试——**只有撤回／撤销钮可点**，
+    // 其余部分整块纯展示、手势全部穿透。
+    //
+    // IC-146 C 改口径（SPEC-S2 v20 回写决策 62）：「已标记」由正圆单图标改为
+    // 「已标记 · 撤销」胶囊，故它**也有**一个可点元素。本条原断言
+    // 「已标记态不得有任何可点元素」随决策 62 作废，改为断言它有撤销钮；
+    // 「已加入相簿」与撤回后的短提示态两条一字未改。
     func testIC113BOnlyUndoControlIsHittable() {
         XCTAssertTrue(
             S2CenterIndicatorView.showsUndoControl(
@@ -1567,9 +1571,9 @@ final class S2ActionBarWiringTests: XCTestCase {
             ),
             "已加入相簿态必须有撤回钮"
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             S2CenterIndicatorView.showsUndoControl(for: .marked),
-            "已标记态不得有任何可点元素——手势必须穿透"
+            "已标记态必须有撤销钮（决策 62）"
         )
         XCTAssertFalse(
             S2CenterIndicatorView.showsUndoControl(
