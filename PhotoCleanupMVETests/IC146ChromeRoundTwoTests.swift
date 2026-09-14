@@ -528,6 +528,224 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         XCTAssertEqual(store.failureCount, 1, "成功一次不计失败")
     }
 
+    // MARK: - 断言 11：`.marked` 形态
+
+    /// 决策 62：`.marked` 由正圆单图标改为胶囊——图标、「已标记」、分隔线、
+    /// 「撤销」四件齐全，与 `.addedToAlbum` 同构。
+    func testIC146C_MarkedBecomesCapsuleWithUndo() throws {
+        XCTAssertTrue(S2CenterIndicatorView.showsUndoControl(for: .marked))
+        XCTAssertTrue(
+            S2CenterIndicatorView.showsUndoControl(
+                for: .addedToAlbum(albumName: "旅行")
+            )
+        )
+        // 正对照：`.removed` 仍为单段文本、无撤销钮。
+        XCTAssertFalse(
+            S2CenterIndicatorView.showsUndoControl(
+                for: .removed(albumName: "旅行")
+            )
+        )
+
+        let view = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2View.swift")
+        )
+        // 锚点取 `content` 的声明行：`        case .marked:` 会被分派处
+        // 那只缩进更深的 switch 抢先命中（它把前者整个包含为子串）。
+        let markedCase = try XCTUnwrap(
+            slice(
+                view,
+                from: "    private var content: some View {",
+                to: "        case let .addedToAlbum(albumName):"
+            )
+        )
+        for piece in [
+            "solidCircle(systemName: \"trash.fill\")",
+            "\"s2.center.marked\"",
+            "Self.separator(color: Self.separatorColor)",
+            "\"s2.center.undo\"",
+            "Capsule().fill(Self.backgroundColor)"
+        ] {
+            XCTAssertTrue(
+                markedCase.contains(piece),
+                ".marked 形态缺 " + piece
+            )
+        }
+
+        // 正对照：`.removed` 分支既无分隔线也无撤销钮。
+        let removedCase = try XCTUnwrap(
+            slice(
+                view,
+                from: "        case let .removed(albumName):",
+                to: "\n        }\n    }\n}"
+            )
+        )
+        XCTAssertFalse(removedCase.contains("Self.separator("))
+        XCTAssertFalse(removedCase.contains("\"s2.center.undo\""))
+    }
+
+    // MARK: - 断言 12：撤销走下滑取消的同一入口
+
+    func testIC146C_MarkedUndoCallsTheSameSwipeDownEntry() throws {
+        let view = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2View.swift")
+        )
+        let undoMark = try XCTUnwrap(
+            slice(
+                view,
+                from: "    private func undoMarkFromCenterIndicator() {",
+                to: "    /// IC-113 B：点撤回"
+            )
+        )
+        // 调的就是下滑那条路径的同一个入口函数，恰 1 处。
+        XCTAssertEqual(
+            occurrences(of: "machine.handleSwipeDown()", in: undoMark),
+            1
+        )
+        // 正对照：相簿撤回不得出现在 `.marked` 路径里。
+        XCTAssertEqual(
+            occurrences(
+                of: "undoAlbumAdditionFromCenterIndicator",
+                in: undoMark
+            ),
+            0
+        )
+
+        // 手势侧的下滑取消也只调那一个函数，且该入口全仓唯一一个。
+        let machineSource = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Core/S2StateMachine.swift")
+        )
+        XCTAssertEqual(
+            occurrences(of: "? handleSwipeDown()", in: machineSource),
+            1
+        )
+        XCTAssertEqual(
+            occurrences(of: "func handleSwipeDown()", in: machineSource),
+            1,
+            "下滑取消的入口函数不是唯一一个"
+        )
+    }
+
+    // MARK: - 断言 13：撤销后行为
+
+    /// 撤销成功 ⟹ 当前张的标记已取消、`D` 减一、指示复算为 nil（整块消失），
+    /// **不产生 `.removed` 态**。
+    func testIC146C_MarkedUndoClearsMarkAndProducesNoRemovedNotice() throws {
+        // 停在最后一张：上滑标记后翻不动，当前张即被标记那张。
+        let machine = makeStateMachine(currentIndex: 2)
+        XCTAssertTrue(machine.handleSwipeUp())
+        let markedAssetID = machine.currentAssetID
+        XCTAssertTrue(machine.currentIsMarked)
+        XCTAssertTrue(machine.pendingDeletionAssetIDs.contains(markedAssetID))
+        let countBefore = machine.pendingDeletionAssetIDs.count
+
+        XCTAssertEqual(
+            S2CenterIndicatorResolver.state(
+                interfaceVisibility: machine.interfaceVisibility,
+                isMarked: machine.currentIsMarked,
+                addedAlbumName: nil,
+                lastAction: .mark
+            ),
+            .marked
+        )
+
+        // 点「撤销」= 下滑取消（同一个入口函数）。
+        XCTAssertTrue(machine.handleSwipeDown())
+        XCTAssertFalse(machine.currentIsMarked)
+        XCTAssertFalse(machine.pendingDeletionAssetIDs.contains(markedAssetID))
+        XCTAssertEqual(machine.pendingDeletionAssetIDs.count, countBefore - 1)
+        // 整块消失：复算为 nil，而不是 `.removed`。
+        XCTAssertNil(
+            S2CenterIndicatorResolver.state(
+                interfaceVisibility: machine.interfaceVisibility,
+                isMarked: machine.currentIsMarked,
+                addedAlbumName: nil,
+                lastAction: nil
+            )
+        )
+
+        let view = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S2/S2View.swift")
+        )
+        let undoMark = try XCTUnwrap(
+            slice(
+                view,
+                from: "    private func undoMarkFromCenterIndicator() {",
+                to: "    /// IC-113 B：点撤回"
+            )
+        )
+        XCTAssertEqual(occurrences(of: ".removed(", in: undoMark), 0)
+
+        // 正对照：相簿撤回仍产生 `.removed` 短提示。
+        let undoAlbum = try XCTUnwrap(
+            slice(
+                view,
+                from: "    private func undoAlbumAdditionFromCenterIndicator() {",
+                to: "    private func refreshCenterIndicator"
+            )
+        )
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: ".removed(albumName:", in: undoAlbum),
+            1
+        )
+    }
+
+    // MARK: - 断言 14：既有口径不变
+
+    func testIC146C_ExistingIndicatorValuesAreUntouched() {
+        XCTAssertEqual(
+            S2CenterIndicatorResolver.transitionSeconds,
+            0.2,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2CenterIndicatorResolver.hiddenScale,
+            0.9,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2CenterIndicatorResolver.removedNoticeSeconds,
+            1.2,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2CenterIndicatorResolver.albumIndicatorDelaySeconds,
+            0.42,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2CenterIndicatorView.containerHeight,
+            46,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S2CenterIndicatorView.horizontalPadding,
+            12,
+            accuracy: 0.000_001
+        )
+        // 分隔线白 30%；底色与前景仍取待删标记的同源常量。
+        XCTAssertEqual(
+            UIColor(S2CenterIndicatorView.separatorColor),
+            UIColor(Color.white.opacity(0.3))
+        )
+        XCTAssertEqual(
+            UIColor(S2CenterIndicatorView.backgroundColor),
+            UIColor(S2PendingDeletionMark.circleColor)
+        )
+        XCTAssertEqual(
+            UIColor(S2CenterIndicatorView.foregroundColor),
+            UIColor(S2PendingDeletionMark.symbolColor)
+        )
+        // 决策 46 既有规则：V=隐藏 一律不显示。
+        XCTAssertNil(
+            S2CenterIndicatorResolver.state(
+                interfaceVisibility: .hidden,
+                isMarked: true,
+                addedAlbumName: nil,
+                lastAction: .mark
+            )
+        )
+    }
+
     // MARK: - 夹具
 
     private let overlayPhysicalSize = CGSize(width: 393, height: 852)

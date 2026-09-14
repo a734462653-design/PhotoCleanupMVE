@@ -1738,7 +1738,15 @@ struct S2View: View {
     ) -> some View {
         if let state = centerIndicatorState {
             S2CenterIndicatorView(state: state) {
-                undoAlbumAdditionFromCenterIndicator()
+                // IC-146 C：两态两条撤销路径，互不复用。
+                switch state {
+                case .marked:
+                    undoMarkFromCenterIndicator()
+                case .addedToAlbum:
+                    undoAlbumAdditionFromCenterIndicator()
+                case .removed:
+                    break
+                }
             }
             .position(
                 x: metrics.viewportSize.width / 2,
@@ -1780,6 +1788,25 @@ struct S2View: View {
     /// 本会话加过相簿的照片都显示。
     private var addedAlbumNameForCurrentAsset: String? {
         machine.sessionAlbumAdditionsByAsset[machine.currentAssetID]?.name
+    }
+
+    /// IC-146 C（决策 62）：点「撤销」= 取消当前张的标记。
+    ///
+    /// **与下滑取消完全等价**——调的就是下滑那条路径的同一个入口函数
+    /// `S2StateMachine.handleSwipeDown()`（`Core/S2StateMachine.swift`），
+    /// 不另写一份取消逻辑（陷阱 19：状态量写入必须过汇集口）。
+    ///
+    /// 撤销成功后整块消失是**模型驱动**的：`D` 少一个 ⟹ `refreshCenterIndicator`
+    /// 复算为 nil ⟹ 整块淡出。故这里**不置 `.removed`**——那个短提示只属
+    /// 相簿撤回（规格第 18 条）。
+    private func undoMarkFromCenterIndicator() {
+        let assetID = machine.currentAssetID
+        guard machine.handleSwipeDown() else {
+            return
+        }
+        // IC-118 D：只清被撤销那张的动作记录。
+        centerIndicatorLastActionByAsset[assetID] = nil
+        refreshCenterIndicator(animated: true)
     }
 
     /// IC-113 B：点撤回 → **把资产从该相簿移除**（真实写操作，本卡显式授权），
@@ -4731,11 +4758,16 @@ struct S2CenterIndicatorView: View {
     static let horizontalPadding: CGFloat = 12
 
     /// 撤回钮是否存在（＝该状态下是否有可点元素）。
+    ///
+    /// IC-146 C（决策 62）：`.marked` 由正圆单图标改为胶囊带「撤销」，
+    /// 故它也返回 true；`.removed` 是短提示、仍无可点元素。
     static func showsUndoControl(for state: S2CenterIndicatorState) -> Bool {
-        if case .addedToAlbum = state {
+        switch state {
+        case .marked, .addedToAlbum:
             return true
+        case .removed:
+            return false
         }
-        return false
     }
 
     /// 指示器内的分隔线。几何零改动：粗细与 22pt 高仍由系统
@@ -4791,8 +4823,28 @@ struct S2CenterIndicatorView: View {
     private var content: some View {
         switch state {
         case .marked:
-            solidCircle(systemName: "trash.fill")
-                .accessibilityLabel(L10n.text("s2.mark.primary.accessibility"))
+            // IC-146 C（决策 62）：与 `.addedToAlbum` 同构——
+            // 左段垃圾桶图标 + 「已标记」，右段分隔线 + 「撤销」。
+            // 几何、底色、分隔线一律沿既有登记值，本卡只换形态。
+            HStack(spacing: 8) {
+                solidCircle(systemName: "trash.fill")
+                HStack(spacing: 10) {
+                    Text(verbatim: L10n.text("s2.center.marked"))
+                        .font(.system(size: 15))
+                        .foregroundStyle(Self.foregroundColor)
+                        .lineLimit(1)
+                    Self.separator(color: Self.separatorColor)
+                    // 撤销钮的占位：真正可点的那个以 overlay 叠在外层，
+                    // 这里只用等宽的隐形文本把版面撑出来。
+                    Text(verbatim: L10n.text("s2.center.undo"))
+                        .font(.system(size: 15, weight: .semibold))
+                        .opacity(0)
+                }
+                .padding(.horizontal, Self.horizontalPadding)
+                .frame(height: Self.containerHeight)
+                .background(Capsule().fill(Self.backgroundColor))
+            }
+            .accessibilityLabel(L10n.text("s2.mark.primary.accessibility"))
         case let .addedToAlbum(albumName):
             HStack(spacing: 8) {
                 solidCircle(systemName: "rectangle.stack.badge.plus")

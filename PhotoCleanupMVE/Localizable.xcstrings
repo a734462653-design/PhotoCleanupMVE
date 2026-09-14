@@ -749,6 +749,17 @@
         }
       }
     },
+    "s2.center.marked" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已标记"
+          }
+        }
+      }
+    },
     "s2.center.removed" : {
       "extractionState" : "manual",
       "localizations" : {
