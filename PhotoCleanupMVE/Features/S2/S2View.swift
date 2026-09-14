@@ -1,4 +1,6 @@
+import AVFoundation
 import Foundation
+import Photos
 import QuartzCore
 import SwiftUI
 import UIKit
@@ -268,6 +270,10 @@ struct S2ActionBarPresentation: Equatable {
     let recentAlbumEnabled: Bool
     let addAlbumEnabled: Bool
     let showsRecentAlbum: Bool
+    /// IC-146 A（决策 60）：新增的右位分享圆钮。**既有三条启用规则零语义变化**
+    /// ——本字段只为新按钮而加，沿用与 `addAlbumEnabled` 相同的整条禁用口径
+    /// （横栏拖动中整排禁用），不引入新的在途判定。
+    let shareEnabled: Bool
 
     init(machine: S2StateMachine) {
         let barEnabled = machine.touchSequenceOwner == .none
@@ -276,7 +282,221 @@ struct S2ActionBarPresentation: Equatable {
             !machine.isActionInFlight(.recentAlbum)
         addAlbumEnabled = barEnabled
         showsRecentAlbum = machine.recentAlbum != nil
+        shareEnabled = barEnabled
     }
+}
+
+/// IC-146 A（决策 60）：底排**中位**的口径模型。纯数据，断言 1 直接复算。
+///
+/// - 有最近相簿 ⟹ **跑道圆**：左半一键加入 + 一道分隔线 + 右半「+」开选择器。
+/// - 无最近相簿 ⟹ 退化为**单一「+」圆钮**，仍占中位（规格第 3 条）。
+///   IC-111 A 的原行为与原几何在此保留：圆钮直径 44、被两侧 `Spacer` 夹住居中。
+struct S2AlbumTrackPresentation: Equatable {
+    /// nil ⟹ 无最近相簿（退化形态）。
+    let recentAlbumName: String?
+    let recentAlbumEnabled: Bool
+    let addAlbumEnabled: Bool
+
+    /// 跑道形态（两半 + 分隔线）还是退化形态（单圆钮）。
+    var isTrack: Bool {
+        recentAlbumName != nil
+    }
+
+    /// 分隔线条数。跑道形态恰 1 条，退化形态 0 条（断言 1 正对照）。
+    var separatorCount: Int {
+        isTrack ? 1 : 0
+    }
+
+    /// 底排可点元素数：左收藏 + 中位（跑道 2 ／ 圆钮 1）+ 右分享。
+    var actionBarButtonCount: Int {
+        isTrack ? 4 : 3
+    }
+
+    init(
+        recentAlbumName: String?,
+        recentAlbumEnabled: Bool,
+        addAlbumEnabled: Bool
+    ) {
+        self.recentAlbumName = recentAlbumName
+        self.recentAlbumEnabled = recentAlbumEnabled
+        self.addAlbumEnabled = addAlbumEnabled
+    }
+
+    /// 形态判定的权威仍是 `S2ActionBarPresentation.showsRecentAlbum`（A4），
+    /// 本模型不另起一份判定。
+    init(presentation: S2ActionBarPresentation, recentAlbumName: String?) {
+        self.init(
+            recentAlbumName: presentation.showsRecentAlbum
+                ? recentAlbumName
+                : nil,
+            recentAlbumEnabled: presentation.recentAlbumEnabled,
+            addAlbumEnabled: presentation.addAlbumEnabled
+        )
+    }
+}
+
+/// IC-146 A（规格第 4 条）：分享面板的载荷。`Identifiable` 只为 `.sheet(item:)`。
+struct S2SharePayload: Identifiable, Equatable {
+    let assetID: String
+    let url: URL
+
+    var id: String {
+        assetID + "|" + url.absoluteString
+    }
+}
+
+/// IC-146 A：分享的呈现态。**纯状态，不碰状态机**——分享不改 `V`、`s`、`c`、`D`，
+/// 也不碰任何播放状态（规格第 4 条），故它是视图层的一个 `@State`，
+/// 不进 `S2StateMachine`（那台机器的状态量一个都不该为分享而多出来）。
+///
+/// 三态：闲置 → 取项中（已按下、URL 未解析出）→ 呈现中。取项失败回闲置，
+/// **不呈现空面板、也不改任何状态**。
+struct S2SharePreparation: Equatable {
+    private(set) var requestedAssetID: String?
+    private(set) var payload: S2SharePayload?
+
+    /// 已按下但 URL 还没解析出来。
+    var isResolving: Bool {
+        requestedAssetID != nil && payload == nil
+    }
+
+    /// 面板呈现中。呈现期间 S2 全部手势不接收（规格第 4 条）。
+    var isPresenting: Bool {
+        payload != nil
+    }
+
+    /// 按下分享。已在取项或已在呈现时不重入，返回 false。
+    mutating func begin(assetID: String) -> Bool {
+        guard requestedAssetID == nil, payload == nil else {
+            return false
+        }
+        requestedAssetID = assetID
+        return true
+    }
+
+    /// 取项结果。`url` 为 nil（取不到）时回闲置，不呈现面板。
+    /// 资产标识与按下时不符（期间翻了页）一律丢弃——只分享**当时那一张**。
+    mutating func resolved(assetID: String, url: URL?) {
+        guard requestedAssetID == assetID else {
+            return
+        }
+        guard let url else {
+            requestedAssetID = nil
+            return
+        }
+        payload = S2SharePayload(assetID: assetID, url: url)
+    }
+
+    /// 面板关闭，回闲置。
+    mutating func dismiss() {
+        requestedAssetID = nil
+        payload = nil
+    }
+}
+
+/// IC-146 A：分享取项接口。只解析**当前这一张**的可分享文件 URL。
+/// 生产实现走 PhotoKit；测试注入桩，不碰真实相册。
+protocol S2ShareItemResolving: AnyObject {
+    func shareItemURL(assetID: String) async -> URL?
+}
+
+/// 生产实现。语义与 `AssetSizeProbeService` 的 URL 途径同源
+/// （照片走 `fullSizeImageURL`、视频走 `AVURLAsset.url`），
+/// 但那条实现只回字节数不回 URL，且 `Services/` 在本卡不可触碰，故此处另写一份。
+/// **两处口径必须同步改**——已在报告「发现但未处理的问题」登记。
+///
+/// 全程禁网络：iCloud 未下载的资产取不到 URL，回 nil ⟹ 不呈现面板。
+final class S2PhotoKitShareItemResolver: S2ShareItemResolving {
+    func shareItemURL(assetID: String) async -> URL? {
+        guard let asset = PHAsset.fetchAssets(
+            withLocalIdentifiers: [assetID],
+            options: nil
+        ).firstObject else {
+            return nil
+        }
+        if asset.mediaType == .video {
+            return await videoURL(for: asset)
+        }
+        // 实况分享其**原始静态图**（规格第 4 条：分享其原始资产）。
+        return await imageURL(for: asset)
+    }
+
+    private func imageURL(for asset: PHAsset) async -> URL? {
+        await withCheckedContinuation { continuation in
+            let options = PHContentEditingInputRequestOptions()
+            options.isNetworkAccessAllowed = false
+            let resumer = S2ShareContinuationResumer()
+            _ = asset.requestContentEditingInput(with: options) { input, _ in
+                guard resumer.claim() else {
+                    return
+                }
+                continuation.resume(returning: input?.fullSizeImageURL)
+            }
+        }
+    }
+
+    private func videoURL(for asset: PHAsset) async -> URL? {
+        await withCheckedContinuation { continuation in
+            let options = PHVideoRequestOptions()
+            options.isNetworkAccessAllowed = false
+            options.deliveryMode = .highQualityFormat
+            let resumer = S2ShareContinuationResumer()
+            _ = PHImageManager.default().requestAVAsset(
+                forVideo: asset,
+                options: options
+            ) { avAsset, _, _ in
+                guard resumer.claim() else {
+                    return
+                }
+                continuation.resume(
+                    returning: (avAsset as? AVURLAsset)?.url
+                )
+            }
+        }
+    }
+}
+
+/// 系统回调可能多次触发时保证 `CheckedContinuation` 只 resume 一次。
+private final class S2ShareContinuationResumer {
+    private let lock = NSLock()
+    private var claimed = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !claimed else {
+            return false
+        }
+        claimed = true
+        return true
+    }
+}
+
+/// IC-146 A：系统分享面板。只承载一个文件 URL——**只分享当前这一张**。
+struct S2ShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(
+        context _: Context
+    ) -> UIActivityViewController {
+        UIActivityViewController(
+            activityItems: [url],
+            applicationActivities: nil
+        )
+    }
+
+    func updateUIViewController(
+        _: UIActivityViewController,
+        context _: Context
+    ) {}
+}
+
+/// IC-146 A：跑道圆两半与退化圆钮的视图身份（陷阱 17：左右两半是两个身份，
+/// 跨形态复用实例会把安装时的动画带着跑）。
+enum S2AlbumTrackIdentity: Hashable {
+    case recentHalf
+    case pickerHalf
+    case pickerCircle
 }
 
 /// IC-076：sheet 内容只发起「选中」与「取消」；写入与结果由协调器经状态机三段流程处理。
@@ -498,6 +718,8 @@ struct S2View: View {
     /// 用现成对象而不是工厂闭包：闭包体是非隔离的，在里面调 `@MainActor` 的
     /// 协调器方法会触发隔离检查；由 App 层在自身的主线程上下文里造好传进来。
     private let assetSizeProber: S2AssetSizeProbing?
+    /// IC-146 A：分享取项实现。默认走 PhotoKit；测试注入桩。
+    private let shareItemResolver: any S2ShareItemResolving
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
@@ -532,6 +754,8 @@ struct S2View: View {
     @State private var albumAfterimageGate = S2AlbumAfterimageGate()
     /// 0 = 未入场（透明、下沉 8pt），1 = 已就位。
     @State private var albumCapsuleEntrance: CGFloat = 1
+    /// IC-146 A：分享的呈现态。视图层状态，不入状态机。
+    @State private var sharePreparation = S2SharePreparation()
     /// IC-110 D：首次引导教程（未定项 20 ④）。持久化走 `UserDefaults`，
     /// 不入标定出厂值、`schemaVersion` 不动。
     @StateObject private var tutorial = S2TutorialCoordinator(
@@ -549,6 +773,8 @@ struct S2View: View {
         assetCreationDate: @escaping (String) -> Date? = { _ in nil },
         assetVolumeProvider: S2AssetVolumeProviding? = nil,
         assetSizeProber: S2AssetSizeProbing? = nil,
+        shareItemResolver: any S2ShareItemResolving =
+            S2PhotoKitShareItemResolver(),
         photoContent: @escaping PhotoContent,
         stripItemContent: @escaping StripItemContent,
         albumPickerContent: @escaping AlbumPickerContent,
@@ -594,6 +820,7 @@ struct S2View: View {
         self.assetCreationDate = assetCreationDate
         self.assetVolumeProvider = assetVolumeProvider
         self.assetSizeProber = assetSizeProber
+        self.shareItemResolver = shareItemResolver
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
             wrappedValue: transitionDiagnostics
@@ -670,7 +897,11 @@ struct S2View: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
             }
-            .allowsHitTesting(machine.sheetState == .closed)
+            // IC-146 A（规格第 4 条）：分享面板呈现期间 S2 全部手势不接收。
+            .allowsHitTesting(
+                machine.sheetState == .closed &&
+                    !sharePreparation.isPresenting
+            )
             .onAppear {
                 _ = machine.applyCalibration(calibration.configuration)
                 // IC-111 B：进场时显示值与模型值对齐（无残影在途）。
@@ -850,6 +1081,11 @@ struct S2View: View {
             tutorial.albumPickerVisibilityDidChange(
                 isPresented: state == .presented
             )
+        }
+        // IC-146 A：分享面板。载荷只有当前这一张的文件 URL；
+        // 关闭即回闲置，**不改变 V、s、c、D 或任何播放状态**。
+        .sheet(item: shareSheetBinding) { payload in
+            S2ShareSheet(url: payload.url)
         }
         .sheet(isPresented: albumSheetBinding) {
             albumSheet
@@ -1813,10 +2049,23 @@ struct S2View: View {
         }
     }
 
+    /// IC-146 A（决策 60）：底排三件 = 左 收藏圆钮 ｜ 中 相簿跑道圆 ｜ 右 分享圆钮。
+    ///
+    /// IC-111 A 的几何一字未动：左右圆钮贴边距 16、中位被两侧 `Spacer` 夹住故
+    /// 水平居中、行高 44。本卡只换**中位的承载形态**（胶囊 → 跑道圆）与
+    /// **右位的动作**（开选择器 → 分享）；选择器移入跑道圆右半。
+    ///
+    /// 无最近相簿时中位退化为单一「+」圆钮，**仍占中位**（规格第 3 条、断言 1）
+    /// ——两侧 `Spacer` 不合并，否则「+」会被推到分享圆钮旁边。
+    ///
+    /// 四个动作各一只 `Button`；选择器那只由 `albumPickerButton(inTrack:)`
+    /// 统一提供，跑道形态与退化形态共用同一个按钮定义（断言 2）。
     private var actionBarRow: some View {
         let presentation = S2ActionBarPresentation(machine: machine)
-        // IC-111 A：左右圆钮贴边距 16，中胶囊被两侧 Spacer 夹住 ⟹ 宽随内容且
-        // 水平居中（画布 ④）。无最近相簿时两个 Spacer 合并，只余左右圆钮。
+        let track = S2AlbumTrackPresentation(
+            presentation: presentation,
+            recentAlbumName: machine.recentAlbum?.name
+        )
         return HStack(spacing: S2OverlayLayout.minimumSpacing) {
             Button {
                 guard let request = machine.makeFavoriteToggleRequest() else {
@@ -1824,93 +2073,213 @@ struct S2View: View {
                 }
                 onFavoriteRequest(request)
             } label: {
-                Image(
-                    systemName: machine.currentIsFavorite
-                        ? "heart.fill"
-                        : "heart"
-                )
-                // IC-120 A：chrome 前景系统自适应。
-                .foregroundStyle(S2ChromeForeground.onGlassPrimary)
-                .s2ChromeCircleGlass()
+                favoriteButtonLabel
             }
             .disabled(!presentation.favoriteEnabled)
             .accessibilityLabel(favoriteActionTitle)
 
             Spacer(minLength: 0)
 
-            if let album = machine.recentAlbum {
-                Button {
-                    guard let request = machine.makeRecentAlbumAdditionRequest() else {
-                        return
-                    }
-                    onRecentAlbumRequest(request)
-                    // IC-111 C：直接点中胶囊加入 → 立即起飞（入场中则不放行）。
-                    if albumAfterimageGate.requestDirectLaunch() {
-                        markAfterimages.launchAlbumAfterimage?()
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock")
-                            .font(.system(
-                                size: S2ChromePillMetrics
-                                    .bottomCapsuleIconPointSize,
-                                weight: .medium
-                            ))
-                        Text(verbatim: L10n.text(
-                            "s2.action.add_recent_album",
-                            replacing: ["album": album.name]
-                        ))
-                        .font(.system(
-                            size: S2ChromePillMetrics
-                                .bottomCapsuleTextFontSize
-                        ))
-                        .lineLimit(1)
-                    }
-                    // IC-120 A：chrome 前景系统自适应（图标与文字一体）。
-                    .foregroundStyle(S2ChromeForeground.onGlassPrimary)
-                    .s2ChromeCapsuleGlass()
-                }
-                .disabled(!presentation.recentAlbumEnabled)
-                // IC-111 C：落点同帧的回弹 1 → 1.12 → 1。
-                .keyframeAnimator(
-                    initialValue: CGFloat(1),
-                    trigger: markAfterimages.albumLandedTick
-                ) { content, scale in
-                    content.scaleEffect(scale)
-                } keyframes: { _ in
-                    SpringKeyframe(1.12, duration: 0.12)
-                    SpringKeyframe(1.0, duration: 0.18)
-                }
-                // IC-111 C：入场＝淡入 + 上浮 8pt（未入场时下沉且透明）。
-                .opacity(Double(albumCapsuleEntrance))
-                .offset(
-                    y: (1 - albumCapsuleEntrance) *
-                        S2AlbumCapsuleEntrance.rise
-                )
+            albumTrack(track)
 
-                Spacer(minLength: 0)
-            }
+            Spacer(minLength: 0)
 
             Button {
-                performCalibratedAnimation {
-                    _ = machine.presentAlbumPicker()
-                }
+                beginShareCurrentAsset()
             } label: {
+                shareButtonLabel
+            }
+            .disabled(!presentation.shareEnabled)
+            .accessibilityLabel(L10n.text("s2.action.share"))
+        }
+        .frame(height: S2OverlayLayout.chromeRowHeight)
+    }
+
+    private var favoriteButtonLabel: some View {
+        Image(
+            systemName: machine.currentIsFavorite
+                ? "heart.fill"
+                : "heart"
+        )
+        // IC-120 A：chrome 前景系统自适应。
+        .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+        .s2ChromeCircleGlass()
+    }
+
+    /// IC-146 A：分享圆钮的标签。几何沿 chrome 既有圆钮语汇，不新增常量。
+    private var shareButtonLabel: some View {
+        Image(systemName: "square.and.arrow.up")
+            .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+            .s2ChromeCircleGlass()
+    }
+
+    /// IC-146 A：底排中位。跑道形态与退化形态在此分派。
+    @ViewBuilder
+    private func albumTrack(_ track: S2AlbumTrackPresentation) -> some View {
+        if let albumName = track.recentAlbumName {
+            HStack(spacing: 0) {
+                albumTrackRecentButton(
+                    albumName: albumName,
+                    enabled: track.recentAlbumEnabled
+                )
+                albumTrackSeparator
+                albumPickerButton(
+                    inTrack: true,
+                    enabled: track.addAlbumEnabled
+                )
+            }
+            .s2ChromeTrackGlass()
+        } else {
+            albumPickerButton(inTrack: false, enabled: track.addAlbumEnabled)
+        }
+    }
+
+    /// 跑道圆左半：一键加入最近相簿。**残影落点与入场动画都锚在这一半**
+    /// （规格第 6 条；A3 的入场动画与落点锚一并跟过来）。
+    private func albumTrackRecentButton(
+        albumName: String,
+        enabled: Bool
+    ) -> some View {
+        Button {
+            guard let request = machine.makeRecentAlbumAdditionRequest() else {
+                return
+            }
+            onRecentAlbumRequest(request)
+            // IC-111 C：直接点左半加入 → 立即起飞（入场中则不放行）。
+            if albumAfterimageGate.requestDirectLaunch() {
+                markAfterimages.launchAlbumAfterimage?()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "clock")
+                    .font(.system(
+                        size: S2ChromePillMetrics
+                            .bottomCapsuleIconPointSize,
+                        weight: .medium
+                    ))
+                Text(verbatim: L10n.text(
+                    "s2.action.add_recent_album",
+                    replacing: ["album": albumName]
+                ))
+                .font(.system(
+                    size: S2ChromePillMetrics.bottomCapsuleTextFontSize
+                ))
+                .lineLimit(1)
+            }
+            // IC-120 A：chrome 前景系统自适应（图标与文字一体）。
+            .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+            .padding(
+                .horizontal,
+                S2ChromePillMetrics.capsuleHorizontalPadding
+            )
+            // 命中区不小于 44 × 44（规格第 2 条）：高即行高 44，
+            // 宽给下限 44——极短相簿名也不会把左半挤到 44 以下。
+            .frame(minWidth: S2OverlayLayout.minimumTouchTarget)
+            .frame(height: S2ChromePillMetrics.pillHeight)
+            .contentShape(Rectangle())
+        }
+        .disabled(!enabled)
+        // IC-111 C：落点同帧的回弹 1 → 1.12 → 1。
+        .keyframeAnimator(
+            initialValue: CGFloat(1),
+            trigger: markAfterimages.albumLandedTick
+        ) { content, scale in
+            content.scaleEffect(scale)
+        } keyframes: { _ in
+            SpringKeyframe(1.12, duration: 0.12)
+            SpringKeyframe(1.0, duration: 0.18)
+        }
+        // IC-111 C：入场＝淡入 + 上浮 8pt（未入场时下沉且透明）。
+        .opacity(Double(albumCapsuleEntrance))
+        .offset(
+            y: (1 - albumCapsuleEntrance) * S2AlbumCapsuleEntrance.rise
+        )
+        // 陷阱 17：左右两半是两个身份，不得跨形态复用实例。
+        .id(S2AlbumTrackIdentity.recentHalf)
+    }
+
+    /// 跑道圆两半之间的分隔线。取值全部登记在 `S2MediaMetrics`。
+    private var albumTrackSeparator: some View {
+        Rectangle()
+            .fill(Color.white.opacity(
+                S2MediaMetrics.albumTrackSeparatorOpacity
+            ))
+            .frame(
+                width: S2MediaMetrics.albumTrackSeparatorWidth,
+                height: S2MediaMetrics.albumTrackSeparatorHeight
+            )
+    }
+
+    /// 相簿选择器按钮。**跑道形态与退化形态共用这一只**：
+    /// `inTrack == true` 时是跑道圆右半（定宽 44、无自带玻璃底，底由跑道圆给），
+    /// `inTrack == false` 时是 IC-111 A 的原圆钮（自带圆形玻璃底）。
+    @ViewBuilder
+    private func albumPickerButton(
+        inTrack: Bool,
+        enabled: Bool
+    ) -> some View {
+        Button {
+            performCalibratedAnimation {
+                _ = machine.presentAlbumPicker()
+            }
+        } label: {
+            if inTrack {
+                Image(systemName: "plus.rectangle.on.rectangle")
+                    .font(.system(
+                        size: S2ChromePillMetrics.circleIconPointSize,
+                        weight: .semibold
+                    ))
+                    .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+                    .frame(
+                        width: S2MediaMetrics.albumTrackTrailingHalfWidth,
+                        height: S2ChromePillMetrics.pillHeight
+                    )
+                    .contentShape(Rectangle())
+            } else {
                 Image(systemName: "plus.rectangle.on.rectangle")
                     // IC-120 A：chrome 前景系统自适应。
                     .foregroundStyle(S2ChromeForeground.onGlassPrimary)
                     .s2ChromeCircleGlass()
             }
-            .disabled(!presentation.addAlbumEnabled)
-            .accessibilityLabel(L10n.text("s2.action.add_album"))
         }
-        .frame(height: S2OverlayLayout.chromeRowHeight)
+        .disabled(!enabled)
+        .accessibilityLabel(L10n.text("s2.action.add_album"))
+        .id(
+            inTrack
+                ? S2AlbumTrackIdentity.pickerHalf
+                : S2AlbumTrackIdentity.pickerCircle
+        )
     }
 
     private var favoriteActionTitle: String {
         machine.currentIsFavorite
             ? L10n.text("s2.action.unfavorite")
             : L10n.text("s2.action.favorite")
+    }
+
+    /// IC-146 A：按下分享。取项在后台异步做，**期间不阻塞任何手势**，
+    /// 也不改动任何状态；取不到 URL 就什么都不呈现（规格未定失败提示，
+    /// 本卡不自造）。
+    private func beginShareCurrentAsset() {
+        let assetID = machine.currentAssetID
+        guard sharePreparation.begin(assetID: assetID) else {
+            return
+        }
+        Task { @MainActor in
+            let url = await shareItemResolver.shareItemURL(assetID: assetID)
+            sharePreparation.resolved(assetID: assetID, url: url)
+        }
+    }
+
+    private var shareSheetBinding: Binding<S2SharePayload?> {
+        Binding(
+            get: { sharePreparation.payload },
+            set: { payload in
+                if payload == nil {
+                    sharePreparation.dismiss()
+                }
+            }
+        )
     }
 
     private var albumSheetBinding: Binding<Bool> {
@@ -2898,6 +3267,53 @@ enum S2MediaMetrics {
             safeAreaBottom: safeAreaBottom
         ) + max(0, bottomStripHeight) + videoBarBottomToStripTop
     }
+
+    // MARK: - 相簿跑道圆（决策 60，IC-146 A）
+    //
+    // 跑道圆 = 左半「一键加入最近相簿」+ 分隔线 + 右半「+ 开选择器」，
+    // 整只水平居中于两个圆钮之间的可用区间。三个量都不进
+    // `S2CalibrationConfiguration`、不上标定面板，故 `schemaVersion` 不动。
+
+    /// 跑道圆左右两半之间的白分隔线不透明度。
+    /// **取值出处：SPEC-S2 v20 第十一节第 2 部分 `albumTrackSeparatorOpacity`。**
+    static let albumTrackSeparatorOpacity: Double = 0.22
+
+    /// 分隔线笔画宽。规格只登记不透明度、未登记线宽（hairline 语义），
+    /// 本卡取 1 pt 并登记于此，**不散落为裸数**。
+    static let albumTrackSeparatorWidth: CGFloat = 1
+
+    /// 分隔线可见高。与中央指示胶囊内的分隔线同高（`Divider().frame(height: 22)`，
+    /// IC-136 C 既有值），同族语汇取同值。
+    static let albumTrackSeparatorHeight: CGFloat = 22
+
+    /// 跑道圆**右半**（「+」开选择器）的宽 = chrome 行高（引用，非复制）。
+    /// 取 44 保证该半的命中区不小于 44 × 44（规格第 2 条）。
+    static let albumTrackTrailingHalfWidth = S2OverlayLayout.chromeRowHeight
+
+    /// 跑道圆**左半中心**相对整只跑道圆中心的水平偏移（向左为负）。
+    ///
+    /// 推导（①，决策会话验算）：跑道圆水平居中于可用区间，故
+    /// `左半中心 = 整只中心 − (分隔线宽 + 右半宽) / 2`——内容驱动的左半宽
+    /// 在式中约去，**落点与相簿名长短无关**（断言 5 的不变量）。
+    /// `S2AlbumAfterimageFlight.bottomCapsuleCenter` 只消费本量，不另算一份。
+    static let albumTrackRecentHalfCenterOffsetX: CGFloat =
+        -(albumTrackSeparatorWidth + albumTrackTrailingHalfWidth) / 2
+
+    /// 跑道圆**左半中心**的 x（纯几何，断言 5 的不变量由它复算）。
+    ///
+    /// `slotMinX`／`slotMaxX` 是两圆钮之间的可用区间；跑道圆水平居中于该区间。
+    /// `recentHalfWidth` 是内容驱动的左半宽——它在推导中约去，故本函数对任意
+    /// 左半宽给出同一个 x，这正是「落点与相簿名长短无关」的形式化表述。
+    static func albumTrackRecentHalfCenterX(
+        slotMinX: CGFloat,
+        slotMaxX: CGFloat,
+        recentHalfWidth: CGFloat
+    ) -> CGFloat {
+        let trackWidth = recentHalfWidth + albumTrackSeparatorWidth +
+            albumTrackTrailingHalfWidth
+        let trackMinX = (slotMinX + slotMaxX) / 2 - trackWidth / 2
+        return trackMinX + recentHalfWidth / 2
+    }
 }
 
 /// IC-139 A：实况胶囊口径模型。`nil` = 该页不构造胶囊。
@@ -3277,6 +3693,14 @@ private extension View {
             height: S2ChromePillMetrics.pillHeight
         )
         .s2ChromeGlassBackground(in: Circle(), interactive: true)
+    }
+
+    /// IC-146 A：跑道圆玻璃底。与 `s2ChromeCapsuleGlass` **同一配方**，
+    /// 区别只在**不加水平留白**——左右两半各自带自己的留白与命中区，
+    /// 外层再加一层留白会把两半的命中边界推出跑道圆。
+    func s2ChromeTrackGlass() -> some View {
+        frame(height: S2ChromePillMetrics.pillHeight)
+            .s2ChromeGlassBackground(in: Capsule())
     }
 
     /// 玻璃跑道胶囊：宽随内容 + 定高 44 + 同族玻璃底与描边。

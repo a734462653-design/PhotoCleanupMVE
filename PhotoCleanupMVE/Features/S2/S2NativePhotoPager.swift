@@ -1184,9 +1184,18 @@ enum S2AlbumAfterimageFlight {
         return path
     }
 
-    /// 底部中胶囊中心（视口坐标）。与 `S2OverlayLayout.snapshot` 的底排构造
-    /// **同一套表达式**：左右各 Ø`chromeRowHeight` 圆钮贴 `chromeHorizontalMargin`，
-    /// 胶囊占两者之间、各留 `minimumSpacing`。
+    /// 底部**跑道圆左半**中心（视口坐标）——相簿残影的落点。
+    ///
+    /// 可用区间与 `S2OverlayLayout.snapshot` 的底排构造**同一套表达式**：
+    /// 左右各 Ø`chromeRowHeight` 圆钮贴 `chromeHorizontalMargin`，
+    /// 中位占两者之间、各留 `minimumSpacing`。
+    ///
+    /// IC-146 A（决策 60、规格第 6 条）：落点由「整只中心」改为「左半中心」。
+    /// 跑道圆水平居中于可用区间，故
+    /// `左半中心 = 可用区间中点 + albumTrackRecentHalfCenterOffsetX`，
+    /// 其中偏移 = −(分隔线宽 + 右半宽) / 2——内容驱动的左半宽在推导中约去，
+    /// **落点与相簿名长短无关**（断言 5 的不变量）。偏移量登记在
+    /// `S2MediaMetrics`，本函数只消费不定义。
     static func bottomCapsuleCenter(
         viewportSize: CGSize,
         safeAreaInsets: S2OverlaySafeAreaInsets
@@ -1204,7 +1213,8 @@ enum S2AlbumAfterimageFlight {
                 safeAreaBottom: safeAreaInsets.bottom
             )
         return CGPoint(
-            x: (capsuleMinX + capsuleMaxX) / 2,
+            x: (capsuleMinX + capsuleMaxX) / 2 +
+                S2MediaMetrics.albumTrackRecentHalfCenterOffsetX,
             y: centerY
         )
     }
