@@ -554,20 +554,17 @@ final class IC145ScanProbeTests: XCTestCase {
         )
 
         // 负对照：卡内点名的产品路径零命中。
-        var scanned: [(String, String)] = [(
-            "PhotoCleanupMVE/Services/AssetSizeScanner.swift",
-            try XCTUnwrap(
-                sourceText("PhotoCleanupMVE/Services/AssetSizeScanner.swift")
-            )
-        )]
+        let scannerPath = "PhotoCleanupMVE/Services/AssetSizeScanner.swift"
+        let scannerSource = try XCTUnwrap(sourceText(scannerPath))
+        var scanned: [(String, String)] = [(scannerPath, scannerSource)]
         let productURLs =
             productSwiftFileURLs(under: "PhotoCleanupMVE/Features") +
             productSwiftFileURLs(under: "PhotoCleanupMVE/App")
         for url in productURLs {
-            scanned.append((
-                url.lastPathComponent,
-                try XCTUnwrap(try? String(contentsOf: url, encoding: .utf8))
-            ))
+            let text = try XCTUnwrap(
+                try? String(contentsOf: url, encoding: .utf8)
+            )
+            scanned.append((url.lastPathComponent, text))
         }
         XCTAssertGreaterThan(
             scanned.count,

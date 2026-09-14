@@ -900,7 +900,9 @@ final class ByteRouteBenchmarkProbeService: ByteRouteProbing {
             mediaKind: mediaKind
         )
         let propertyStartedAt = CACurrentMediaTime()
-        let propertyBytes = primary.flatMap(ResourcePropertyRoute.byteCount)
+        let propertyBytes = primary.flatMap {
+            ResourcePropertyRoute.byteCount(of: $0)
+        }
         let propertyElapsed =
             (CACurrentMediaTime() - propertyStartedAt) * 1_000
 
@@ -1381,7 +1383,7 @@ enum ProbeFormat {
     }
 
     static func optionalCount(_ value: Int64?) -> String {
-        value.map { String($0) } ?? none
+        value.map { String($0) } ?? absentText
     }
 
     static func seconds(_ value: Double) -> String {
