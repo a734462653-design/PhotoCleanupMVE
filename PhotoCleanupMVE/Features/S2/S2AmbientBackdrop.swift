@@ -64,6 +64,12 @@ enum S2AmbientMetrics {
     /// 中 `ambientVeilMidOpacity` 一行的注释「42% 位置」。
     static let veilMidLocation: Double = 0.42
 
+    /// 顶部冷色光晕的**色相**。SPEC-S0 v1 只登记了该光晕的半径与不透明度
+    /// （`ambientTintRadius` / `ambientTintOpacity`），未登记色相，
+    /// 故这一项是**执行端取定**：一枚偏冷的浅蓝灰，与「冷色光晕」的措辞相符。
+    /// 登记于此而不散落为裸数；日后决策会话若要定案，改这一处即可。
+    static let tintHue = (red: 0.42, green: 0.52, blue: 0.72)
+
     /// 取图的目标边长。模糊半径 34 之后分辨率没有意义，缩略级即可
     /// （规格第 14 条：不得为等氛围底而延迟主图呈现）。
     static let sourceTargetEdge: CGFloat = 160
@@ -199,6 +205,62 @@ final class S2AmbientBackdropStore: ObservableObject {
     }
 }
 
+/// IC-146 B：颗粒层的噪点贴图。**确定性生成**（固定种子的线性同余），
+/// 与系统外观无关。
+///
+/// 刻意不用 `.ultraThinMaterial` 一类系统材质：那些材质随 trait 变，
+/// 与决策 61「恒为深色配方、不随系统外观切换」直接相悖
+/// （#289 的 `testIC067G39…` 就是被这一层的外观差打红的）。
+///
+/// 噪点以**中灰**为均值：中灰在 `overlay` 混合下近似恒等元，
+/// 故这一层只加颗粒感，不整体提亮或压暗底下的幕色。
+enum S2AmbientGrain {
+    /// 贴图边长。平铺用，取 2 的幂。
+    static let tileEdge = 64
+
+    /// 噪点幅度：中灰 128 上下各 24 级。
+    static let amplitude = 24
+
+    static let tile: UIImage? = makeTile()
+
+    private static func makeTile() -> UIImage? {
+        let edge = tileEdge
+        let span = amplitude * 2 + 1
+        var bytes = [UInt8](repeating: 0, count: edge * edge * 4)
+        var seed: UInt32 = 0x9E37_79B9
+        for pixel in 0..<(edge * edge) {
+            seed = seed &* 1_664_525 &+ 1_013_904_223
+            let level = UInt8(
+                clamping: 128 - amplitude + Int((seed >> 24) % UInt32(span))
+            )
+            let offset = pixel * 4
+            bytes[offset] = level
+            bytes[offset + 1] = level
+            bytes[offset + 2] = level
+            bytes[offset + 3] = 255
+        }
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
+              let image = CGImage(
+                  width: edge,
+                  height: edge,
+                  bitsPerComponent: 8,
+                  bitsPerPixel: 32,
+                  bytesPerRow: edge * 4,
+                  space: CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGBitmapInfo(
+                      rawValue: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ),
+                  provider: provider,
+                  decode: nil,
+                  shouldInterpolate: false,
+                  intent: .defaultIntent
+              ) else {
+            return nil
+        }
+        return UIImage(cgImage: image)
+    }
+}
+
 /// IC-146 B：氛围底视图。主图**之下**的一层，不参与布局、不接触控。
 ///
 /// 三层自下而上：模糊铺底 → 深色渐隐幕 → 颗粒层。取不到源图时只剩
@@ -277,14 +339,8 @@ struct S2AmbientBackdropView: View {
     private func tint(viewportHeight: CGFloat) -> some View {
         RadialGradient(
             colors: [
-                Color(
-                    .sRGB,
-                    red: 0.42,
-                    green: 0.52,
-                    blue: 0.72,
-                    opacity: S2AmbientMetrics.tintOpacity
-                ),
-                Color(.sRGB, red: 0.42, green: 0.52, blue: 0.72, opacity: 0)
+                Self.tintColor(opacity: S2AmbientMetrics.tintOpacity),
+                Self.tintColor(opacity: 0)
             ],
             center: .top,
             startRadius: 0,
@@ -292,11 +348,26 @@ struct S2AmbientBackdropView: View {
         )
     }
 
-    /// 颗粒层。`overlay` 混合，避免大片纯色区域的带状断层。
+    /// 冷色光晕的色。色相登记在 `S2AmbientMetrics.tintHue`，不透明度由调用方给。
+    private static func tintColor(opacity: Double) -> Color {
+        Color(
+            .sRGB,
+            red: S2AmbientMetrics.tintHue.red,
+            green: S2AmbientMetrics.tintHue.green,
+            blue: S2AmbientMetrics.tintHue.blue,
+            opacity: opacity
+        )
+    }
+
+    /// 颗粒层。平铺确定性噪点贴图，`overlay` 混合，
+    /// 避免大片纯色区域的带状断层。
+    @ViewBuilder
     private var grain: some View {
-        Rectangle()
-            .fill(.ultraThinMaterial)
-            .opacity(S2AmbientMetrics.grainOpacity * 0.06)
-            .blendMode(.overlay)
+        if let tile = S2AmbientGrain.tile {
+            Image(uiImage: tile)
+                .resizable(resizingMode: .tile)
+                .opacity(S2AmbientMetrics.grainOpacity)
+                .blendMode(.overlay)
+        }
     }
 }

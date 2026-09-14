@@ -972,10 +972,6 @@ struct S2View: View {
             // 别的应用被压下去的音频就此恢复。回到 active 不自动重新激活。
             videoPlayback.applicationDidResignActive()
         }
-        // IC-146 B（规格第 9 条）：氛围底随当前张切换。
-        .onChange(of: machine.currentAssetID) { _, assetID in
-            ambientBackdrop.load(assetID: assetID, using: ambientImageLoader)
-        }
         .onChange(of: machine.interfaceVisibility) { _, visibility in
             applyStatusBarAppearance(for: visibility)
             // IC-112 B：中央指示随 chrome 同显隐（V=隐藏 时不显示）。
@@ -1049,6 +1045,11 @@ struct S2View: View {
             }
         }
         .onChange(of: machine.currentAssetID) { _, assetID in
+            // IC-146 B（规格第 9 条）：氛围底随当前张切换。并进这条既有的
+            // 页变更回调而不是另起一条——IC-141／IC-143 两条源码扫描断言
+            // 用 `onChangeBody(of: "machine.currentAssetID")` 截取回调体，
+            // 另起一条会被它抢先截到，把那两条断言打红（#289 实证）。
+            ambientBackdrop.load(assetID: assetID, using: ambientImageLoader)
             // IC-110 D 第 3 步：等用户真实翻回刚标记那张。
             tutorial.currentAssetDidChange(to: assetID)
             // IC-112 B：翻页即随新页状态刷新，且**不带动画**（卡内 ④）。

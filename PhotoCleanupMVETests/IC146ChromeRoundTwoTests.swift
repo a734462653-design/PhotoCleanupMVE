@@ -417,8 +417,10 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
             "几何链的声明或调用点数量变了"
         )
 
+        // 剔掉注释再扫——本文件自己的说明性注释里就写着 `@Published`
+        // 与 `colorScheme`，带注释扫会把解释文字当成实现命中（#289 实证）。
         let ambient = try XCTUnwrap(
-            sourceText("PhotoCleanupMVE/Features/S2/S2AmbientBackdrop.swift")
+            strippedSource("PhotoCleanupMVE/Features/S2/S2AmbientBackdrop.swift")
         )
         // 氛围底一侧不得出现任何几何写入或分页器引用。
         XCTAssertEqual(occurrences(of: "writePhotoGeometry", in: ambient), 0)
@@ -502,15 +504,18 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         XCTAssertEqual(dark, light, "幕底色随外观解析出了两个值")
 
         let ambient = try XCTUnwrap(
-            sourceText("PhotoCleanupMVE/Features/S2/S2AmbientBackdrop.swift")
+            strippedSource("PhotoCleanupMVE/Features/S2/S2AmbientBackdrop.swift")
         )
-        // 配方里不得出现任何随外观解析的色源。
+        // 配方里不得出现任何随外观解析的色源（同样剔注释后再扫）。
         for dynamic in [
             "colorScheme",
             "systemBackground",
             "UIColor.label",
             ".primary",
-            "S2ChromeForeground"
+            "S2ChromeForeground",
+            // 系统材质随 trait 变——#289 的 testIC067G39 就是被它打红的。
+            "Material",
+            "ultraThin"
         ] {
             XCTAssertEqual(
                 occurrences(of: dynamic, in: ambient),
@@ -1010,6 +1015,54 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
             contentsOf: repoRoot().appendingPathComponent(relativePath),
             encoding: .utf8
         )
+    }
+
+    /// 读源码并剔掉 `//` 注释与字符串字面量内容。实现层面的「有没有用到
+    /// 某个符号」只该看代码，注释里解释该符号为何不用会被当成命中。
+    private func strippedSource(_ relativePath: String) -> String? {
+        guard let source = sourceText(relativePath) else {
+            return nil
+        }
+        // 换行符不写转义字面量：本机的 shell heredoc 会吞反斜杠，
+        // 生成出来的会是一个真正的换行、编译不过。
+        let newline = Character(UnicodeScalar(UInt8(10)))
+        var output = ""
+        var iterator = source.startIndex
+        var inString = false
+        while iterator < source.endIndex {
+            let character = source[iterator]
+            let next = source.index(after: iterator)
+            if inString {
+                if character == "\\" {
+                    iterator = next < source.endIndex
+                        ? source.index(after: next)
+                        : source.endIndex
+                    continue
+                }
+                if character == "\"" {
+                    inString = false
+                }
+                iterator = next
+                continue
+            }
+            if character == "\"" {
+                inString = true
+                iterator = next
+                continue
+            }
+            if character == "/", next < source.endIndex, source[next] == "/" {
+                while iterator < source.endIndex,
+                      source[iterator] != newline {
+                    iterator = source.index(after: iterator)
+                }
+                // 换行照留，剔注释不得把上下两行的记号粘成一个。
+                output.append(newline)
+                continue
+            }
+            output.append(character)
+            iterator = next
+        }
+        return output
     }
 
     private func slice(

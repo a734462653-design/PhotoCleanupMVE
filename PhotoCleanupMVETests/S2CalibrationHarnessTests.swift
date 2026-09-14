@@ -6690,8 +6690,15 @@ final class S2CalibrationHarnessTests: XCTestCase {
         )
     }
 
-    // IC-067 G39：同一个 S2 页面随 trait 原地切换纯黑与纯白背景。
-    func testIC067G39ViewportBackgroundTracksInterfaceStyle() {
+    // IC-067 G39（IC-146 B 改口径，SPEC-S2 v20 回写决策 61）：
+    // 主图之外的区域不再是随 trait 切换的纯黑／纯白，而是**当前照片的氛围底**，
+    // 且**恒为深色配方、不随系统外观切换**（决策 61 原文：主图之外是取景框外）。
+    //
+    // 原断言「深色 → 0、浅色 → 255」随该决策作废。改测同一机制下的新不变量：
+    // 两种 trait 下采到的是**同一个**深色值。取图未就绪时氛围底即幕底色
+    // `ambientBaseColor`（#050507）叠渐隐幕，故实测值是个接近 0 的小数，
+    // 这里只钉「两侧相等」与「确实是深色」，不钉具体值——具体观感由 H69 第 3 项判定。
+    func testIC067G39ViewportBackgroundIsAmbientAndIgnoresInterfaceStyle() {
         let configuration = S2CalibrationConfiguration.factoryPlaceholder
         let machine = makeMachine(configuration: configuration)
         XCTAssertTrue(machine.handleSingleTap())
@@ -6727,8 +6734,14 @@ final class S2CalibrationHarnessTests: XCTestCase {
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
         let lightGray = viewportBackgroundPixelGray(controller: controller)
 
-        XCTAssertEqual(darkGray, 0, accuracy: 3)
-        XCTAssertEqual(lightGray, 255, accuracy: 3)
+        XCTAssertEqual(
+            darkGray,
+            lightGray,
+            accuracy: 3,
+            "氛围底随系统外观变了，与决策 61「恒为深色配方」相悖"
+        )
+        XCTAssertLessThan(darkGray, 60, "氛围底不是深色")
+        XCTAssertLessThan(lightGray, 60, "浅色外观下氛围底不是深色")
     }
 
     // IC-067 G40（夹具驱动）：接管几何与蒙版更新处于同一禁动画事务。
