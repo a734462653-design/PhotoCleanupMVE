@@ -313,6 +313,292 @@ final class IC145ScanProbeTests: XCTestCase {
         )
     }
 
+    // MARK: - 断言 3：分位数统计
+
+    /// 最近秩法：升序后取第 `ceil(rank / 100 × n)` 个，秩从 1 起、夹逼到 `[1, n]`，
+    /// 偶数长度**不插值**。报告头部的 `percentile-note` 写的就是这条口径。
+    func testIC145B_PercentileUsesNearestRankAndHandlesEdgeCases() {
+        // 空数组 → nil。
+        XCTAssertNil(ProbeStatistics.percentile([], 50))
+        XCTAssertNil(ProbeStatistics.percentile([], 95))
+
+        // 单元素：任何分位都回它自己。
+        XCTAssertEqual(ProbeStatistics.percentile([7], 50), 7)
+        XCTAssertEqual(ProbeStatistics.percentile([7], 95), 7)
+        XCTAssertEqual(ProbeStatistics.percentile([7], 0), 7)
+
+        // 偶数长度：不插值，p50 取第 ceil(0.5 × 4) = 2 个 → 2。
+        XCTAssertEqual(ProbeStatistics.percentile([1, 2, 3, 4], 50), 2)
+        XCTAssertEqual(ProbeStatistics.percentile([4, 3, 2, 1], 50), 2)
+        // p95 取第 ceil(0.95 × 4) = 4 个 → 4。
+        XCTAssertEqual(ProbeStatistics.percentile([1, 2, 3, 4], 95), 4)
+
+        // 奇数长度：p50 取第 ceil(0.5 × 5) = 3 个 → 3。
+        XCTAssertEqual(ProbeStatistics.percentile([5, 3, 1, 4, 2], 50), 3)
+
+        // 100 条：p50 取第 50 个，p95 取第 95 个。
+        let hundred = (1...100).map(Double.init)
+        XCTAssertEqual(ProbeStatistics.percentile(hundred, 50), 50)
+        XCTAssertEqual(ProbeStatistics.percentile(hundred, 95), 95)
+        XCTAssertEqual(ProbeStatistics.percentile(hundred.shuffled(), 95), 95)
+    }
+
+    /// 分层抽样：三族各至多 70，轮转交错后截断到 200。
+    func testIC145B_StratifiedSampleCapsPerKindAndTotal() {
+        let photo = (0..<500).map { "P\($0)" }
+        let live = (0..<500).map { "L\($0)" }
+        let video = (0..<500).map { "V\($0)" }
+
+        let sample = ByteRouteSampling.stratifiedSample(
+            photo: photo,
+            livePhoto: live,
+            video: video
+        )
+        XCTAssertEqual(sample.count, ByteRouteSampling.sampleLimit)
+        for prefix in ["P", "L", "V"] {
+            let count = sample.filter { $0.hasPrefix(prefix) }.count
+            XCTAssertLessThanOrEqual(count, ByteRouteSampling.perKindLimit)
+            XCTAssertGreaterThanOrEqual(
+                count,
+                60,
+                "轮转交错后 \(prefix) 族被削得过多：\(count)"
+            )
+        }
+        XCTAssertEqual(Set(sample).count, sample.count, "样本不得重复")
+
+        // 某族为空时不报错，其余两族照取。
+        let twoKinds = ByteRouteSampling.stratifiedSample(
+            photo: photo,
+            livePhoto: [],
+            video: video
+        )
+        XCTAssertEqual(
+            twoKinds.count,
+            ByteRouteSampling.perKindLimit * 2,
+            "两族各满 70 条、交错后 140 条，未达 200 上限即不截断"
+        )
+        XCTAssertTrue(twoKinds.allSatisfy { !$0.hasPrefix("L") })
+
+        // 全空 → 空样本。
+        XCTAssertTrue(
+            ByteRouteSampling
+                .stratifiedSample(photo: [], livePhoto: [], video: [])
+                .isEmpty
+        )
+    }
+
+    // MARK: - 断言 4：子项 B 报告文本
+
+    func testIC145B_ProbeTextRowAndRouteSummaryAreDeterministic() {
+        XCTAssertEqual(ByteRouteProbeText.formatVersion, 1)
+
+        let agreeing = makeByteRouteMeasurement()
+        XCTAssertEqual(
+            ByteRouteProbeText.row(agreeing),
+            "ABCDEFGH|photo|edited=no|enum=0.500ms|data-bytes=1000|" +
+                "data=12.250ms|url-bytes=1000|url=2.500ms|prop-bytes=1000|" +
+                "prop=0.125ms"
+        )
+
+        let routeLines = ByteRouteProbeText.routeSummary([agreeing])
+        XCTAssertEqual(routeLines.count, 3)
+        XCTAssertEqual(
+            routeLines[0],
+            "summary|route=data|p50=12.250ms|p95=12.250ms|max=12.250ms|" +
+                "ok=1/1 (100.0%)"
+        )
+        XCTAssertEqual(
+            routeLines[1],
+            "summary|route=url|p50=2.500ms|p95=2.500ms|max=2.500ms|" +
+                "ok=1/1 (100.0%)"
+        )
+        XCTAssertEqual(
+            routeLines[2],
+            "summary|route=resource-property|p50=0.125ms|p95=0.125ms|" +
+                "max=0.125ms|ok=1/1 (100.0%)"
+        )
+
+        // 失败计入分母：途径 3 取不到时 ok 变 0/1，耗时读数照样入统计。
+        let propertyFailed = makeByteRouteMeasurement(
+            resourcePropertyByteCount: nil
+        )
+        XCTAssertEqual(
+            ByteRouteProbeText.routeSummary([propertyFailed])[2],
+            "summary|route=resource-property|p50=0.125ms|p95=0.125ms|" +
+                "max=0.125ms|ok=0/1 (0.0%)"
+        )
+
+        // 键探测行：公开正对照与非公开候选键各一行。
+        XCTAssertEqual(
+            ByteRouteProbeText.keyProbeLine(ResourceKeyProbeResult(
+                key: ResourcePropertyRoute.candidateKey,
+                isPublicInterface: false,
+                respondsToSelector: true,
+                valueTypeName: "__NSCFNumber"
+            )),
+            "key-probe|key=\(ResourcePropertyRoute.candidateKey)|" +
+                "public-interface=no|responds=yes|value-type=__NSCFNumber"
+        )
+        // 库里没有可供探测的资源时写 unknown，不冒充结论。
+        XCTAssertEqual(
+            ByteRouteProbeText.keyProbeLine(ResourceKeyProbeResult(
+                key: ResourcePropertyRoute.publicControlKey,
+                isPublicInterface: true,
+                respondsToSelector: nil,
+                valueTypeName: nil
+            )),
+            "key-probe|key=\(ResourcePropertyRoute.publicControlKey)|" +
+                "public-interface=yes|responds=unknown|value-type=none"
+        )
+
+        // 外推行：p50 × 全库数，毫秒转秒，且原样标注上界假设。
+        let extrapolation = ByteRouteProbeText.extrapolationLines(
+            [agreeing],
+            libraryAssetCount: 1_000
+        )
+        XCTAssertEqual(extrapolation.count, 3)
+        XCTAssertEqual(
+            extrapolation[0],
+            "extrapolation|route=data|p50-times-library=12.25s|" +
+                "assumes serial, no cache, no concurrency (upper bound)"
+        )
+    }
+
+    /// 不一致明细**只在确有差值时出现**。
+    func testIC145B_MismatchLinesAppearOnlyWhenBytesActuallyDiffer() {
+        let agreeing = makeByteRouteMeasurement()
+        XCTAssertTrue(ByteRouteProbeText.mismatchLines([agreeing]).isEmpty)
+        XCTAssertFalse(agreeing.hasByteMismatch)
+
+        // 一条途径失败（nil）不算不一致——没有可比性，不该进明细。
+        let partiallyFailed = makeByteRouteMeasurement(
+            resourcePropertyByteCount: nil
+        )
+        XCTAssertTrue(
+            ByteRouteProbeText.mismatchLines([partiallyFailed]).isEmpty
+        )
+        XCTAssertFalse(partiallyFailed.hasByteMismatch)
+
+        // 三条全失败也不算不一致。
+        let allFailed = makeByteRouteMeasurement(
+            dataByteCount: nil,
+            urlByteCount: nil,
+            resourcePropertyByteCount: nil
+        )
+        XCTAssertTrue(ByteRouteProbeText.mismatchLines([allFailed]).isEmpty)
+
+        // 确有差值：两两差值逐列给出，取不到的对写 none。
+        let mismatched = makeByteRouteMeasurement(
+            assetID: "ZYXWVUTS-9999/L0/001",
+            mediaKind: .video,
+            isEdited: true,
+            urlByteCount: 900,
+            resourcePropertyByteCount: nil
+        )
+        XCTAssertTrue(mismatched.hasByteMismatch)
+        let lines = ByteRouteProbeText.mismatchLines([agreeing, mismatched])
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertEqual(
+            lines[0],
+            "mismatch|ZYXWVUTS|video|edited=yes|data=1000|url=900|" +
+                "resource-property=none|data-url=100|" +
+                "data-resource-property=none|url-resource-property=none"
+        )
+
+        // 报告体：全一致时不出 [mismatch] 段；有差值时出，且计数正确。
+        let clean = ByteRouteProbeText.report(
+            measurements: [agreeing],
+            libraryAssetCount: 10,
+            limit: ByteRouteSampling.sampleLimit,
+            perKindLimit: ByteRouteSampling.perKindLimit,
+            keyProbeResults: []
+        )
+        XCTAssertFalse(clean.contains("[mismatch]"))
+        let dirty = ByteRouteProbeText.report(
+            measurements: [agreeing, mismatched],
+            libraryAssetCount: 10,
+            limit: ByteRouteSampling.sampleLimit,
+            perKindLimit: ByteRouteSampling.perKindLimit,
+            keyProbeResults: []
+        )
+        XCTAssertTrue(
+            dirty.components(separatedBy: "\n").contains("[mismatch] assets=1")
+        )
+        XCTAssertTrue(
+            dirty.contains("summary|byte-mismatch-assets=1/2")
+        )
+    }
+
+    // MARK: - 断言 5：途径 3 的键名与 KVC 调用不得外泄
+
+    /// 途径 3 用的是**非公开**运行时键。卡内授权只在探针文件内使用，
+    /// 故键名字面量与 `value(forKey:)` 调用在产品路径里命中数必须为 0。
+    ///
+    /// 扫的是**带引号的键名字面量**：`AssetSizeScanner.swift` 里的
+    /// `.fileSizeKey` 是 `URLResourceKey` 成员、不带引号，不该被误判。
+    func testIC145B_ResourcePropertyKeyAndKVCStayInsideTheProbeFile() throws {
+        let quotedKey = "\"" + ResourcePropertyRoute.candidateKey + "\""
+        let kvcCall = "value(forKey:"
+
+        // 正对照：探针文件内两者都在。
+        let probeSource = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Services/ScanServiceProbe.swift")
+        )
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: quotedKey, in: probeSource),
+            1
+        )
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: kvcCall, in: probeSource),
+            1
+        )
+
+        // 负对照：卡内点名的产品路径零命中。
+        var scanned: [(String, String)] = [(
+            "PhotoCleanupMVE/Services/AssetSizeScanner.swift",
+            try XCTUnwrap(
+                sourceText("PhotoCleanupMVE/Services/AssetSizeScanner.swift")
+            )
+        )]
+        let productURLs =
+            productSwiftFileURLs(under: "PhotoCleanupMVE/Features") +
+            productSwiftFileURLs(under: "PhotoCleanupMVE/App")
+        for url in productURLs {
+            scanned.append((
+                url.lastPathComponent,
+                try XCTUnwrap(try? String(contentsOf: url, encoding: .utf8))
+            ))
+        }
+        XCTAssertGreaterThan(
+            scanned.count,
+            3,
+            "扫描清单太短，说明路径拼错了，负对照会假通过"
+        )
+
+        for (label, source) in scanned {
+            XCTAssertEqual(
+                occurrences(of: quotedKey, in: source),
+                0,
+                "途径 3 的键名字面量外泄到 \(label)"
+            )
+            XCTAssertEqual(
+                occurrences(of: kvcCall, in: source),
+                0,
+                "KVC 调用外泄到 \(label)"
+            )
+        }
+
+        // 键名本身仍标注为非公开，公开正对照标注为公开。
+        XCTAssertFalse(
+            ResourcePropertyRoute
+                .isPublicInterface(ResourcePropertyRoute.candidateKey)
+        )
+        XCTAssertTrue(
+            ResourcePropertyRoute
+                .isPublicInterface(ResourcePropertyRoute.publicControlKey)
+        )
+    }
+
     // MARK: - 夹具
 
     private func verdict(
@@ -327,6 +613,74 @@ final class IC145ScanProbeTests: XCTestCase {
             screenSize: screen,
             rule: rule
         )
+    }
+
+    /// 子项 B 的测量夹具。耗时值都取二进制可精确表示的数（0.5 / 2.5 /
+    /// 12.25 / 0.125），报告里的 `%.3f` 舍入才没有歧义。
+    private func makeByteRouteMeasurement(
+        assetID: String = "ABCDEFGH-1234/L0/001",
+        mediaKind: S2AssetSizeProbeMediaKind = .photo,
+        isEdited: Bool = false,
+        dataByteCount: Int64? = 1_000,
+        urlByteCount: Int64? = 1_000,
+        resourcePropertyByteCount: Int64? = 1_000
+    ) -> ByteRouteMeasurement {
+        ByteRouteMeasurement(
+            assetID: assetID,
+            mediaKind: mediaKind,
+            isEdited: isEdited,
+            resourceEnumerationElapsedMilliseconds: 0.5,
+            dataByteCount: dataByteCount,
+            dataElapsedMilliseconds: 12.25,
+            urlByteCount: urlByteCount,
+            urlElapsedMilliseconds: 2.5,
+            resourcePropertyByteCount: resourcePropertyByteCount,
+            resourcePropertyElapsedMilliseconds: 0.125
+        )
+    }
+
+    private func repoRoot() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+    }
+
+    private func sourceText(_ relativePath: String) -> String? {
+        try? String(
+            contentsOf: repoRoot().appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
+    }
+
+    private func productSwiftFileURLs(under relativeDirectory: String) -> [URL] {
+        let directory = repoRoot().appendingPathComponent(relativeDirectory)
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ) else {
+            return []
+        }
+        var urls: [URL] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            urls.append(url)
+        }
+        return urls.sorted { $0.path < $1.path }
+    }
+
+    private func occurrences(of needle: String, in haystack: String) -> Int {
+        guard !needle.isEmpty else {
+            return 0
+        }
+        var count = 0
+        var searchStart = haystack.startIndex
+        while let found = haystack.range(
+            of: needle,
+            range: searchStart..<haystack.endIndex
+        ) {
+            count += 1
+            searchStart = found.upperBound
+        }
+        return count
     }
 
     /// 固定创建日期，报告文本才钉得住（`ProbeFormat` 用 UTC + POSIX）。

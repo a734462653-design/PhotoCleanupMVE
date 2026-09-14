@@ -414,6 +414,609 @@ final class ScreenRecordingProbeCoordinator: ObservableObject {
     }
 }
 
+// MARK: - 子项 B：字节数取数途径对比与耗时基准
+
+/// 三条取数途径。原始值即报告里的显示名。
+enum ByteRoute: String, CaseIterable {
+    /// 途径 1：主资源 `requestData` 流式累加 = `AssetSizeScanner.scan(_:)` 的现行途径。
+    case data = "data"
+    /// 途径 2：照片 `requestContentEditingInput` → `fullSizeImageURL` 的文件属性；
+    /// 视频 `requestAVAsset` → `AVURLAsset.url` 的文件属性。
+    case url = "url"
+    /// 途径 3（**本卡新增，③**）：`PHAssetResource` 上直接读字节数的属性。
+    case resourceProperty = "resource-property"
+}
+
+/// 途径 3 的键探测。
+///
+/// **③ → ①**：`PHAssetResource` 的**公开**接口里没有字节数属性（`isPublicInterface`
+/// 那一列是逐键对照 SDK 公开声明填的）。已知运行时可读的是下面这个非公开键，
+/// 本探针先用 `responds(to:)` 探测存在性、存在才取值，**绝不进任何产品路径**——
+/// 断言 5 以源码扫描钉死：键名字面量与 `value(forKey:)` 只许出现在本文件内。
+enum ResourcePropertyRoute {
+    /// 途径 3 的候选键（非公开）。
+    static let candidateKey = "fileSize"
+    /// 正对照：公开属性。用来验证「探测方法本身有效」，
+    /// 否则候选键探测为假时分不清是键不存在还是探测方法不灵。
+    static let publicControlKey = "originalFilename"
+
+    static let probedKeys = [candidateKey, publicControlKey]
+
+    /// 该键是否属于 `PHAssetResource` 的公开接口。
+    static func isPublicInterface(_ key: String) -> Bool {
+        key == publicControlKey
+    }
+
+    static func respondsToKey(_ resource: PHAssetResource, key: String) -> Bool {
+        resource.responds(to: NSSelectorFromString(key))
+    }
+
+    /// 先探测键是否存在，存在才取值。不存在即 nil，**不发送未知键的 KVC**
+    /// （`value(forKey:)` 打未知键会抛 `NSUnknownKeyException`，Swift 接不住）。
+    static func byteCount(of resource: PHAssetResource) -> Int64? {
+        guard respondsToKey(resource, key: candidateKey),
+              let value = resource.value(forKey: candidateKey) as? NSNumber else {
+            return nil
+        }
+        return value.int64Value
+    }
+
+    static func valueTypeName(
+        of resource: PHAssetResource,
+        key: String
+    ) -> String? {
+        guard respondsToKey(resource, key: key),
+              let value = resource.value(forKey: key) else {
+            return nil
+        }
+        return String(describing: type(of: value))
+    }
+}
+
+/// 单个键的探测结果。`respondsToSelector` 为 nil 表示库里没有可供探测的资源。
+struct ResourceKeyProbeResult: Equatable, Sendable {
+    let key: String
+    let isPublicInterface: Bool
+    let respondsToSelector: Bool?
+    let valueTypeName: String?
+}
+
+/// 一个资产上三条途径的测量。纯数据，不含任何 PhotoKit 类型。
+struct ByteRouteMeasurement: Equatable, Sendable {
+    let assetID: String
+    let mediaKind: S2AssetSizeProbeMediaKind
+    let isEdited: Bool
+    /// `PHAssetResource.assetResources(for:)` 本身的耗时（冷）。三条途径都要先
+    /// 拿到资源清单，把它单列出来，三条途径的计时才可比。
+    let resourceEnumerationElapsedMilliseconds: Double
+    let dataByteCount: Int64?
+    let dataElapsedMilliseconds: Double
+    let urlByteCount: Int64?
+    let urlElapsedMilliseconds: Double
+    let resourcePropertyByteCount: Int64?
+    let resourcePropertyElapsedMilliseconds: Double
+
+    func byteCount(for route: ByteRoute) -> Int64? {
+        switch route {
+        case .data:
+            return dataByteCount
+        case .url:
+            return urlByteCount
+        case .resourceProperty:
+            return resourcePropertyByteCount
+        }
+    }
+
+    func elapsedMilliseconds(for route: ByteRoute) -> Double {
+        switch route {
+        case .data:
+            return dataElapsedMilliseconds
+        case .url:
+            return urlElapsedMilliseconds
+        case .resourceProperty:
+            return resourcePropertyElapsedMilliseconds
+        }
+    }
+
+    /// 两条途径都成功时的差值（左 − 右）；任一为 nil 即无可比性，回 nil。
+    func byteDelta(_ left: ByteRoute, _ right: ByteRoute) -> Int64? {
+        guard let leftValue = byteCount(for: left),
+              let rightValue = byteCount(for: right) else {
+            return nil
+        }
+        return leftValue - rightValue
+    }
+
+    /// 任意一对都成功且不相等即为不一致。全部 nil 或只有一条成功时不算。
+    var hasByteMismatch: Bool {
+        ByteRoutePair.allPairs.contains { pair in
+            (byteDelta(pair.left, pair.right) ?? 0) != 0
+        }
+    }
+}
+
+/// 途径两两配对。三条途径共三对。
+struct ByteRoutePair: Equatable, Sendable {
+    let left: ByteRoute
+    let right: ByteRoute
+
+    static let allPairs = [
+        ByteRoutePair(left: .data, right: .url),
+        ByteRoutePair(left: .data, right: .resourceProperty),
+        ByteRoutePair(left: .url, right: .resourceProperty)
+    ]
+
+    var label: String {
+        left.rawValue + "-" + right.rawValue
+    }
+}
+
+/// 分位数统计。纯函数，断言 3 直接钉。
+enum ProbeStatistics {
+    /// **最近秩法**（nearest-rank）：样本升序后取第 `ceil(rank / 100 × n)` 个，
+    /// 秩从 1 起、两端夹逼到 `[1, n]`。偶数长度不做插值——报告口径写明这一条，
+    /// 断言 3 按同一口径核。空数组回 nil。
+    static func percentile(_ values: [Double], _ rank: Double) -> Double? {
+        guard !values.isEmpty else {
+            return nil
+        }
+        let sorted = values.sorted()
+        let position = Int((rank / 100 * Double(sorted.count)).rounded(.up))
+        let index = min(max(position - 1, 0), sorted.count - 1)
+        return sorted[index]
+    }
+}
+
+/// 分层抽样。纯函数：入参是三族已分好的标识，出参是交错后截断到上限的样本。
+enum ByteRouteSampling {
+    /// 卡内上限：全库随机抽样至多 200 条。
+    static let sampleLimit = 200
+    /// 卡内上限：照片 / 视频 / 实况各至多 70 条。
+    static let perKindLimit = 70
+
+    /// 三族各取至多 `perKindLimit` 条后**轮转交错**，再截断到 `limit`。
+    ///
+    /// 三族满额是 210 > 200，直接拼接再截断会把最后一族削掉 10 条；
+    /// 轮转交错让削减均摊到三族尾部，样本仍大体均衡。
+    static func stratifiedSample(
+        photo: [String],
+        livePhoto: [String],
+        video: [String],
+        limit: Int = sampleLimit,
+        perKindLimit: Int = perKindLimit
+    ) -> [String] {
+        let strata = [photo, livePhoto, video].map { Array($0.prefix(perKindLimit)) }
+        var interleaved: [String] = []
+        let deepest = strata.map(\.count).max() ?? 0
+        for index in 0..<deepest {
+            for stratum in strata where index < stratum.count {
+                interleaved.append(stratum[index])
+            }
+        }
+        return Array(interleaved.prefix(limit))
+    }
+}
+
+/// 取数前的准备：样本标识 + 全库资产总数 + 途径 3 的键探测结果。
+struct ByteRouteProbePreparation: Equatable, Sendable {
+    let sampledAssetIDs: [String]
+    let libraryAssetCount: Int
+    let keyProbeResults: [ResourceKeyProbeResult]
+}
+
+/// 取数接口。实现在本文件下方；面板按钮之外没有任何调用点。
+protocol ByteRouteProbing: AnyObject {
+    func prepare() async -> ByteRouteProbePreparation
+    func measure(assetID: String) async -> ByteRouteMeasurement
+}
+
+/// 子项 B 报告的全部文本拼装。纯函数，断言 4 直接钉。
+enum ByteRouteProbeText {
+    static let formatVersion = 1
+    static let columns =
+        "id8|kind|edited|enum-ms|data-bytes|data-ms|url-bytes|url-ms|" +
+        "prop-bytes|prop-ms"
+
+    static func identifierPrefix(_ assetID: String) -> String {
+        String(assetID.prefix(8))
+    }
+
+    static func row(_ measurement: ByteRouteMeasurement) -> String {
+        [
+            identifierPrefix(measurement.assetID),
+            measurement.mediaKind.rawValue,
+            "edited=" + ProbeFormat.yesNo(measurement.isEdited),
+            "enum=" + ProbeFormat.milliseconds(
+                measurement.resourceEnumerationElapsedMilliseconds
+            ),
+            "data-bytes=" + ProbeFormat.optionalCount(
+                measurement.dataByteCount
+            ),
+            "data=" + ProbeFormat.milliseconds(
+                measurement.dataElapsedMilliseconds
+            ),
+            "url-bytes=" + ProbeFormat.optionalCount(measurement.urlByteCount),
+            "url=" + ProbeFormat.milliseconds(
+                measurement.urlElapsedMilliseconds
+            ),
+            "prop-bytes=" + ProbeFormat.optionalCount(
+                measurement.resourcePropertyByteCount
+            ),
+            "prop=" + ProbeFormat.milliseconds(
+                measurement.resourcePropertyElapsedMilliseconds
+            )
+        ].joined(separator: ProbeFormat.fieldSeparator)
+    }
+
+    static func keyProbeLine(_ result: ResourceKeyProbeResult) -> String {
+        let responds = result.respondsToSelector.map(ProbeFormat.yesNo)
+            ?? "unknown"
+        let head = "key-probe" + ProbeFormat.fieldSeparator
+        return head +
+            "key=" + result.key + ProbeFormat.fieldSeparator +
+            "public-interface=" +
+            ProbeFormat.yesNo(result.isPublicInterface) +
+            ProbeFormat.fieldSeparator +
+            "responds=" + responds + ProbeFormat.fieldSeparator +
+            "value-type=" + (result.valueTypeName ?? ProbeFormat.absentText)
+    }
+
+    static func header(
+        sampleCount: Int,
+        libraryAssetCount: Int,
+        limit: Int,
+        perKindLimit: Int,
+        keyProbeResults: [ResourceKeyProbeResult]
+    ) -> String {
+        var lines = [
+            "IC-145 B byte-route benchmark probe",
+            "format-version=\(formatVersion)",
+            "columns=" + columns,
+            "route-data=primary resource requestData streamed (same route as " +
+                "the shipping AssetSizeScanner)",
+            "route-url=photo requestContentEditingInput fullSizeImageURL / " +
+                "video requestAVAsset AVURLAsset.url file attributes",
+            "route-prop=PHAssetResource runtime property read, " +
+                "PROBE ONLY, NOT PUBLIC API, MUST NOT SHIP",
+            "timing-note=enum-ms is the cold assetResources enumeration, " +
+                "excluded from all three route timers so they compare",
+            "percentile-note=nearest-rank, no interpolation",
+            "sample=\(sampleCount)" + ProbeFormat.fieldSeparator +
+                "library-asset-count=\(libraryAssetCount)" +
+                ProbeFormat.fieldSeparator +
+                "limit=\(limit)" + ProbeFormat.fieldSeparator +
+                "per-kind-limit=\(perKindLimit)"
+        ]
+        lines.append(contentsOf: keyProbeResults.map(keyProbeLine))
+        return lines.joined(separator: "\n")
+    }
+
+    /// 每途径一行：p50 / p95 / 最大耗时 + 成功率（失败计入分母）。
+    static func routeSummary(
+        _ measurements: [ByteRouteMeasurement]
+    ) -> [String] {
+        let total = measurements.count
+        return ByteRoute.allCases.map { route in
+            let elapsed = measurements.map { $0.elapsedMilliseconds(for: route) }
+            let success = measurements.filter {
+                $0.byteCount(for: route) != nil
+            }.count
+            let head = ProbeFormat.summaryTag + ProbeFormat.fieldSeparator
+            return head + "route=" + route.rawValue +
+                ProbeFormat.fieldSeparator +
+                "p50=" + ProbeFormat.optionalMilliseconds(
+                    ProbeStatistics.percentile(elapsed, 50)
+                ) + ProbeFormat.fieldSeparator +
+                "p95=" + ProbeFormat.optionalMilliseconds(
+                    ProbeStatistics.percentile(elapsed, 95)
+                ) + ProbeFormat.fieldSeparator +
+                "max=" + ProbeFormat.optionalMilliseconds(elapsed.max()) +
+                ProbeFormat.fieldSeparator +
+                "ok=\(success)/\(total) (" +
+                ProbeFormat.percentage(success, of: total) + ")"
+        }
+    }
+
+    /// 不一致明细。**只在确有差值时出现**：任意一对都成功且不相等才出行。
+    static func mismatchLines(
+        _ measurements: [ByteRouteMeasurement]
+    ) -> [String] {
+        measurements.filter(\.hasByteMismatch).map { measurement in
+            var parts = [
+                "mismatch",
+                identifierPrefix(measurement.assetID),
+                measurement.mediaKind.rawValue,
+                "edited=" + ProbeFormat.yesNo(measurement.isEdited)
+            ]
+            for route in ByteRoute.allCases {
+                parts.append(
+                    route.rawValue + "=" + ProbeFormat.optionalCount(
+                        measurement.byteCount(for: route)
+                    )
+                )
+            }
+            for pair in ByteRoutePair.allPairs {
+                parts.append(
+                    pair.label + "=" + ProbeFormat.optionalCount(
+                        measurement.byteDelta(pair.left, pair.right)
+                    )
+                )
+            }
+            return parts.joined(separator: ProbeFormat.fieldSeparator)
+        }
+    }
+
+    /// 按 p50 外推的全库耗时。**上界估计**：假设串行、无缓存、无并发。
+    static func extrapolationLines(
+        _ measurements: [ByteRouteMeasurement],
+        libraryAssetCount: Int
+    ) -> [String] {
+        ByteRoute.allCases.map { route in
+            let elapsed = measurements.map { $0.elapsedMilliseconds(for: route) }
+            let p50 = ProbeStatistics.percentile(elapsed, 50)
+            let projected = p50.map {
+                $0 * Double(libraryAssetCount) / 1_000
+            }
+            let head = "extrapolation" + ProbeFormat.fieldSeparator
+            return head + "route=" + route.rawValue +
+                ProbeFormat.fieldSeparator +
+                "p50-times-library=" +
+                (projected.map { ProbeFormat.seconds($0) + "s" }
+                    ?? ProbeFormat.absentText) +
+                ProbeFormat.fieldSeparator +
+                "assumes serial, no cache, no concurrency (upper bound)"
+        }
+    }
+
+    static func summary(
+        _ measurements: [ByteRouteMeasurement],
+        libraryAssetCount: Int
+    ) -> String {
+        let enumeration = measurements.map(
+            \.resourceEnumerationElapsedMilliseconds
+        )
+        let kindCounts = S2AssetSizeProbeMediaKind.allCases.map { kind in
+            kind.rawValue + "=" +
+                String(measurements.filter { $0.mediaKind == kind }.count)
+        }.joined(separator: ProbeFormat.fieldSeparator)
+        let mismatches = mismatchLines(measurements)
+
+        var lines = routeSummary(measurements)
+        lines.append(
+            ProbeFormat.summaryTag + ProbeFormat.fieldSeparator +
+                "resource-enumeration" + ProbeFormat.fieldSeparator +
+                "p50=" + ProbeFormat.optionalMilliseconds(
+                    ProbeStatistics.percentile(enumeration, 50)
+                ) + ProbeFormat.fieldSeparator +
+                "p95=" + ProbeFormat.optionalMilliseconds(
+                    ProbeStatistics.percentile(enumeration, 95)
+                )
+        )
+        lines.append(
+            ProbeFormat.summaryTag + ProbeFormat.fieldSeparator +
+                "sample-by-kind" + ProbeFormat.fieldSeparator + kindCounts
+        )
+        lines.append(
+            ProbeFormat.summaryTag + ProbeFormat.fieldSeparator +
+                "byte-mismatch-assets=\(mismatches.count)/" +
+                "\(measurements.count)"
+        )
+        lines.append(contentsOf: extrapolationLines(
+            measurements,
+            libraryAssetCount: libraryAssetCount
+        ))
+        return lines.joined(separator: "\n")
+    }
+
+    static func report(
+        measurements: [ByteRouteMeasurement],
+        libraryAssetCount: Int,
+        limit: Int,
+        perKindLimit: Int,
+        keyProbeResults: [ResourceKeyProbeResult]
+    ) -> String {
+        var lines = [
+            header(
+                sampleCount: measurements.count,
+                libraryAssetCount: libraryAssetCount,
+                limit: limit,
+                perKindLimit: perKindLimit,
+                keyProbeResults: keyProbeResults
+            )
+        ]
+        lines.append(contentsOf: measurements.map(row))
+        let mismatches = mismatchLines(measurements)
+        if !mismatches.isEmpty {
+            lines.append("[mismatch] assets=\(mismatches.count)")
+            lines.append(contentsOf: mismatches)
+        }
+        lines.append(summary(
+            measurements,
+            libraryAssetCount: libraryAssetCount
+        ))
+        return lines.joined(separator: "\n")
+    }
+
+    static func progress(finished: Int, total: Int) -> String {
+        "IC-145 B byte-route probe \(finished)/\(total)"
+    }
+}
+
+/// 子项 B 的 PhotoKit 实现。
+///
+/// 途径 1 与途径 2 **不另起炉灶**：直接复用 IC-099b 的 `AssetSizeProbeService`
+/// （`Services/AssetSizeScanner.swift`，本卡一字未改），它已经把这两条途径连同
+/// 各自的计时实现完毕。本类只加途径 3 与分层抽样、批量调度。
+///
+/// **无状态**：每条测量现造一个单条目的内层服务，不持有跨调用的可变状态。
+/// 内层服务的计时只围住各自的取数调用，构造开销不进读数。
+final class ByteRouteBenchmarkProbeService: ByteRouteProbing {
+    func prepare() async -> ByteRouteProbePreparation {
+        let all = PHAsset.fetchAssets(with: nil)
+        var photo: [String] = []
+        var livePhoto: [String] = []
+        var video: [String] = []
+        var probeResource: PHAssetResource?
+        all.enumerateObjects { asset, _, _ in
+            switch AssetSizeProbeService.mediaKind(of: asset) {
+            case .photo:
+                photo.append(asset.localIdentifier)
+            case .livePhoto:
+                livePhoto.append(asset.localIdentifier)
+            case .video:
+                video.append(asset.localIdentifier)
+            }
+            if probeResource == nil {
+                probeResource = PHAssetResource.assetResources(for: asset).first
+            }
+        }
+        let sample = ByteRouteSampling.stratifiedSample(
+            photo: photo.shuffled(),
+            livePhoto: livePhoto.shuffled(),
+            video: video.shuffled()
+        )
+        return ByteRouteProbePreparation(
+            sampledAssetIDs: sample,
+            libraryAssetCount: all.count,
+            keyProbeResults: Self.keyProbeResults(against: probeResource)
+        )
+    }
+
+    func measure(assetID: String) async -> ByteRouteMeasurement {
+        guard let asset = PHAsset.fetchAssets(
+            withLocalIdentifiers: [assetID],
+            options: nil
+        ).firstObject else {
+            return Self.unavailableMeasurement(assetID: assetID)
+        }
+
+        let enumerationStartedAt = CACurrentMediaTime()
+        let resources = PHAssetResource.assetResources(for: asset)
+        let enumerationElapsed =
+            (CACurrentMediaTime() - enumerationStartedAt) * 1_000
+
+        let mediaKind = AssetSizeProbeService.mediaKind(of: asset)
+        let primary = AssetSizeProbeService.primaryResource(
+            in: resources,
+            mediaKind: mediaKind
+        )
+        let propertyStartedAt = CACurrentMediaTime()
+        let propertyBytes = primary.flatMap(ResourcePropertyRoute.byteCount)
+        let propertyElapsed =
+            (CACurrentMediaTime() - propertyStartedAt) * 1_000
+
+        // 途径 1 与 2：原样交给 IC-099b 的探针服务，计时口径与它一致。
+        let inner = AssetSizeProbeService(assets: [assetID: asset])
+        let base = await inner.measure(assetID: assetID)
+
+        return ByteRouteMeasurement(
+            assetID: assetID,
+            mediaKind: base.mediaKind,
+            isEdited: base.isEdited,
+            resourceEnumerationElapsedMilliseconds: enumerationElapsed,
+            dataByteCount: base.dataByteCount,
+            dataElapsedMilliseconds: base.dataElapsedMilliseconds,
+            urlByteCount: base.urlByteCount,
+            urlElapsedMilliseconds: base.urlElapsedMilliseconds,
+            resourcePropertyByteCount: propertyBytes,
+            resourcePropertyElapsedMilliseconds: propertyElapsed
+        )
+    }
+
+    private static func keyProbeResults(
+        against resource: PHAssetResource?
+    ) -> [ResourceKeyProbeResult] {
+        ResourcePropertyRoute.probedKeys.map { key in
+            guard let resource else {
+                return ResourceKeyProbeResult(
+                    key: key,
+                    isPublicInterface:
+                        ResourcePropertyRoute.isPublicInterface(key),
+                    respondsToSelector: nil,
+                    valueTypeName: nil
+                )
+            }
+            return ResourceKeyProbeResult(
+                key: key,
+                isPublicInterface: ResourcePropertyRoute.isPublicInterface(key),
+                respondsToSelector: ResourcePropertyRoute.respondsToKey(
+                    resource,
+                    key: key
+                ),
+                valueTypeName: ResourcePropertyRoute.valueTypeName(
+                    of: resource,
+                    key: key
+                )
+            )
+        }
+    }
+
+    private static func unavailableMeasurement(
+        assetID: String
+    ) -> ByteRouteMeasurement {
+        ByteRouteMeasurement(
+            assetID: assetID,
+            mediaKind: .photo,
+            isEdited: false,
+            resourceEnumerationElapsedMilliseconds: 0,
+            dataByteCount: nil,
+            dataElapsedMilliseconds: 0,
+            urlByteCount: nil,
+            urlElapsedMilliseconds: 0,
+            resourcePropertyByteCount: nil,
+            resourcePropertyElapsedMilliseconds: 0
+        )
+    }
+}
+
+/// 子项 B 的运行协调器。**关闭态零副作用**，口径同子项 A。
+final class ByteRouteProbeCoordinator: ObservableObject {
+    @Published private(set) var isRunning = false
+    @Published private(set) var progressText = ""
+    @Published private(set) var reportText = ""
+
+    private var runTask: Task<Void, Never>?
+
+    var canExport: Bool {
+        !isRunning && !reportText.isEmpty
+    }
+
+    func run(using prober: ByteRouteProbing) {
+        guard !isRunning else {
+            return
+        }
+        isRunning = true
+        reportText = ""
+        progressText = ByteRouteProbeText.progress(finished: 0, total: 0)
+        runTask = Task { @MainActor [weak self] in
+            let preparation = await prober.prepare()
+            var collected: [ByteRouteMeasurement] = []
+            for (index, assetID) in preparation.sampledAssetIDs.enumerated() {
+                collected.append(await prober.measure(assetID: assetID))
+                guard let self else {
+                    return
+                }
+                self.progressText = ByteRouteProbeText.progress(
+                    finished: index + 1,
+                    total: preparation.sampledAssetIDs.count
+                )
+            }
+            guard let self else {
+                return
+            }
+            self.reportText = ByteRouteProbeText.report(
+                measurements: collected,
+                libraryAssetCount: preparation.libraryAssetCount,
+                limit: ByteRouteSampling.sampleLimit,
+                perKindLimit: ByteRouteSampling.perKindLimit,
+                keyProbeResults: preparation.keyProbeResults
+            )
+            self.isRunning = false
+            self.runTask = nil
+        }
+    }
+}
+
 // MARK: - 三个子项共用的格式化与设备读数
 
 /// 报告文本的原子格式化。**全 ASCII**（见文件头纪律 3）。
@@ -435,6 +1038,10 @@ enum ProbeFormat {
 
     static func milliseconds(_ value: Double) -> String {
         String(format: "%.3fms", locale: posixLocale, value)
+    }
+
+    static func optionalMilliseconds(_ value: Double?) -> String {
+        value.map(milliseconds) ?? absentText
     }
 
     static func percentage(_ value: Int, of total: Int) -> String {

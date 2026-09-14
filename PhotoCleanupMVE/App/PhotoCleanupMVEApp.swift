@@ -9,6 +9,8 @@ struct PhotoCleanupMVEApp: App {
     /// IC-145 A：屏幕录制识别启发式探针的取数实现。构造即空对象——
     /// 不触碰 PhotoKit、不注册观察者、不读写持久化，只有面板按钮调 `run` 才取数。
     private let screenRecordingProber = ScreenRecordingHeuristicProbeService()
+    /// IC-145 B：字节数取数途径基准探针的取数实现。同样构造即空对象。
+    private let byteRouteProber = ByteRouteBenchmarkProbeService()
 
     /// IC-131 B：S1 视图构造抽成 builder。加参数后仍留在 Scene body 的多层
     /// 嵌套里会把类型检查推到超时（IC-108／IC-113 三次实例），构造点一律外提。
@@ -55,6 +57,7 @@ struct PhotoCleanupMVEApp: App {
             assetSizeProber:
                 coordinator.makeS2AssetSizeProber(),
             screenRecordingProber: screenRecordingProber,
+            byteRouteProber: byteRouteProber,
             photoContent: { context in
                 AnyView(
                     S2TemporaryPhotoImageView(
