@@ -201,10 +201,11 @@ enum ScreenRecordingProbeText {
             "resolution-rule=asset pixel size equals device native screen " +
                 "pixels, width/height swap allowed (unverified heuristic)",
             "screen-pixels=\(screenPixelWidth)x\(screenPixelHeight)",
-            "video-count=\(videoCount)" + ProbeFormat.fieldSeparator +
-                "library-asset-count=\(libraryAssetCount)" +
-                ProbeFormat.fieldSeparator +
+            [
+                "video-count=\(videoCount)",
+                "library-asset-count=\(libraryAssetCount)",
                 "unresolved=\(unresolvedCount)"
+            ].joined(separator: ProbeFormat.fieldSeparator)
         ].joined(separator: "\n")
     }
 
@@ -212,13 +213,14 @@ enum ScreenRecordingProbeText {
         _ measurements: [ScreenRecordingMeasurement]
     ) -> String {
         let total = measurements.count
-        var lines = ScreenRecordingRule.allCases.map { rule in
+        var lines = ScreenRecordingRule.allCases.map { rule -> String in
             let hits = measurements.filter { $0.verdict(for: rule) }.count
-            let head = ProbeFormat.summaryTag + ProbeFormat.fieldSeparator
-            return head + "rule=" + rule.rawValue +
-                ProbeFormat.fieldSeparator +
-                "hits=\(hits)/\(total) (" +
-                ProbeFormat.percentage(hits, of: total) + ")"
+            let share = ProbeFormat.percentage(hits, of: total)
+            return [
+                ProbeFormat.summaryTag,
+                "rule=" + rule.rawValue,
+                "hits=\(hits)/\(total) (" + share + ")"
+            ].joined(separator: ProbeFormat.fieldSeparator)
         }
         let caseInsensitive = measurements.filter {
             $0.matchesFilenameCaseInsensitive
@@ -232,22 +234,16 @@ enum ScreenRecordingProbeText {
         let missingFilename = measurements.filter {
             $0.originalFilename == nil
         }.count
-        lines.append(
-            ProbeFormat.summaryTag + ProbeFormat.fieldSeparator +
-                "case-insensitive-filename-hits=\(caseInsensitive)/\(total)"
-        )
-        lines.append(
-            ProbeFormat.summaryTag + ProbeFormat.fieldSeparator +
-                "resolution-hit-filename-miss=\(resolutionOnly)"
-        )
-        lines.append(
-            ProbeFormat.summaryTag + ProbeFormat.fieldSeparator +
-                "filename-hit-resolution-miss=\(filenameOnly)"
-        )
-        lines.append(
-            ProbeFormat.summaryTag + ProbeFormat.fieldSeparator +
-                "missing-video-resource-filename=\(missingFilename)"
-        )
+        let tails = [
+            "case-insensitive-filename-hits=\(caseInsensitive)/\(total)",
+            "resolution-hit-filename-miss=\(resolutionOnly)",
+            "filename-hit-resolution-miss=\(filenameOnly)",
+            "missing-video-resource-filename=\(missingFilename)"
+        ]
+        lines.append(contentsOf: tails.map { tail in
+            [ProbeFormat.summaryTag, tail]
+                .joined(separator: ProbeFormat.fieldSeparator)
+        })
         return lines.joined(separator: "\n")
     }
 
@@ -582,10 +578,12 @@ enum ByteRouteSampling {
         photo: [String],
         livePhoto: [String],
         video: [String],
-        limit: Int = sampleLimit,
-        perKindLimit: Int = perKindLimit
+        limit: Int = ByteRouteSampling.sampleLimit,
+        perKindLimit: Int = ByteRouteSampling.perKindLimit
     ) -> [String] {
-        let strata = [photo, livePhoto, video].map { Array($0.prefix(perKindLimit)) }
+        let strata = [photo, livePhoto, video].map {
+            Array($0.prefix(perKindLimit))
+        }
         var interleaved: [String] = []
         let deepest = strata.map(\.count).max() ?? 0
         for index in 0..<deepest {
@@ -651,14 +649,14 @@ enum ByteRouteProbeText {
     static func keyProbeLine(_ result: ResourceKeyProbeResult) -> String {
         let responds = result.respondsToSelector.map(ProbeFormat.yesNo)
             ?? "unknown"
-        let head = "key-probe" + ProbeFormat.fieldSeparator
-        return head +
-            "key=" + result.key + ProbeFormat.fieldSeparator +
+        return [
+            "key-probe",
+            "key=" + result.key,
             "public-interface=" +
-            ProbeFormat.yesNo(result.isPublicInterface) +
-            ProbeFormat.fieldSeparator +
-            "responds=" + responds + ProbeFormat.fieldSeparator +
+                ProbeFormat.yesNo(result.isPublicInterface),
+            "responds=" + responds,
             "value-type=" + (result.valueTypeName ?? ProbeFormat.absentText)
+        ].joined(separator: ProbeFormat.fieldSeparator)
     }
 
     static func header(
@@ -681,11 +679,12 @@ enum ByteRouteProbeText {
             "timing-note=enum-ms is the cold assetResources enumeration, " +
                 "excluded from all three route timers so they compare",
             "percentile-note=nearest-rank, no interpolation",
-            "sample=\(sampleCount)" + ProbeFormat.fieldSeparator +
-                "library-asset-count=\(libraryAssetCount)" +
-                ProbeFormat.fieldSeparator +
-                "limit=\(limit)" + ProbeFormat.fieldSeparator +
+            [
+                "sample=\(sampleCount)",
+                "library-asset-count=\(libraryAssetCount)",
+                "limit=\(limit)",
                 "per-kind-limit=\(perKindLimit)"
+            ].joined(separator: ProbeFormat.fieldSeparator)
         ]
         lines.append(contentsOf: keyProbeResults.map(keyProbeLine))
         return lines.joined(separator: "\n")
@@ -696,24 +695,24 @@ enum ByteRouteProbeText {
         _ measurements: [ByteRouteMeasurement]
     ) -> [String] {
         let total = measurements.count
-        return ByteRoute.allCases.map { route in
-            let elapsed = measurements.map { $0.elapsedMilliseconds(for: route) }
+        return ByteRoute.allCases.map { route -> String in
+            let elapsed = measurements.map {
+                $0.elapsedMilliseconds(for: route)
+            }
             let success = measurements.filter {
                 $0.byteCount(for: route) != nil
             }.count
-            let head = ProbeFormat.summaryTag + ProbeFormat.fieldSeparator
-            return head + "route=" + route.rawValue +
-                ProbeFormat.fieldSeparator +
-                "p50=" + ProbeFormat.optionalMilliseconds(
-                    ProbeStatistics.percentile(elapsed, 50)
-                ) + ProbeFormat.fieldSeparator +
-                "p95=" + ProbeFormat.optionalMilliseconds(
-                    ProbeStatistics.percentile(elapsed, 95)
-                ) + ProbeFormat.fieldSeparator +
-                "max=" + ProbeFormat.optionalMilliseconds(elapsed.max()) +
-                ProbeFormat.fieldSeparator +
-                "ok=\(success)/\(total) (" +
-                ProbeFormat.percentage(success, of: total) + ")"
+            let p50 = ProbeStatistics.percentile(elapsed, 50)
+            let p95 = ProbeStatistics.percentile(elapsed, 95)
+            let share = ProbeFormat.percentage(success, of: total)
+            return [
+                ProbeFormat.summaryTag,
+                "route=" + route.rawValue,
+                "p50=" + ProbeFormat.optionalMilliseconds(p50),
+                "p95=" + ProbeFormat.optionalMilliseconds(p95),
+                "max=" + ProbeFormat.optionalMilliseconds(elapsed.max()),
+                "ok=\(success)/\(total) (" + share + ")"
+            ].joined(separator: ProbeFormat.fieldSeparator)
         }
     }
 
@@ -721,7 +720,7 @@ enum ByteRouteProbeText {
     static func mismatchLines(
         _ measurements: [ByteRouteMeasurement]
     ) -> [String] {
-        measurements.filter(\.hasByteMismatch).map { measurement in
+        measurements.filter(\.hasByteMismatch).map { measurement -> String in
             var parts = [
                 "mismatch",
                 identifierPrefix(measurement.assetID),
@@ -751,20 +750,22 @@ enum ByteRouteProbeText {
         _ measurements: [ByteRouteMeasurement],
         libraryAssetCount: Int
     ) -> [String] {
-        ByteRoute.allCases.map { route in
-            let elapsed = measurements.map { $0.elapsedMilliseconds(for: route) }
+        ByteRoute.allCases.map { route -> String in
+            let elapsed = measurements.map {
+                $0.elapsedMilliseconds(for: route)
+            }
             let p50 = ProbeStatistics.percentile(elapsed, 50)
             let projected = p50.map {
                 $0 * Double(libraryAssetCount) / 1_000
             }
-            let head = "extrapolation" + ProbeFormat.fieldSeparator
-            return head + "route=" + route.rawValue +
-                ProbeFormat.fieldSeparator +
-                "p50-times-library=" +
-                (projected.map { ProbeFormat.seconds($0) + "s" }
-                    ?? ProbeFormat.absentText) +
-                ProbeFormat.fieldSeparator +
+            let projectedText = projected.map { ProbeFormat.seconds($0) + "s" }
+                ?? ProbeFormat.absentText
+            return [
+                "extrapolation",
+                "route=" + route.rawValue,
+                "p50-times-library=" + projectedText,
                 "assumes serial, no cache, no concurrency (upper bound)"
+            ].joined(separator: ProbeFormat.fieldSeparator)
         }
     }
 
@@ -782,25 +783,23 @@ enum ByteRouteProbeText {
         let mismatches = mismatchLines(measurements)
 
         var lines = routeSummary(measurements)
-        lines.append(
-            ProbeFormat.summaryTag + ProbeFormat.fieldSeparator +
-                "resource-enumeration" + ProbeFormat.fieldSeparator +
-                "p50=" + ProbeFormat.optionalMilliseconds(
-                    ProbeStatistics.percentile(enumeration, 50)
-                ) + ProbeFormat.fieldSeparator +
-                "p95=" + ProbeFormat.optionalMilliseconds(
-                    ProbeStatistics.percentile(enumeration, 95)
-                )
-        )
-        lines.append(
-            ProbeFormat.summaryTag + ProbeFormat.fieldSeparator +
-                "sample-by-kind" + ProbeFormat.fieldSeparator + kindCounts
-        )
-        lines.append(
-            ProbeFormat.summaryTag + ProbeFormat.fieldSeparator +
-                "byte-mismatch-assets=\(mismatches.count)/" +
-                "\(measurements.count)"
-        )
+        let enumerationP50 = ProbeStatistics.percentile(enumeration, 50)
+        let enumerationP95 = ProbeStatistics.percentile(enumeration, 95)
+        lines.append([
+            ProbeFormat.summaryTag,
+            "resource-enumeration",
+            "p50=" + ProbeFormat.optionalMilliseconds(enumerationP50),
+            "p95=" + ProbeFormat.optionalMilliseconds(enumerationP95)
+        ].joined(separator: ProbeFormat.fieldSeparator))
+        lines.append([
+            ProbeFormat.summaryTag,
+            "sample-by-kind",
+            kindCounts
+        ].joined(separator: ProbeFormat.fieldSeparator))
+        lines.append([
+            ProbeFormat.summaryTag,
+            "byte-mismatch-assets=\(mismatches.count)/\(measurements.count)"
+        ].joined(separator: ProbeFormat.fieldSeparator))
         lines.append(contentsOf: extrapolationLines(
             measurements,
             libraryAssetCount: libraryAssetCount
@@ -926,7 +925,7 @@ final class ByteRouteBenchmarkProbeService: ByteRouteProbing {
     private static func keyProbeResults(
         against resource: PHAssetResource?
     ) -> [ResourceKeyProbeResult] {
-        ResourcePropertyRoute.probedKeys.map { key in
+        ResourcePropertyRoute.probedKeys.map { key -> ResourceKeyProbeResult in
             guard let resource else {
                 return ResourceKeyProbeResult(
                     key: key,
@@ -975,10 +974,21 @@ final class ByteRouteProbeCoordinator: ObservableObject {
     @Published private(set) var progressText = ""
     @Published private(set) var reportText = ""
 
+    /// 本次运行的逐条测量。子项 C 的可行性行要拿途径 1 的 p50 做比值。
+    private(set) var measurements: [ByteRouteMeasurement] = []
     private var runTask: Task<Void, Never>?
 
     var canExport: Bool {
         !isRunning && !reportText.isEmpty
+    }
+
+    /// 途径 1（数据途径）本次运行的 p50 耗时。**未跑过即 nil**——
+    /// 子项 C 如实写 none，不拿旧数凑。
+    var dataRouteP50Milliseconds: Double? {
+        ProbeStatistics.percentile(
+            measurements.map(\.dataElapsedMilliseconds),
+            50
+        )
     }
 
     func run(using prober: ByteRouteProbing) {
@@ -987,6 +997,7 @@ final class ByteRouteProbeCoordinator: ObservableObject {
         }
         isRunning = true
         reportText = ""
+        measurements = []
         progressText = ByteRouteProbeText.progress(finished: 0, total: 0)
         runTask = Task { @MainActor [weak self] in
             let preparation = await prober.prepare()
@@ -996,6 +1007,7 @@ final class ByteRouteProbeCoordinator: ObservableObject {
                 guard let self else {
                     return
                 }
+                self.measurements = collected
                 self.progressText = ByteRouteProbeText.progress(
                     finished: index + 1,
                     total: preparation.sampledAssetIDs.count
@@ -1010,6 +1022,346 @@ final class ByteRouteProbeCoordinator: ObservableObject {
                 limit: ByteRouteSampling.sampleLimit,
                 perKindLimit: ByteRouteSampling.perKindLimit,
                 keyProbeResults: preparation.keyProbeResults
+            )
+            self.isRunning = false
+            self.runTask = nil
+        }
+    }
+}
+
+// MARK: - 子项 C：类别元数据可得性与批量读取耗时
+
+/// 视频时长分档。**半开区间 `[下界, 上界)`**：恰 30 s 归 `30s-2min`、
+/// 恰 120 s 归 `2min-10min`、恰 600 s 归 `gte-10min`。报告头部写明这条口径，
+/// 断言 6 按同一口径核（卡内要求「恰 30 s 归哪档须在报告中写明口径并与断言一致」）。
+enum VideoDurationBucket: String, CaseIterable {
+    case underThirtySeconds = "lt-30s"
+    case thirtySecondsToTwoMinutes = "30s-2min"
+    case twoToTenMinutes = "2min-10min"
+    case overTenMinutes = "gte-10min"
+
+    static func bucket(forSeconds seconds: Double) -> VideoDurationBucket {
+        if seconds < 30 {
+            return .underThirtySeconds
+        }
+        if seconds < 120 {
+            return .thirtySecondsToTwoMinutes
+        }
+        if seconds < 600 {
+            return .twoToTenMinutes
+        }
+        return .overTenMinutes
+    }
+}
+
+/// 视频像素分档。卡内未指定口径，本探针取**长边像素**、同样是半开区间；
+/// 档位边界对齐常见录制规格（HD / FHD / 4K）。报告头部写明口径。
+enum VideoPixelBucket: String, CaseIterable {
+    case belowHD = "lt-1280"
+    case hd = "1280-1919"
+    case fullHD = "1920-2559"
+    case ultraHD = "gte-2560"
+
+    static func bucket(forLongEdge pixels: Int) -> VideoPixelBucket {
+        if pixels < 1_280 {
+            return .belowHD
+        }
+        if pixels < 1_920 {
+            return .hd
+        }
+        if pixels < 2_560 {
+            return .fullHD
+        }
+        return .ultraHD
+    }
+}
+
+/// 第一遍：**纯元数据**全库遍历的读数。不触发任何资源请求。
+struct CategoryMetadataPass: Equatable, Sendable {
+    let totalAssetCount: Int
+    let elapsedMilliseconds: Double
+    let photoCount: Int
+    let videoCount: Int
+    let screenshotCount: Int
+    let livePhotoCount: Int
+    let favoriteCount: Int
+    /// `PHAsset.canPerform(.content)` 的命中数。**这是「可编辑」不是「已编辑」**
+    /// ——见 `CategoryMetadataEditedPass` 与报告里的 predicate-note。
+    let editableCount: Int
+    let recentThirtyDayCount: Int
+    let durationBuckets: [VideoDurationBucket: Int]
+    let pixelBuckets: [VideoPixelBucket: Int]
+
+    /// 平均每资产耗时（微秒）。资产数为零时回 nil。
+    var averageMicrosecondsPerAsset: Double? {
+        guard totalAssetCount > 0 else {
+            return nil
+        }
+        return elapsedMilliseconds * 1_000 / Double(totalAssetCount)
+    }
+}
+
+/// 第二遍：已编辑判定。需要逐个枚举资源清单，**与第一遍分开计时**，
+/// 第一遍的读数才仍是纯元数据的量。
+struct CategoryMetadataEditedPass: Equatable, Sendable {
+    let editedCount: Int
+    let elapsedMilliseconds: Double
+}
+
+/// 取数接口。两遍分开，协调器才能在两遍之间回报进度。
+protocol CategoryMetadataProbing: AnyObject {
+    func runMetadataPass() async -> CategoryMetadataPass
+    func runEditedPass() async -> CategoryMetadataEditedPass
+}
+
+/// 子项 C 报告的全部文本拼装。纯函数，断言 7 直接钉。
+enum CategoryMetadataProbeText {
+    static let formatVersion = 1
+
+    static func header(_ pass: CategoryMetadataPass) -> String {
+        [
+            "IC-145 C category-metadata probe",
+            "format-version=\(formatVersion)",
+            "duration-buckets=half-open [lower, upper): 30s goes to " +
+                "30s-2min, 120s goes to 2min-10min, 600s goes to gte-10min",
+            "pixel-buckets=half-open on the long edge in pixels",
+            "predicate-note=editable is canPerform(.content), an EDITABILITY " +
+                "predicate; edited is the adjustmentData resource, measured " +
+                "in a separate second pass",
+            "resource-note=pass 1 reads metadata only and issues no resource " +
+                "request; pass 2 enumerates assetResources per asset",
+            [
+                "library-asset-count=\(pass.totalAssetCount)",
+                "pass1=" + ProbeFormat.milliseconds(pass.elapsedMilliseconds)
+            ].joined(separator: ProbeFormat.fieldSeparator)
+        ].joined(separator: "\n")
+    }
+
+    static func distributionLines(_ pass: CategoryMetadataPass) -> [String] {
+        let durationCounts = VideoDurationBucket.allCases.map { bucket in
+            bucket.rawValue + "=" + String(pass.durationBuckets[bucket] ?? 0)
+        }
+        let pixelCounts = VideoPixelBucket.allCases.map { bucket in
+            bucket.rawValue + "=" + String(pass.pixelBuckets[bucket] ?? 0)
+        }
+        let rows: [[String]] = [
+            [
+                "distribution",
+                "photo=\(pass.photoCount)",
+                "video=\(pass.videoCount)",
+                "screenshot=\(pass.screenshotCount)",
+                "live=\(pass.livePhotoCount)"
+            ],
+            [
+                "distribution",
+                "favorite=\(pass.favoriteCount)",
+                "editable=\(pass.editableCount)",
+                "created-within-30d=\(pass.recentThirtyDayCount)"
+            ],
+            ["distribution", "video-duration"] + durationCounts,
+            ["distribution", "video-long-edge"] + pixelCounts
+        ]
+        return rows.map { $0.joined(separator: ProbeFormat.fieldSeparator) }
+    }
+
+    static func editedLine(
+        _ edited: CategoryMetadataEditedPass,
+        totalAssetCount: Int
+    ) -> String {
+        return [
+            "distribution",
+            "edited-adjustmentData=\(edited.editedCount)/\(totalAssetCount)",
+            "pass2=" + ProbeFormat.milliseconds(edited.elapsedMilliseconds)
+        ].joined(separator: ProbeFormat.fieldSeparator)
+    }
+
+    /// 可行性一行：**只给数与比值，不下结论**。`byteRouteDataP50Milliseconds`
+    /// 为 nil（子项 B 本次未跑）时如实写 none，不拿旧数凑。
+    static func feasibilityLine(
+        _ pass: CategoryMetadataPass,
+        byteRouteDataP50Milliseconds: Double?
+    ) -> String {
+        let perAsset = pass.averageMicrosecondsPerAsset
+        let ratio: Double?
+        if let perAsset, perAsset > 0, let p50 = byteRouteDataP50Milliseconds {
+            ratio = p50 * 1_000 / perAsset
+        } else {
+            ratio = nil
+        }
+        let perAssetText = perAsset.map { ProbeFormat.microseconds($0) }
+            ?? ProbeFormat.absentText
+        let ratioText = ratio.map { ProbeFormat.ratio($0) }
+            ?? ProbeFormat.absentText
+        let total = ProbeFormat.milliseconds(pass.elapsedMilliseconds)
+        let reference =
+            ProbeFormat.optionalMilliseconds(byteRouteDataP50Milliseconds)
+        return [
+            "feasibility",
+            "metadata-per-asset=" + perAssetText,
+            "metadata-pass-total=" + total,
+            "byte-route-data-p50=" + reference,
+            "ratio-byte-route-over-metadata=" + ratioText
+        ].joined(separator: ProbeFormat.fieldSeparator)
+    }
+
+    static func report(
+        pass: CategoryMetadataPass,
+        edited: CategoryMetadataEditedPass,
+        byteRouteDataP50Milliseconds: Double?
+    ) -> String {
+        var lines = [header(pass)]
+        lines.append(contentsOf: distributionLines(pass))
+        lines.append(editedLine(edited, totalAssetCount: pass.totalAssetCount))
+        lines.append(feasibilityLine(
+            pass,
+            byteRouteDataP50Milliseconds: byteRouteDataP50Milliseconds
+        ))
+        return lines.joined(separator: "\n")
+    }
+
+    static func progress(phase: Int, phaseCount: Int) -> String {
+        "IC-145 C category-metadata probe phase \(phase)/\(phaseCount)"
+    }
+}
+
+/// 子项 C 的 PhotoKit 实现。
+///
+/// 第一遍只读元数据（`mediaType` / `mediaSubtypes` / `duration` / 像素 /
+/// `creationDate` / `isFavorite` / `canPerform(.content)`），**不发起任何
+/// 资源请求**；第二遍才为「已编辑」逐个枚举资源清单，单独计时。
+///
+/// 两遍分开的原因：`canPerform(.content)` 是**可编辑性**判定，不是
+/// 「已编辑」判定；真正的已编辑判定要看 `adjustmentData` 资源，那是资源清单
+/// 枚举，混进第一遍会让「纯元数据遍历耗时」这个读数失去意义。
+final class CategoryMetadataProbeService: CategoryMetadataProbing {
+    /// 「最近 30 天」虚拟范围的窗口长度。
+    static let recentWindowSeconds: TimeInterval = 30 * 24 * 60 * 60
+
+    func runMetadataPass() async -> CategoryMetadataPass {
+        let all = PHAsset.fetchAssets(with: nil)
+        // 计时区外先备好基准时刻，取当前时间的开销不进读数。
+        let cutoff = Date().addingTimeInterval(-Self.recentWindowSeconds)
+
+        var photo = 0
+        var video = 0
+        var screenshot = 0
+        var live = 0
+        var favorite = 0
+        var editable = 0
+        var recent = 0
+        var durationBuckets: [VideoDurationBucket: Int] = [:]
+        var pixelBuckets: [VideoPixelBucket: Int] = [:]
+
+        let startedAt = CACurrentMediaTime()
+        all.enumerateObjects { asset, _, _ in
+            if asset.mediaType == .video {
+                video += 1
+                let durationBucket = VideoDurationBucket.bucket(
+                    forSeconds: asset.duration
+                )
+                durationBuckets[durationBucket, default: 0] += 1
+                let pixelBucket = VideoPixelBucket.bucket(
+                    forLongEdge: max(asset.pixelWidth, asset.pixelHeight)
+                )
+                pixelBuckets[pixelBucket, default: 0] += 1
+            } else {
+                photo += 1
+            }
+            if asset.mediaSubtypes.contains(.photoScreenshot) {
+                screenshot += 1
+            }
+            if asset.mediaSubtypes.contains(.photoLive) {
+                live += 1
+            }
+            if asset.isFavorite {
+                favorite += 1
+            }
+            if asset.canPerform(.content) {
+                editable += 1
+            }
+            if let creationDate = asset.creationDate, creationDate >= cutoff {
+                recent += 1
+            }
+        }
+        let elapsed = (CACurrentMediaTime() - startedAt) * 1_000
+
+        return CategoryMetadataPass(
+            totalAssetCount: all.count,
+            elapsedMilliseconds: elapsed,
+            photoCount: photo,
+            videoCount: video,
+            screenshotCount: screenshot,
+            livePhotoCount: live,
+            favoriteCount: favorite,
+            editableCount: editable,
+            recentThirtyDayCount: recent,
+            durationBuckets: durationBuckets,
+            pixelBuckets: pixelBuckets
+        )
+    }
+
+    func runEditedPass() async -> CategoryMetadataEditedPass {
+        let all = PHAsset.fetchAssets(with: nil)
+        var edited = 0
+        let startedAt = CACurrentMediaTime()
+        all.enumerateObjects { asset, _, _ in
+            let hasAdjustment = PHAssetResource.assetResources(for: asset)
+                .contains { $0.type == .adjustmentData }
+            if hasAdjustment {
+                edited += 1
+            }
+        }
+        let elapsed = (CACurrentMediaTime() - startedAt) * 1_000
+        return CategoryMetadataEditedPass(
+            editedCount: edited,
+            elapsedMilliseconds: elapsed
+        )
+    }
+}
+
+/// 子项 C 的运行协调器。**关闭态零副作用**，口径同子项 A、B。
+final class CategoryMetadataProbeCoordinator: ObservableObject {
+    static let phaseCount = 2
+
+    @Published private(set) var isRunning = false
+    @Published private(set) var progressText = ""
+    @Published private(set) var reportText = ""
+
+    private var runTask: Task<Void, Never>?
+
+    var canExport: Bool {
+        !isRunning && !reportText.isEmpty
+    }
+
+    /// `byteRouteDataP50Milliseconds` 由子项 B 协调器本次运行的读数提供；
+    /// B 未跑过即 nil，报告里如实写 none。
+    func run(
+        using prober: CategoryMetadataProbing,
+        byteRouteDataP50Milliseconds: Double?
+    ) {
+        guard !isRunning else {
+            return
+        }
+        isRunning = true
+        reportText = ""
+        progressText = CategoryMetadataProbeText.progress(
+            phase: 1,
+            phaseCount: Self.phaseCount
+        )
+        runTask = Task { @MainActor [weak self] in
+            let pass = await prober.runMetadataPass()
+            guard let self else {
+                return
+            }
+            self.progressText = CategoryMetadataProbeText.progress(
+                phase: 2,
+                phaseCount: Self.phaseCount
+            )
+            let edited = await prober.runEditedPass()
+            self.reportText = CategoryMetadataProbeText.report(
+                pass: pass,
+                edited: edited,
+                byteRouteDataP50Milliseconds: byteRouteDataP50Milliseconds
             )
             self.isRunning = false
             self.runTask = nil
@@ -1042,6 +1394,14 @@ enum ProbeFormat {
 
     static func optionalMilliseconds(_ value: Double?) -> String {
         value.map(milliseconds) ?? absentText
+    }
+
+    static func microseconds(_ value: Double) -> String {
+        String(format: "%.3fus", locale: posixLocale, value)
+    }
+
+    static func ratio(_ value: Double) -> String {
+        String(format: "%.1fx", locale: posixLocale, value)
     }
 
     static func percentage(_ value: Int, of total: Int) -> String {

@@ -599,6 +599,181 @@ final class IC145ScanProbeTests: XCTestCase {
         )
     }
 
+    // MARK: - 断言 6：分档函数的边界归属
+
+    /// 时长分档是**半开区间 `[下界, 上界)`**：恰 30 s 归 `30s-2min`、
+    /// 恰 120 s 归 `2min-10min`、恰 600 s 归 `gte-10min`。
+    /// 报告头部的 `duration-buckets` 写的就是这条口径。
+    func testIC145C_DurationBucketBoundariesAreHalfOpen() {
+        let cases: [(Double, VideoDurationBucket)] = [
+            (0, .underThirtySeconds),
+            (29.999, .underThirtySeconds),
+            (30, .thirtySecondsToTwoMinutes),
+            (119.999, .thirtySecondsToTwoMinutes),
+            (120, .twoToTenMinutes),
+            (599.999, .twoToTenMinutes),
+            (600, .overTenMinutes),
+            (3_600, .overTenMinutes)
+        ]
+        for (seconds, expected) in cases {
+            XCTAssertEqual(
+                VideoDurationBucket.bucket(forSeconds: seconds),
+                expected,
+                "\(seconds) s 归档不符"
+            )
+        }
+        XCTAssertEqual(VideoDurationBucket.allCases.count, 4)
+    }
+
+    /// 像素分档按**长边**，同样半开区间。
+    func testIC145C_PixelBucketBoundariesAreHalfOpenOnTheLongEdge() {
+        let cases: [(Int, VideoPixelBucket)] = [
+            (0, .belowHD),
+            (1_279, .belowHD),
+            (1_280, .hd),
+            (1_919, .hd),
+            (1_920, .fullHD),
+            (2_559, .fullHD),
+            (2_560, .ultraHD),
+            (3_840, .ultraHD)
+        ]
+        for (pixels, expected) in cases {
+            XCTAssertEqual(
+                VideoPixelBucket.bucket(forLongEdge: pixels),
+                expected,
+                "\(pixels) px 归档不符"
+            )
+        }
+        XCTAssertEqual(VideoPixelBucket.allCases.count, 4)
+    }
+
+    // MARK: - 断言 7：子项 C 报告文本
+
+    func testIC145C_ProbeTextHeaderDistributionAndFeasibility() {
+        XCTAssertEqual(CategoryMetadataProbeText.formatVersion, 1)
+
+        let pass = makeCategoryMetadataPass()
+        XCTAssertEqual(pass.averageMicrosecondsPerAsset, 250)
+
+        let headerLines = CategoryMetadataProbeText
+            .header(pass)
+            .components(separatedBy: "\n")
+        XCTAssertEqual(headerLines.count, 7)
+        XCTAssertEqual(headerLines[0], "IC-145 C category-metadata probe")
+        XCTAssertEqual(headerLines[1], "format-version=1")
+        XCTAssertEqual(
+            headerLines[6],
+            "library-asset-count=1000|pass1=250.000ms"
+        )
+
+        let distribution = CategoryMetadataProbeText.distributionLines(pass)
+        XCTAssertEqual(distribution.count, 4)
+        XCTAssertEqual(
+            distribution[0],
+            "distribution|photo=900|video=100|screenshot=120|live=80"
+        )
+        XCTAssertEqual(
+            distribution[1],
+            "distribution|favorite=30|editable=995|created-within-30d=40"
+        )
+        XCTAssertEqual(
+            distribution[2],
+            "distribution|video-duration|lt-30s=60|30s-2min=25|" +
+                "2min-10min=10|gte-10min=5"
+        )
+        XCTAssertEqual(
+            distribution[3],
+            "distribution|video-long-edge|lt-1280=5|1280-1919=10|" +
+                "1920-2559=70|gte-2560=15"
+        )
+
+        // 已编辑是**另一遍**的读数，与 editable 分列，并带自己的耗时。
+        XCTAssertEqual(
+            CategoryMetadataProbeText.editedLine(
+                CategoryMetadataEditedPass(
+                    editedCount: 12,
+                    elapsedMilliseconds: 4_000
+                ),
+                totalAssetCount: pass.totalAssetCount
+            ),
+            "distribution|edited-adjustmentData=12/1000|pass2=4000.000ms"
+        )
+
+        // 可行性行：有参照值时给比值。
+        XCTAssertEqual(
+            CategoryMetadataProbeText.feasibilityLine(
+                pass,
+                byteRouteDataP50Milliseconds: 45
+            ),
+            "feasibility|metadata-per-asset=250.000us|" +
+                "metadata-pass-total=250.000ms|byte-route-data-p50=45.000ms|" +
+                "ratio-byte-route-over-metadata=180.0x"
+        )
+        // 子项 B 本次未跑 → 如实写 none，不拿旧数凑。
+        XCTAssertEqual(
+            CategoryMetadataProbeText.feasibilityLine(
+                pass,
+                byteRouteDataP50Milliseconds: nil
+            ),
+            "feasibility|metadata-per-asset=250.000us|" +
+                "metadata-pass-total=250.000ms|byte-route-data-p50=none|" +
+                "ratio-byte-route-over-metadata=none"
+        )
+    }
+
+    /// 空库与空分档：平均耗时回 nil，分档行全写 0，不崩、不留空列。
+    func testIC145C_EmptyLibraryAndEmptyBucketsDegradeCleanly() {
+        let empty = CategoryMetadataPass(
+            totalAssetCount: 0,
+            elapsedMilliseconds: 0,
+            photoCount: 0,
+            videoCount: 0,
+            screenshotCount: 0,
+            livePhotoCount: 0,
+            favoriteCount: 0,
+            editableCount: 0,
+            recentThirtyDayCount: 0,
+            durationBuckets: [:],
+            pixelBuckets: [:]
+        )
+        XCTAssertNil(empty.averageMicrosecondsPerAsset)
+
+        let distribution = CategoryMetadataProbeText.distributionLines(empty)
+        XCTAssertEqual(
+            distribution[2],
+            "distribution|video-duration|lt-30s=0|30s-2min=0|" +
+                "2min-10min=0|gte-10min=0"
+        )
+        XCTAssertEqual(
+            distribution[3],
+            "distribution|video-long-edge|lt-1280=0|1280-1919=0|" +
+                "1920-2559=0|gte-2560=0"
+        )
+        XCTAssertEqual(
+            CategoryMetadataProbeText.feasibilityLine(
+                empty,
+                byteRouteDataP50Milliseconds: 45
+            ),
+            "feasibility|metadata-per-asset=none|metadata-pass-total=0.000ms|" +
+                "byte-route-data-p50=45.000ms|" +
+                "ratio-byte-route-over-metadata=none"
+        )
+
+        // 报告体：四段齐全，顺序固定。
+        let report = CategoryMetadataProbeText.report(
+            pass: makeCategoryMetadataPass(),
+            edited: CategoryMetadataEditedPass(
+                editedCount: 12,
+                elapsedMilliseconds: 4_000
+            ),
+            byteRouteDataP50Milliseconds: 45
+        )
+        let lines = report.components(separatedBy: "\n")
+        XCTAssertEqual(lines.count, 7 + 4 + 1 + 1)
+        XCTAssertTrue(lines[11].hasPrefix("distribution|edited-adjustmentData="))
+        XCTAssertTrue(lines[12].hasPrefix("feasibility|"))
+    }
+
     // MARK: - 夹具
 
     private func verdict(
@@ -636,6 +811,34 @@ final class IC145ScanProbeTests: XCTestCase {
             urlElapsedMilliseconds: 2.5,
             resourcePropertyByteCount: resourcePropertyByteCount,
             resourcePropertyElapsedMilliseconds: 0.125
+        )
+    }
+
+    /// 子项 C 的第一遍读数夹具。1000 条 / 250 ms → 平均 250 us，
+    /// 都是二进制可精确表示的数，报告里的舍入没有歧义。
+    private func makeCategoryMetadataPass() -> CategoryMetadataPass {
+        CategoryMetadataPass(
+            totalAssetCount: 1_000,
+            elapsedMilliseconds: 250,
+            photoCount: 900,
+            videoCount: 100,
+            screenshotCount: 120,
+            livePhotoCount: 80,
+            favoriteCount: 30,
+            editableCount: 995,
+            recentThirtyDayCount: 40,
+            durationBuckets: [
+                .underThirtySeconds: 60,
+                .thirtySecondsToTwoMinutes: 25,
+                .twoToTenMinutes: 10,
+                .overTenMinutes: 5
+            ],
+            pixelBuckets: [
+                .belowHD: 5,
+                .hd: 10,
+                .fullHD: 70,
+                .ultraHD: 15
+            ]
         )
     }
 

@@ -503,6 +503,8 @@ struct S2View: View {
     private let screenRecordingProber: ScreenRecordingProbing?
     /// IC-145 B：字节数取数途径基准探针的取数实现。未接线（nil）时按钮禁用。
     private let byteRouteProber: ByteRouteProbing?
+    /// IC-145 C：类别元数据探针的取数实现。未接线（nil）时按钮禁用。
+    private let categoryMetadataProber: CategoryMetadataProbing?
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
@@ -520,6 +522,9 @@ struct S2View: View {
         ScreenRecordingProbeCoordinator()
     /// IC-145 B：字节数取数途径基准探针。关闭态零副作用。
     @StateObject private var byteRouteProbe = ByteRouteProbeCoordinator()
+    /// IC-145 C：类别元数据探针。关闭态零副作用。
+    @StateObject private var categoryMetadataProbe =
+        CategoryMetadataProbeCoordinator()
     /// IC-108 B：双击丝滑度探针。默认关闭；关闭时不向 pager 传引用，埋点零开销。
     @StateObject private var doubleTapProbe =
         S2DoubleTapSmoothnessProbeCoordinator()
@@ -561,6 +566,7 @@ struct S2View: View {
         assetSizeProber: S2AssetSizeProbing? = nil,
         screenRecordingProber: ScreenRecordingProbing? = nil,
         byteRouteProber: ByteRouteProbing? = nil,
+        categoryMetadataProber: CategoryMetadataProbing? = nil,
         photoContent: @escaping PhotoContent,
         stripItemContent: @escaping StripItemContent,
         albumPickerContent: @escaping AlbumPickerContent,
@@ -608,6 +614,7 @@ struct S2View: View {
         self.assetSizeProber = assetSizeProber
         self.screenRecordingProber = screenRecordingProber
         self.byteRouteProber = byteRouteProber
+        self.categoryMetadataProber = categoryMetadataProber
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
             wrappedValue: transitionDiagnostics
@@ -2329,6 +2336,7 @@ struct S2View: View {
                 doubleTapProbeSection
                 screenRecordingProbeSection
                 byteRouteProbeSection
+                categoryMetadataProbeSection
                 // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
                 // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
@@ -2465,6 +2473,44 @@ struct S2View: View {
             }
             .s2MinimumTouchTarget()
             Text(verbatim: byteRouteProbe.reportText)
+                .font(.system(.caption2, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    }
+
+    /// IC-145 C：调试面板的类别元数据探针段。模式同子项 A、B。
+    ///
+    /// 可行性行要拿子项 B 本次运行的途径 1 p50 做比值；B 未跑过即传 nil，
+    /// 报告里如实写 none，不拿旧数凑。
+    @ViewBuilder
+    private var categoryMetadataProbeSection: some View {
+        Divider()
+        Text(L10n.text("s2.calibration.category_metadata_probe.title"))
+        Button(L10n.text("s2.calibration.category_metadata_probe.start")) {
+            guard let prober = categoryMetadataProber else {
+                return
+            }
+            categoryMetadataProbe.run(
+                using: prober,
+                byteRouteDataP50Milliseconds:
+                    byteRouteProbe.dataRouteP50Milliseconds
+            )
+        }
+        .disabled(
+            categoryMetadataProber == nil || categoryMetadataProbe.isRunning
+        )
+        .s2MinimumTouchTarget()
+        if categoryMetadataProbe.isRunning {
+            ProgressView(categoryMetadataProbe.progressText)
+        }
+        if !categoryMetadataProbe.reportText.isEmpty {
+            ShareLink(item: categoryMetadataProbe.reportText) {
+                Text(L10n.text(
+                    "s2.calibration.category_metadata_probe.share"
+                ))
+            }
+            .s2MinimumTouchTarget()
+            Text(verbatim: categoryMetadataProbe.reportText)
                 .font(.system(.caption2, design: .monospaced))
                 .textSelection(.enabled)
         }
