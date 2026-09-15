@@ -346,4 +346,32 @@ Test Case '-[PhotoCleanupMVETests.IC147S0BehaviorTests testIC147CAssertion11Ever
 | 工作树净 | ✅ `git status --porcelain` 仅有未跟踪的 `Reports/IC-148/`（本卡报告，随后以 docs 提交入库） |
 | `main` 未被他人推进 | ✅ `git ls-remote origin refs/heads/main` = `6400666ec9cea250bfbf3a48d52f82db1fcfcba1`，与继承提交一致 |
 
-**G850 判定：满足。** 合并结果见下节。
+**G850 判定：满足。** 合并结果见第十三节。
+
+---
+
+## 十三、合并与 G851
+
+**合并已完成。**
+
+| 项 | 值 |
+|---|---|
+| 合并提交 | `5c7c56c4264e10c2b7e514cd943a5602e728364c`（`Merge branch 'feature/ic-148-s0-visual-layer' (IC-148)`，`--no-ff`） |
+| 合并前 `main` | `6400666ec9cea250bfbf3a48d52f82db1fcfcba1`（与继承提交一致，未被他人推进） |
+| 合并后 `main` | `5c7c56c4264e10c2b7e514cd943a5602e728364c`，已推送 |
+| 树一致性 | `git diff --stat feature/ic-148-s0-visual-layer HEAD` **无输出**——合并后 `main` 的树与被测分支 tip 逐字节一致 |
+| 合并规模 | 12 files changed, 3295 insertions(+), 94 deletions(-) |
+
+**G851（合并后 `main` 自动运行）**：
+
+| 项 | 值 |
+|---|---|
+| 运行编号 | **#297**，run id `34946151007` |
+| 被测提交 | `5c7c56c4264e10c2b7e514cd943a5602e728364c`（合并提交本身） |
+| 结论 | **success**，十个步骤无一失败 |
+| XCTest | **Executed 791 tests, with 0 failures (0 unexpected) in 36.992 (47.441) seconds** |
+| IPA | 1569392 字节，SHA-256 `80c010d30bcfff4cdadbe4671949b666dbd136083561e8b7bf22e6c799060047` |
+
+**IPA 字节数与 #296 相同（1569392）而 SHA-256 不同**，与项目既有结论一致：IPA 归档不可复现，**不得用 IPA 哈希做跨运行的同一性判据**，同一性以树 diff 为准（上表「树一致性」行）。
+
+> 本节为**合并后才产生的信息**，按纪律 7 以同一张卡的 docs 提交回填；因合并已落在 `main` 上，该 docs 提交直接落 `main`（`Reports/**` 命中 `paths-ignore`，不触发 CI，是预期行为）。
