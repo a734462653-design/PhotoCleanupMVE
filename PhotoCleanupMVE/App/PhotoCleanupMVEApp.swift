@@ -16,6 +16,11 @@ struct PhotoCleanupMVEApp: App {
         scenario: .readyWithItems,
         includesLedgerEntry: true
     )
+    /// IC-148 A（裁定 乙）：S0 氛围底的图源——照片库中最近一张。与扫描服务
+    /// 无关，因而**不被 H68 阻塞**；取不到即纯色回落，回落由氛围底读数既有
+    /// 行为负责，不另造。
+    private let s0AmbientImageProvider: any S0AmbientImageProviding =
+        S0RecentPhotoAmbientLoader()
 
     /// IC-131 B：S1 视图构造抽成 builder。加参数后仍留在 Scene body 的多层
     /// 嵌套里会把类型检查推到超时（IC-108／IC-113 三次实例），构造点一律外提。
@@ -71,6 +76,7 @@ struct PhotoCleanupMVEApp: App {
         S0View(
             machine: s0Machine,
             dataProvider: s0DataProvider,
+            ambientImageProvider: s0AmbientImageProvider,
             onSwitchToOrganizeTab: {
                 s0TabSelection.select(.organize)
             }
