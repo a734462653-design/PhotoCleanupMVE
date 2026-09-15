@@ -386,6 +386,28 @@
         }
       }
     },
+    "s0.home.legend.rest" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其余照片"
+          }
+        }
+      }
+    },
+    "s0.home.legend.unscanned" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未扫描"
+          }
+        }
+      }
+    },
     "s0.home.pending.action" : {
       "extractionState" : "manual",
       "localizations" : {
