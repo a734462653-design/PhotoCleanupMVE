@@ -670,7 +670,7 @@ enum S0HomeSymbol {
 /// 而登记表给的 `cardBlurRadius`／`cardSaturation` 正是一层背景磨砂。用同一张
 /// 氛围图做磨砂副本，既落实了这两个登记值，又与「恒为深色」不冲突。
 /// 取不到图时只剩幕底色——与氛围底同一条回落，不另造。
-private struct S0GlassSurface<S: InsettableShape>: ViewModifier {
+struct S0GlassSurface<S: InsettableShape>: ViewModifier {
     let shape: S
     let ambientImage: UIImage?
 

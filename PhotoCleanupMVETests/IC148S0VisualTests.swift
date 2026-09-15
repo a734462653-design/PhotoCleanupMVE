@@ -35,6 +35,15 @@ final class IC148S0VisualTests: XCTestCase {
         "PhotoCleanupMVE/Features/S0/S0CategoryRow.swift"
     ]
 
+    /// 顶层类型的收口：换行 + 右花括号 + 换行。
+    ///
+    /// 用 `UnicodeScalar` 拼而不写转义字面量：本机（Windows／Git Bash）用 heredoc
+    /// 打补丁时会把反斜杠吞掉，`"\n}\n"` 会被写成一个**真换行**，编译直接报
+    /// unterminated string literal（IC-148 #294 实例，白费一次 CI）。
+    private static let topLevelClose =
+        String(Character(UnicodeScalar(UInt8(10)))) + "}"
+            + String(Character(UnicodeScalar(UInt8(10))))
+
     /// 零裸数断言的扫描面是**视图体**，不是整个文件（任务卡断言 3 原文：
     /// 「三个视图体内」）。逐个列出六个视图／布局类型的声明锚点。
     private static let viewBodyAnchors: [(path: String, anchor: String)] = [
@@ -44,7 +53,7 @@ final class IC148S0VisualTests: XCTestCase {
         ),
         (
             "PhotoCleanupMVE/Features/S0/S0View.swift",
-            "private struct S0GlassSurface<S: InsettableShape>: ViewModifier {"
+            "struct S0GlassSurface<S: InsettableShape>: ViewModifier {"
         ),
         (
             "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift",
@@ -383,9 +392,7 @@ final class IC148S0VisualTests: XCTestCase {
         for (relativePath, anchor) in Self.viewBodyAnchors {
             let source = try XCTUnwrap(strippedSource(relativePath))
             let body = try XCTUnwrap(
-                slice(source, from: anchor, to: "
-}
-"),
+                slice(source, from: anchor, to: Self.topLevelClose),
                 anchor + " 没切到——声明文本变了，断言会静默放空"
             )
             let literals = numericLiterals(in: body)
