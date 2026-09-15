@@ -4,8 +4,18 @@ import SwiftUI
 @main
 struct PhotoCleanupMVEApp: App {
     @StateObject private var coordinator = CleanupCoordinator()
+    /// IC-147 A：S0 首页的状态机与 tab 选择态。与 `coordinator` 同层持有，
+    /// 切 tab 不经过协调器，因而不可能碰到会话层数据。
+    @StateObject private var s0Machine = S0StateMachine()
+    @StateObject private var s0TabSelection = S0TabSelectionModel()
     @Environment(\.scenePhase) private var scenePhase
     private let s2PhotoImageStrategy = S2TemporaryPhotoKitImageStrategy()
+    /// IC-147 D：S0 数据源。真实扫描服务排批次 5.1（等 H68 真机数据），
+    /// 落地后只换这一处实现。桩不发起任何 PhotoKit 请求、不起后台活动。
+    private let s0DataProvider: any S0CleanupDataProviding = S0CleanupDataStub(
+        scenario: .readyWithItems,
+        includesLedgerEntry: true
+    )
 
     /// IC-131 B：S1 视图构造抽成 builder。加参数后仍留在 Scene body 的多层
     /// 嵌套里会把类型检查推到超时（IC-108／IC-113 三次实例），构造点一律外提。
@@ -26,6 +36,43 @@ struct PhotoCleanupMVEApp: App {
                 .feedbackToastDurationMilliseconds,
             onFeedbackEventConsumed: {
                 coordinator.consumeS1FeedbackEvent()
+            }
+        )
+    }
+
+    /// IC-147 A：两 tab 容器的构造 builder（陷阱 16：构造点一律外提）。
+    ///
+    /// 「空间清理」= S0 骨架，「逐张整理」= S1 原样嵌入——**本卡不改 S1 一行**。
+    /// 待删篮张数经会话层实时取数：两个 tab 的胶囊显示同一个 `D_全部` 元素数
+    /// （SPEC-S1 v9 第二节）。闭包捕获的是状态机本身，不捕获协调器。
+    private func tabContainer(s1Machine: S1StateMachine) -> some View {
+        S0TabContainer(
+            selection: s0TabSelection,
+            cleanupContent: {
+                s0Screen()
+            },
+            organizeContent: {
+                s1Screen(machine: s1Machine)
+            }
+        )
+        .onAppear {
+            s0Machine.mergedPendingDeletionCountProvider = {
+                s1Machine.badgeCount
+            }
+        }
+    }
+
+    /// IC-147 C：S0 骨架视图的构造 builder（陷阱 16）。
+    ///
+    /// 「去逐张整理」直接切 tab；类别页与 S3 的实际导航不在本卡——类别页属
+    /// IC-148 之后，S3 的提交路径按 SPEC-S0 v1 第十节第 3 部分与 SPEC-S1 v9
+    /// 第七节第 3 部分完全相同，S0 不另造一份，故此处不接线。
+    private func s0Screen() -> some View {
+        S0View(
+            machine: s0Machine,
+            dataProvider: s0DataProvider,
+            onSwitchToOrganizeTab: {
+                s0TabSelection.select(.organize)
             }
         )
     }
@@ -161,7 +208,7 @@ struct PhotoCleanupMVEApp: App {
                     ProgressView(L10n.text("app.loading.photo_library"))
                 case .s1, .upstream, .finished:
                     if let machine = coordinator.s1Machine {
-                        s1Screen(machine: machine)
+                        tabContainer(s1Machine: machine)
                     } else {
                         ProgressView()
                     }
@@ -188,6 +235,7 @@ struct PhotoCleanupMVEApp: App {
                 switch phase {
                 case .active:
                     coordinator.setApplicationActive(true)
+                    restoreS0Foreground()
                 case .inactive, .background:
                     coordinator.setApplicationActive(false)
                 @unknown default:
@@ -195,5 +243,21 @@ struct PhotoCleanupMVEApp: App {
                 }
             }
         }
+    }
+
+    /// IC-147 A（E3）：前台恢复。按增量缓存续扫——数据源回报仍在扫描即视为
+    /// 有新增资产，`SC` 回到扫描中（SPEC-S0 v1 第四节「任一 / 前台恢复且有
+    /// 新增资产 / S0-1」）；否则留在原态并一次性重排类别行。
+    /// 遵循 E4 口径：测试宿主下不自动启动任何活动。
+    private func restoreS0Foreground() {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else {
+            return
+        }
+        s0Machine.ingest(s0DataProvider.currentSnapshot())
+        s0Machine.handle(
+            .foregroundRestored(
+                hasNewAssets: s0DataProvider.currentScanOutcome() == .scanning
+            )
+        )
     }
 }

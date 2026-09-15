@@ -144,6 +144,336 @@
         }
       }
     },
+    "s0.account.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的空间"
+          }
+        }
+      }
+    },
+    "s0.basket.capsule" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} · {volume}"
+          }
+        }
+      }
+    },
+    "s0.category.bigVideo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大视频"
+          }
+        }
+      }
+    },
+    "s0.category.duplicate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重复照片"
+          }
+        }
+      }
+    },
+    "s0.category.screenRecording" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕录制"
+          }
+        }
+      }
+    },
+    "s0.category.screenshot" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕截图"
+          }
+        }
+      }
+    },
+    "s0.category.similar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相似照片"
+          }
+        }
+      }
+    },
+    "s0.home.category.counting" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "统计中 · {scanned} / {total}"
+          }
+        }
+      }
+    },
+    "s0.home.category.empty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无项目"
+          }
+        }
+      }
+    },
+    "s0.home.category.waiting" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "扫描完成后开始识别"
+          }
+        }
+      }
+    },
+    "s0.home.failed.auth.action" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开系统设置"
+          }
+        }
+      }
+    },
+    "s0.home.failed.auth.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要照片访问权限才能统计空间"
+          }
+        }
+      }
+    },
+    "s0.home.failed.read.action" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        }
+      }
+    },
+    "s0.home.failed.read.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取照片库失败"
+          }
+        }
+      }
+    },
+    "s0.home.hero.empty.action" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "去逐张整理"
+          }
+        }
+      }
+    },
+    "s0.home.hero.empty.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可清理的项目"
+          }
+        }
+      }
+    },
+    "s0.home.hero.growing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数字会继续增长"
+          }
+        }
+      }
+    },
+    "s0.home.hero.label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可清理约"
+          }
+        }
+      }
+    },
+    "s0.home.hero.library" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片库共 {total}"
+          }
+        }
+      }
+    },
+    "s0.home.hero.overlap" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分项目同属多个类别"
+          }
+        }
+      }
+    },
+    "s0.home.hero.progress" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已扫描 {scanned} / {total}"
+          }
+        }
+      }
+    },
+    "s0.home.hero.scanning" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在扫描…"
+          }
+        }
+      }
+    },
+    "s0.home.pending.action" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我已清空"
+          }
+        }
+      }
+    },
+    "s0.home.pending.checking" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在核对…"
+          }
+        }
+      }
+    },
+    "s0.home.pending.failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备空间没有变化，看起来还没清空最近删除"
+          }
+        }
+      }
+    },
+    "s0.home.pending.label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在「最近删除」中等待清空 {total}"
+          }
+        }
+      }
+    },
+    "s0.home.pending.passed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备可用空间 +{released}"
+          }
+        }
+      }
+    },
+    "s0.home.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空间清理"
+          }
+        }
+      }
+    },
+    "s0.tab.cleanup" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空间清理"
+          }
+        }
+      }
+    },
+    "s0.tab.organize" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "逐张整理"
+          }
+        }
+      }
+    },
     "s1.chrome.subtitle_format" : {
       "extractionState" : "manual",
       "localizations" : {
