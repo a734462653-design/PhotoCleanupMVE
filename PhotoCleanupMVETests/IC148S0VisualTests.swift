@@ -44,6 +44,10 @@ final class IC148S0VisualTests: XCTestCase {
         String(Character(UnicodeScalar(UInt8(10)))) + "}"
             + String(Character(UnicodeScalar(UInt8(10))))
 
+    /// 成员级收口：换行 + 四空格缩进的右花括号。同样不写转义字面量。
+    private static let memberClose =
+        String(Character(UnicodeScalar(UInt8(10)))) + "    }"
+
     /// 零裸数断言的扫描面是**视图体**，不是整个文件（任务卡断言 3 原文：
     /// 「三个视图体内」）。逐个列出六个视图／布局类型的声明锚点。
     private static let viewBodyAnchors: [(path: String, anchor: String)] = [
@@ -341,7 +345,7 @@ final class IC148S0VisualTests: XCTestCase {
             }
         }
 
-        // 正对照：扫描不是空转——登记表文件里确实读到了自己的定义。
+        // 正对照其一：扫描不是空转——登记表文件里确实读到了自己的定义。
         let metrics = try XCTUnwrap(
             strippedSource("PhotoCleanupMVE/Features/S0/S0HomeMetrics.swift")
         )
@@ -349,6 +353,17 @@ final class IC148S0VisualTests: XCTestCase {
             occurrences(of: "enum S0HomeMetrics", in: metrics),
             1
         )
+
+        // 正对照其二（**针对 needle 本身**）：同一套禁用词扫在**确实含有它们**
+        // 的既有文件上必须命中非零。`S1View.swift` 的 chrome 玻璃 helper 用了
+        // `.ultraThinMaterial`，同时含 `Material` 与 `ultraThin` 两个词。
+        // 没有这一条，上面那组「各为 0」有可能是 needle 写错导致的空转。
+        let s1View = try XCTUnwrap(
+            strippedSource("PhotoCleanupMVE/Features/S1/S1View.swift")
+        )
+        XCTAssertGreaterThan(occurrences(of: "Material", in: s1View), 0)
+        XCTAssertGreaterThan(occurrences(of: "ultraThin", in: s1View), 0)
+        XCTAssertGreaterThan(occurrences(of: ".primary", in: s1View), 0)
 
         // 幕底色两种 trait 解析同值（照 T2 口径）。
         let base = UIColor(S2AmbientMetrics.baseColor)
@@ -532,8 +547,15 @@ final class IC148S0VisualTests: XCTestCase {
         XCTAssertFalse(failed.showsPendingClearanceRow)
 
         // S0-3：没有类别段可进，但有「去逐张整理」入口。
+        //
+        // **文案 key 一律扫原文**：key 写在字符串字面量里，而 `strippedSource`
+        // 把字面量内容整个剔掉，拿剔过的源码找 key 恒为 0——#295 就是这样
+        // 假红的。凡 needle 本身是 key 或中文措辞，一律用 `sourceText`。
+        let rawView = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/S0/S0View.swift")
+        )
         XCTAssertGreaterThan(
-            occurrences(of: "s0.home.hero.empty.action", in: view),
+            occurrences(of: "s0.home.hero.empty.action", in: rawView),
             0
         )
 
@@ -550,7 +572,7 @@ final class IC148S0VisualTests: XCTestCase {
             "S0-1 的分段条没有未扫描段"
         )
         XCTAssertGreaterThan(
-            occurrences(of: "s0.home.category.counting", in: view),
+            occurrences(of: "s0.home.category.counting", in: rawView),
             0
         )
         // S0-2／S0-3 不画未扫描段。
@@ -588,8 +610,18 @@ final class IC148S0VisualTests: XCTestCase {
             "首帧判据退回了按张数判"
         )
         // 首帧未到走「正在扫描…」；到了才走字节量大字。
+        // key 扫**原文**切片（理由同断言 5）。
+        let rawHero = try XCTUnwrap(
+            slice(
+                try XCTUnwrap(
+                    sourceText("PhotoCleanupMVE/Features/S0/S0View.swift")
+                ),
+                from: "private var scanningHero: some View {",
+                to: Self.memberClose
+            )
+        )
         XCTAssertGreaterThan(
-            occurrences(of: "s0.home.hero.scanning", in: hero),
+            occurrences(of: "s0.home.hero.scanning", in: rawHero),
             0
         )
         XCTAssertGreaterThan(occurrences(of: "heroValue(", in: hero), 0)
@@ -935,8 +967,13 @@ final class IC148S0VisualTests: XCTestCase {
 
     func testIC148DAssertion14CoverSlotIsEmptyNotFaked() throws {
         // 三个视图文件内不出现任何图片资源名或取图调用。
+        //
+        // 扫的是**原文**不是剔过的源码：资源名与扩展名都写在字符串字面量里，
+        // 而 `strippedSource` 会把字面量内容连同引号一起剔掉——拿剔过的源码去找
+        // `Image("` 或 `.png` 恒为 0，断言会**空转通过**（#295 上就是这样过的，
+        // 过得没有意义）。
         for relativePath in Self.viewFiles {
-            let source = try XCTUnwrap(strippedSource(relativePath))
+            let source = try XCTUnwrap(sourceText(relativePath))
             for faking in [
                 "Image(\"",
                 "UIImage(named",
@@ -953,6 +990,16 @@ final class IC148S0VisualTests: XCTestCase {
                 )
             }
         }
+        // 正对照：同一套 needle 在**确实放图**的既有视图上命中非零，
+        // 证明这组扫描不是空转。
+        let thumbnail = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE/Features/Shared/ThumbnailView.swift")
+        )
+        XCTAssertGreaterThan(
+            occurrences(of: "Image(", in: thumbnail),
+            0,
+            "正对照失效：缩略图视图里都没有 Image("
+        )
         // 数据模型里没有 `coverAssetID`——本卡不加没有生产者的字段。
         let snapshot = try XCTUnwrap(
             strippedSource("PhotoCleanupMVE/Core/S0StateMachine.swift")
