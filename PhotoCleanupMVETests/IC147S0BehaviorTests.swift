@@ -793,7 +793,8 @@ final class IC147S0BehaviorTests: XCTestCase {
         // (b) 目录里 `s0.` 全部条目的取值同样零命中。
         let catalog = try loadCatalogValues()
         let s0Values = catalog.filter { $0.key.hasPrefix("s0.") }
-        XCTAssertEqual(s0Values.count, 30)
+        // IC-148 C 新增两条图例 key（`s0.home.legend.rest`／`.unscanned`）。
+        XCTAssertEqual(s0Values.count, 32)
         for (key, value) in s0Values {
             for wording in forbidden {
                 XCTAssertFalse(
@@ -820,7 +821,10 @@ final class IC147S0BehaviorTests: XCTestCase {
         var referenced: Set<String> = []
         for relativePath in [
             "PhotoCleanupMVE/Features/S0/S0View.swift",
-            "PhotoCleanupMVE/Features/S0/S0TabContainer.swift"
+            "PhotoCleanupMVE/Features/S0/S0TabContainer.swift",
+            // IC-148 C：两条图例 key 的引用点在分段条文件里，不加进来
+            // 「不多不少」那条会因为少扫一个文件而假红。
+            "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift"
         ] {
             let source = try XCTUnwrap(sourceText(relativePath))
             referenced.formUnion(localizationKeys(in: source))
@@ -834,11 +838,20 @@ final class IC147S0BehaviorTests: XCTestCase {
         }
 
         XCTAssertGreaterThan(referenced.count, 20)
-        // 不多不少：目录里的 s0. key 集合恰等于 S0 源码引用的集合。
-        XCTAssertEqual(referenced, catalogS0Keys)
-        XCTAssertEqual(catalogS0Keys.count, 30)
-        // 全部以 `s0.` 为前缀，没有混入别的前缀。
-        XCTAssertTrue(referenced.allSatisfy { $0.hasPrefix("s0.") })
+        // 不多不少：目录里的 s0. key 集合恰等于 S0 源码引用的 s0. 集合。
+        XCTAssertEqual(referenced.filter { $0.hasPrefix("s0.") }, catalogS0Keys)
+        XCTAssertEqual(catalogS0Keys.count, 32)
+        // 跨前缀引用只允许一条：受限提示条。
+        //
+        // IC-148 B 第 6 条要求 S0 画受限提示条，而 SPEC-S0 v1 第十四节第 3 部分
+        // **没有登记任何 `s0.` 受限提示条文案**（该缺口 IC-147 报告已登记）。
+        // 「未登记的文案不得出现」与「必须画这条」二者只能取其一，取了复用
+        // SPEC-S1 v9 已登记的同义文案，并在此把这唯一一条跨前缀引用钉死——
+        // 再多一条就是自造文案，判红。
+        XCTAssertEqual(
+            referenced.filter { !$0.hasPrefix("s0.") },
+            ["s1.limited.banner"]
+        )
     }
 
     // MARK: - 断言 12：桩的确定性
