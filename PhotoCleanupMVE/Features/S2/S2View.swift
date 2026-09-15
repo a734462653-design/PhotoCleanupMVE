@@ -400,12 +400,15 @@ protocol S2ShareItemResolving: AnyObject {
     func shareItemURL(assetID: String) async -> URL?
 }
 
-/// 生产实现。语义与 `AssetSizeProbeService` 的 URL 途径同源
-/// （照片走 `fullSizeImageURL`、视频走 `AVURLAsset.url`），
-/// 但那条实现只回字节数不回 URL，且 `Services/` 在本卡不可触碰，故此处另写一份。
-/// **两处口径必须同步改**——已在报告「发现但未处理的问题」登记。
+/// 生产实现。**IC-150 A 起，照片一侧与 `AssetSizeProbeService` 不再同源**：
+/// 那条只量字节数，在本进程内当场读完即弃，用 `fullSizeImageURL` 没问题；
+/// 分享要把 URL 交给面板之后才被读，必须落在自己的容器里（见 `imageURL(for:)`
+/// 的注释）。视频两侧仍同源，都走 `AVURLAsset.url`。
+/// **`Services/` 那份本卡不可触碰**，是否需要跟改已在报告「发现但未处理的问题」登记。
 ///
 /// 全程禁网络：iCloud 未下载的资产取不到 URL，回 nil ⟹ 不呈现面板。
+/// 两处请求选项（资源写出、视频）一律 `isNetworkAccessAllowed = false`
+/// ——四类资产共走这两条路径，断言 4 扫的就是这一条。
 final class S2PhotoKitShareItemResolver: S2ShareItemResolving {
     func shareItemURL(assetID: String) async -> URL? {
         guard let asset = PHAsset.fetchAssets(
@@ -421,18 +424,75 @@ final class S2PhotoKitShareItemResolver: S2ShareItemResolving {
         return await imageURL(for: asset)
     }
 
+    /// IC-150 A（H69 第 2 项）：可分享的文件必须落在**本 App 自己的容器**里。
+    ///
+    /// 旧实装把 `PHContentEditingInput.fullSizeImageURL` 直接交给分享面板。
+    /// 那是 PhotoKit 容器（`/var/mobile/Media/…`）里的原文件路径，本进程对它的
+    /// 读取权限随 `PHContentEditingInput` 走；而那个对象是回调的入参，**回调一返回
+    /// 就释放了**，只有 URL 这个值逃了出去。面板真正去读那个路径时已经读不到。
+    ///
+    /// 为什么只有视频没事：视频那条走 `AVURLAsset.url`（A6），不受这条生命周期
+    /// 约束。照片／实况／截图三者共用本函数，所以一起废——与 H69 第 2 项的现象
+    /// 逐条吻合（另见报告里对另两种可能的排除）。
+    ///
+    /// 改法不依赖「究竟是谁读不到」：把原始字节**复制进自己的临时目录**再交出去，
+    /// 从根上不再依赖 PhotoKit 容器的沙盒扩展。不转码——规格第 4 条要的是原始资产。
     private func imageURL(for asset: PHAsset) async -> URL? {
-        await withCheckedContinuation { continuation in
-            let options = PHContentEditingInputRequestOptions()
-            options.isNetworkAccessAllowed = false
+        guard let resource = Self.shareableImageResource(for: asset),
+              let destination = Self.prepareShareDestination(
+                  filename: resource.originalFilename
+              ) else {
+            return nil
+        }
+        let options = PHAssetResourceRequestOptions()
+        options.isNetworkAccessAllowed = false
+        let written: Bool = await withCheckedContinuation { continuation in
             let resumer = S2ShareContinuationResumer()
-            _ = asset.requestContentEditingInput(with: options) { input, _ in
+            PHAssetResourceManager.default().writeData(
+                for: resource,
+                toFile: destination,
+                options: options
+            ) { error in
                 guard resumer.claim() else {
                     return
                 }
-                continuation.resume(returning: input?.fullSizeImageURL)
+                continuation.resume(returning: error == nil)
             }
         }
+        return written ? destination : nil
+    }
+
+    /// 取「用户看到的那一张」：编辑过的取 `.fullSizePhoto`，否则取 `.photo`。
+    /// 实况取其静态图，不取 `.pairedVideo`——规格第 4 条：分享其原始静态图。
+    private static func shareableImageResource(
+        for asset: PHAsset
+    ) -> PHAssetResource? {
+        let resources = PHAssetResource.assetResources(for: asset)
+        if let edited = resources.first(where: { $0.type == .fullSizePhoto }) {
+            return edited
+        }
+        return resources.first { $0.type == .photo }
+    }
+
+    /// 分享目录只留当前这一张：`S2SharePayload` 一次只承载一个 URL，留着上一次的
+    /// 文件既占空间，也可能在下次取项失败时被误当成本次的结果交出去。
+    /// `writeData` 要求目标文件不存在，整目录清掉正好满足。
+    private static func prepareShareDestination(filename: String) -> URL? {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("S2Share", isDirectory: true)
+        try? FileManager.default.removeItem(at: directory)
+        do {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            return nil
+        }
+        let trimmed = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+        return directory.appendingPathComponent(
+            trimmed.isEmpty ? "shared-item" : trimmed
+        )
     }
 
     private func videoURL(for asset: PHAsset) async -> URL? {

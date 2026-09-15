@@ -19,16 +19,23 @@ private final class IC146AudioSessionRecorder: S2AudioSessionControlling {
         }.count
     }
 
-    func setPlaybackCategory() {
-        calls.append("setCategory(.playback)")
+    func setCategory(_ category: S2AudioSessionCategory) -> Bool {
+        calls.append("setCategory(." + category.rawValue + ")")
+        return true
     }
 
-    func setActive(_ active: Bool) {
-        calls.append(
-            active
-                ? "setActive(true)"
-                : "setActive(false, notifyOthersOnDeactivation)"
-        )
+    func setActive(
+        _ active: Bool,
+        notifyOthersOnDeactivation: Bool
+    ) -> Bool {
+        if active {
+            calls.append("setActive(true)")
+        } else if notifyOthersOnDeactivation {
+            calls.append("setActive(false, notifyOthersOnDeactivation)")
+        } else {
+            calls.append("setActive(false)")
+        }
+        return true
     }
 }
 
@@ -792,7 +799,11 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         coordinator.toggleMute()
         XCTAssertEqual(
             active.calls,
-            ["setCategory(.playback)", "setActive(true)"],
+            [
+                "setCategory(.ambient)",
+                "setCategory(.playback)",
+                "setActive(true)"
+            ],
             "点「有声」未按「先置类别再激活」备好会话"
         )
 
@@ -800,8 +811,10 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         XCTAssertEqual(
             active.calls,
             [
+                "setCategory(.ambient)",
                 "setCategory(.playback)",
                 "setActive(true)",
+                "setCategory(.ambient)",
                 "setActive(false, notifyOthersOnDeactivation)"
             ],
             "失活未停用会话，别的应用的音频不会恢复"
@@ -824,7 +837,14 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         idleCoordinator.pageBecameCurrent(assetID: "B", neighbours: [])
         idleCoordinator.pagingSettled()
         idleCoordinator.applicationDidResignActive()
-        XCTAssertEqual(idle.calls, [], "静音态失活动了音频会话")
+        // IC-150 B：静音态不再是「一次都不碰会话」，而是「置可混音的
+        // `.ambient` 但不激活」——旧口径把类目留在 App 默认的 `.soloAmbient`，
+        // 正是静音播放打断别人音乐的原因（H69 第 5 项症状 1）。
+        XCTAssertEqual(
+            idle.calls,
+            ["setCategory(.ambient)"],
+            "静音态失活除置类目外还动了音频会话"
+        )
     }
 
     // MARK: - 断言 16：回 active 不自动激活
