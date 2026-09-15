@@ -1,0 +1,24 @@
+2026-09-15T02:00:00.0000000Z Test Suite 'All tests' started at 2026-09-15 02:00:00.000.
+2026-09-15T02:00:00.0100000Z Test Suite 'PhotoCleanupMVETests.xctest' started at 2026-09-15 02:00:00.001.
+2026-09-15T02:00:00.0200000Z Test Suite 'AlphaTests' started at 2026-09-15 02:00:00.002.
+2026-09-15T02:00:00.0300000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaOne]' started.
+2026-09-15T02:00:00.0400000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaOne]' passed (0.010 seconds).
+2026-09-15T02:00:00.0500000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaTwo]' started.
+2026-09-15T02:00:00.0600000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaTwo]' passed (0.010 seconds).
+2026-09-15T02:00:00.0700000Z Test Suite 'AlphaTests' passed at 2026-09-15 02:00:00.070.
+2026-09-15T02:00:00.0800000Z 	 Executed 2 tests, with 0 failures (0 unexpected) in 0.020 (0.021) seconds
+2026-09-15T02:00:00.0900000Z Test Suite 'BetaTests' started at 2026-09-15 02:00:00.090.
+2026-09-15T02:00:00.1000000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaOne]' started.
+2026-09-15T02:00:00.1100000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaOne]' passed (0.010 seconds).
+2026-09-15T02:00:00.1200000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaTwo]' started.
+2026-09-15T02:00:00.1300000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaTwo]' passed (0.010 seconds).
+2026-09-15T02:00:00.1400000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaThree]' started.
+2026-09-15T02:00:00.1500000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaThree]' passed (0.010 seconds).
+2026-09-15T02:00:00.1600000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaFour]' started.
+2026-09-15T02:00:00.1700000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaFour]' passed (0.010 seconds).
+2026-09-15T02:00:00.1800000Z Test Suite 'BetaTests' passed at 2026-09-15 02:00:00.180.
+2026-09-15T02:00:00.1900000Z 	 Executed 4 tests, with 0 failures (0 unexpected) in 0.040 (0.041) seconds
+2026-09-15T02:00:00.2000000Z Test Suite 'PhotoCleanupMVETests.xctest' passed at 2026-09-15 02:00:00.200.
+2026-09-15T02:00:00.2100000Z 	 Executed 6 tests, with 0 failures (0 unexpected) in 0.060 (0.061) seconds
+2026-09-15T02:00:00.2200000Z Test Suite 'All tests' passed at 2026-09-15 02:00:00.220.
+2026-09-15T02:00:00.2300000Z 	 Executed 6 tests, with 0 failures (0 unexpected) in 0.060 (0.062) seconds
