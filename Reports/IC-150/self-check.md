@@ -272,7 +272,27 @@ CI 预算 3 次，**实际用 1 次**。
 
 ## 十、合并与 G861
 
-**待填**——报告写完即执行合并并回填。
+**G860 满足，按卡内授权执行 `--no-ff` 合并并推送。合并未被权限分类器拒绝，一次通过。**
+
+| 项 | 值 |
+|---|---|
+| 合并提交 | **`53bc9ed5a877476e7e09178f05c06f34accb6315`** |
+| 父提交 | `7b5c9233f01ca4992449ca86295c9e9b70fa6b21`（合并前 `main`）、`466f559be84206edf673f4156f1cc5e49fe52d2b`（分支 tip，含报告） |
+| 合并后 `main` 树 vs 分支 tip 树 | **逐字节一致**（`git diff --stat 466f559 HEAD` 无输出） |
+
+### G861：合并后 `main` 自动运行
+
+| 项 | 值 |
+|---|---|
+| run 编号 / id / attempt | **#301** / `34994414936` / attempt 1 |
+| 被测提交 | `53bc9ed5a877476e7e09178f05c06f34accb6315` |
+| 结论 | **success**，11 个步骤全 success |
+| 摘要 notice | `Executed 798 tests, 0 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 798 tests / 0 failures` |
+| IPA | **1572752 字节**，SHA-256 `875160a4ee0142e165ca6464520367c828054ae36f3209758bba72259efeceaf` |
+
+IPA 字节数与分支运行 #300 **相同**而 SHA-256 **不同**，与既有结论一致：IPA 归档不可复现，同一性以树 diff 为准、不用哈希（上表的树比对即为此）。
+
+本节属合并后才产生的信息，按纪律 7 以**同卡 docs 提交**回填；因合并已落 `main`，该提交直接落 `main`（`Reports/**` 命中 `paths-ignore`，不触发 CI，这是预期行为）。
 
 ---
 
@@ -289,4 +309,23 @@ CI 预算 3 次，**实际用 1 次**。
 
 ## 十二、SHA 核验
 
-**待填**——与第十节一并回填。
+本报告与 `change-list.md` 中出现的全部 40 位 SHA，逐个跑 `git cat-file -e <sha>^{commit}`：
+
+| SHA | 含义 | `cat-file -e` |
+|---|---|---|
+| `7b5c9233f01ca4992449ca86295c9e9b70fa6b21` | 基线 `main`（IC-149 合并提交） | **OK** |
+| `07b27991c42dde24db0cc20dd60f6f6f558d30af` | 开工核对用（IC-149 子项 C） | **OK** |
+| `9e1eee8a11b6a21c106a45d6c5adaa26005d8816` | 本卡提交 1（子项 A） | **OK** |
+| `64839118e4be1543b14c8972123c2037cc305678` | 本卡提交 2（子项 B），#300 被测提交 | **OK** |
+| `466f559be84206edf673f4156f1cc5e49fe52d2b` | 本卡报告提交，分支 tip | **OK** |
+| `53bc9ed5a877476e7e09178f05c06f34accb6315` | 合并提交，#301 被测提交 | **OK** |
+| `b368a6caee846e664391b0620350395bfe6fbc7f` | 冻结链 `feature/ic-089-nx-edge-bounce` | **OK** |
+| `6736f1e3ebf2a3fd9a0c00f1bcd2c83f81dec74d` | 冻结链 `feature/ic-091-nx-midgesture-handoff` | **OK** |
+| `a7cc1ec727a3a493f5263e688a316cbf4c743562` | 冻结链 `feature/ic-092-nx-window-follow` | **OK** |
+| `9db02b93eccbb87d126602901807e70823535111` | `probe/ic-067-screenshot-subtype` | **OK** |
+| `486bcb769b59eb1146c5a231c7998847206777cc` | `probe/ic-137-media-playback` | **OK** |
+| `d373afc7125104c01acfc296829229090e6871ce` | `probe/ic-145-scan-service` | **OK** |
+
+十二个全部存在，无一例外。陷阱 15：本报告所有 40 位 SHA 均来自 `git rev-parse` / `git log` / `git ls-remote` 的实读输出，无一例由短前缀补全。
+
+**非提交类哈希**（文件内容、IPA）均为本机 `sha256sum` 或 CI `shasum -a 256` 的实测输出，不参与 `cat-file` 核验。
