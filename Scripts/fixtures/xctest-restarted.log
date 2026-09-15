@@ -1,0 +1,35 @@
+2026-09-15T02:10:00.0000000Z Test Suite 'All tests' started at 2026-09-15 02:10:00.000.
+2026-09-15T02:10:00.0100000Z Test Suite 'PhotoCleanupMVETests.xctest' started at 2026-09-15 02:10:00.001.
+2026-09-15T02:10:00.0200000Z Test Suite 'AlphaTests' started at 2026-09-15 02:10:00.002.
+2026-09-15T02:10:00.0300000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaOne]' started.
+2026-09-15T02:10:00.0400000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaOne]' passed (0.010 seconds).
+2026-09-15T02:10:00.0500000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaTwo]' started.
+2026-09-15T02:10:00.0600000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaTwo]' passed (0.010 seconds).
+2026-09-15T02:10:00.0700000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaThree]' started.
+2026-09-15T02:10:00.0800000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaThree]' passed (0.010 seconds).
+2026-09-15T02:10:00.0900000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaFour]' started.
+2026-09-15T02:10:00.1000000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaFour]' passed (0.010 seconds).
+2026-09-15T02:10:00.1100000Z Test Suite 'AlphaTests' passed at 2026-09-15 02:10:00.110.
+2026-09-15T02:10:00.1200000Z 	 Executed 4 tests, with 0 failures (0 unexpected) in 0.040 (0.041) seconds
+2026-09-15T02:10:00.1300000Z Test Suite 'CrashyTests' started at 2026-09-15 02:10:00.130.
+2026-09-15T02:10:00.1400000Z Test Case '-[PhotoCleanupMVETests.CrashyTests testCrashyOne]' started.
+2026-09-15T02:10:00.1500000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/CrashyTests.swift:42: error: -[PhotoCleanupMVETests.CrashyTests testCrashyOne] : XCTAssertTrue failed
+2026-09-15T02:10:00.1600000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/CrashyTests.swift:43: error: -[PhotoCleanupMVETests.CrashyTests testCrashyOne] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-15T02:10:00.1700000Z Simultaneous accesses to 0x1061c1020, but modification requires exclusive access.
+2026-09-15T02:10:00.1800000Z Fatal access conflict detected.
+2026-09-15T02:10:20.0000000Z
+2026-09-15T02:10:20.0100000Z Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+2026-09-15T02:10:20.0200000Z
+2026-09-15T02:10:20.0300000Z Test Suite 'Selected tests' started at 2026-09-15 02:10:20.030.
+2026-09-15T02:10:20.0400000Z Test Suite 'PhotoCleanupMVETests.xctest' started at 2026-09-15 02:10:20.040.
+2026-09-15T02:10:20.0500000Z Test Suite 'BetaTests' started at 2026-09-15 02:10:20.050.
+2026-09-15T02:10:20.0600000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaOne]' started.
+2026-09-15T02:10:20.0700000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaOne]' passed (0.010 seconds).
+2026-09-15T02:10:20.0800000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaTwo]' started.
+2026-09-15T02:10:20.0900000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaTwo]' passed (0.010 seconds).
+2026-09-15T02:10:20.1000000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaThree]' started.
+2026-09-15T02:10:20.1100000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaThree]' passed (0.010 seconds).
+2026-09-15T02:10:20.1200000Z Test Suite 'BetaTests' passed at 2026-09-15 02:10:20.120.
+2026-09-15T02:10:20.1300000Z 	 Executed 3 tests, with 0 failures (0 unexpected) in 0.030 (0.031) seconds
+2026-09-15T02:10:20.1400000Z Test Suite 'PhotoCleanupMVETests.xctest' passed at 2026-09-15 02:10:20.140.
+2026-09-15T02:10:20.1500000Z 	 Executed 3 tests, with 0 failures (0 unexpected) in 0.030 (0.032) seconds

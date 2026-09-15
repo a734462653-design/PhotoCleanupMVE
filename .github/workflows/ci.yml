@@ -64,6 +64,73 @@ jobs:
         shell: pwsh
         run: ./Scripts/scan-hardcoded-user-visible-strings.ps1
 
+      - name: 自测项数统计逻辑（IC-149 子项 B）
+        run: |
+          set -o pipefail
+          set -u
+          selftest_failures=0
+
+          expect_field() {
+            fixture_name="$1"
+            field_name="$2"
+            want_value="$3"
+            got_value="$(
+              bash Scripts/summarize-xctest-log.sh "Scripts/fixtures/${fixture_name}" |
+                /usr/bin/sed -n "s/^${field_name}=//p"
+            )"
+            if [ "${got_value}" = "${want_value}" ]; then
+              echo "OK ${fixture_name} ${field_name}=${got_value}"
+            else
+              echo "::error title=项数统计自测::${fixture_name} 的 ${field_name} 期望 ${want_value}，实得 ${got_value}"
+              selftest_failures=$((selftest_failures + 1))
+            fi
+          }
+
+          expect_field xctest-single-chunk.log executed_count 6
+          expect_field xctest-single-chunk.log failed_case_count 0
+          expect_field xctest-single-chunk.log restart_count 0
+          expect_field xctest-restarted.log executed_count 8
+          expect_field xctest-restarted.log failed_case_count 1
+          expect_field xctest-restarted.log restart_count 1
+          expect_field xctest-zero.log executed_count 0
+          expect_field xctest-zero.log restart_count 0
+
+          # 负对照：改前的 `tail -n 1` 口径在重启夹具上必须给出**错误**答案。
+          # 没有这一条，夹具有可能根本不区分新旧口径，自测就成了空转。
+          old_logic_count="$(
+            /usr/bin/grep -E 'Executed [0-9]+ tests?' Scripts/fixtures/xctest-restarted.log |
+              tail -n 1 |
+              /usr/bin/sed -nE 's/.*Executed ([0-9]+) tests?.*/\1/p'
+          )"
+          if [ "${old_logic_count}" = "8" ]; then
+            echo "::error title=项数统计自测::重启夹具未能区分新旧口径（旧口径也给出 8），失去负对照作用。"
+            selftest_failures=$((selftest_failures + 1))
+          else
+            echo "OK 负对照：旧 tail -n 1 口径在重启夹具上给出 ${old_logic_count}，真实项数为 8"
+          fi
+
+          # IC-125 哨兵口径不变：零项日志经新逻辑取出的执行数仍须 <= 0。
+          zero_summary="$(
+            bash Scripts/summarize-xctest-log.sh Scripts/fixtures/xctest-zero.log |
+              /usr/bin/sed -n 's/^summary_line=//p'
+          )"
+          zero_count="$(
+            printf '%s\n' "${zero_summary}" |
+              /usr/bin/sed -nE 's/.*Executed ([0-9]+) tests?.*/\1/p'
+          )"
+          if [ -z "${zero_count}" ] || [ "${zero_count}" -gt 0 ]; then
+            echo "::error title=项数统计自测::零项日志的哨兵取值为 ${zero_count:-空}，哨兵不会判红。"
+            selftest_failures=$((selftest_failures + 1))
+          else
+            echo "OK 哨兵口径：零项日志取值 ${zero_count}，哨兵路径仍判失败"
+          fi
+
+          if [ "${selftest_failures}" -ne 0 ]; then
+            echo "统计逻辑自测失败 ${selftest_failures} 项。" >&2
+            exit 1
+          fi
+          echo "统计逻辑自测通过。"
+
       - name: 运行 XCTest
         run: |
           set -o pipefail
@@ -77,12 +144,24 @@ jobs:
             test_status=$?
           fi
 
+          # IC-149 子项 B：项数改由 Scripts/summarize-xctest-log.sh 按「唯一 Test Case
+          # 身份去重」统计。旧的 `tail -n 1` 取的是最后一段小计，测试宿主崩溃重启后
+          # 日志分段，摘要会少报项数并把前面段落的失败数报成 0（#292 attempt 1：
+          # 真实 777 项、1 个用例失败，旧口径报 401 项 0 失败）。
+          summary_output="$(bash Scripts/summarize-xctest-log.sh "$test_log" || true)"
           executed_line="$(
-            /usr/bin/grep -E 'Executed [0-9]+ tests?' "$test_log" |
-              tail -n 1 || true
+            printf '%s\n' "${summary_output}" |
+              /usr/bin/sed -n 's/^summary_line=//p' || true
+          )"
+          restart_count="$(
+            printf '%s\n' "${summary_output}" |
+              /usr/bin/sed -n 's/^restart_count=//p' || true
           )"
           if [ -n "$executed_line" ]; then
             echo "::notice title=XCTest 执行摘要::$executed_line"
+          fi
+          if [ -n "${restart_count}" ] && [ "${restart_count}" -gt 0 ]; then
+            echo "::notice title=XCTest 宿主重启::本次运行测试宿主重启 ${restart_count} 次，日志分成多段；执行摘要的项数按「唯一 Test Case 身份去重」统计，不取任何一段的 Executed 小计。"
           fi
 
           if [ "$test_status" -ne 0 ]; then

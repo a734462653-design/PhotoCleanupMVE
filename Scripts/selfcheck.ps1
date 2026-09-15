@@ -323,6 +323,24 @@ if (Test-Path -LiteralPath $hardcodedStringScanner -PathType Leaf) {
     }
 }
 
+# IC-149 子项 C：两条源码扫描门禁。两者各自带负对照（-SelfTest：合成病样必须判红、
+# 健康样本必须零命中），自对照不过即以非 0 退出。按真实退出码判定，不由管道吞掉。
+$swiftStructureChecker = Join-Path $projectRoot "Scripts/check-swift-string-structure.ps1"
+if (Test-Path -LiteralPath $swiftStructureChecker -PathType Leaf) {
+    & $swiftStructureChecker -SelfTest
+    if ($LASTEXITCODE -ne 0) {
+        Add-Failure "Swift 字符串与括号结构检查未通过"
+    }
+}
+
+$scanNeedleChecker = Join-Path $projectRoot "Scripts/check-scan-needle-variant.ps1"
+if (Test-Path -LiteralPath $scanNeedleChecker -PathType Leaf) {
+    & $scanNeedleChecker -SelfTest
+    if ($LASTEXITCODE -ne 0) {
+        Add-Failure "扫描 needle 与源码变体交叉审计未通过"
+    }
+}
+
 if ($failures.Count -gt 0) {
     Write-Host "结构自验失败，共 $($failures.Count) 项：" -ForegroundColor Red
     foreach ($failure in $failures) {
