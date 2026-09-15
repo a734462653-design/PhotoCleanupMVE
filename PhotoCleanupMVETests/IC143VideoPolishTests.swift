@@ -5,19 +5,30 @@ import XCTest
 @testable import PhotoCleanupMVE
 
 /// 断言 12 的音频会话记录器。只记调用，不碰系统会话。
+///
+/// IC-150 B 随协议改签名：类目改成带参数（静音态要 `.ambient`），
+/// 激活／停用回报成败。记录器一律回 true——**真机上的失败由生产实现
+/// 的返回值承载，夹具这一侧模拟不出来**（陷阱 1）。
 private final class AudioSessionRecorder: S2AudioSessionControlling {
     private(set) var calls: [String] = []
 
-    func setPlaybackCategory() {
-        calls.append("setCategory(.playback)")
+    func setCategory(_ category: S2AudioSessionCategory) -> Bool {
+        calls.append("setCategory(." + category.rawValue + ")")
+        return true
     }
 
-    func setActive(_ active: Bool) {
-        calls.append(
-            active
-                ? "setActive(true)"
-                : "setActive(false, notifyOthersOnDeactivation)"
-        )
+    func setActive(
+        _ active: Bool,
+        notifyOthersOnDeactivation: Bool
+    ) -> Bool {
+        if active {
+            calls.append("setActive(true)")
+        } else if notifyOthersOnDeactivation {
+            calls.append("setActive(false, notifyOthersOnDeactivation)")
+        } else {
+            calls.append("setActive(false)")
+        }
+        return true
     }
 }
 
@@ -655,7 +666,15 @@ final class IC143VideoPolishTests: XCTestCase {
         autoplayCoordinator.enter(assetID: nil)
         autoplayCoordinator.pageBecameCurrent(assetID: "B", neighbours: [])
         autoplayCoordinator.pagingSettled()
-        XCTAssertEqual(autoplay.calls, [], "静音自动播放动了音频会话")
+        // IC-150 B（H69 第 5 项症状 1）：旧口径是「静音态一次都别碰会话」，
+        // 而那正是真机上打断别人音乐的原因：不置类目就停在 App 默认的
+        // `.soloAmbient` 上，`AVPlayer.play()` 一隐式激活就不混音。
+        // 新口径：静音态**置 `.ambient` 但不激活**。
+        XCTAssertEqual(
+            autoplay.calls,
+            ["setCategory(.ambient)"],
+            "静音自动播放未把类目置成可混音的 .ambient"
+        )
 
         // 路径一：用户再点一次静音。
         let retap = AudioSessionRecorder()
@@ -665,7 +684,11 @@ final class IC143VideoPolishTests: XCTestCase {
         retapCoordinator.toggleMute()
         XCTAssertEqual(
             retap.calls,
-            ["setCategory(.playback)", "setActive(true)"],
+            [
+                "setCategory(.ambient)",
+                "setCategory(.playback)",
+                "setActive(true)"
+            ],
             "点「有声」未按「先置类别再激活」备好会话"
         )
         retapCoordinator.toggleMute()
@@ -674,7 +697,8 @@ final class IC143VideoPolishTests: XCTestCase {
             "setActive(false, notifyOthersOnDeactivation)",
             "再点静音未停用会话"
         )
-        XCTAssertEqual(retap.calls.count, 3)
+        // 五条：进场 .ambient、出声 .playback + 激活、收声 .ambient + 停用。
+        XCTAssertEqual(retap.calls.count, 5)
 
         // 路径二：翻页（`becameCurrent` 把「有声」清掉）。
         let pageChange = AudioSessionRecorder()
@@ -686,8 +710,10 @@ final class IC143VideoPolishTests: XCTestCase {
         XCTAssertEqual(
             pageChange.calls,
             [
+                "setCategory(.ambient)",
                 "setCategory(.playback)",
                 "setActive(true)",
+                "setCategory(.ambient)",
                 "setActive(false, notifyOthersOnDeactivation)"
             ],
             "翻走后未停用会话，别的应用的音频不会恢复"
@@ -752,7 +778,7 @@ final class IC143VideoPolishTests: XCTestCase {
         repeatCoordinator.leave()
         XCTAssertEqual(
             repeated.calls.count,
-            afterFirstUnmute + 1,
+            afterFirstUnmute + 2,
             "重复收声重复停用了会话"
         )
     }

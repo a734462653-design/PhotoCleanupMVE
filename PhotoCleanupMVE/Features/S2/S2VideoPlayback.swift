@@ -185,7 +185,20 @@ struct S2VideoPlaybackMachine {
             guard let assetID = currentAssetID else {
                 return []
             }
-            return [.setMuted(assetID: assetID, muted: true)]
+            // IC-150 B（H69 第 5 项症状 2）：**停用会话前必须先停掉音频 I/O**。
+            // 旧实装只静音不暂停，播放器照旧在跑音频管线；真机上
+            // `setActive(false)` 因此抛 `!act`（busy）并被 `try?` 吞掉，
+            // 别的 App 永远收不到「可以恢复」，音乐不回来。
+            // `isMuted` 只是把音量拧到 0，管线照跑——这就是既有六条绿测
+            // 抓不到它的原因：记录器只看得见「调过 setActive(false)」。
+            var effects: [S2VideoPlaybackEffect] = [
+                .setMuted(assetID: assetID, muted: true)
+            ]
+            if state(for: assetID) == .playing {
+                states[assetID] = .paused
+                effects.append(.pause(assetID: assetID))
+            }
+            return effects
 
         case .userToggledMute:
             guard let assetID = currentAssetID else {
@@ -451,32 +464,79 @@ protocol S2VideoPlaybackSurface: AnyObject {
 
 // MARK: - IC-143 D：音频会话
 
-/// 音频会话的最小接口。**唯一**碰系统会话单例的地方是下面那个生产实现，
-/// 测试注入记录器即可核对调用次序与次数。
-protocol S2AudioSessionControlling: AnyObject {
-    /// 置为播放类别——侧面静音拨片拨到静音时也出声，与系统「照片」一致
-    /// （④ H65 第 8 项判定）。
-    func setPlaybackCategory()
-    /// 激活／停用。停用时通知其他应用可以恢复自己的音频。
-    func setActive(_ active: Bool)
+/// IC-150 B（H69 第 5 项症状 1）：静音播放要用可混音的类目。
+///
+/// 旧实装只在「用户点了有声」那条分支里设过 `.playback`，静音播放**一次都不设**，
+/// 于是会话停在 App 默认类目 `.soloAmbient` 上；`AVPlayer.play()` 会隐式激活会话，
+/// 而 `.soloAmbient` 不混音——别人的音乐就被打断了。播放器级的 `isMuted` 只是
+/// 把音量拧到 0，改不了这件事。
+enum S2AudioSessionCategory: String {
+    /// 静音播放用。可与其他 App 混音，跟随侧面静音拨片。
+    case ambient
+    /// 出声播放用。不混音；侧面静音拨片拨到静音时也出声（④ H65 第 8 项判定）。
+    case playback
 }
 
-/// 生产实现。系统会话单例只在这两个方法里出现（断言 11）。
+/// 音频会话的最小接口。**唯一**碰系统会话单例的地方是下面那个生产实现，
+/// 测试注入记录器即可核对调用次序与次数。
+///
+/// IC-150 B：两个方法都回报成败。真机上这两个调用都会抛——尤其是「播放器还在
+/// 播时停用会话」会抛 `!act`（busy）——旧实装用 `try?` 把错误整个吞掉，
+/// 于是夹具看得见「调过了」而真机上什么都没发生（H69 第 5 项症状 2 的死因）。
+protocol S2AudioSessionControlling: AnyObject {
+    /// 置类目。返回是否成功。
+    func setCategory(_ category: S2AudioSessionCategory) -> Bool
+    /// 激活／停用。停用时可通知其他应用恢复自己的音频。返回是否成功。
+    func setActive(_ active: Bool, notifyOthersOnDeactivation: Bool) -> Bool
+}
+
+/// 生产实现。系统会话单例只在这两个方法里出现（断言 11 / 断言 8）。
+///
+/// **不允许裸 `try?`**（断言 7）：每次调用的错误都落进 `lastFailure` 并经返回值
+/// 回到协调器，由协调器决定是否改状态、是否留待下次重试。
 final class S2SystemAudioSession: S2AudioSessionControlling {
-    func setPlaybackCategory() {
-        try? AVAudioSession.sharedInstance().setCategory(.playback)
+    /// 最近一次失败的描述。仅供诊断与测试观察，不参与任何判定。
+    private(set) var lastFailure: String?
+
+    func setCategory(_ category: S2AudioSessionCategory) -> Bool {
+        let resolved: AVAudioSession.Category
+        switch category {
+        case .ambient:
+            resolved = .ambient
+        case .playback:
+            resolved = .playback
+        }
+        do {
+            try AVAudioSession.sharedInstance().setCategory(resolved)
+            lastFailure = nil
+            return true
+        } catch {
+            lastFailure = "setCategory(" + category.rawValue + ") " +
+                String(describing: error)
+            return false
+        }
     }
 
-    func setActive(_ active: Bool) {
-        guard active else {
-            // 停用时通知其他应用：别的 App 被压下去的音频可以恢复了。
-            try? AVAudioSession.sharedInstance().setActive(
-                false,
-                options: .notifyOthersOnDeactivation
-            )
-            return
+    func setActive(_ active: Bool, notifyOthersOnDeactivation: Bool) -> Bool {
+        do {
+            if active {
+                try AVAudioSession.sharedInstance().setActive(true)
+            } else if notifyOthersOnDeactivation {
+                // 停用时通知其他应用：别的 App 被压下去的音频可以恢复了。
+                try AVAudioSession.sharedInstance().setActive(
+                    false,
+                    options: .notifyOthersOnDeactivation
+                )
+            } else {
+                try AVAudioSession.sharedInstance().setActive(false)
+            }
+            lastFailure = nil
+            return true
+        } catch {
+            lastFailure = "setActive(" + String(active) + ") " +
+                String(describing: error)
+            return false
         }
-        try? AVAudioSession.sharedInstance().setActive(true)
     }
 }
 
@@ -507,6 +567,10 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
     /// 会话当前是否处于激活态。静音自动播放期间恒为 false——
     /// 不激活就不打断别的应用在放的音频（规格第 4 条）。
     private var audioSessionIsActive = false
+    /// IC-150 B：已置入会话的类目。`nil` = 还没设过（App 默认类目）。
+    private var appliedAudioCategory: S2AudioSessionCategory?
+    /// IC-150 B（断言 7）：会话调用失败的可观察去向。只累计，不参与判定。
+    private(set) var audioSessionFailureCount = 0
     private let fetchQueue = DispatchQueue(
         label: "com.photocleanupmve.s2.video.fetch"
     )
@@ -638,19 +702,43 @@ final class S2VideoPlaybackCoordinator: ObservableObject {
         refreshReadout()
     }
 
-    /// 会话状态的唯一写入点（陷阱 19）。两侧都带幂等守卫：
+    /// 会话状态的唯一写入点（陷阱 19）。激活／停用带幂等守卫：
     /// 连续多次「要出声」只激活一次，连续多次「收声」只停用一次。
+    ///
+    /// IC-150 B 两处改动：
+    /// 1. **类目在两侧都设**。静音播放要 `.ambient`（可混音），否则会话停在
+    ///    默认的 `.soloAmbient` 上，`AVPlayer.play()` 一隐式激活就打断别人
+    ///    ——症状 1。类目自带幂等守卫，同一类目不重复设。
+    /// 2. **激活／停用失败不改记账**。`setActive` 在真机上会抛（播放器还在播时
+    ///    停用抛 `!act` busy）；旧实装先把 `audioSessionIsActive` 翻过去再调用，
+    ///    调用失败也当成功记账，此后幂等守卫就永远挡着不再重试。现在只有真的
+    ///    成功了才翻，失败留待下一次事件重试——症状 2 的第二层保险。
     private func updateAudioSession(unmuted: Bool) {
+        applyAudioCategory(unmuted ? .playback : .ambient)
         guard audioSessionIsActive != unmuted else {
             return
         }
-        audioSessionIsActive = unmuted
-        guard unmuted else {
-            audioSession.setActive(false)
+        let succeeded = audioSession.setActive(
+            unmuted,
+            notifyOthersOnDeactivation: !unmuted
+        )
+        guard succeeded else {
+            audioSessionFailureCount += 1
             return
         }
-        audioSession.setPlaybackCategory()
-        audioSession.setActive(true)
+        audioSessionIsActive = unmuted
+    }
+
+    /// 类目的幂等写入。与激活分开记账：类目可以在会话未激活时先备好。
+    private func applyAudioCategory(_ category: S2AudioSessionCategory) {
+        guard appliedAudioCategory != category else {
+            return
+        }
+        guard audioSession.setCategory(category) else {
+            audioSessionFailureCount += 1
+            return
+        }
+        appliedAudioCategory = category
     }
 
     private func apply(_ effects: [S2VideoPlaybackEffect]) {
