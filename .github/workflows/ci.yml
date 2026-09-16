@@ -161,6 +161,8 @@ jobs:
           count_fixed() {
             printf '%s\n' "$1" | /usr/bin/grep -c -F -e "$2" || true
           }
+          # OK 行不原样带夹具里的失败行文本：整包日志按「唯一 Test Case 行」核项数时，
+          # 引用进来的 Test Case 失败行会被数成一只真失败的用例（#308 实例）。
 
           # 三份夹具各跑一遍，输出落盘后逐项取值；输出里一律不得出现 Executed 字样
           # （xctest-failures-many.log 的 :131 断言消息里故意带了两处，是这条的负对照）。
@@ -178,8 +180,8 @@ jobs:
           done
 
           # 组一：xctest-failures-many.log。一只用例 32 个断言行失败、每条印两遍，其中 :161 在
-          # 循环里以两种消息各失败一次（按「文件:行」只留首条）；该用例以 Test Case … failed 收尾，
-          # 随后下一只用例触发 Fatal access conflict、宿主重启，第二段 3 个通过用例，** TEST FAILED **。
+          # 循环里以两种消息各失败一次（按「文件:行」只留首条）；该用例以 Test Case 失败行收尾，
+          # 随后下一只用例触发 Fatal access conflict、宿主重启，第二段 3 个通过用例，测试失败结论行。
           # 候选 70 = 测试目标 error 行 66 + Test Case 失败行 1 + 结论行 3；
           # 去重 36 = 1 + 32 + 3（若按整行文本去重会得 37）。
           many_candidates="$(output_field xctest-failures-many.log candidate_count)"
@@ -206,18 +208,18 @@ jobs:
           first_annotation="$(printf '%s\n' "${many_annotation_lines}" | /usr/bin/sed -n '1p')"
           case "${first_annotation}" in
             "Test Case "*" failed "*)
-              report_ok "组一 annotations 段第 1 行是 Test Case … failed 行：${first_annotation}"
+              report_ok "组一 annotations 段第 1 行是 Test Case 失败行"
               ;;
             *)
-              report_failure "组一 annotations 段第 1 行不是 Test Case … failed 行：${first_annotation:-空}"
+              report_failure "组一 annotations 段第 1 行不是 Test Case 失败行：${first_annotation:-空}"
               ;;
           esac
           many_restart_lines="$(count_fixed "${many_all_lines}" 'Restarting after unexpected exit')"
           many_test_failed_lines="$(count_fixed "${many_all_lines}" '** TEST FAILED **')"
           if [ "${many_restart_lines}" = "1" ] && [ "${many_test_failed_lines}" = "1" ]; then
-            report_ok "组一 all 段含 Restarting after unexpected exit 行与 ** TEST FAILED ** 行"
+            report_ok "组一 all 段含宿主重启标记行 ${many_restart_lines} 条、测试失败结论行 ${many_test_failed_lines} 条"
           else
-            report_failure "组一 all 段结论行不全：Restarting ${many_restart_lines} 行，TEST FAILED ${many_test_failed_lines} 行"
+            report_failure "组一 all 段结论行不全：宿主重启标记 ${many_restart_lines} 条，测试失败结论 ${many_test_failed_lines} 条"
           fi
           many_order="$(
             printf '%s\n' "${many_all_lines}" |
@@ -235,8 +237,8 @@ jobs:
           fi
 
           # 组二：xctest-restarted.log（IC-149 既有夹具）。testCrashyOne 两条断言失败后宿主崩溃，
-          # 夹具里本来就没有它的 Test Case … failed 行（崩溃的用例打不出结论行，#292 attempt 1 同形），
-          # 故按结果核：去重后 ≥ 1、all 段含该用例的断言失败行，且输出里的 Test Case … failed 行数
+          # 夹具里本来就没有它的 Test Case 失败行（崩溃的用例打不出结论行，#292 attempt 1 同形），
+          # 故按结果核：去重后 ≥ 1、all 段含该用例的断言失败行，且输出里的 Test Case 失败行数
           # 与夹具自身相同——脚本不凭空造行。
           restarted_unique="$(output_field xctest-restarted.log unique_count)"
           restarted_all_lines="$(output_section xctest-restarted.log all)"
@@ -246,9 +248,9 @@ jobs:
           if [ -n "${restarted_unique}" ] && [ "${restarted_unique}" -ge 1 ] &&
             [ "${restarted_case_lines}" -ge 1 ] &&
             [ "${restarted_output_failed}" = "${restarted_fixture_failed}" ]; then
-            report_ok "组二 unique_count=${restarted_unique}（≥ 1），all 段含 testCrashyOne 的断言失败行 ${restarted_case_lines} 条；Test Case … failed 行：夹具 ${restarted_fixture_failed}，输出 ${restarted_output_failed}"
+            report_ok "组二 unique_count=${restarted_unique}（≥ 1），all 段含 testCrashyOne 的断言失败行 ${restarted_case_lines} 条；Test Case 失败行：夹具 ${restarted_fixture_failed}，输出 ${restarted_output_failed}"
           else
-            report_failure "组二不符：unique_count=${restarted_unique:-空}，testCrashyOne 行 ${restarted_case_lines}，Test Case … failed 行 夹具 ${restarted_fixture_failed}／输出 ${restarted_output_failed}"
+            report_failure "组二不符：unique_count=${restarted_unique:-空}，testCrashyOne 行 ${restarted_case_lines}，Test Case 失败行 夹具 ${restarted_fixture_failed}／输出 ${restarted_output_failed}"
           fi
 
           # 组三：xctest-single-chunk.log（全绿）。
