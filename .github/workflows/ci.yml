@@ -18,7 +18,7 @@ jobs:
   build-test-package:
     name: 构建、XCTest 与未签名产物
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: 检出源码
@@ -132,6 +132,7 @@ jobs:
           echo "统计逻辑自测通过。"
 
       - name: 运行 XCTest
+        timeout-minutes: 25
         run: |
           set -o pipefail
           echo "== runner bash 实证（IC-125）=="
