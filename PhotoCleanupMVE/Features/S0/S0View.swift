@@ -14,6 +14,9 @@ protocol S0CleanupDataProviding: AnyObject {
     func currentSnapshot() -> S0CleanupSnapshot
     /// 推进扫描。桩按剧本走下一步；真实现按增量缓存续扫。
     func advanceScan()
+    /// IC-153：快照变化钩子。真实现每次快照变化在主线程上调、每秒至多四次，
+    /// 完成与失败那一次必达；桩从不调用。
+    var onSnapshotDidChange: (() -> Void)? { get set }
 }
 
 /// 字节量文本。SPEC-S0 v1 第十四节第 3 部分末句：字节量一律用系统

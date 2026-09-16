@@ -487,3 +487,60 @@ final class AssetVolumeService: S2AssetVolumeProviding {
         return Int64(size)
     }
 }
+
+/// IC-153：扫描服务的字节取数入口（批次 5.1）。
+///
+/// 与 `scan(_:)` 同一途径——逐资源 `requestData` 流式累加、任一资源取不到即不可得、
+/// 溢出即不可得——只多两点：资源数组由调用方传入，因为扫描服务要从**同一次**资源
+/// 枚举里再取视频文件名，不许为此再枚举一遍（IC-153 裁定 三）；请求选项也由调用方
+/// 给出，禁网络的决定因而落在调用点上、看得见。`scan(_:)`、`ByteAccumulator`、
+/// `AssetSizeProbeService`、`AssetVolumeService` 一字未动。
+extension AssetSizeScanner {
+    func scan(
+        resources: [PHAssetResource],
+        options: PHAssetResourceRequestOptions
+    ) async -> AssetScanConclusion {
+        guard !resources.isEmpty else {
+            return .unavailable
+        }
+
+        var total: Int64 = 0
+        for resource in resources {
+            guard let bytes = await bytes(of: resource, options: options) else {
+                return .unavailable
+            }
+            let addition = total.addingReportingOverflow(bytes)
+            guard !addition.overflow else {
+                return .unavailable
+            }
+            total = addition.partialValue
+        }
+        return .knownBytes(total)
+    }
+
+    private func bytes(
+        of resource: PHAssetResource,
+        options: PHAssetResourceRequestOptions
+    ) async -> Int64? {
+        await withCheckedContinuation { continuation in
+            let accumulator = ByteAccumulator()
+            let resumer = ContinuationResumer()
+
+            PHAssetResourceManager.default().requestData(
+                for: resource,
+                options: options,
+                dataReceivedHandler: { data in
+                    accumulator.append(data.count)
+                },
+                completionHandler: { error in
+                    guard resumer.claim() else {
+                        return
+                    }
+                    continuation.resume(
+                        returning: error == nil ? accumulator.result : nil
+                    )
+                }
+            )
+        }
+    }
+}

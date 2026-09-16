@@ -10,12 +10,9 @@ struct PhotoCleanupMVEApp: App {
     @StateObject private var s0TabSelection = S0TabSelectionModel()
     @Environment(\.scenePhase) private var scenePhase
     private let s2PhotoImageStrategy = S2TemporaryPhotoKitImageStrategy()
-    /// IC-147 D：S0 数据源。真实扫描服务排批次 5.1（等 H68 真机数据），
-    /// 落地后只换这一处实现。桩不发起任何 PhotoKit 请求、不起后台活动。
-    private let s0DataProvider: any S0CleanupDataProviding = S0CleanupDataStub(
-        scenario: .readyWithItems,
-        includesLedgerEntry: true
-    )
+    /// IC-153 C：S0 数据源换成真实扫描服务（批次 5.1），替换 IC-147 的桩。
+    /// 构造无副作用：不发 PhotoKit 请求、不读缓存文件，第一次推进扫描才开始。
+    private let s0DataProvider = S0LibraryScanService()
 
     /// IC-131 B：S1 视图构造抽成 builder。加参数后仍留在 Scene body 的多层
     /// 嵌套里会把类型检查推到超时（IC-108／IC-113 三次实例），构造点一律外提。
@@ -58,6 +55,26 @@ struct PhotoCleanupMVEApp: App {
         .onAppear {
             s0Machine.mergedPendingDeletionCountProvider = {
                 s1Machine.badgeCount
+            }
+            // IC-153 C：待删篮体积与类别排除都按同一个 `D_全部` 取数（裁定 五）。
+            s0DataProvider.pendingDeletionAssetIDs = {
+                s1Machine.sessionStore.allPendingDeletionAssetIDs
+            }
+            // 快照每变一次（主线程、已节流）先摄入，再只在 `SC` 确实要变时发迁移。
+            let machine = s0Machine
+            let provider = s0DataProvider
+            provider.onSnapshotDidChange = { [weak machine, weak provider] in
+                guard let machine, let provider else {
+                    return
+                }
+                machine.ingest(provider.currentSnapshot())
+                for event in S0ScanOutcomeTransition.events(
+                    for: provider.currentScanOutcome(),
+                    scanState: machine.scanState,
+                    failureCategory: machine.failureCategory
+                ) {
+                    machine.handle(event)
+                }
             }
         }
     }
@@ -230,6 +247,11 @@ struct PhotoCleanupMVEApp: App {
                 if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
                     coordinator.start()
                 }
+                // IC-153 C：同一道 E4 闸下启动扫描。另起一个 if 而不并进上一个：
+                // 上一个 if 的整段文本由 IC-147 断言 3 逐字钉住。
+                if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+                    s0DataProvider.advanceScan()
+                }
             }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
@@ -253,6 +275,7 @@ struct PhotoCleanupMVEApp: App {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else {
             return
         }
+        s0DataProvider.advanceScan()
         s0Machine.ingest(s0DataProvider.currentSnapshot())
         s0Machine.handle(
             .foregroundRestored(

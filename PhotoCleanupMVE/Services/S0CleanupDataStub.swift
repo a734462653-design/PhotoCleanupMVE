@@ -29,6 +29,9 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
     private let includesLedgerEntry: Bool
     private let pendingDeletionByteCount: Int64
     private(set) var scanStep: Int
+    /// IC-153 D：协议要求的快照变化钩子。桩的数据只随 `advanceScan()` 同步改变，
+    /// 调用方推进后自行取数，因而**从不调用**本钩子。
+    var onSnapshotDidChange: (() -> Void)?
 
     init(
         scenario: S0CleanupDataStubScenario,
