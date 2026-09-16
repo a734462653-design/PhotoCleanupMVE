@@ -432,53 +432,72 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         // 氛围底一侧不得出现任何几何写入或分页器引用。
         XCTAssertEqual(occurrences(of: "writePhotoGeometry", in: ambient), 0)
         XCTAssertEqual(occurrences(of: "S2NativePager", in: ambient), 0)
-        // 协调器自身不发布：`@Published` 只出现在读数类型里，恰 1 处。
-        XCTAssertEqual(occurrences(of: "@Published", in: ambient), 1)
+        // IC-151 子项 B：读数类型随取图链一并删除（裁定 五），
+        // 氛围底文件内的 `@Published` 由 1 处变为 **0 处**——固定色没有读数，
+        // 也就没有任何发布源，本条因此比改前更强，不是放宽。
+        XCTAssertEqual(occurrences(of: "@Published", in: ambient), 0)
     }
 
-    // MARK: - 断言 8：取值引用 SPEC-S0 v1 S0Ambient
+    // MARK: - 断言 8：取值引用 S0Ambient（IC-151 起为 v2 固定色配方）
 
+    /// **IC-151 子项 B 整条重写**：v1 的十个「照片强模糊铺底」取值随
+    /// Decision_log 第 175 条整体作废，换成 v2 的十二个固定色取值。
+    /// 出处注释同步改指 Decision_log 第 175／176 条与 IC-151 卡
+    /// ——SPEC-S0 v2 尚未晋级，不得把新值冒充成 v1 的登记值（裁定 四）。
     func testIC146B_AmbientMetricsMatchS0AmbientRegistry() throws {
-        XCTAssertEqual(S2AmbientMetrics.blurRadius, 34, accuracy: 0.000_001)
-        XCTAssertEqual(S2AmbientMetrics.saturation, 1.15, accuracy: 0.000_001)
-        XCTAssertEqual(S2AmbientMetrics.opacity, 0.62, accuracy: 0.000_001)
         XCTAssertEqual(
-            S2AmbientMetrics.veilTopOpacity,
-            0.30,
+            S2AmbientMetrics.washTopOpacity,
+            0.07,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
-            S2AmbientMetrics.veilMidOpacity,
-            0.66,
+            S2AmbientMetrics.washFadeLocation,
+            0.42,
             accuracy: 0.000_001
         )
         XCTAssertEqual(
-            S2AmbientMetrics.veilBottomOpacity,
-            0.94,
+            S2AmbientMetrics.washBottomOpacity,
+            0.22,
             accuracy: 0.000_001
         )
-        XCTAssertEqual(S2AmbientMetrics.tintRadius, 0.70, accuracy: 0.000_001)
-        XCTAssertEqual(S2AmbientMetrics.tintOpacity, 0.30, accuracy: 0.000_001)
+        XCTAssertEqual(S2AmbientMetrics.glowCenterX, 0.50, accuracy: 0.000_001)
+        XCTAssertEqual(S2AmbientMetrics.glowCenterY, 0.34, accuracy: 0.000_001)
+        XCTAssertEqual(S2AmbientMetrics.glowRadiusX, 0.92, accuracy: 0.000_001)
+        XCTAssertEqual(S2AmbientMetrics.glowRadiusY, 0.42, accuracy: 0.000_001)
+        XCTAssertEqual(S2AmbientMetrics.glowOpacity, 0.10, accuracy: 0.000_001)
+        XCTAssertEqual(S2AmbientMetrics.glowFadeStop, 0.72, accuracy: 0.000_001)
         XCTAssertEqual(S2AmbientMetrics.grainOpacity, 0.90, accuracy: 0.000_001)
-        // ambientBaseColor = #050507。
+        // ambientBaseColor = #0B1A13。
         let base = UIColor(S2AmbientMetrics.baseColor)
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0
         var alpha: CGFloat = 0
         XCTAssertTrue(base.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
-        XCTAssertEqual(red * 255, 5, accuracy: 0.6)
-        XCTAssertEqual(green * 255, 5, accuracy: 0.6)
-        XCTAssertEqual(blue * 255, 7, accuracy: 0.6)
+        XCTAssertEqual(red * 255, 11, accuracy: 0.6)
+        XCTAssertEqual(green * 255, 26, accuracy: 0.6)
+        XCTAssertEqual(blue * 255, 19, accuracy: 0.6)
+        XCTAssertEqual(alpha, 1, accuracy: 0.000_001)
+        // ambientTintColor = #7AC49E。
+        let tint = UIColor(S2AmbientMetrics.tintColor)
+        XCTAssertTrue(tint.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+        XCTAssertEqual(red * 255, 122, accuracy: 0.6)
+        XCTAssertEqual(green * 255, 196, accuracy: 0.6)
+        XCTAssertEqual(blue * 255, 158, accuracy: 0.6)
         XCTAssertEqual(alpha, 1, accuracy: 0.000_001)
 
         let ambient = try XCTUnwrap(
             sourceText("PhotoCleanupMVE/Features/S2/S2AmbientBackdrop.swift")
         )
-        // 每个常量的定义处都写明出处（十个量 + 幕底色共十处以上）。
+        // 十二个常量的定义处都写明出处。
         XCTAssertGreaterThanOrEqual(
+            occurrences(of: "取值出处：Decision_log 第 175／176 条", in: ambient),
+            12
+        )
+        // v1 的出处口径不得残留——留死引用是陷阱 12 的同类。
+        XCTAssertEqual(
             occurrences(of: "取值出处：SPEC-S0 v1 第十四节", in: ambient),
-            10
+            0
         )
         // 正对照：视图体内一个裸数都不写，全部经 `S2AmbientMetrics`。
         let viewBody = try XCTUnwrap(
@@ -488,7 +507,9 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
                 to: "\n}\n"
             )
         )
-        for bare in ["34", "1.15", "0.62", "0.66", "0.94", "0.70", "0.90"] {
+        for bare in [
+            "0.07", "0.42", "0.22", "0.92", "0.34", "0.10", "0.72", "0.90"
+        ] {
             XCTAssertEqual(
                 occurrences(of: bare, in: viewBody),
                 0,
@@ -532,42 +553,12 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         }
     }
 
-    // MARK: - 断言 10：取图失败回落
-
-    /// 取不到源图 ⟹ 氛围底为 `ambientBaseColor` 纯色（读数为 nil），
-    /// 且**主图呈现不被延迟**——`load` 同步返回，取图在独立任务里做。
-    @MainActor
-    func testIC146B_AmbientFallsBackToBaseColorWhenLoadFails() async {
-        let store = S2AmbientBackdropStore()
-        let loader = S2AmbientLoaderStub(image: nil)
-
-        XCTAssertNil(store.readout.image, "关闭态零副作用：未取图前就是纯色")
-        XCTAssertEqual(loader.requestCount, 0, "init 不得发请求")
-
-        store.load(assetID: "asset-1", using: loader)
-        // 同步返回，读数仍是纯色——主图呈现不等氛围底。
-        XCTAssertNil(store.readout.image)
-        XCTAssertEqual(store.loadedAssetID, "asset-1")
-
-        let settled = await waitUntil { store.failureCount == 1 }
-        XCTAssertTrue(settled, "取图任务未在期限内收口")
-        XCTAssertEqual(loader.requestCount, 1)
-        XCTAssertNil(store.readout.image, "取图失败后仍是纯色回落")
-
-        // 同一张不重复取图。
-        store.load(assetID: "asset-1", using: loader)
-        XCTAssertEqual(loader.requestCount, 1)
-
-        // 换张即重新取；取到图则读数变为该图。
-        let image = UIImage()
-        let second = S2AmbientLoaderStub(image: image)
-        store.load(assetID: "asset-2", using: second)
-        XCTAssertNil(store.readout.image, "切换瞬间先回落，不留上一张的图")
-        let arrived = await waitUntil { store.readout.image != nil }
-        XCTAssertTrue(arrived, "第二张的氛围底未在期限内到达")
-        XCTAssertTrue(store.readout.image === image)
-        XCTAssertEqual(store.failureCount, 1, "成功一次不计失败")
-    }
+    // MARK: - 断言 10：取图失败回落（IC-151 子项 B 删除）
+    //
+    // `testIC146B_AmbientFallsBackToBaseColorWhenLoadFails` 随取图链整条删除：
+    // 氛围底改固定色后没有「取图」，也就没有「取不到时回落到纯色」这件事，
+    // 被测机制本身已不存在（裁定 五：整条删除、不是停用）。
+    // 项数因此 −1，对账见 Reports/IC-151/self-check.md。
 
     // MARK: - 断言 11：`.marked` 形态
 
@@ -984,30 +975,8 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         )!
     }
 
-    /// 氛围底取图桩。计数用锁保护——`load` 的取图调用不保证落在主线程
-    /// （陷阱 10：并发驱动的 helper 必须并发安全）。
-    private final class S2AmbientLoaderStub: S2AmbientImageLoading {
-        private let image: UIImage?
-        private let lock = NSLock()
-        private var count = 0
-
-        init(image: UIImage?) {
-            self.image = image
-        }
-
-        var requestCount: Int {
-            lock.lock()
-            defer { lock.unlock() }
-            return count
-        }
-
-        func ambientImage(assetID _: String) async -> UIImage? {
-            lock.lock()
-            count += 1
-            lock.unlock()
-            return image
-        }
-    }
+    // 氛围底取图桩 `S2AmbientLoaderStub` 随 `S2AmbientImageLoading` 协议
+    // 一并删除（IC-151 裁定 五）：协议已不存在，桩无从遵循。
 
     /// 有界轮询等待。异步收口的到达时机不由测试掌控，故给期限而不是数让出次数。
     private func waitUntil(
