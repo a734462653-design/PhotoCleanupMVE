@@ -53,7 +53,6 @@
 		200000000000000000000049 /* S0HomeMetrics.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000004C /* S0HomeMetrics.swift */; };
 		20000000000000000000004A /* S0SegmentBar.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000004D /* S0SegmentBar.swift */; };
 		20000000000000000000004B /* S0CategoryRow.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000004E /* S0CategoryRow.swift */; };
-		20000000000000000000004C /* S0RecentPhotoAmbientLoader.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000004F /* S0RecentPhotoAmbientLoader.swift */; };
 		20000000000000000000004D /* IC148S0VisualTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000050 /* IC148S0VisualTests.swift */; };
 		20000000000000000000004E /* IC150ShareTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000051 /* IC150ShareTests.swift */; };
 		20000000000000000000004F /* IC150AudioSessionTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000052 /* IC150AudioSessionTests.swift */; };
@@ -148,7 +147,6 @@
 		10000000000000000000004C /* S0HomeMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0HomeMetrics.swift; sourceTree = "<group>"; };
 		10000000000000000000004D /* S0SegmentBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0SegmentBar.swift; sourceTree = "<group>"; };
 		10000000000000000000004E /* S0CategoryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0CategoryRow.swift; sourceTree = "<group>"; };
-		10000000000000000000004F /* S0RecentPhotoAmbientLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0RecentPhotoAmbientLoader.swift; sourceTree = "<group>"; };
 		100000000000000000000050 /* IC148S0VisualTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC148S0VisualTests.swift; sourceTree = "<group>"; };
 		100000000000000000000051 /* IC150ShareTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC150ShareTests.swift; sourceTree = "<group>"; };
 		100000000000000000000052 /* IC150AudioSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC150AudioSessionTests.swift; sourceTree = "<group>"; };
@@ -260,7 +258,6 @@
 				100000000000000000000034 /* S2TutorialCompletionStore.swift */,
 				10000000000000000000002F /* PhotoAssetActionService.swift */,
 				10000000000000000000004A /* S0CleanupDataStub.swift */,
-				10000000000000000000004F /* S0RecentPhotoAmbientLoader.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -513,7 +510,6 @@
 				20000000000000000000004A /* S0SegmentBar.swift（源码） */,
 				20000000000000000000004B /* S0CategoryRow.swift（源码） */,
 				200000000000000000000046 /* S0View.swift（源码） */,
-				20000000000000000000004C /* S0RecentPhotoAmbientLoader.swift（源码） */,
 				200000000000000000000047 /* S0CleanupDataStub.swift（源码） */,
 				20000000000000000000001F /* S1StateMachine.swift（源码） */,
 				200000000000000000000022 /* S2StateMachine.swift（源码） */,

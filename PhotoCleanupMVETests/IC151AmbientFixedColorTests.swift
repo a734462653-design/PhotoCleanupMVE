@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import UIKit
 import XCTest
@@ -120,12 +121,29 @@ final class IC151AmbientFixedColorTests: XCTestCase {
     /// 子项 D 把 `S0GlassSurface` 的磨砂副本整层删掉后，`S0View.swift` 里
     /// 不该再剩任何取图／模糊的痕迹。
     ///
-    /// **本提交（子项 A）里以 `XCTSkip` 落地**：此刻产品侧那一层还在，正式
-    /// 断言必红。子项 D 的提交把本函数体换成正式断言（change-list 逐条记）。
+    /// 本条在子项 A 的提交里以 `XCTSkip` 落地（那时产品侧那一层还在，正式
+    /// 断言必红），子项 D 的提交转为正式断言。
+    ///
+    /// **正对照针对 needle 本身**：三个 needle 各自在一个既有且本卡不动的
+    /// 文件里非零，否则「各为 0」有可能只是 needle 写错导致的空转。
     func testIC151A_S0GlassSurfaceHasNoImageLayer() throws {
-        throw XCTSkip(
-            "子项 D 尚未落地：S0GlassSurface 仍持有磨砂图层，本条在 D 的提交里转为正式断言。"
+        let view = try XCTUnwrap(strippedSource(Self.s0ViewPath))
+        XCTAssertGreaterThan(view.count, 0)
+        for needle in ["scaledToFill", "Image(uiImage:", ".blur("] {
+            XCTAssertEqual(
+                occurrences(of: needle, in: view),
+                0,
+                "S0View 里还剩图层的痕迹：" + needle
+            )
+        }
+
+        let s1View = try XCTUnwrap(
+            strippedSource("PhotoCleanupMVE/Features/S1/S1View.swift")
         )
+        XCTAssertGreaterThan(occurrences(of: "scaledToFill", in: s1View), 0)
+        XCTAssertGreaterThan(occurrences(of: "Image(uiImage:", in: s1View), 0)
+        let s2View = try XCTUnwrap(strippedSource(Self.s2ViewPath))
+        XCTAssertGreaterThan(occurrences(of: ".blur(", in: s2View), 0)
     }
 
     // MARK: - 断言 3：v2 固定色登记值逐条对账
@@ -302,6 +320,127 @@ final class IC151AmbientFixedColorTests: XCTestCase {
             1,
             "翻页回调体丢了中央指示的刷新"
         )
+    }
+
+    // MARK: - 断言 11：S0 侧的图源整条不复存在（裁定 五）
+
+    /// 取图链是**整条删除**不是停用：文件没了、协议没了、成员与形参没了、
+    /// App 入口的注入没了、pbxproj 四行也删干净了。日后若要恢复取图，
+    /// 从 git 历史拿，而不是留一个「以后可能用」的接口。
+    func testIC151D_S0DropsAmbientImageSourceEntirely() throws {
+        let loaderURL = repoRoot().appendingPathComponent(
+            "PhotoCleanupMVE/Services/S0RecentPhotoAmbientLoader.swift"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: loaderURL.path),
+            "取图实现文件仍在仓库里"
+        )
+
+        let view = try XCTUnwrap(strippedSource(Self.s0ViewPath))
+        for retired in [
+            "S0AmbientImageProviding",
+            "ambientReadout",
+            "hasRequestedAmbient",
+            "requestAmbientImageIfNeeded",
+            "ambientImage:"
+        ] {
+            XCTAssertEqual(
+                occurrences(of: retired, in: view),
+                0,
+                "S0View 仍引用图源链的 " + retired
+            )
+        }
+        XCTAssertEqual(
+            occurrences(of: "S2AmbientBackdropView()", in: view),
+            1,
+            "氛围底视图的构造点不是恰一处"
+        )
+
+        let app = try XCTUnwrap(strippedSource(Self.appPath))
+        XCTAssertGreaterThan(app.count, 0)
+        for retired in ["S0RecentPhotoAmbientLoader", "ambientImageProvider"] {
+            XCTAssertEqual(
+                occurrences(of: retired, in: app),
+                0,
+                "App 入口仍注入 " + retired
+            )
+        }
+
+        // pbxproj 四行（构建文件、文件引用、组、Sources 阶段）都删干净。
+        let project = try XCTUnwrap(
+            sourceText("PhotoCleanupMVE.xcodeproj/project.pbxproj")
+        )
+        XCTAssertGreaterThan(project.count, 0)
+        XCTAssertEqual(
+            occurrences(of: "S0RecentPhotoAmbientLoader", in: project),
+            0,
+            "pbxproj 里还留着已删文件的登记"
+        )
+    }
+
+    // MARK: - 断言 12：玻璃卡是半透明填充，卡下不铺幕底色
+
+    /// 卡下**不得**再铺 `S2AmbientMetrics.baseColor`：卡是半透明的，页面的
+    /// 光晕要透过卡面才能给卡一个「坐」的明度梯度（Decision_log 第 176 条
+    /// 选中档光晕的理由就是这个）；铺了底色，光晕在卡上就被挡死。
+    ///
+    /// 投影仍在（裁定 二：已登记的取值不随画布微调）。
+    func testIC151D_GlassSurfaceIsTranslucentFillWithoutBaseColor() throws {
+        let view = try XCTUnwrap(strippedSource(Self.s0ViewPath))
+        let body = try XCTUnwrap(
+            slice(
+                view,
+                from: "struct S0GlassSurface<S: InsettableShape>: ViewModifier {",
+                to: Self.topLevelClose
+            ),
+            "S0GlassSurface 视图体没切到——声明文本变了，断言会静默放空"
+        )
+        XCTAssertEqual(
+            occurrences(of: "S2AmbientMetrics.baseColor", in: body),
+            0,
+            "卡下仍铺着幕底色，光晕在卡上会被挡死"
+        )
+        XCTAssertGreaterThan(
+            occurrences(of: "cardFillTopOpacity", in: body),
+            0
+        )
+        XCTAssertGreaterThan(
+            occurrences(of: "cardFillBottomOpacity", in: body),
+            0
+        )
+        XCTAssertGreaterThan(
+            occurrences(of: "cardShadowRadius", in: body),
+            0,
+            "投影被一并删了——裁定 二：已登记的取值原样保留"
+        )
+
+        // 两个新常量与 trait 无关（裁定 甲：首页恒为深色配方）。
+        for opacity in [
+            S0HomeMetrics.cardFillTopOpacity,
+            S0HomeMetrics.cardFillBottomOpacity
+        ] {
+            let resolved = UIColor(Color.white.opacity(opacity))
+            XCTAssertEqual(
+                resolved.resolvedColor(
+                    with: UITraitCollection(userInterfaceStyle: .dark)
+                ),
+                resolved.resolvedColor(
+                    with: UITraitCollection(userInterfaceStyle: .light)
+                ),
+                "卡面填充随外观解析出了两个值"
+            )
+        }
+    }
+
+    // MARK: - 断言 14：S0 行为一行未改
+
+    /// 本卡只改视觉层。IC-148 自验报告第十节第 1 条登记的三个行为调用点
+    /// 计数在本卡前后相同——钉「显隐条件、取数、`machine.` 的任何调用一律不动」。
+    func testIC151D_S0BehaviorCallSitesUnchanged() throws {
+        let view = try XCTUnwrap(strippedSource(Self.s0ViewPath))
+        XCTAssertEqual(occurrences(of: "machine.handle(", in: view), 4)
+        XCTAssertEqual(occurrences(of: "machine.beginVerification", in: view), 1)
+        XCTAssertEqual(occurrences(of: "machine.ingest", in: view), 1)
     }
 
     // MARK: - 夹具
