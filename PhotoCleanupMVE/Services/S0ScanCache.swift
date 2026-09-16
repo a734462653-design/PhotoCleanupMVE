@@ -94,7 +94,7 @@ final class S0ScanCacheStore {
     init(directoryURL: URL, fileManager: FileManager = .default) {
         self.directoryURL = directoryURL
         self.fileManager = fileManager
-        fileURL = directoryURL.appendingPathComponent(Self.fileName)
+        fileURL = directoryURL.appendingPathComponent(S0ScanCacheStore.fileName)
     }
 
     /// 产品落点：`Application Support/PhotoCleanupMVE/s0-scan-cache.json`。
@@ -105,7 +105,7 @@ final class S0ScanCacheStore {
         )[0]
         self.init(
             directoryURL: root.appendingPathComponent(
-                Self.directoryName,
+                S0ScanCacheStore.directoryName,
                 isDirectory: true
             ),
             fileManager: fileManager
