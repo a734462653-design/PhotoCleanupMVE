@@ -631,6 +631,331 @@ final class IC153ScanServiceTests: XCTestCase {
         XCTAssertEqual(second.currentScanOutcome(), .completed)
     }
 
+    // MARK: - 断言 8：授权与读取的回报映射（子项 C）
+
+    func testIC153C_ServiceOutcomeMapping() {
+        let library = sampleLibrary(count: 8)
+
+        // 未推进：不设「未开始」，回报扫描中；受限标志为假。
+        let idleFixture = ScanFixture(assets: library.assets, readings: library.readings)
+        let idle = makeService(idleFixture)
+        XCTAssertEqual(idle.currentScanOutcome(), .scanning)
+        XCTAssertFalse(idle.currentSnapshot().isLimitedAuthorization)
+
+        // 不可读的授权（含未决定）：授权类失败、lim 为假，且不枚举、不取字节。
+        let unreadable: [S1AuthorizationState] = [.denied, .restricted, .notDetermined, .unknown(99)]
+        for authorization in unreadable {
+            let fixture = ScanFixture(
+                assets: library.assets,
+                readings: library.readings,
+                authorization: authorization
+            )
+            let service = makeService(fixture)
+            service.advanceScan()
+            XCTAssertTrue(waitUntil { !service.isScanInFlight })
+            XCTAssertEqual(service.currentScanOutcome(), .failed(.authorization))
+            XCTAssertFalse(service.currentSnapshot().isLimitedAuthorization)
+            XCTAssertEqual(fixture.enumerationCount, 0)
+            XCTAssertEqual(fixture.fetchCount, 0)
+        }
+
+        // 受限与完全授权：取字节挂起时回报扫描中、lim 分别为真与假；放行后转已完成。
+        let readable: [(S1AuthorizationState, Bool)] = [(.limited, true), (.authorized, false)]
+        for (authorization, expectedLimited) in readable {
+            let fixture = ScanFixture(
+                assets: library.assets,
+                readings: library.readings,
+                authorization: authorization
+            )
+            fixture.setBlockedAfterFetchCount(0)
+            let service = makeService(fixture)
+            service.advanceScan()
+            XCTAssertTrue(waitUntil { fixture.fetchCount > 0 })
+            XCTAssertEqual(service.currentScanOutcome(), .scanning)
+            XCTAssertEqual(service.currentSnapshot().isLimitedAuthorization, expectedLimited)
+            XCTAssertEqual(service.currentSnapshot().progress.totalAssetCount, 8)
+            XCTAssertEqual(
+                service.currentSnapshot().categories.map { $0.recognition },
+                [.counting, .counting, .counting]
+            )
+
+            fixture.setBlockedAfterFetchCount(nil)
+            XCTAssertTrue(waitUntil { !service.isScanInFlight })
+            XCTAssertEqual(service.currentScanOutcome(), .completed)
+            XCTAssertEqual(service.currentSnapshot().isLimitedAuthorization, expectedLimited)
+            XCTAssertEqual(
+                service.currentSnapshot().categories.map { $0.recognition },
+                [.settled, .settled, .settled]
+            )
+        }
+
+        // 枚举抛错：读取类失败。
+        let failingFixture = ScanFixture(assets: library.assets, readings: library.readings)
+        failingFixture.setEnumerationThrows(true)
+        let failing = makeService(failingFixture)
+        failing.advanceScan()
+        XCTAssertTrue(waitUntil { !failing.isScanInFlight })
+        XCTAssertEqual(failing.currentScanOutcome(), .failed(.read))
+        XCTAssertEqual(failingFixture.fetchCount, 0)
+
+        // 授权变化后再推进即续扫（服务不自己弹系统授权窗）。
+        let grantingFixture = ScanFixture(
+            assets: library.assets,
+            readings: library.readings,
+            authorization: .notDetermined
+        )
+        let granting = makeService(grantingFixture)
+        granting.advanceScan()
+        XCTAssertTrue(waitUntil { !granting.isScanInFlight })
+        XCTAssertEqual(granting.currentScanOutcome(), .failed(.authorization))
+        grantingFixture.setAuthorization(.authorized)
+        granting.advanceScan()
+        XCTAssertTrue(
+            waitUntil { !granting.isScanInFlight && granting.currentScanOutcome() == .completed }
+        )
+        XCTAssertEqual(grantingFixture.fetchCount, 8)
+    }
+
+    // MARK: - 断言 9：回调节流，但完成与失败那一次必达（子项 C）
+
+    func testIC153C_SnapshotCallbackIsThrottledButTerminalIsDelivered() {
+        let probe = S0SnapshotChangeThrottle(
+            maximumDeliveriesPerSecond: S0ScanRules.snapshotThrottleHz,
+            deliver: {}
+        )
+        let interval = probe.minimumIntervalNanoseconds
+        XCTAssertEqual(interval, 250_000_000)
+
+        // 50 条资产、每次取字节 20 ms：扫描持续数百毫秒，节流窗口里挤着多次进度。
+        let library = sampleLibrary(count: 50)
+        let fixture = ScanFixture(assets: library.assets, readings: library.readings)
+        fixture.setFetchDelay(nanoseconds: 20_000_000)
+        let service = makeService(fixture)
+        let log = CallbackLog()
+        service.onSnapshotDidChange = { [weak service] in
+            // 先取时刻、再做与 App 接线同量级的取数。
+            let uptime = DispatchTime.now().uptimeNanoseconds
+            let outcome = service?.currentScanOutcome()
+            _ = service?.currentSnapshot()
+            log.record(uptime: uptime, outcome: outcome, onMainThread: Thread.isMainThread)
+        }
+        service.advanceScan()
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                !service.isScanInFlight && log.lastOutcome == .completed
+            },
+            "完成那一次回调没有送达"
+        )
+        // 再等两个节流间隔：之后不得有迟到的回调改写结论。
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.6))
+
+        XCTAssertGreaterThanOrEqual(log.uptimes.count, 2)
+        XCTAssertEqual(log.mainThreadFlags, Array(repeating: true, count: log.uptimes.count))
+        for index in log.uptimes.indices.dropFirst() {
+            XCTAssertGreaterThanOrEqual(
+                log.uptimes[index] - log.uptimes[index - 1],
+                interval,
+                "两次回调的间隔短于节流间隔"
+            )
+        }
+        XCTAssertEqual(log.lastOutcome, .completed)
+        XCTAssertEqual(service.currentScanOutcome(), .completed)
+        XCTAssertEqual(
+            service.currentSnapshot().progress,
+            S0ScanProgress(scannedAssetCount: 50, totalAssetCount: 50)
+        )
+
+        // 失败夹具：最后一次回调后回报失败。
+        let failingFixture = ScanFixture(assets: library.assets, readings: library.readings)
+        failingFixture.setEnumerationThrows(true)
+        let failing = makeService(failingFixture)
+        let failureLog = CallbackLog()
+        failing.onSnapshotDidChange = { [weak failing] in
+            let uptime = DispatchTime.now().uptimeNanoseconds
+            let outcome = failing?.currentScanOutcome()
+            failureLog.record(uptime: uptime, outcome: outcome, onMainThread: Thread.isMainThread)
+        }
+        failing.advanceScan()
+        XCTAssertTrue(
+            waitUntil {
+                !failing.isScanInFlight && failureLog.lastOutcome == .failed(.read)
+            },
+            "失败那一次回调没有送达"
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.6))
+        XCTAssertGreaterThanOrEqual(failureLog.uptimes.count, 1)
+        XCTAssertEqual(failureLog.lastOutcome, .failed(.read))
+        XCTAssertEqual(
+            failureLog.mainThreadFlags,
+            Array(repeating: true, count: failureLog.uptimes.count)
+        )
+    }
+
+    // MARK: - 断言 10：主线程零源调用；不推进就不动（子项 C）
+
+    func testIC153C_NoPhotoKitOnMainThreadAndIdleUntilAdvance() {
+        let library = sampleLibrary(count: 9)
+        let fixture = ScanFixture(assets: library.assets, readings: library.readings)
+        let directory = makeTemporaryDirectory()
+        let store = S0ScanCacheStore(directoryURL: directory)
+        let service = S0LibraryScanService(source: fixture.makeSource(), cacheStore: store)
+        var callbackCount = 0
+        service.onSnapshotDidChange = {
+            callbackCount += 1
+        }
+
+        // 构造后不推进：读两个回报也不触发任何源调用，缓存文件（连目录）都不存在。
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        XCTAssertEqual(service.currentScanOutcome(), .scanning)
+        XCTAssertEqual(service.currentSnapshot().progress, S0ScanProgress())
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        XCTAssertEqual(fixture.totalCallCount, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.fileURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        XCTAssertEqual(callbackCount, 0)
+
+        // 推进：取字节挂起时再推进一次，无副作用（幂等）。
+        fixture.setBlockedAfterFetchCount(0)
+        service.advanceScan()
+        XCTAssertTrue(waitUntil { fixture.fetchCount > 0 })
+        service.advanceScan()
+        fixture.setBlockedAfterFetchCount(nil)
+        XCTAssertTrue(
+            waitUntil { !service.isScanInFlight && service.currentScanOutcome() == .completed }
+        )
+        XCTAssertEqual(fixture.authorizationReadCount, 1)
+        XCTAssertEqual(fixture.enumerationCount, 1)
+        XCTAssertEqual(fixture.fetchCount, 9)
+        XCTAssertEqual(fixture.totalCallCount, 11)
+        XCTAssertEqual(fixture.mainThreadCallCount, 0, "有源调用落在主线程上")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.fileURL.path))
+        XCTAssertTrue(waitUntil { callbackCount > 0 })
+
+        // 取字节的顺序：拍摄时间新的在前（样本库拍摄时间随序号递增）。
+        let metadataByID = Dictionary(
+            uniqueKeysWithValues: library.assets.map { ($0.localIdentifier, $0) }
+        )
+        XCTAssertEqual(
+            S0LibraryScanService.newestFirst(Set(metadataByID.keys), metadataByID: metadataByID),
+            Array(library.assets.map { $0.localIdentifier }.reversed())
+        )
+    }
+
+    // MARK: - 断言 11：App 接线，S0View 只加协议属性（子项 C）
+
+    func testIC153C_AppWiringAndS0ViewUntouched() throws {
+        let app = try XCTUnwrap(strippedSource(Self.appPath))
+        XCTAssertEqual(occurrences(of: "S0CleanupDataStub(", in: app), 0)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "S0LibraryScanService(", in: app), 1)
+        XCTAssertEqual(occurrences(of: "advanceScan()", in: app), 2)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "allPendingDeletionAssetIDs", in: app), 1)
+        XCTAssertEqual(occurrences(of: "onSnapshotDidChange", in: app), 1)
+        XCTAssertEqual(occurrences(of: "S0ScanOutcomeTransition.events(", in: app), 1)
+
+        let view = try XCTUnwrap(strippedSource(Self.s0ViewPath))
+        XCTAssertEqual(occurrences(of: "machine.handle(", in: view), 4)
+        XCTAssertEqual(occurrences(of: "machine.ingest", in: view), 1)
+        XCTAssertEqual(occurrences(of: "onSnapshotDidChange", in: view), 1)
+        XCTAssertEqual(
+            occurrences(of: "var onSnapshotDidChange: (() -> Void)? { get set }", in: view),
+            1
+        )
+        XCTAssertEqual(occurrences(of: "PHAsset", in: view), 0)
+
+        // 迁移映射：每个（起点，回报）组合把给出的事件喂给真实状态机，`SC` 落到回报
+        // 对应的值；起点与回报一致时不给事件。
+        let outcomes: [S0ScanOutcome] = [
+            .scanning,
+            .completed,
+            .failed(.authorization),
+            .failed(.read)
+        ]
+        for start in outcomes {
+            for outcome in outcomes {
+                let machine = machineSettled(at: start)
+                let events = S0ScanOutcomeTransition.events(
+                    for: outcome,
+                    scanState: machine.scanState,
+                    failureCategory: machine.failureCategory
+                )
+                for event in events {
+                    machine.handle(event)
+                }
+                XCTAssertEqual(machine.scanState, expectedScanState(for: outcome))
+                XCTAssertEqual(machine.failureCategory, expectedFailureCategory(for: outcome))
+                XCTAssertEqual(events.isEmpty, start == outcome)
+            }
+        }
+
+        // 扫描中的进度不发迁移。
+        XCTAssertEqual(
+            S0ScanOutcomeTransition.events(
+                for: .scanning,
+                scanState: .scanning,
+                failureCategory: nil
+            ),
+            []
+        )
+        // 从失败直接到已完成：先过扫描中，重排恰一次。
+        let recovered = machineSettled(at: .failed(.authorization))
+        let reorderBefore = recovered.categoryReorderCount
+        for event in S0ScanOutcomeTransition.events(
+            for: .completed,
+            scanState: recovered.scanState,
+            failureCategory: recovered.failureCategory
+        ) {
+            recovered.handle(event)
+        }
+        XCTAssertEqual(recovered.categoryReorderCount - reorderBefore, 1)
+        XCTAssertEqual(recovered.state, .empty)
+    }
+
+    // MARK: - 断言 12：取数选项不含隐藏与最近删除，私有 API 隔离（子项 C）
+
+    func testIC153C_ProductionSourceFetchOptionsExcludeHiddenAndDeleted() throws {
+        let service = try XCTUnwrap(strippedSource(Self.servicePath))
+        XCTAssertEqual(occurrences(of: "includeHiddenAssets = true", in: service), 0)
+        XCTAssertEqual(occurrences(of: "includeHiddenAssets", in: service), 0)
+        XCTAssertEqual(occurrences(of: "smartAlbumAllHidden", in: service), 0)
+        XCTAssertEqual(occurrences(of: "smartAlbumRecentlyDeleted", in: service), 0)
+        XCTAssertEqual(occurrences(of: "fetchAssets(in:", in: service), 0)
+        XCTAssertEqual(occurrences(of: "fetchAssetCollections", in: service), 0)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "isNetworkAccessAllowed = false", in: service), 1)
+        XCTAssertEqual(occurrences(of: "isNetworkAccessAllowed = true", in: service), 0)
+        XCTAssertEqual(occurrences(of: "value(forKey:", in: service), 0)
+        // 正对照（针对 needle 本身）：取数调用确实在这个文件里，扫描不是空转。
+        XCTAssertEqual(occurrences(of: "PHAsset.fetchAssets(with: nil)", in: service), 1)
+        XCTAssertEqual(occurrences(of: "PHAssetResource.assetResources(for:", in: service), 1)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "originalFilename", in: service), 1)
+        XCTAssertGreaterThan(occurrences(of: "import Photos", in: service), 0)
+
+        // IC-145 断言 5 的私有 API 隔离口径：本卡新增与改动的产品文件一处都不用 KVC 取值、
+        // 不出现那个非公开的资源属性键。
+        let fileSizeKey = Self.quote + "fileSize" + Self.quote
+        for relativePath in [
+            Self.rulesPath,
+            Self.classifierPath,
+            Self.cachePath,
+            Self.servicePath,
+            Self.scannerPath,
+            Self.appPath
+        ] {
+            let stripped = try XCTUnwrap(strippedSource(relativePath))
+            XCTAssertGreaterThan(stripped.count, 0)
+            XCTAssertEqual(occurrences(of: "value(forKey:", in: stripped), 0, relativePath)
+            let raw = try XCTUnwrap(sourceText(relativePath))
+            XCTAssertEqual(occurrences(of: fileSizeKey, in: raw), 0, relativePath)
+        }
+
+        // 取字节入口：新增的那一个接受调用方给的资源与选项；原入口仍在（未被改写成新入口）。
+        let scanner = try XCTUnwrap(strippedSource(Self.scannerPath))
+        XCTAssertEqual(
+            occurrences(of: "func scan(_ asset: PHAsset) async -> AssetScanConclusion", in: scanner),
+            1
+        )
+        XCTAssertEqual(occurrences(of: "options: PHAssetResourceRequestOptions", in: scanner), 2)
+    }
+
     // MARK: - 夹具
 
     private func assertClassification(
@@ -800,6 +1125,45 @@ final class IC153ScanServiceTests: XCTestCase {
         return (assets, readings)
     }
 
+    private func makeService(_ fixture: ScanFixture) -> S0LibraryScanService {
+        S0LibraryScanService(
+            source: fixture.makeSource(),
+            cacheStore: S0ScanCacheStore(directoryURL: makeTemporaryDirectory())
+        )
+    }
+
+    /// 让一台新状态机的 `SC` 落到与某个回报一致的值。
+    private func machineSettled(at outcome: S0ScanOutcome) -> S0StateMachine {
+        let machine = S0StateMachine()
+        switch outcome {
+        case .scanning:
+            machine.handle(.applicationOpened)
+        case .completed:
+            machine.handle(.scanCompleted)
+        case let .failed(category):
+            machine.handle(.scanFailed(category))
+        }
+        return machine
+    }
+
+    private func expectedScanState(for outcome: S0ScanOutcome) -> S0ScanState {
+        switch outcome {
+        case .scanning:
+            return .scanning
+        case .completed:
+            return .completed
+        case .failed:
+            return .failed
+        }
+    }
+
+    private func expectedFailureCategory(for outcome: S0ScanOutcome) -> S0FailureCategory? {
+        if case let .failed(category) = outcome {
+            return category
+        }
+        return nil
+    }
+
     private var temporaryDirectories: [URL] = []
 
     override func tearDown() {
@@ -838,6 +1202,11 @@ final class IC153ScanServiceTests: XCTestCase {
     private static let fixtureDate = Date(timeIntervalSinceReferenceDate: 780_000_000.25)
     private static let rulesPath = "PhotoCleanupMVE/Services/S0ScanRules.swift"
     private static let classifierPath = "PhotoCleanupMVE/Services/S0ScanClassifier.swift"
+    private static let cachePath = "PhotoCleanupMVE/Services/S0ScanCache.swift"
+    private static let servicePath = "PhotoCleanupMVE/Services/S0LibraryScanService.swift"
+    private static let scannerPath = "PhotoCleanupMVE/Services/AssetSizeScanner.swift"
+    private static let appPath = "PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift"
+    private static let s0ViewPath = "PhotoCleanupMVE/Features/S0/S0View.swift"
     /// 换行符用 `UnicodeScalar` 拼、不写转义字面量（IC-148 #294 的 heredoc 教训）。
     private static let newline = String(Character(UnicodeScalar(UInt8(10))))
     /// 双引号同理。
@@ -980,6 +1349,23 @@ private struct FixtureReading {
 }
 
 private struct FixtureEnumerationError: Error {}
+
+/// 回调记录。回调在主线程上送达，测试也在主线程上读，不另加锁。
+private final class CallbackLog {
+    private(set) var uptimes: [UInt64] = []
+    private(set) var outcomes: [S0ScanOutcome?] = []
+    private(set) var mainThreadFlags: [Bool] = []
+
+    var lastOutcome: S0ScanOutcome? {
+        outcomes.last ?? nil
+    }
+
+    func record(uptime: UInt64, outcome: S0ScanOutcome?, onMainThread: Bool) {
+        uptimes.append(uptime)
+        outcomes.append(outcome)
+        mainThreadFlags.append(onMainThread)
+    }
+}
 
 /// 夹具源。记下三个闭包各被调了几次、在哪条线程上；能让取字节延时，或在第 N 次
 /// 之后挂起直到被取消或放行。

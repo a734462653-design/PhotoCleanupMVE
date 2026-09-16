@@ -1,4 +1,5 @@
 import Foundation
+import Photos
 
 /// IC-153：一遍元数据枚举的单条结果——资产上直接可读的字段，不含字节。
 struct S0AssetMetadata: Equatable, Sendable {
@@ -48,6 +49,17 @@ final class S0LibraryScanService {
     /// 类别的 `c.assets` 排除、其字节和即待删篮体积（裁定 五）。
     var pendingDeletionAssetIDs: () -> Set<String> = { [] }
 
+    /// 快照变化钩子（裁定 五）。在主线程上调，每秒至多 `S0ScanRules.snapshotThrottleHz`
+    /// 次；完成与失败那一次必达——节流只会把它推迟到间隔期满，不会丢掉。
+    var onSnapshotDidChange: (() -> Void)?
+
+    /// 只在主线程上碰。
+    private lazy var changeThrottle: S0SnapshotChangeThrottle = S0SnapshotChangeThrottle(
+        maximumDeliveriesPerSecond: S0ScanRules.snapshotThrottleHz
+    ) { [weak self] in
+        self?.onSnapshotDidChange?()
+    }
+
     private let source: S0LibraryScanSource
     private let cacheStore: S0ScanCacheStore
     private let stateLock = NSLock()
@@ -79,6 +91,12 @@ final class S0LibraryScanService {
     init(source: S0LibraryScanSource, cacheStore: S0ScanCacheStore) {
         self.source = source
         self.cacheStore = cacheStore
+    }
+
+    /// 产品构造：PhotoKit 源 + Application Support 下的缓存文件。构造本身不发
+    /// PhotoKit 请求、不读缓存文件（C4）；第一次 `advanceScan()` 才开始。
+    convenience init() {
+        self.init(source: .production, cacheStore: S0ScanCacheStore())
     }
 
     // MARK: - 回报（主线程可随时读，不阻塞）
@@ -442,8 +460,12 @@ final class S0LibraryScanService {
         }
     }
 
-    /// 把「快照有新版本」送出去。主线程节流回调在子项 C 接上（裁定 五）。
-    private func signalSnapshotChange() {}
+    /// 把「快照有新版本」送到主线程的节流器（裁定 五）。
+    private func signalSnapshotChange() {
+        DispatchQueue.main.async { [weak self] in
+            self?.changeThrottle.signal()
+        }
+    }
 
     // MARK: - 锁
 
@@ -490,5 +512,217 @@ final class S0LibraryScanService {
         scannedAssetCount = scanned
         totalAssetCount = total
         return true
+    }
+}
+
+/// IC-153 C1：S0 首页数据源协议的真实实现（批次 5.1），替换 IC-147 的桩。
+extension S0LibraryScanService: S0CleanupDataProviding {}
+
+extension S0LibraryScanSource {
+    /// PhotoKit 实现。
+    ///
+    /// - 元数据：库的默认取数（不带取数选项）。默认选项不含隐藏资产，「最近删除」
+    ///   只经它自己的智能相簿可达，本源不取任何相簿（③ PhotoKit 文档口径，真机由
+    ///   H75 第 3 条的项数对照核）；
+    /// - 资源：每个资产只做一次资源枚举，同时给出视频主资源的原始文件名与字节
+    ///   （裁定 三：不为文件名再枚举一遍；只对视频取文件名）；
+    /// - 字节：`AssetSizeScanner` 的现行 data 途径，禁网络，iCloud 未下载的记未解析。
+    static var production: S0LibraryScanSource {
+        let library = S0PhotoKitScanLibrary()
+        return S0LibraryScanSource(
+            authorizationState: {
+                S0PhotoKitScanLibrary.authorizationState()
+            },
+            enumerateAssets: {
+                library.enumerateAssets()
+            },
+            fetchResourcesAndBytes: { identifier in
+                await library.resourcesAndBytes(for: identifier)
+            }
+        )
+    }
+}
+
+/// PhotoKit 一侧的取数实现。最近一次元数据枚举拿到的资产对象按标识留存，取字节时
+/// 直接复用，不按标识再查一遍库；查不到的一律记未解析。
+final class S0PhotoKitScanLibrary {
+    private let lock = NSLock()
+    private var assetsByIdentifier: [String: PHAsset] = [:]
+
+    /// 授权映射与 `PhotoLibraryService` 的那一份逐 case 相同。那一份是 `@MainActor`
+    /// 类型上的私有静态函数，而本源的每次调用都在非主线程上（C2），只能在此复写；
+    /// 分派仍一律经 `S1AuthorizationDispatch.dispatch(for:)`。
+    static func authorizationState() -> S1AuthorizationState {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        switch status {
+        case .authorized:
+            return .authorized
+        case .limited:
+            return .limited
+        case .notDetermined:
+            return .notDetermined
+        case .denied:
+            return .denied
+        case .restricted:
+            return .restricted
+        @unknown default:
+            return .unknown(status.rawValue)
+        }
+    }
+
+    func enumerateAssets() -> [S0AssetMetadata] {
+        let result = PHAsset.fetchAssets(with: nil)
+        var metadata: [S0AssetMetadata] = []
+        var assets: [String: PHAsset] = [:]
+        metadata.reserveCapacity(result.count)
+        result.enumerateObjects { asset, _, _ in
+            let identifier = asset.localIdentifier
+            assets[identifier] = asset
+            metadata.append(
+                S0AssetMetadata(
+                    localIdentifier: identifier,
+                    modificationDate: asset.modificationDate,
+                    creationDate: asset.creationDate,
+                    mediaType: asset.mediaType == .video ? .video : .photo,
+                    isScreenshot: asset.mediaSubtypes.contains(.photoScreenshot),
+                    pixelWidth: asset.pixelWidth,
+                    pixelHeight: asset.pixelHeight,
+                    duration: asset.duration
+                )
+            )
+        }
+        replaceAssets(assets)
+        return metadata
+    }
+
+    func resourcesAndBytes(
+        for identifier: String
+    ) async -> (videoFilename: String?, byteCount: Int64?) {
+        guard let asset = cachedAsset(for: identifier) else {
+            return (videoFilename: nil, byteCount: nil)
+        }
+        let resources = PHAssetResource.assetResources(for: asset)
+        let videoFilename: String?
+        if asset.mediaType == .video {
+            videoFilename = resources.first(where: { $0.type == .video })?.originalFilename
+        } else {
+            videoFilename = nil
+        }
+        let options = PHAssetResourceRequestOptions()
+        options.isNetworkAccessAllowed = false
+        let conclusion = await AssetSizeScanner().scan(
+            resources: resources,
+            options: options
+        )
+        switch conclusion {
+        case let .knownBytes(byteCount):
+            return (videoFilename: videoFilename, byteCount: byteCount)
+        case .notStarted, .inProgress, .unavailable:
+            return (videoFilename: videoFilename, byteCount: nil)
+        }
+    }
+
+    private func replaceAssets(_ assets: [String: PHAsset]) {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+        assetsByIdentifier = assets
+    }
+
+    private func cachedAsset(for identifier: String) -> PHAsset? {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+        return assetsByIdentifier[identifier]
+    }
+}
+
+/// IC-153 C1：快照变化回调的主线程节流器。
+///
+/// 相邻两次送达的间隔不短于 1 ÷ `maximumDeliveriesPerSecond` 秒，即任意这么长的窗口
+/// 里至多一次。间隔内到达的信号排到间隔期满时送出，**不丢**：回调读的是送达那一刻的
+/// 最新状态，完成与失败那一次因而必达。间隔从上一次回调**返回之后**起算。只在主线程上用。
+final class S0SnapshotChangeThrottle {
+    let minimumIntervalNanoseconds: UInt64
+    private let deliver: () -> Void
+    private var lastDeliveryUptimeNanoseconds: UInt64?
+    private var hasPendingSignal = false
+    private var isFlushScheduled = false
+
+    init(maximumDeliveriesPerSecond: Int, deliver: @escaping () -> Void) {
+        minimumIntervalNanoseconds = 1_000_000_000
+            / UInt64(max(1, maximumDeliveriesPerSecond))
+        self.deliver = deliver
+    }
+
+    func signal() {
+        hasPendingSignal = true
+        guard !isFlushScheduled else {
+            return
+        }
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard let last = lastDeliveryUptimeNanoseconds,
+              now < last + minimumIntervalNanoseconds else {
+            flush()
+            return
+        }
+        isFlushScheduled = true
+        DispatchQueue.main.asyncAfter(
+            deadline: DispatchTime(uptimeNanoseconds: last + minimumIntervalNanoseconds)
+        ) { [weak self] in
+            guard let self else {
+                return
+            }
+            self.isFlushScheduled = false
+            self.flush()
+        }
+    }
+
+    private func flush() {
+        guard hasPendingSignal else {
+            return
+        }
+        hasPendingSignal = false
+        deliver()
+        lastDeliveryUptimeNanoseconds = DispatchTime.now().uptimeNanoseconds
+    }
+}
+
+/// IC-153 C3：数据源回报 → 状态机迁移事件。只在 `SC` 确实要变时给出事件，扫描中
+/// 每次进度不发迁移。
+///
+/// 任务卡裁定 五点名的是 `.scanCompleted`／`.scanFailed(_:)`；回到扫描中的方向另需
+/// 一个事件，取 SPEC-S0 v2 第四节「任一／前台恢复且有新增资产／S0-1」那一行——服务
+/// 只在 `advanceScan()`（打开应用、前台恢复）之后才会从已完成或失败回到扫描中。
+/// 从失败直接到已完成时先过扫描中，扫描完成那一次重排才会发生。
+enum S0ScanOutcomeTransition {
+    static func events(
+        for outcome: S0ScanOutcome,
+        scanState: S0ScanState,
+        failureCategory: S0FailureCategory?
+    ) -> [S0Event] {
+        switch outcome {
+        case .scanning:
+            if scanState == .scanning {
+                return []
+            }
+            return [.foregroundRestored(hasNewAssets: true)]
+        case .completed:
+            switch scanState {
+            case .completed:
+                return []
+            case .scanning:
+                return [.scanCompleted]
+            case .failed:
+                return [.foregroundRestored(hasNewAssets: true), .scanCompleted]
+            }
+        case let .failed(category):
+            if scanState == .failed, failureCategory == category {
+                return []
+            }
+            return [.scanFailed(category)]
+        }
     }
 }
