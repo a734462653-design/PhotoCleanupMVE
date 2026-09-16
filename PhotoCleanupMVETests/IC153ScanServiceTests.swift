@@ -956,6 +956,66 @@ final class IC153ScanServiceTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "options: PHAssetResourceRequestOptions", in: scanner), 2)
     }
 
+    // MARK: - 断言 13：桩满足新协议且从不调钩子（子项 D）
+
+    func testIC153D_StubConformsAndNeverFiresHook() {
+        for scenario in S0CleanupDataStubScenario.allCases {
+            let stub = S0CleanupDataStub(
+                scenario: scenario,
+                includesLedgerEntry: true,
+                pendingDeletionByteCount: 1_000
+            )
+            var hookCount = 0
+            stub.onSnapshotDidChange = {
+                hookCount += 1
+            }
+            // 经协议看得见钩子（桩确实满足加了属性要求的协议）。
+            let provider: any S0CleanupDataProviding = stub
+            XCTAssertNotNil(provider.onSnapshotDidChange)
+
+            // 走完全程并多推一步：每步都取两个回报。
+            for _ in 0...S0CleanupDataStub.scanStepCount {
+                _ = provider.currentSnapshot()
+                _ = provider.currentScanOutcome()
+                provider.advanceScan()
+            }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+            XCTAssertEqual(hookCount, 0, scenario.rawValue + " 的桩调用了快照钩子")
+
+            // IC-147 断言 12 的确定性口径不变：同一台连取相等，同参数两台逐字段相等。
+            let twin = S0CleanupDataStub(
+                scenario: scenario,
+                includesLedgerEntry: true,
+                pendingDeletionByteCount: 1_000
+            )
+            for _ in 0...S0CleanupDataStub.scanStepCount {
+                twin.advanceScan()
+            }
+            XCTAssertEqual(stub.currentSnapshot(), stub.currentSnapshot())
+            XCTAssertEqual(stub.currentScanOutcome(), stub.currentScanOutcome())
+            XCTAssertEqual(stub.scanStep, twin.scanStep)
+            XCTAssertEqual(stub.currentSnapshot(), twin.currentSnapshot())
+        }
+
+        // 推进中逐步确定、走到头不再变化（同 IC-147 断言 12 第二段）。
+        let first = S0CleanupDataStub(scenario: .scanning)
+        let second = S0CleanupDataStub(scenario: .scanning)
+        for _ in 0..<S0CleanupDataStub.scanStepCount {
+            first.advanceScan()
+            second.advanceScan()
+            XCTAssertEqual(first.scanStep, second.scanStep)
+            XCTAssertEqual(first.currentSnapshot(), second.currentSnapshot())
+        }
+        first.advanceScan()
+        XCTAssertEqual(first.scanStep, S0CleanupDataStub.scanStepCount)
+        XCTAssertEqual(first.currentScanOutcome(), .completed)
+        // 桩的剧本不动：就绪剧本仍给五个类别（真实服务只给三个，裁定 二）。
+        XCTAssertEqual(
+            S0CleanupDataStub(scenario: .readyWithItems).currentSnapshot().categories.count,
+            5
+        )
+    }
+
     // MARK: - 夹具
 
     private func assertClassification(
