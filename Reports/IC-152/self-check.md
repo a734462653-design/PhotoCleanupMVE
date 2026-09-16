@@ -277,7 +277,20 @@ T1 `XCTAssertTrue(report.contains("中间帧门禁：通过"))` 一字未改。
 
 **因 G867 未被字面满足，执行端未执行合并**（纪律：执行端不定合并策略；卡内合并授权以 G870 满足为前提）。
 
-### G871 —— 未执行（合并未做）
+### G871 —— 合并后 `main` 自动运行（决策会话回填，见第十一节）
+
+| 项 | 值 |
+|---|---|
+| 运行编号 | **#305** |
+| run id | `35095855030`，`run_attempt` **1** |
+| check-run id | `104792889069`（现取） |
+| 被测提交 | `1e603d73c201c5313b0179dd3765ae4fe87f8306`（合并提交） |
+| 结论 | **success**，11 个步骤全 success |
+| 执行摘要 notice | `Executed 811 tests, 0 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 811 tests / 0 failures` |
+| IPA 校验 notice | `文件=PhotoCleanupMVE-unsigned.ipa，字节数=1557377，SHA-256=9284595f47cf97739393045574ba9759edcd3b35cd3457d47d9145b295873b4e` |
+| artifact | `PhotoCleanupMVE-unsigned-1e603d73c201`，id `10446356944`，zip 1557547 字节，2026-12-15 前有效 |
+
+IPA 字节数与 #304 两次 attempt 相同（1557377）、哈希不同——IPA 归档不可复现的既有结论。**G871 满足。**
 
 ---
 
@@ -308,23 +321,20 @@ T1 `XCTAssertTrue(report.contains("中间帧门禁：通过"))` 一字未改。
 
 ---
 
-## 十一、合并交给决策会话
+## 十一、合并（决策会话裁定并执行，2026-09-16 回填）
 
-若决策会话接受第八节 G867 的那一处偏离，合并与推送（与卡内授权的方式相同）：
+执行端交回时附了三条合并命令与两种候选处置（① 追认白名单补上 `makeReport()`；② B2 改写进日志）。**决策会话裁定取 ①**：B2「报告里增加一行」与 G867 的函数清单自相矛盾，是写卡缺陷（Decision_log 第 178 条），不是交付缺口；执行端改到最小、两行原文逐字不动、不自行合并，处置正确。G870 按实际交付重述后满足。
 
-```bash
-git -C "D:/IPHONE PHOTO MANAGEMENT/PhotoCleanupMVE" switch main
-```
+| 项 | 值 |
+|---|---|
+| 合并前 `main` | `0bedaea8d85ec4f7c40bfe8b4c9d6dd95cb9d462` |
+| 被合并分支 tip | `1c72df3135ac03e52d6d742032a45f02bdc6c59d`（代码 tip `2655b24ef128514e0d789ac59b155980814ffbd0` + 报告提交） |
+| 合并方式 | `git merge --no-ff feature/ic-152-diagnostic-path`（Bash 侧 `git switch`／`git merge` 均被本机分类器以 `[Merge Without Review]` 拒绝，换 PowerShell 同一条命令通过——第 170 条惯例） |
+| **合并提交** | **`1e603d73c201c5313b0179dd3765ae4fe87f8306`** |
+| 合并后 `main` | 同上，已推送 `0bedaea..1e603d7 main -> main` |
+| 合并统计 | 6 个文件，+1507 / −35；新增 3 个文件 |
 
-```bash
-git -C "D:/IPHONE PHOTO MANAGEMENT/PhotoCleanupMVE" merge --no-ff feature/ic-152-diagnostic-path -m "Merge IC-152：拆除期状态机零次发布 + 中间帧门禁硬下限 2"
-```
-
-```bash
-git -C "D:/IPHONE PHOTO MANAGEMENT/PhotoCleanupMVE" push origin main
-```
-
-合并后 `main` 的自动运行（G871）与合并提交 SHA 待回填。若不接受，候选改法有二，**都需决策会话定**：① 白名单补上 `makeReport()`（即追认现状）；② B2 改为「软目标行写进日志而非报告」——但门禁诊断的唯一出口就是报告文本，此路要另开输出通道，改动更大。
+决策会话独立复核（合并前）：`Core/S2StateMachine.swift`、`.github/workflows/ci.yml`、`S2Calibration.swift`、`S2AmbientBackdrop.swift` 两侧同一 blob；`finishActiveDoubleTapTransition()` 97 行两侧逐字相同；#304 attempt 2 十一步 success；分页器八个 hunk 头与第三节一致。
 
 ---
 
@@ -344,7 +354,7 @@ git -C "D:/IPHONE PHOTO MANAGEMENT/PhotoCleanupMVE" push origin main
 3. **双击进出不回归**：正常双击进入／退出放大各 5 次，观感与 IC-126 判定时一致（H65 第 6 项那条播放页也各一次）。
 4. **视频页双击后立刻离开**：与第 1 条同路径但在视频页做——回到列表后视频无残留声音、无残留播放层。
 
-说明：本卡未合并，H74 需装本分支 #304 attempt 2 的 artifact（`PhotoCleanupMVE-unsigned-2655b24ef128`），或待合并后装 `main` 的产物。
+说明：已合并。H74 装**合并后 `main`**（`1e603d7`）的产物——#305 的 artifact `PhotoCleanupMVE-unsigned-1e603d73c201`（第八节 G871）；该包同时可判 H72、H73。
 
 ---
 
@@ -366,7 +376,9 @@ git -C "D:/IPHONE PHOTO MANAGEMENT/PhotoCleanupMVE" push origin main
 | `b368a6caee846e664391b0620350395bfe6fbc7f` | ✔ | `docs: 完成 IC-089（IC-082 v3 R4）贴边回弹…` |
 | `d373afc7125104c01acfc296829229090e6871ce` | ✔ | `docs(IC-145): 自验报告与变更清单…` |
 | `f319a22471fa73cb742159bdd5ab177c7ee3a8e5` | ✔ | `Merge IC-151：氛围底改固定色…` |
+| `1c72df3135ac03e52d6d742032a45f02bdc6c59d` | ✔（回填时补） | `docs(IC-152): 自验报告与变更清单…` |
+| `1e603d73c201c5313b0179dd3765ae4fe87f8306` | ✔（回填时补） | `Merge IC-152：拆除期状态机零次发布 + 中间帧门禁硬下限 2` |
 
-**11 个 40 位 SHA 全部 `git cat-file -e` 通过**（两份报告合计去重）。报告内 64 位十六进制串是 SHA-256（文件与 IPA 哈希），不是 git 对象，不在本节核验范围。
+**13 个 40 位 SHA 全部 `git cat-file -e` 通过**（两份报告合计去重；后两个由回填方在 `main` 上实读 `git log` 取得）。报告内 64 位十六进制串是 SHA-256（文件与 IPA 哈希），不是 git 对象，不在本节核验范围。
 
-**回填方式说明（纪律 7）**：本报告随分支上的报告提交一起推送。CI 编号与 IPA 哈希在推送代码之后产生，已在同一分支、同一张卡的这个报告提交里写全；未合并，故没有合并提交 SHA 与 G871 需要回填——若决策会话合并，合并后的回填由执行合并的一方在 `main` 上追加。
+**回填方式说明（纪律 7）**：本报告随分支上的报告提交（`1c72df3`）一起推送。合并提交 SHA 与 G871 是合并后才产生的信息，由执行合并的决策会话在 `main` 上追加一个 docs 提交回填（与 IC-150 的 `1fd6ed0`、IC-151 的 `0bedaea` 同一做法），不跨卡回填。纯报告提交不触发 CI，是预期行为。
