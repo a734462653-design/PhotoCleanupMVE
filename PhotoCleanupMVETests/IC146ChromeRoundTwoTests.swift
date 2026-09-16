@@ -365,8 +365,11 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         let view = try XCTUnwrap(
             sourceText("PhotoCleanupMVE/Features/S2/S2View.swift")
         )
+        // IC-151 子项 C：氛围底视图改成无参（读数类型已随取图链删除），
+        // 锚点随之由 `S2AmbientBackdropView(readout:` 改为 `S2AmbientBackdropView()`。
+        // 下面四个数一个不变。
         let ambientIndex = try XCTUnwrap(
-            view.range(of: "S2AmbientBackdropView(readout:")
+            view.range(of: "S2AmbientBackdropView()")
         ).lowerBound
         let photoIndex = try XCTUnwrap(
             view.range(of: "mainPhoto(\n", range: ambientIndex..<view.endIndex)

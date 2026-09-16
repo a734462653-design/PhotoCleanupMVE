@@ -255,6 +255,55 @@ final class IC151AmbientFixedColorTests: XCTestCase {
         }
     }
 
+    // MARK: - 断言 9：S2 侧不再取任何氛围底源图
+
+    /// V1～V7 七处只删不加。回调体那一处**只删了一行**：既有的
+    /// `.onChange(of: machine.currentAssetID)` 回调体被 IC-141／IC-143 两条
+    /// 源码扫描断言用 `onChangeBody(of:)` 截取，另起一条会被它抢先截到
+    /// （#289 实证），故本条同时钉住「回调体其余两句还在」。
+    func testIC151C_S2ViewNoLongerLoadsAmbientImages() throws {
+        let view = try XCTUnwrap(strippedSource(Self.s2ViewPath))
+        for retired in [
+            "ambientImageLoader",
+            "ambientBackdrop",
+            "S2AmbientBackdropStore",
+            "S2PhotoKitAmbientImageLoader"
+        ] {
+            XCTAssertEqual(
+                occurrences(of: retired, in: view),
+                0,
+                "S2View 仍引用取图链的 " + retired
+            )
+        }
+        XCTAssertEqual(
+            occurrences(of: "S2AmbientBackdropView()", in: view),
+            1,
+            "氛围底视图的构造点不是恰一处"
+        )
+
+        let assetChange = onChangeBody(
+            of: "machine.currentAssetID",
+            in: view
+        )
+        XCTAssertFalse(assetChange.isEmpty, "未截取到翻页回调体")
+        XCTAssertEqual(
+            occurrences(of: "ambient", in: assetChange),
+            0,
+            "翻页回调体里还留着氛围底的接线"
+        )
+        // 正对照：回调体其余各行一字未动。
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: "tutorial.currentAssetDidChange(to:", in: assetChange),
+            1,
+            "翻页回调体丢了教程侧的接线"
+        )
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: "refreshCenterIndicator(", in: assetChange),
+            1,
+            "翻页回调体丢了中央指示的刷新"
+        )
+    }
+
     // MARK: - 夹具
 
     /// 一张纯色正方形图。内容无关紧要——机制只看尺寸与纵横比。
