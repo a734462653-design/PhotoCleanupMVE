@@ -131,6 +131,163 @@ jobs:
           fi
           echo "统计逻辑自测通过。"
 
+      - name: 自测失败行提取（IC-154 子项 B）
+        run: |
+          set -o pipefail
+          set -u
+          selftest_failures=0
+          selftest_dir="$(mktemp -d -t PhotoCleanupMVE-failure-extract.XXXXXX)"
+
+          report_ok() {
+            echo "OK $1"
+          }
+          report_failure() {
+            echo "::error title=失败行提取自测::$1"
+            selftest_failures=$((selftest_failures + 1))
+          }
+          output_field() {
+            fixture_name="$1"
+            field_name="$2"
+            /usr/bin/sed -n "s/^${field_name}=//p" "${selftest_dir}/${fixture_name}.out"
+          }
+          output_section() {
+            fixture_name="$1"
+            section_name="$2"
+            /usr/bin/awk -v wanted="--- ${section_name} ---" '
+              /^--- [a-z]+ ---$/ { inside = ($0 == wanted); next }
+              inside { print }
+            ' "${selftest_dir}/${fixture_name}.out"
+          }
+          count_fixed() {
+            printf '%s\n' "$1" | /usr/bin/grep -c -F -e "$2" || true
+          }
+
+          # 三份夹具各跑一遍，输出落盘后逐项取值；输出里一律不得出现 Executed 字样
+          # （xctest-failures-many.log 的 :131 断言消息里故意带了两处，是这条的负对照）。
+          for fixture_name in xctest-failures-many.log xctest-restarted.log xctest-single-chunk.log; do
+            if bash Scripts/extract-xctest-failures.sh "Scripts/fixtures/${fixture_name}" > "${selftest_dir}/${fixture_name}.out"; then
+              executed_mentions="$(/usr/bin/grep -c 'Executed' "${selftest_dir}/${fixture_name}.out" || true)"
+              if [ "${executed_mentions}" = "0" ]; then
+                report_ok "${fixture_name} 退出码 0，输出不含 Executed 字样"
+              else
+                report_failure "${fixture_name} 的输出含 Executed 字样 ${executed_mentions} 行。"
+              fi
+            else
+              report_failure "${fixture_name} 上提取脚本退出码非 0。"
+            fi
+          done
+
+          # 组一：xctest-failures-many.log。一只用例 32 个断言行失败、每条印两遍，其中 :161 在
+          # 循环里以两种消息各失败一次（按「文件:行」只留首条）；该用例以 Test Case … failed 收尾，
+          # 随后下一只用例触发 Fatal access conflict、宿主重启，第二段 3 个通过用例，** TEST FAILED **。
+          # 候选 70 = 测试目标 error 行 66 + Test Case 失败行 1 + 结论行 3；
+          # 去重 36 = 1 + 32 + 3（若按整行文本去重会得 37）。
+          many_candidates="$(output_field xctest-failures-many.log candidate_count)"
+          many_unique="$(output_field xctest-failures-many.log unique_count)"
+          many_annotations="$(output_field xctest-failures-many.log annotation_count)"
+          many_annotation_lines="$(output_section xctest-failures-many.log annotations)"
+          many_all_lines="$(output_section xctest-failures-many.log all)"
+          if [ -n "${many_candidates}" ] && [ "${many_candidates}" -gt 50 ]; then
+            report_ok "组一 candidate_count=${many_candidates}（> 50）"
+          else
+            report_failure "组一 candidate_count 期望 > 50，实得 ${many_candidates:-空}"
+          fi
+          if [ "${many_unique}" = "36" ]; then
+            report_ok "组一 unique_count=${many_unique}"
+          else
+            report_failure "组一 unique_count 期望 36，实得 ${many_unique:-空}"
+          fi
+          many_annotation_line_count="$(printf '%s\n' "${many_annotation_lines}" | /usr/bin/grep -c . || true)"
+          if [ "${many_annotations}" = "10" ] && [ "${many_annotation_line_count}" = "10" ]; then
+            report_ok "组一 annotation_count=${many_annotations}，annotations 段 ${many_annotation_line_count} 行"
+          else
+            report_failure "组一 annotation_count 期望 10，实得 ${many_annotations:-空}；annotations 段 ${many_annotation_line_count} 行"
+          fi
+          first_annotation="$(printf '%s\n' "${many_annotation_lines}" | /usr/bin/sed -n '1p')"
+          case "${first_annotation}" in
+            "Test Case "*" failed "*)
+              report_ok "组一 annotations 段第 1 行是 Test Case … failed 行：${first_annotation}"
+              ;;
+            *)
+              report_failure "组一 annotations 段第 1 行不是 Test Case … failed 行：${first_annotation:-空}"
+              ;;
+          esac
+          many_restart_lines="$(count_fixed "${many_all_lines}" 'Restarting after unexpected exit')"
+          many_test_failed_lines="$(count_fixed "${many_all_lines}" '** TEST FAILED **')"
+          if [ "${many_restart_lines}" = "1" ] && [ "${many_test_failed_lines}" = "1" ]; then
+            report_ok "组一 all 段含 Restarting after unexpected exit 行与 ** TEST FAILED ** 行"
+          else
+            report_failure "组一 all 段结论行不全：Restarting ${many_restart_lines} 行，TEST FAILED ${many_test_failed_lines} 行"
+          fi
+          many_order="$(
+            printf '%s\n' "${many_all_lines}" |
+              /usr/bin/awk '
+                NR == 1 && $0 ~ /Test Case .* failed/ { head = head + 1 }
+                NR >= 2 && NR <= 33 && $0 ~ /PhotoCleanupMVETests\/.*error:/ { middle = middle + 1 }
+                NR >= 34 && NR <= 36 && ($0 ~ /^Fatal / || $0 ~ /^Restarting after/ || $0 ~ /TEST FAILED/) { tail = tail + 1 }
+                END { printf "%d %d %d %d\n", head, middle, tail, NR }
+              '
+          )"
+          if [ "${many_order}" = "1 32 3 36" ]; then
+            report_ok "组一 all 段优先序：Test Case 失败行 1 → 测试目标 error 行 32 → 结论行 3（共 36 行）"
+          else
+            report_failure "组一 all 段优先序不符，期望「1 32 3 36」，实得「${many_order}」"
+          fi
+
+          # 组二：xctest-restarted.log（IC-149 既有夹具）。testCrashyOne 两条断言失败后宿主崩溃，
+          # 夹具里本来就没有它的 Test Case … failed 行（崩溃的用例打不出结论行，#292 attempt 1 同形），
+          # 故按结果核：去重后 ≥ 1、all 段含该用例的断言失败行，且输出里的 Test Case … failed 行数
+          # 与夹具自身相同——脚本不凭空造行。
+          restarted_unique="$(output_field xctest-restarted.log unique_count)"
+          restarted_all_lines="$(output_section xctest-restarted.log all)"
+          restarted_case_lines="$(count_fixed "${restarted_all_lines}" '-[PhotoCleanupMVETests.CrashyTests testCrashyOne]')"
+          restarted_fixture_failed="$(/usr/bin/grep -c -E 'Test Case .* failed' Scripts/fixtures/xctest-restarted.log || true)"
+          restarted_output_failed="$(printf '%s\n' "${restarted_all_lines}" | /usr/bin/grep -c -E 'Test Case .* failed' || true)"
+          if [ -n "${restarted_unique}" ] && [ "${restarted_unique}" -ge 1 ] &&
+            [ "${restarted_case_lines}" -ge 1 ] &&
+            [ "${restarted_output_failed}" = "${restarted_fixture_failed}" ]; then
+            report_ok "组二 unique_count=${restarted_unique}（≥ 1），all 段含 testCrashyOne 的断言失败行 ${restarted_case_lines} 条；Test Case … failed 行：夹具 ${restarted_fixture_failed}，输出 ${restarted_output_failed}"
+          else
+            report_failure "组二不符：unique_count=${restarted_unique:-空}，testCrashyOne 行 ${restarted_case_lines}，Test Case … failed 行 夹具 ${restarted_fixture_failed}／输出 ${restarted_output_failed}"
+          fi
+
+          # 组三：xctest-single-chunk.log（全绿）。
+          single_candidates="$(output_field xctest-single-chunk.log candidate_count)"
+          single_annotations="$(output_field xctest-single-chunk.log annotation_count)"
+          if [ "${single_candidates}" = "0" ] && [ "${single_annotations}" = "0" ]; then
+            report_ok "组三 xctest-single-chunk.log candidate_count=0，annotation_count=0"
+          else
+            report_failure "组三 期望 candidate_count=0、annotation_count=0，实得 ${single_candidates:-空}、${single_annotations:-空}"
+          fi
+
+          # 负对照：改前口径（同一条 grep 取尾部 50 行）在 xctest-failures-many.log 上必须丢行——
+          # 取满 50 行且不含第一条断言失败行；新口径的 all 段必须含该行。
+          # 没有这一条，夹具可能根本不区分新旧口径，自测就成了空转。
+          old_logic_lines="$(
+            /usr/bin/grep -E 'PhotoCleanupMVE/.*error:|PhotoCleanupMVETests/.*error:|Test Case .* failed' \
+              Scripts/fixtures/xctest-failures-many.log | tail -n 50 || true
+          )"
+          old_logic_count="$(printf '%s\n' "${old_logic_lines}" | /usr/bin/grep -c . || true)"
+          first_assertion_location="$(
+            /usr/bin/grep -m 1 -E 'PhotoCleanupMVETests/.*error:' Scripts/fixtures/xctest-failures-many.log |
+              /usr/bin/sed -nE 's/.*(PhotoCleanupMVETests\/[^:]*:[0-9]+):.*/\1/p' || true
+          )"
+          old_has_first="$(count_fixed "${old_logic_lines}" "${first_assertion_location}:")"
+          new_has_first="$(count_fixed "${many_all_lines}" "${first_assertion_location}:")"
+          if [ -n "${first_assertion_location}" ] && [ "${old_logic_count}" = "50" ] &&
+            [ "${old_has_first}" = "0" ] && [ "${new_has_first}" = "1" ]; then
+            report_ok "负对照：改前口径取到 ${old_logic_count} 行，不含第一条断言失败行（${first_assertion_location}）；新口径 all 段含该行 ${new_has_first} 条"
+          else
+            report_failure "负对照不成立：改前口径取到 ${old_logic_count} 行，含第一条断言失败行（${first_assertion_location:-空}）${old_has_first} 条；新口径 ${new_has_first} 条"
+          fi
+
+          rm -rf "${selftest_dir}"
+          if [ "${selftest_failures}" -ne 0 ]; then
+            echo "失败行提取自测失败 ${selftest_failures} 项。" >&2
+            exit 1
+          fi
+          echo "失败行提取自测通过。"
+
       - name: 运行 XCTest
         timeout-minutes: 25
         run: |
@@ -165,19 +322,52 @@ jobs:
             echo "::notice title=XCTest 宿主重启::本次运行测试宿主重启 ${restart_count} 次，日志分成多段；执行摘要的项数按「唯一 Test Case 身份去重」统计，不取任何一段的 Executed 小计。"
           fi
 
+          # IC-154 子项 B：失败行改由提取脚本扫描整份日志，按「Test Case 失败行 → 测试目标
+          # error 行（按文件:行去重）→ 产品目标 error 行 → 结论行」排序并去重。改前只看最后
+          # 50 行，前面的断言失败会被丢掉；而 GitHub 每步至多保留 10 条 error 注解、超出的
+          # 静默丢弃（#292 attempt 1 发了 22 条只剩最先的 10 条）。所以注解只发脚本给出的
+          # 前 10 条，全部去重行连同三个计数写进作业摘要。
           if [ "$test_status" -ne 0 ]; then
-            failure_lines="$(
-              /usr/bin/grep -E \
-                'PhotoCleanupMVE/.*error:|PhotoCleanupMVETests/.*error:|Test Case .* failed' \
-                "$test_log" | tail -n 50 || true
+            failure_output="$(bash Scripts/extract-xctest-failures.sh "$test_log" || true)"
+            failure_candidate_count="$(
+              printf '%s\n' "${failure_output}" |
+                /usr/bin/sed -n 's/^candidate_count=//p' || true
             )"
-            if [ -n "$failure_lines" ]; then
+            failure_unique_count="$(
+              printf '%s\n' "${failure_output}" |
+                /usr/bin/sed -n 's/^unique_count=//p' || true
+            )"
+            failure_annotation_lines="$(
+              printf '%s\n' "${failure_output}" |
+                /usr/bin/awk '/^--- annotations ---$/ { inside = 1; next } /^--- all ---$/ { inside = 0 } inside' || true
+            )"
+            failure_all_lines="$(
+              printf '%s\n' "${failure_output}" |
+                /usr/bin/awk '/^--- all ---$/ { inside = 1; next } inside' || true
+            )"
+            failure_annotations_sent=0
+            if [ -n "${failure_annotation_lines}" ]; then
               while IFS= read -r failure_line; do
-                echo "::error title=XCTest 失败::$failure_line"
-              done <<< "$failure_lines"
+                echo "::error title=XCTest 失败::${failure_line}"
+                failure_annotations_sent=$((failure_annotations_sent + 1))
+              done <<< "${failure_annotation_lines}"
             else
               echo "::error title=XCTest 失败::未找到具体错误行。"
+              failure_annotations_sent=1
             fi
+            {
+              echo "### XCTest 失败行（全量）"
+              echo ""
+              echo "- 候选行总数：${failure_candidate_count:-空}"
+              echo "- 去重后条数：${failure_unique_count:-空}"
+              echo "- 已发注解条数：${failure_annotations_sent}"
+              if [ -n "${failure_all_lines}" ]; then
+                echo ""
+                echo '```text'
+                printf '%s\n' "${failure_all_lines}"
+                echo '```'
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # IC-125 哨兵：堵死「脚本没跑任何测试却以 0 退出」的假绿（#238 实例）。

@@ -1,0 +1,98 @@
+2026-09-16T03:00:00.0000000Z Test Suite 'All tests' started at 2026-09-16 03:00:00.000.
+2026-09-16T03:00:00.0100000Z Test Suite 'PhotoCleanupMVETests.xctest' started at 2026-09-16 03:00:00.001.
+2026-09-16T03:00:00.0200000Z Test Suite 'AlphaTests' started at 2026-09-16 03:00:00.002.
+2026-09-16T03:00:00.0300000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaOne]' started.
+2026-09-16T03:00:00.0400000Z Test Case '-[PhotoCleanupMVETests.AlphaTests testAlphaOne]' passed (0.010 seconds).
+2026-09-16T03:00:00.0500000Z Test Suite 'AlphaTests' passed at 2026-09-16 03:00:00.013.
+2026-09-16T03:00:00.0600000Z 	 Executed 1 test, with 0 failures (0 unexpected) in 0.010 (0.011) seconds
+2026-09-16T03:00:00.0700000Z Test Suite 'StormTests' started at 2026-09-16 03:00:00.014.
+2026-09-16T03:00:00.0800000Z Test Case '-[PhotoCleanupMVETests.StormTests testStormManyAssertions]' started.
+2026-09-16T03:00:00.0900000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:101: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("0") is not equal to ("1")
+2026-09-16T03:00:00.1000000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:101: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("0") is not equal to ("1")
+2026-09-16T03:00:00.1100000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:104: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.1200000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:104: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.1300000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:107: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.1400000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:107: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.1500000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:110: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.1600000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:110: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.1700000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:113: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.1800000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:113: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.1900000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:116: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("0") is not equal to ("1")
+2026-09-16T03:00:00.2000000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:116: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("0") is not equal to ("1")
+2026-09-16T03:00:00.2100000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:119: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.2200000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:119: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.2300000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:122: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.2400000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:122: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.2500000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:125: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.2600000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:125: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.2700000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:128: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.2800000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:128: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.2900000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:131: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("Executed 0 tests") is not equal to ("Executed 32 tests")
+2026-09-16T03:00:00.3000000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:131: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("Executed 0 tests") is not equal to ("Executed 32 tests")
+2026-09-16T03:00:00.3100000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:134: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.3200000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:134: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.3300000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:137: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.3400000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:137: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.3500000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:140: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.3600000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:140: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.3700000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:143: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.3800000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:143: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.3900000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:146: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("0") is not equal to ("1")
+2026-09-16T03:00:00.4000000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:146: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("0") is not equal to ("1")
+2026-09-16T03:00:00.4100000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:149: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.4200000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:149: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.4300000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:152: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.4400000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:152: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.4500000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:155: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.4600000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:155: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.4700000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:158: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.4800000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:158: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.4900000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:161: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("1") is not equal to ("2") - loop iteration 1
+2026-09-16T03:00:00.5000000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:161: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("1") is not equal to ("2") - loop iteration 1
+2026-09-16T03:00:00.5100000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:161: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("2") is not equal to ("3") - loop iteration 2
+2026-09-16T03:00:00.5200000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:161: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("2") is not equal to ("3") - loop iteration 2
+2026-09-16T03:00:00.5300000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:164: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.5400000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:164: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.5500000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:167: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.5600000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:167: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.5700000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:170: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.5800000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:170: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.5900000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:173: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.6000000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:173: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.6100000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:176: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("0") is not equal to ("1")
+2026-09-16T03:00:00.6200000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:176: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("0") is not equal to ("1")
+2026-09-16T03:00:00.6300000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:179: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.6400000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:179: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.6500000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:182: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.6600000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:182: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertGreaterThanOrEqual failed: ("0") is less than ("3")
+2026-09-16T03:00:00.6700000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:185: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.6800000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:185: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertFalse failed
+2026-09-16T03:00:00.6900000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:188: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.7000000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:188: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertNotNil failed
+2026-09-16T03:00:00.7100000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:191: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("0") is not equal to ("1")
+2026-09-16T03:00:00.7200000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:191: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertEqual failed: ("0") is not equal to ("1")
+2026-09-16T03:00:00.7300000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:194: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.7400000Z /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/StormTests.swift:194: error: -[PhotoCleanupMVETests.StormTests testStormManyAssertions] : XCTAssertTrue failed
+2026-09-16T03:00:00.7500000Z Test Case '-[PhotoCleanupMVETests.StormTests testStormManyAssertions]' failed (4.321 seconds).
+2026-09-16T03:00:00.7600000Z Test Case '-[PhotoCleanupMVETests.StormTests testStormCrash]' started.
+2026-09-16T03:00:00.7700000Z Simultaneous accesses to 0x1061c1020, but modification requires exclusive access.
+2026-09-16T03:00:00.7800000Z Fatal access conflict detected.
+2026-09-16T03:00:00.7900000Z
+2026-09-16T03:00:30.0000000Z Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+2026-09-16T03:00:30.0100000Z
+2026-09-16T03:00:30.0200000Z Test Suite 'Selected tests' started at 2026-09-16 03:00:30.000.
+2026-09-16T03:00:30.0300000Z Test Suite 'PhotoCleanupMVETests.xctest' started at 2026-09-16 03:00:30.001.
+2026-09-16T03:00:30.0400000Z Test Suite 'BetaTests' started at 2026-09-16 03:00:30.002.
+2026-09-16T03:00:30.0500000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaOne]' started.
+2026-09-16T03:00:30.0600000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaOne]' passed (0.010 seconds).
+2026-09-16T03:00:30.0700000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaTwo]' started.
+2026-09-16T03:00:30.0800000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaTwo]' passed (0.010 seconds).
+2026-09-16T03:00:30.0900000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaThree]' started.
+2026-09-16T03:00:30.1000000Z Test Case '-[PhotoCleanupMVETests.BetaTests testBetaThree]' passed (0.010 seconds).
+2026-09-16T03:00:30.1100000Z Test Suite 'BetaTests' passed at 2026-09-16 03:00:30.040.
+2026-09-16T03:00:30.1200000Z 	 Executed 3 tests, with 0 failures (0 unexpected) in 0.030 (0.031) seconds
+2026-09-16T03:00:30.1300000Z Test Suite 'PhotoCleanupMVETests.xctest' passed at 2026-09-16 03:00:30.041.
+2026-09-16T03:00:30.1400000Z 	 Executed 3 tests, with 0 failures (0 unexpected) in 0.030 (0.032) seconds
+2026-09-16T03:00:30.1500000Z Test Suite 'Selected tests' passed at 2026-09-16 03:00:30.042.
+2026-09-16T03:00:30.1600000Z 	 Executed 3 tests, with 0 failures (0 unexpected) in 0.030 (0.033) seconds
+2026-09-16T03:00:30.1700000Z ** TEST FAILED **
