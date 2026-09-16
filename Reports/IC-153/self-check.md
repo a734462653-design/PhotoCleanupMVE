@@ -5,7 +5,7 @@
 - **四个子项都已交付**，顺序 A → B → C → D，各自独立 commit：A `13af137`（规则登记表、分类、聚合）、B `cec92ce`（缓存与增量续扫引擎）、C `cf76fe9`（PhotoKit 源、协议实现、App 接线）、D `7c71862`（桩补钩子属性）；另有 B 的一个推 CI 前降险修正 `3e84b21`（两处 `Self.xxx` 改具名类型）。
 - **CI #306（run id `35109386439`，attempt 1）一次绿**：十一步全 success、真实退出码 **0**、**824 项 0 失败、1 个 launch**、目的地 `OS:26.2, name:iPhone 16`、IPA **1618776 字节**、SHA-256 `dac6f9374755318facb3d3e7c787b81bcd7662434b827b14c978d9d67200d5b5`。项数对账 **811 + 13 = 824** ✔。CI 预算 3 次只用 1 次。
 - **断言 1～13 全部 `passed`**（第五节逐条给函数名与耗时）；IC-147 的 16 项、IC-148 的 14 项、IC-151 的 8 项、IC-152 的 6 项逐条 `passed`。
-- **G872～G874 满足，G875 满足**（第八节）。按卡内合并授权执行 `--no-ff` 合并；合并提交与 G876 由合并后的回填提交补记（第十一节）。
+- **G872～G874 满足，G875 满足**（第八节）。**已按卡内授权 `--no-ff` 合并入 `main`：合并提交 `9b4daa5b07db92eaaaa81ae7be0e0b30a8828afc`**，树与测过的分支 tip 逐字节相同；**G876 满足**——合并后 `main` 自动运行 **#307**（run id `35111754836`）绿，824 项 0 失败、1 个 launch、`OS:26.2, name:iPhone 16`、IPA 1618776 字节（第十一节）。
 - **有六处按「结果」而非字面落实的地方（第 6.1～6.6 条，另有四条不改行为口径的实现取舍在第 6.7 条），都是卡内条文互相够不着或与规格结果冲突，请决策会话追认**。其中影响行为的只有一处：**回到扫描中的方向另需一个迁移事件**（第 6.2 条）——卡内裁定 五只点名 `.scanCompleted`／`.scanFailed`，照字面接线，前台恢复发现新增资产时 `SC` 不会回到扫描中（违 SPEC-S0 v2 第四节与 H75 第 5 条），授权刚通过时整个扫描期间停在失败页（违第三节第 4 部分迁出条件）。
 - **人工判定项 H75 七条原样保留给 Lynn**（第十三节），执行端不代为下结论。**夹具源不是 PhotoKit**：首扫耗时、iCloud 未解析比例、录屏漏认率、前台恢复观感一律未覆盖（陷阱 1）。
 
@@ -289,9 +289,25 @@
 | IC-147 16 项与 IC-148／IC-151／IC-152 相关用例逐条 `passed` | 第五节 ✔ |
 | pbxproj 撞号扫描 | 第九节 ✔ |
 | 工作树净 | 报告提交后 `git status --porcelain` 空 ✔ |
-| `main` 未被他人推进 | 合并前再读 `git ls-remote origin refs/heads/main`（第十一节） |
+| `main` 未被他人推进 | 合并前 `git ls-remote origin refs/heads/main` = `681cf0699163bfd84a042ea907988680be09a599`，与基线相同 ✔ |
 
-### G876 —— 合并后 `main` 自动运行（合并后回填，见第十一节）
+### G876：合并后 `main` 自动运行 —— 满足
+
+| 项 | 值 |
+|---|---|
+| 运行编号 | **#307** |
+| run id | `35111754836`，`run_attempt` **1**，事件 `push`，分支 `main` |
+| check-run id | `104846966905`（从本次运行的 jobs 现取，未沿用 #306 的） |
+| 被测提交 | `9b4daa5b07db92eaaaa81ae7be0e0b30a8828afc`（合并提交） |
+| 结论 | **success**，11 个步骤全 success |
+| 作业时长 | 14:54:55Z → 15:03:37Z（8 分 42 秒）；XCTest 步骤 14:55:40Z → 15:02:02Z |
+| 执行摘要 notice | `Executed 824 tests, 0 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 824 tests / 0 failures` |
+| 实证行 | 目的地 `{ platform:iOS Simulator, arch:arm64, id:2911FD29-A09E-4A81-BEA7-99A616FB7FC8, OS:26.2, name:iPhone 16 }`；`Executed 824 tests, with 0 failures (0 unexpected) in 61.758 (136.408) seconds`；`** TEST SUCCEEDED **`；`'All tests' started` 1 次；唯一 passed 824、failed 0 |
+| 本卡 13 项 | 全部 `passed`（第二个样本，与 #306 同） |
+| IPA 校验 notice | `文件=PhotoCleanupMVE-unsigned.ipa，字节数=1618776，SHA-256=3bac8d9c938790df1d4e7ec83227c262cdecf2c1530c075c98714ce463848dfb` |
+| artifact | `PhotoCleanupMVE-unsigned-9b4daa5b07db`，id `10452678147`，zip 1618946 字节，2026-12-15 前有效 |
+
+IPA 字节数与 #306 相同（1618776）、哈希不同——IPA 归档不可复现的既有结论。
 
 ---
 
@@ -319,7 +335,19 @@ CI 上 #306 的「运行结构自验」「扫描用户可见硬编码字符串�
 
 ## 十一、合并
 
-G875 满足，按卡内授权执行：`git merge --no-ff feature/ic-153-scan-service` 入 `main` 并推送。**合并提交 SHA 与 G876（合并后 `main` 自动运行）由合并后的回填提交补记**（纪律 7：推送后才产生的信息，同卡追加 docs 提交；照 IC-150／IC-151／IC-152 的做法记在 `main` 上）。
+G875 满足，按卡内授权执行（Bash 工具单一用途命令，一次通过，未被权限层拦下）：
+
+| 步骤 | 实读 |
+|---|---|
+| 报告提交（分支） | `d3eac2b11d5b187db430b9078a2fa9fe00dd0cf7`，已推送 `3e84b21..d3eac2b`；纯 `Reports/**` 提交，按 `paths-ignore` 不触发 CI（预期行为） |
+| 合并前核对 | `git ls-remote origin refs/heads/main` = `681cf0699163bfd84a042ea907988680be09a599`；工作树净 |
+| 合并 | `git switch main` → `git merge --no-ff feature/ic-153-scan-service -F <消息文件>`（ort 策略，无冲突） |
+| 合并提交 | **`9b4daa5b07db92eaaaa81ae7be0e0b30a8828afc`**，父提交 `681cf0699163bfd84a042ea907988680be09a599`（`main`）与 `d3eac2b11d5b187db430b9078a2fa9fe00dd0cf7`（分支） |
+| 树核对 | 合并提交的树对象 `ff8d4433`（`git rev-parse 9b4daa5^{tree}`）= 分支 tip `d3eac2b` 的树对象；`git diff 3e84b21 9b4daa5 -- . ':!Reports'` 为空——合入 `main` 的代码与 #306 测过的提交逐字节相同 |
+| 推送 | `681cf06..9b4daa5  main -> main`，推送后 `git ls-remote origin refs/heads/main` = `9b4daa5…` |
+| G876 | #307 绿（第八节） |
+
+本回填提交（纯 `Reports/**`）照 IC-150／IC-151／IC-152 的做法记在 `main` 上（纪律 7：推送后才产生的信息，同卡追加 docs 提交）。
 
 ---
 
@@ -372,4 +400,11 @@ G875 满足，按卡内授权执行：`git merge --no-ff feature/ic-153-scan-ser
 | `486bcb769b59eb1146c5a231c7998847206777cc` | probe: IC-137 媒体播放探针（`probe/ic-137` tip） |
 | `d373afc7125104c01acfc296829229090e6871ce` | docs(IC-145): 自验报告与变更清单（`probe/ic-145` tip） |
 
-合并提交与 G876 运行产生后，回填提交里对新增的 40 位串再核一遍。
+**回填后复核**：两份报告加入合并提交与分支报告提交后重跑同一命令，共 **16** 个 40 位串，**16／16 退出码 0**；新增两个：
+
+| SHA | 提交标题（节选） |
+|---|---|
+| `d3eac2b11d5b187db430b9078a2fa9fe00dd0cf7` | docs(IC-153): 自验报告与变更清单（分支报告提交） |
+| `9b4daa5b07db92eaaaa81ae7be0e0b30a8828afc` | Merge IC-153（合并提交，#307 被测提交） |
+
+第十一节里的树对象只写短 id（`ff8d4433`）：它不是提交，`^{commit}` 核验对它不适用，故不以 40 位形式出现。
