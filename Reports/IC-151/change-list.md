@@ -4,7 +4,10 @@
 - 分支：`feature/ic-151-ambient-fixed-color-and-s0-layout`
 - 基线：`main` = `1fd6ed0525fde06ce710da4daa2f383d75d2d818`（IC-150 报告回填提交）
 - 分支 tip（代码）：`35f4e29476d3cec60df40a19e3a2bcdd2aef0ab2`
-- 提交数：4 个代码提交 + 1 个报告提交（本文件所在提交）
+- 分支 tip（含报告）：`11e2c2b0cccca4aacb21bb00593f5a339ad9c1fe`
+- 合并提交（`--no-ff` 入 `main`）：`f319a22471fa73cb742159bdd5ab177c7ee3a8e5`
+- 合并后 `main` 自动运行：**#303**（run id `35069638579`），success，805 项 0 失败
+- 提交数：4 个代码提交 + 1 个报告提交 + 1 个落在 `main` 上的回填提交
 - `schemaVersion`：**7，未动**（本卡不进 `S2CalibrationConfiguration`、不上标定面板）
 
 ---

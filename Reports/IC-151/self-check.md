@@ -291,10 +291,74 @@ IC151A-MEASURED proposal=361.00x120.00 unframed=361.00x361.00 framed=361.00x120.
 
 ## 十二、合并与 G866
 
-**待补**——本节在合并执行后于同一张卡内追加的 docs 提交里回填（纪律 7：报告随代码提交一起推送；合并提交 SHA 与合并后 `main` 的运行编号是推送后才产生的信息）。
+### 12.1 合并
+
+G865 全部满足，按卡内授权执行 `--no-ff` 合并并推送。**本机权限分类器未拦截**，一次通过，未做任何命令改写。
+
+| 项 | 值 |
+|---|---|
+| 合并前 `main` | `1fd6ed0525fde06ce710da4daa2f383d75d2d818` |
+| 被合并分支 tip | `11e2c2b0cccca4aacb21bb00593f5a339ad9c1fe`（代码 tip `35f4e29476d3cec60df40a19e3a2bcdd2aef0ab2` + 报告提交） |
+| 合并方式 | `git merge --no-ff feature/ic-151-ambient-fixed-color-and-s0-layout` |
+| **合并提交** | **`f319a22471fa73cb742159bdd5ab177c7ee3a8e5`** |
+| 合并后 `main` | 同上，已推送 `1fd6ed0..f319a22 main -> main` |
+| 合并统计 | 12 个文件，+1537 / −560；删 1 个文件、新增 3 个文件 |
+
+### 12.2 G866：合并后 `main` 的自动运行
+
+| 项 | 值 |
+|---|---|
+| 运行编号 | **#303** |
+| run id | `35069638579`，`run_attempt` **1** |
+| check-run id | `104707843037`（现取，未沿用上一次） |
+| 被测提交 | `f319a22471fa73cb742159bdd5ab177c7ee3a8e5` |
+| 结论 | **success**，11 个步骤全 success |
+| 真实退出码 | **0** |
+| 执行摘要 notice | `Executed 805 tests, 0 failing test case(s), across 1 launch(es)` |
+| xcodebuild 摘要 | `Executed 805 tests, with 0 failures (0 unexpected)` |
+| 唯一用例身份去重计数 | **805** ✔；日志内 `' failed (` 命中 **0** |
+| 目的地实证行 | `{ platform:iOS Simulator, arch:arm64, id:2911FD29-A09E-4A81-BEA7-99A616FB7FC8, OS:26.2, name:iPhone 16 }` |
+| 机型钉死实证 | `使用 iPhone 模拟器：iPhone 16 (id=2911FD29-A09E-4A81-BEA7-99A616FB7FC8, runtime=com.apple.CoreSimulator.SimRuntime.iOS-26-2)` |
+| IPA 校验 notice | `文件=PhotoCleanupMVE-unsigned.ipa，字节数=1555514，SHA-256=6980f56b1d68c836bc63f6281a8438c1411185d515a089c0006ce1798b0d2e52` |
+
+**关于两次 IPA 的 SHA-256 不同**：#302 attempt 2 为 `3db9d8f1…f48ba`、#303 为 `6980f56b…2e52`，而**字节数完全相同（1555514）**。这是既有结论（IC-094／IC-097：IPA 归档不可复现，相同源码树给出相同字节数但不同 SHA-256），不是内容差异；跨运行的同一性判据用树 diff 不用 IPA 哈希。
+
+**G866 满足。**
+
+### 12.3 合并后的 `main` 与人工判定
+
+H73 六条（第十一节）应装**合并后 `main`**（`f319a22`）的产物——即 #303 的 artifact `PhotoCleanupMVE-unsigned`。
 
 ---
 
 ## 十三、报告内 40 位 SHA 的实读核验
 
-**待补**——与第十二节同一次回填，届时对本报告与 `change-list.md` 内每个 40 位 SHA 跑一遍 `git cat-file -e <sha>^{commit}` 并贴出结果（陷阱 15：40 位 SHA 不得凭短前缀补全）。
+陷阱 15：报告内每个 40 位 SHA 必须来自实读命令的输出，不得凭短前缀补全。
+核验命令：`grep -ohE '\b[0-9a-f]{40}\b' Reports/IC-151/*.md | sort -u`，逐个 `git cat-file -e <sha>^{commit}`。
+
+| SHA | 存在 | 提交标题（首行截断） |
+|---|---|---|
+| `0659e3ac0aab1c322cb1c2db077ff84c12c46b9a` | ✔ | `feat(IC-151 B): 氛围底改固定色——12 个 v2 登记值…` |
+| `11e2c2b0cccca4aacb21bb00593f5a339ad9c1fe` | ✔ | `docs(IC-151): 自验报告与变更清单` |
+| `1fd6ed0525fde06ce710da4daa2f383d75d2d818` | ✔ | `docs(IC-150): 回填合并提交与 G861…` |
+| `35f4e29476d3cec60df40a19e3a2bcdd2aef0ab2` | ✔ | `feat(IC-151 D): S0 侧删图源链、玻璃卡改半透明填充…` |
+| `402cb6e52a11dc89ce2a8351b47314a5fe9185b8` | ✔ | `probe: IC-125 负对照——test-xcode.sh 在 xcodebuild test…` |
+| `486bcb769b59eb1146c5a231c7998847206777cc` | ✔ | `probe: IC-137 媒体播放探针…` |
+| `6736f1e3ebf2a3fd9a0c00f1bcd2c83f81dec74d` | ✔ | `docs: 完成 IC-091 阶段一…` |
+| `8a3f6572e7cc5cce07bee440588c478fd549299f` | ✔ | `test(IC-151 A): H71 版式塌陷的归因——无框 scaledToFill…` |
+| `9db02b93eccbb87d126602901807e70823535111` | ✔ | `test: 等待首个真实捏合完整结束` |
+| `a7cc1ec727a3a493f5263e688a316cbf4c743562` | ✔ | `docs: IC-092 自验报告与变更清单 v2 完整替换…` |
+| `b368a6caee846e664391b0620350395bfe6fbc7f` | ✔ | `docs: 完成 IC-089（IC-082 v3 R4）贴边回弹与交接…` |
+| `b5474fa759e52eb07dcbf7e510b7c1b56be5a150` | ✔ | `feat(IC-151 C): S2 侧删取图链、氛围底视图改无参` |
+| `d373afc7125104c01acfc296829229090e6871ce` | ✔ | `docs(IC-145): 自验报告与变更清单（#288 一次绿…）` |
+| `f319a22471fa73cb742159bdd5ab177c7ee3a8e5` | ✔ | `Merge IC-151：氛围底改固定色（S2 与 S0 两处）…` |
+
+**14 个 40 位 SHA 全部 `git cat-file -e` 通过。** 其中七个冻结／探针链的 SHA 另由 `git ls-remote origin` 的输出实读取得（第七节 G863 表），本机对象与远端 tip 一致。
+
+报告内出现的 64 位十六进制串是 **SHA-256**（文件哈希与 IPA 哈希），不是 git 对象，不在本节核验范围。
+
+---
+
+## 十四、本次回填方式说明（纪律 7）
+
+代码四个提交与两份报告已随分支一起推送（`11e2c2b`），随后合并入 `main`。第十二、十三节引用的**合并提交 SHA** 与**合并后 `main` 的运行编号**是推送后才产生的信息，按纪律 7 允许在**同一张卡**内追加一个 docs 提交回填——本次回填直接落在 `main` 上（与 IC-150 的 `1fd6ed0` 同一做法），**不等下一张卡分叉之后再补**。
