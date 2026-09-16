@@ -16,16 +16,6 @@ protocol S0CleanupDataProviding: AnyObject {
     func advanceScan()
 }
 
-/// IC-148 A（裁定 乙）：氛围底的图源协议。同样是消费侧定义、实现在 `Services/`、
-/// 由 App 入口注入（照上面 `S0CleanupDataProviding` 的同一样板）。
-///
-/// 与 S2 侧的 `S2AmbientImageLoading` 形状不同：那只以**资产标识**为键，而 S0
-/// 取的是「照片库中最近一张」，没有键可传，故另立一只协议而不是硬套。
-protocol S0AmbientImageProviding: AnyObject {
-    /// 取「最近一张」的缩略级图。取不到回 nil ⟹ 氛围底退化为幕底色纯色。
-    func recentAmbientImage() async -> UIImage?
-}
-
 /// 字节量文本。SPEC-S0 v1 第十四节第 3 部分末句：字节量一律用系统
 /// `ByteCountFormatter` 的 `.file` 口径，不自造单位字样拼接，格式化不进目录。
 enum S0ByteCountText {
@@ -61,30 +51,24 @@ enum S0CategoryText {
 /// 交付物，由 `IC147S0BehaviorTests` 的 16 项钉住；本卡只换这六个 builder 的
 /// 版式，并加上氛围底与玻璃卡。
 ///
-/// 三条实装裁定（IC-148 卡内，待入 Decision_log 第 171 条）：
-/// - **裁定 甲**：首页恒为深色氛围配方，不提供浅色版，不引用任何随 trait 解析
-///   的色源（与 SPEC-S2 v20 决策 61 同制）。
-/// - **裁定 乙**：氛围底图源取「照片库中最近一张」；取不到即纯色回落，
-///   回落逻辑用 `S2AmbientBackdropReadout` 的既有行为，不另造。
-/// - **裁定 丙**：氛围底实现**原地复用** `Features/S2/S2AmbientBackdrop.swift`
-///   的 `S2AmbientMetrics`／`S2AmbientBackdropView`／`S2AmbientBackdropReadout`
-///   ——那是决策 61「S2 侧引用不复制」的唯一落点。本卡对该文件**一行不改**，
-///   不搬家、不改名、不在 S0 侧复制一份配方。名字带 `S2` 前缀而被 S0 使用是
-///   已知的命名不协调，日后正名另开一张纯重构卡。
+/// 实装裁定：
+/// - **裁定 甲**（IC-148，Decision_log 第 171 条）：首页恒为深色氛围配方，
+///   不提供浅色版，不引用任何随 trait 解析的色源。2026-09-15 一度撤销（要分
+///   明暗两套）后**同日恢复**，结论不变（第 175／176 条）。
+/// - **裁定 乙**（IC-148「氛围底图源取照片库中最近一张」）**随 IC-151 作废**：
+///   氛围底改固定色，取图链整条删除（IC-151 裁定 五）。
+/// - **裁定 丙**（IC-148）沿用：氛围底实现原地复用
+///   `Features/S2/S2AmbientBackdrop.swift` 的 `S2AmbientMetrics` 与
+///   `S2AmbientBackdropView`，S0 侧不复制一份配方。名字带 `S2` 前缀而被 S0
+///   使用是已知的命名不协调，日后正名另开一张纯重构卡。
 struct S0View: View {
     @ObservedObject var machine: S0StateMachine
-    /// 氛围底读数。S0 **自持一只**，不经 `S2AmbientBackdropStore`——那只的
-    /// `load(assetID:using:)` 以资产标识为键，与「最近一张」的取数形状不符。
-    @StateObject private var ambientReadout = S2AmbientBackdropReadout()
     /// 只摄入一次。`TabView` 的 tab 每次被选中都会重发 `onAppear`，而
     /// `.applicationOpened` 会清 `VF` 与 `cat` 并把 `SC` 打回扫描中——
     /// 没有这道闸，来回切 tab 就会反复重置 S0 的状态（H70 第 2 条正是切十次）。
     @State private var hasBootstrapped = false
-    /// 氛围底同理只取一次：取图是 PhotoKit 请求，反复切 tab 不该反复发。
-    @State private var hasRequestedAmbient = false
 
     private let dataProvider: (any S0CleanupDataProviding)?
-    private let ambientImageProvider: (any S0AmbientImageProviding)?
     private let onEnterCategoryPage: (S0CategoryIdentifier) -> Void
     private let onEnterConfirmation: () -> Void
     private let onOpenAccountSheet: () -> Void
@@ -95,7 +79,6 @@ struct S0View: View {
     init(
         machine: S0StateMachine,
         dataProvider: (any S0CleanupDataProviding)? = nil,
-        ambientImageProvider: (any S0AmbientImageProviding)? = nil,
         onEnterCategoryPage: @escaping (S0CategoryIdentifier) -> Void = { _ in },
         onEnterConfirmation: @escaping () -> Void = {},
         onOpenAccountSheet: @escaping () -> Void = {},
@@ -105,7 +88,6 @@ struct S0View: View {
     ) {
         self.machine = machine
         self.dataProvider = dataProvider
-        self.ambientImageProvider = ambientImageProvider
         self.onEnterCategoryPage = onEnterCategoryPage
         self.onEnterConfirmation = onEnterConfirmation
         self.onOpenAccountSheet = onOpenAccountSheet
@@ -119,13 +101,12 @@ struct S0View: View {
             // 氛围底：最底一层，不参与布局、不接触控、不产生几何写入
             // （由 `S2AmbientBackdropView` 自身的 `allowsHitTesting(false)` 与
             // `accessibilityHidden(true)` 保证，IC-146 的两条断言已钉住）。
-            S2AmbientBackdropView(readout: ambientReadout)
+            S2AmbientBackdropView()
                 .ignoresSafeArea()
             scrollingContent
         }
         .onAppear {
             bootstrapIfNeeded()
-            requestAmbientImageIfNeeded()
         }
     }
 
@@ -228,8 +209,7 @@ struct S0View: View {
                     alignment: .leading
                 )
                 .s0GlassSurface(
-                    cornerRadius: S1LimitedBannerStyle.cornerRadius,
-                    ambientImage: ambientReadout.image
+                    cornerRadius: S1LimitedBannerStyle.cornerRadius
                 )
         }
     }
@@ -418,8 +398,7 @@ struct S0View: View {
                 alignment: .leading
             )
             .s0GlassSurface(
-                cornerRadius: S0HomeMetrics.pendingRowCornerRadius,
-                ambientImage: ambientReadout.image
+                cornerRadius: S0HomeMetrics.pendingRowCornerRadius
             )
         }
         verificationRow
@@ -601,8 +580,7 @@ struct S0View: View {
         .padding(S1ChromeLayout.horizontalMargin)
         .frame(maxWidth: .infinity, alignment: .leading)
         .s0GlassSurface(
-            cornerRadius: S0HomeMetrics.categoryRowCornerRadius,
-            ambientImage: ambientReadout.image
+            cornerRadius: S0HomeMetrics.categoryRowCornerRadius
         )
     }
 
@@ -643,20 +621,6 @@ struct S0View: View {
             machine.handle(.scanFailed(category))
         }
     }
-
-    /// 氛围底取图。同样遵循 E4 口径（测试宿主下不发 PhotoKit 请求），
-    /// 且**一次只取一次**。取不到即纯色回落，不另造回落。
-    private func requestAmbientImageIfNeeded() {
-        guard !hasRequestedAmbient,
-              ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
-              let provider = ambientImageProvider else {
-            return
-        }
-        hasRequestedAmbient = true
-        Task { @MainActor in
-            ambientReadout.update(await provider.recentAmbientImage())
-        }
-    }
 }
 
 /// 顶排人像圆钮的系统符号名。集中一处，不散落字面量。
@@ -664,23 +628,37 @@ enum S0HomeSymbol {
     static let account = "person.crop.circle"
 }
 
-/// 内容玻璃卡的表面：幕底色 + 氛围图的磨砂副本 + 三层高光 + 投影。
+/// 内容玻璃卡的表面：半透明白色填充 + 三层高光 + 投影。
 ///
-/// 为什么自己搭而不用系统材质：IC-148 裁定 甲 禁用系统材质（随 trait 变），
-/// 而登记表给的 `cardBlurRadius`／`cardSaturation` 正是一层背景磨砂。用同一张
-/// 氛围图做磨砂副本，既落实了这两个登记值，又与「恒为深色」不冲突。
-/// 取不到图时只剩幕底色——与氛围底同一条回落，不另造。
+/// **IC-151 D**：氛围底改固定色后玻璃卡没有可折射的对象，登记表原有的
+/// `cardBlurRadius`／`cardSaturation` 失去对象、随卡删除（裁定 三），
+/// 换成 `cardFillTopOpacity`／`cardFillBottomOpacity` 一条竖向白色渐变。
+///
+/// **卡下不铺幕底色**：卡是半透明的，页面的光晕要透过卡面才能给卡一个
+/// 「坐」的明度梯度（Decision_log 第 176 条选中档光晕的理由就是这个）；
+/// 铺了底色，光晕在卡上就被挡死。
+///
+/// 为什么自己搭而不用系统材质：IC-148 裁定 甲 禁用系统材质（随 trait 变）。
 struct S0GlassSurface<S: InsettableShape>: ViewModifier {
     let shape: S
-    let ambientImage: UIImage?
 
     func body(content: Content) -> some View {
         content
             .background {
-                ZStack {
-                    shape.fill(S2AmbientMetrics.baseColor)
-                    frost
-                }
+                shape.fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(
+                                S0HomeMetrics.cardFillTopOpacity
+                            ),
+                            Color.white.opacity(
+                                S0HomeMetrics.cardFillBottomOpacity
+                            )
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             }
             .overlay {
                 shape.strokeBorder(
@@ -711,35 +689,17 @@ struct S0GlassSurface<S: InsettableShape>: ViewModifier {
                 y: S0HomeMetrics.cardShadowYOffset
             )
     }
-
-    @ViewBuilder
-    private var frost: some View {
-        if let ambientImage {
-            Image(uiImage: ambientImage)
-                .resizable()
-                .scaledToFill()
-                .blur(radius: S0HomeMetrics.cardBlurRadius, opaque: true)
-                .saturation(S0HomeMetrics.cardSaturation)
-                .clipShape(shape)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
-    }
 }
 
 extension View {
     /// 玻璃卡表面。圆角由调用方给（卡、等待清空行、受限提示条各有自己的圆角）。
-    func s0GlassSurface(
-        cornerRadius: CGFloat,
-        ambientImage: UIImage?
-    ) -> some View {
+    func s0GlassSurface(cornerRadius: CGFloat) -> some View {
         modifier(
             S0GlassSurface(
                 shape: RoundedRectangle(
                     cornerRadius: cornerRadius,
                     style: .continuous
-                ),
-                ambientImage: ambientImage
+                )
             )
         )
     }

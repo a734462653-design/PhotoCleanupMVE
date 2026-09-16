@@ -19,12 +19,13 @@ import XCTest
 /// 8～11 属子项 C，12～14 属子项 D。
 final class IC148S0VisualTests: XCTestCase {
 
-    /// 本卡新增的四个产品文件（`Features/S0/` 三个 + `Services/` 一个）。
+    /// IC-148 新增的产品文件。第四个 `Services/S0RecentPhotoAmbientLoader.swift`
+    /// 随 IC-151 裁定 五 整条删除（氛围底改固定色，不再取图），从名单移除——
+    /// 文件不存在则 `strippedSource` 解不开，断言 2 的循环会直接失败。
     private static let newProductFiles = [
         "PhotoCleanupMVE/Features/S0/S0HomeMetrics.swift",
         "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift",
-        "PhotoCleanupMVE/Features/S0/S0CategoryRow.swift",
-        "PhotoCleanupMVE/Services/S0RecentPhotoAmbientLoader.swift"
+        "PhotoCleanupMVE/Features/S0/S0CategoryRow.swift"
     ]
 
     /// 三个**视图**文件（PhotoKit／造假／文案扫描的扫描面）。`S0View.swift` 是
@@ -80,9 +81,20 @@ final class IC148S0VisualTests: XCTestCase {
     // MARK: - 断言 1：52 个登记常量与 SPEC-S0 第十四节第 2 部分逐条对账
 
     func testIC148AAssertion01RegistryMatchesSpecSection14() throws {
-        // 玻璃卡（8）
-        XCTAssertEqual(S0HomeMetrics.cardBlurRadius, 30, accuracy: 0.000_001)
-        XCTAssertEqual(S0HomeMetrics.cardSaturation, 1.70, accuracy: 0.000_001)
+        // 玻璃卡（8）。IC-151 裁定 三：`cardBlurRadius` 30 与 `cardSaturation`
+        // 1.70 两个磨砂值随氛围底改固定色作废（卡后面没有可折射的对象了），
+        // 换成 `cardFillTopOpacity` 0.10 与 `cardFillBottomOpacity` 0.045
+        // 两个填充值；段内仍 8 个、全表仍 52 个。
+        XCTAssertEqual(
+            S0HomeMetrics.cardFillTopOpacity,
+            0.10,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            S0HomeMetrics.cardFillBottomOpacity,
+            0.045,
+            accuracy: 0.000_001
+        )
         XCTAssertEqual(
             S0HomeMetrics.cardInnerTopOpacity,
             0.42,
@@ -306,9 +318,23 @@ final class IC148S0VisualTests: XCTestCase {
             "S0HomeMetrics 的登记常量不是恰 52 个"
         )
         XCTAssertGreaterThanOrEqual(
-            occurrences(of: "取值出处：SPEC-S0 v1 第十四节", in: body),
+            occurrences(of: "取值出处：", in: body),
             52
         )
+        // IC-151：只有玻璃卡那两个新值改指 Decision_log 与 IC-151 卡
+        // （裁定 四：SPEC-S0 v2 未晋级，新值不得冒充 v1 的登记值），
+        // 其余 50 个仍指 v1 第十四节。
+        XCTAssertEqual(
+            occurrences(of: "取值出处：SPEC-S0 v1 第十四节", in: body),
+            50
+        )
+        XCTAssertEqual(
+            occurrences(of: "取值出处：Decision_log 第 175／176 条", in: body),
+            2
+        )
+        // 两个磨砂值删干净，不留死值（陷阱 12 的同类）。
+        XCTAssertEqual(occurrences(of: "cardBlurRadius", in: body), 0)
+        XCTAssertEqual(occurrences(of: "cardSaturation", in: body), 0)
         // `S0Ambient` 的十个值不在此登记（裁定 丙：引用 S2AmbientMetrics）。
         XCTAssertEqual(occurrences(of: "ambientBlurRadius", in: body), 0)
         XCTAssertEqual(occurrences(of: "ambientBaseColor", in: body), 0)
@@ -480,29 +506,31 @@ final class IC148S0VisualTests: XCTestCase {
                 )
             }
         }
-        // 正对照：取图实现里必须有。
-        let loader = try XCTUnwrap(
-            strippedSource(
-                "PhotoCleanupMVE/Services/S0RecentPhotoAmbientLoader.swift"
-            )
+        // 正对照：**针对 needle 本身**。原先读的是 S0 侧的取图实现，那个文件
+        // 随 IC-151 裁定 五 整条删除，改读一个确实用 PhotoKit 且本卡不动的
+        // 既有文件；没有这一条，上面那组「各为 0」有可能是 needle 写错的空转。
+        let scanner = try XCTUnwrap(
+            strippedSource("PhotoCleanupMVE/Services/AssetSizeScanner.swift")
         )
-        XCTAssertGreaterThan(occurrences(of: "PHAsset", in: loader), 0)
-        XCTAssertGreaterThan(occurrences(of: "import Photos", in: loader), 0)
+        XCTAssertGreaterThan(occurrences(of: "PHAsset", in: scanner), 0)
+        XCTAssertGreaterThan(occurrences(of: "import Photos", in: scanner), 0)
 
-        // 复用：S0 视图引用 S2 侧的氛围底三件，且不自造配方。
+        // 复用：S0 视图引用 S2 侧的氛围底视图，且不自造配方。
         let view = try XCTUnwrap(
             strippedSource("PhotoCleanupMVE/Features/S0/S0View.swift")
         )
+        // IC-151 子项 C／D：氛围底视图改无参，读数类型随取图链整条删除。
         XCTAssertGreaterThan(
-            occurrences(of: "S2AmbientBackdropView(readout:", in: view),
+            occurrences(of: "S2AmbientBackdropView()", in: view),
             0
         )
-        XCTAssertGreaterThan(
-            occurrences(of: "S2AmbientBackdropReadout()", in: view),
+        XCTAssertEqual(
+            occurrences(of: "S2AmbientBackdropReadout", in: view),
             0
         )
-        XCTAssertGreaterThan(occurrences(of: "S2AmbientMetrics.", in: view), 0)
-        // 不经 store（那只以资产标识为键，与「最近一张」的形状不符）。
+        // 原有的「`S2AmbientMetrics.` ≥ 1」一条随子项 D 删除：卡下不再铺幕底色
+        // 是本卡要达成的结果之一（断言 12），该条在正确实现后必然失效
+        // ——「某计数不变」类断言先核可用性（惯例 37）。
         XCTAssertEqual(
             occurrences(of: "S2AmbientBackdropStore", in: view),
             0

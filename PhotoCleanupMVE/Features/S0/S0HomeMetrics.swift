@@ -6,22 +6,27 @@ import SwiftUI
 /// 视图代码一个裸数都不写。不进 `S2CalibrationConfiguration`、不上标定面板，
 /// 因此 `schemaVersion` 不动。
 ///
-/// **`S0Ambient` 的十个值不在此登记**——IC-148 裁定 丙：氛围底原地复用
+/// **`S0Ambient` 的十二个值不在此登记**——IC-148 裁定 丙沿用：氛围底原地复用
 /// `Features/S2/S2AmbientBackdrop.swift` 的 `S2AmbientMetrics`，那是决策 61
-/// 「S2 侧引用不复制」的唯一落点，本卡一行不改、不搬家、不复制。
+/// 「S2 侧引用不复制」的唯一落点。IC-151 把那一族由 v1 的十个（照片强模糊
+/// 铺底）换成 v2 的十二个（固定色），落点不变。
 ///
 /// **类别页网格（6）与组视图（5）也不在此登记**——属批次 5.2，范围外。
 ///
 /// 52 = 玻璃卡 8 + 分段条 14 + 等待清空行 7 + 类别行 12 + hero 6 + 类别色 5。
 enum S0HomeMetrics {
 
-    // MARK: - 玻璃卡（8）：三层高光 + 投影
+    // MARK: - 玻璃卡（8）：半透明填充 + 三层高光 + 投影
 
-    /// 取值出处：SPEC-S0 v1 第十四节第 2 部分 `cardBlurRadius`。
-    static let cardBlurRadius: CGFloat = 30
+    /// 卡面竖向白色渐变的顶端不透明度。氛围底改固定色后玻璃卡后面没有可折射
+    /// 的对象，v1 登记的两个磨砂值失去对象、随 IC-151 删除（裁定 三）。
+    /// 取值出处：Decision_log 第 175／176 条、IC-151 卡
+    /// （SPEC-S0 v2 晋级后改指第十四节第 2 部分）。
+    static let cardFillTopOpacity: Double = 0.10
 
-    /// 取值出处：SPEC-S0 v1 第十四节第 2 部分 `cardSaturation`。
-    static let cardSaturation: Double = 1.70
+    /// 卡面竖向白色渐变的底端不透明度。取值出处：Decision_log 第 175／176 条、
+    /// IC-151 卡（SPEC-S0 v2 晋级后改指第十四节第 2 部分）。
+    static let cardFillBottomOpacity: Double = 0.045
 
     /// 内上缘高光。取值出处：SPEC-S0 v1 第十四节第 2 部分 `cardInnerTopOpacity`。
     static let cardInnerTopOpacity: Double = 0.42
