@@ -2110,6 +2110,37 @@ final class S2NativeZoomPageController: UIViewController,
         doubleTapTransitionObserver?(.completed(transition, reading))
     }
 
+    /// IC-152 A（裁定 一）：分页器被拆除时**取消**在飞的双击过渡，而不是收尾。
+    ///
+    /// 收尾（上面那个函数）做三件事：把几何落到终点、经完成回调把视口报告给
+    /// 状态机、向观察者发 `.completed`。拆除时这三件事都没有消费者——离开 S2
+    /// 时协调器随即丢弃这只状态机，下次进入另建一只——而第二件会在 SwiftUI
+    /// 视图图失效期间写 `@Published`，#292 attempt 1 的致命退出即由此而来。
+    /// 落几何本身也会经滚动视图代理回调再报告一次视口，同样要避开。
+    ///
+    /// 取消只做「清干净每一层」，与收尾逐层对应（陷阱 8）：显示链接、借出的
+    /// 播放层、页内容显隐、过渡视图、在途标志、滚动视图交互。不落几何、
+    /// 不回调所有者、不发事件，因此拆除路径上状态机零次发布。
+    func cancelActiveDoubleTapTransition() {
+        guard isDoubleTapTransitionActive else {
+            return
+        }
+        doubleTapDisplayLink?.invalidate()
+        doubleTapDisplayLink = nil
+        // 与收尾同序：先交还播放层，再放开页内容，最后移走过渡视图。
+        for lendable in lentPlaybackViews {
+            lendable.reclaimPlaybackLayer()
+        }
+        lentPlaybackViews = []
+        zoomScrollView.presentationContentView?.isHidden = false
+        doubleTapTransitionView?.removeFromSuperview()
+        doubleTapTransitionView = nil
+        doubleTapTargetPage = nil
+        doubleTapLatestPage = nil
+        isDoubleTapTransitionActive = false
+        zoomScrollView.isUserInteractionEnabled = true
+    }
+
     /// IC-111 B：标记残影用的**当前已解码图快照**。
     ///
     /// `afterScreenUpdates: false` ⟹ 取渲染层现成内容，**不同步重读图**、
@@ -3270,10 +3301,18 @@ final class S2NativePagerViewController: UIViewController,
         pagingScrollView.setContentOffset(offset, animated: animated)
     }
 
+    /// 只由 `S2NativePhotoPager.dismantleUIViewController` 调用。
+    ///
+    /// IC-152 A（裁定 一）：拆除期间状态机**零次**发布。顺序是问题的一半——
+    /// 改前是先收尾、再摘观察者、最后才让诊断退场，收尾发出的 `.completed`
+    /// 因此还会跑进诊断代码（等待稳定态），收尾本身又经完成回调写状态机。
+    /// 现改为：诊断先退场 → 摘观察者 → 取消（不是收尾）在飞的过渡。
     func resetInteractionState() {
+        diagnosticsRun?.cancel()
+        diagnosticsRun = nil
         pageControllers.values.forEach {
-            $0.finishActiveDoubleTapTransition()
             $0.doubleTapTransitionObserver = nil
+            $0.cancelActiveDoubleTapTransition()
         }
         outerDragStartDate = nil
         pendingPresentationTapPageIndex = nil
@@ -3282,8 +3321,6 @@ final class S2NativePagerViewController: UIViewController,
         onLongPressBegan = nil
         onLongPressEnded = nil
         onPagingSettled = nil
-        diagnosticsRun?.cancel()
-        diagnosticsRun = nil
     }
 
     var diagnosticPageIndicesPresent: [Int] {
