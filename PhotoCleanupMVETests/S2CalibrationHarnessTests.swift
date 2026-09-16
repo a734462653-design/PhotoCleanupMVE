@@ -4148,13 +4148,16 @@ final class S2CalibrationHarnessTests: XCTestCase {
         XCTAssertTrue(report.contains("单击后 V=隐藏、s=1 稳定态"))
         XCTAssertTrue(report.contains("双击进入 Nx：动画结束稳定态"))
         XCTAssertTrue(report.contains("双击退出 Nx：动画结束稳定态"))
+        // IC-152 B：needle 改为样本标题（带「## 」与「 #」）——改前的裸段名也会把
+        // 门禁失败那句错误数进去，计数 = 样本数 + 1；阈值改与产品硬下限同值 2，
+        // 3／5 已降为软目标（未达只记一行诊断、不判红）。
         XCTAssertGreaterThanOrEqual(
-            report.components(separatedBy: "双击进入 Nx：动画中间帧").count - 1,
-            3
+            report.components(separatedBy: "## 双击进入 Nx：动画中间帧 #").count - 1,
+            2
         )
         XCTAssertGreaterThanOrEqual(
-            report.components(separatedBy: "双击退出 Nx：动画中间帧").count - 1,
-            5
+            report.components(separatedBy: "## 双击退出 Nx：动画中间帧 #").count - 1,
+            2
         )
         XCTAssertTrue(report.contains("Q1："))
         XCTAssertTrue(report.contains("Q2："))

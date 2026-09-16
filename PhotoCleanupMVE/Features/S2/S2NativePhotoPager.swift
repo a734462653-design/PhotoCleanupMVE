@@ -4290,6 +4290,8 @@ final class S2GeometryDiagnosticsRun {
     private let completion: (String) -> Void
     private var samples: [S2GeometryDiagnosticSample] = []
     private var errors: [String] = []
+    /// IC-152 B（裁定 二）：中间帧软目标未达的诊断行。**不进 `errors`、不判红**。
+    private var softTargetLines: [String] = []
     private var cancelled = false
     private var middleThresholds: [CGFloat] = []
     private var activeMiddlePrefix = ""
@@ -4500,17 +4502,24 @@ final class S2GeometryDiagnosticsRun {
             case .completed:
                 controller.diagnosticCurrentPage?
                     .doubleTapTransitionObserver = nil
-                if !self.middleThresholds.isEmpty {
-                    // IC-126 A2：消息前缀保持原样，其后追加实测数据，下次再红时
-                    // 日志里直接有归因数据。
-                    self.errors.append(
-                        "\(middlePrefix) 少于 \(minimumMiddleFrames) 帧" +
-                            self.doubleTapCadenceDescription(
-                                hits: minimumMiddleFrames -
-                                    self.middleThresholds.count,
-                                minimumMiddleFrames: minimumMiddleFrames
-                            )
+                // IC-152 B（裁定 二）：命中少于硬下限 2 帧才判红；3／5 降为软目标，
+                // 未达只记一行诊断。判据在 `S2DiagnosticMiddleFrameGate`，`errors`
+                // 的写入点仍是这一处加 `capture` 那一处（惯例 38）。
+                let hits = minimumMiddleFrames - self.middleThresholds.count
+                let outcome = S2DiagnosticMiddleFrameGate.evaluate(
+                    middlePrefix: middlePrefix,
+                    hits: hits,
+                    softTarget: minimumMiddleFrames,
+                    cadence: self.doubleTapCadenceDescription(
+                        hits: hits,
+                        minimumMiddleFrames: minimumMiddleFrames
                     )
+                )
+                if let error = outcome.error {
+                    self.errors.append(error)
+                }
+                if let line = outcome.softTargetLine {
+                    self.softTargetLines.append(line)
                 }
                 controller.waitForDiagnosticStableState(
                     visibility: stableVisibility,
@@ -4540,26 +4549,29 @@ final class S2GeometryDiagnosticsRun {
         }
     }
 
-    // IC-126 A2：中间帧门禁失败自带归因数据。回调计数口径：CADisplayLink 每次
+    // IC-126 A2：中间帧门禁自带归因数据。回调计数口径：CADisplayLink 每次
     // 回调触发一次进度回调（进度<1），收口 `finishActiveDoubleTapTransition`
     // 另补一次进度=1；故「进度<1 的次数」≈ 过渡期内的 display link 回调次数。
+    // IC-152 B（裁定 三）：拼装移入 `S2DiagnosticMiddleFrameGate`，并带上本段的
+    // 进度样本本身——硬红与软未达两种情形都带。
     private func doubleTapCadenceDescription(
         hits: Int,
         minimumMiddleFrames: Int
     ) -> String {
-        let firstDelay = doubleTapFirstProgressDelayMilliseconds
-            .map { String(format: "%.1f", $0) } ?? "无回调"
-        let durationMilliseconds = Int(
-            S2DiagnosticDoubleTapTiming.durationSeconds(
-                minimumMiddleFrames: minimumMiddleFrames
-            ) * 1_000
+        S2DiagnosticMiddleFrameGate.cadenceDescription(
+            hits: hits,
+            progressCallbackCount: doubleTapProgressCallbackCount,
+            partialProgressCallbackCount: doubleTapPartialProgressCallbackCount,
+            firstProgressDelayMilliseconds:
+                doubleTapFirstProgressDelayMilliseconds,
+            durationMilliseconds: Int(
+                S2DiagnosticDoubleTapTiming.durationSeconds(
+                    minimumMiddleFrames: minimumMiddleFrames
+                ) * 1_000
+            ),
+            progressSamples: controller?.diagnosticCurrentPage?
+                .doubleTapTransitionProgressSamples ?? []
         )
-        return "（实际命中 \(hits) 帧；" +
-            "进度回调 \(doubleTapProgressCallbackCount) 次，" +
-            "其中进度<1 的 \(doubleTapPartialProgressCallbackCount) 次" +
-            "≈CADisplayLink 回调次数；" +
-            "首次进度回调相对过渡起始延迟 \(firstDelay) ms；" +
-            "诊断时长 \(durationMilliseconds) ms）"
     }
 
     private func capture(_ label: String) {
@@ -4698,12 +4710,14 @@ final class S2GeometryDiagnosticsRun {
         var lines = [
             "# S2 几何诊断",
             "",
-            "采样总数：\(samples.count)",
-            "中间帧门禁：\(errors.isEmpty ? "通过" : "失败")"
+            "采样总数：\(samples.count)"
         ]
-        if !errors.isEmpty {
-            lines.append("错误：\(errors.joined(separator: "；"))")
-        }
+        // IC-152 B：门禁结论、错误、软目标诊断行统一由判据枚举拼装——前两行的
+        // 文字与改前逐字相同，软目标行接在其后、样本之前。
+        lines.append(contentsOf: S2DiagnosticMiddleFrameGate.gateLines(
+            errors: errors,
+            softTargetLines: softTargetLines
+        ))
         for sample in samples {
             lines.append(contentsOf: [
                 "",
@@ -4910,6 +4924,106 @@ final class S2GeometryDiagnosticsRun {
 
     private func visibilityText(_ value: S2InterfaceVisibility) -> String {
         value == .visible ? "显示" : "隐藏"
+    }
+}
+
+/// IC-152 B：中间帧门禁的判据与归因文字。**纯函数，只被 `S2GeometryDiagnosticsRun`
+/// 调用**（IC-149 子项 A 第 4 条的思路：判据可独立求值，夹具不必驱动整轮诊断）。
+///
+/// 裁定 二：每段的**硬下限**是 2 帧。报告里依赖中间帧的两条不变量——专用过渡层
+/// transform 六元组分量单调、动画帧 contentOffset 无跳变——都至少要两个样本才不
+/// 空转；1 帧不够，2 帧是最小充分数。进入 3 帧、退出 5 帧是 IC-063 时代按理想帧率
+/// 定的目标，降为**软目标**：未达只写一行可 grep 的诊断，不进 `errors`、不判红。
+///
+/// 裁定 三：诊断时长不变，只把进度样本带进归因文字。门禁每次回调最多消费一个
+/// 阈值，所以「命中少」既可能是进度没走到后段，也可能是一次回调跨过了好几个
+/// 阈值——现有计数分不出这两种分布，样本本身才分得出。
+enum S2DiagnosticMiddleFrameGate {
+    /// 每段中间帧的硬下限。
+    static let hardFloor = 2
+
+    /// 软目标未达那一行的固定前缀。**不得**以段名开头：报告按「## 段名 #n」写样本
+    /// 标题，Q 类不变量又按段名前缀过滤样本，同前缀的非样本文字只会添乱。
+    static let softTargetMissedPrefix = "中间帧软目标未达："
+
+    struct Outcome: Equatable {
+        /// 进 `errors` 的一条；nil ⟹ 硬下限已满足。
+        let error: String?
+        /// 报告里的软目标诊断行；nil ⟹ 已达软目标，或已判硬红。
+        let softTargetLine: String?
+    }
+
+    /// 一段过渡收口时的判定。`softTarget` 即该段的 `minimumMiddleFrames`。
+    /// 错误文字仍以「段名 少于 N 帧」开头（前缀格式不变，只是 N 由软目标改为
+    /// 硬下限），其后接归因数据。
+    static func evaluate(
+        middlePrefix: String,
+        hits: Int,
+        softTarget: Int,
+        cadence: String
+    ) -> Outcome {
+        if hits < hardFloor {
+            return Outcome(
+                error: "\(middlePrefix) 少于 \(hardFloor) 帧" + cadence,
+                softTargetLine: nil
+            )
+        }
+        if hits < softTarget {
+            return Outcome(
+                error: nil,
+                softTargetLine: softTargetMissedPrefix +
+                    "\(middlePrefix) 软目标 \(softTarget) 帧" + cadence
+            )
+        }
+        return Outcome(error: nil, softTargetLine: nil)
+    }
+
+    /// 归因数据：命中数、回调总数、进度<1 次数、首次回调延迟、诊断时长、进度样本。
+    static func cadenceDescription(
+        hits: Int,
+        progressCallbackCount: Int,
+        partialProgressCallbackCount: Int,
+        firstProgressDelayMilliseconds: Double?,
+        durationMilliseconds: Int,
+        progressSamples: [CGFloat]
+    ) -> String {
+        let firstDelay = firstProgressDelayMilliseconds
+            .map { String(format: "%.1f", $0) } ?? "无回调"
+        return "（实际命中 \(hits) 帧；" +
+            "进度回调 \(progressCallbackCount) 次，" +
+            "其中进度<1 的 \(partialProgressCallbackCount) 次" +
+            "≈CADisplayLink 回调次数；" +
+            "首次进度回调相对过渡起始延迟 \(firstDelay) ms；" +
+            "诊断时长 \(durationMilliseconds) ms；" +
+            "进度样本：\(progressSampleText(progressSamples))）"
+    }
+
+    /// 进度样本：两位小数、逗号分隔（固定 POSIX 区域，小数点不随系统变成逗号）；
+    /// 没有样本写「无」。
+    static func progressSampleText(_ samples: [CGFloat]) -> String {
+        guard !samples.isEmpty else {
+            return "无"
+        }
+        return samples.map {
+            String(
+                format: "%.2f",
+                locale: Locale(identifier: "en_US_POSIX"),
+                Double($0)
+            )
+        }.joined(separator: ",")
+    }
+
+    /// 报告头部的门禁几行：结论行、错误行（有错才有）、软目标诊断行（逐条）。
+    static func gateLines(
+        errors: [String],
+        softTargetLines: [String]
+    ) -> [String] {
+        var lines = ["中间帧门禁：\(errors.isEmpty ? "通过" : "失败")"]
+        if !errors.isEmpty {
+            lines.append("错误：\(errors.joined(separator: "；"))")
+        }
+        lines.append(contentsOf: softTargetLines)
+        return lines
     }
 }
 

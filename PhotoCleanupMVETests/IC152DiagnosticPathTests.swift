@@ -289,6 +289,222 @@ final class IC152DiagnosticPathTests: XCTestCase {
         )
     }
 
+    // MARK: - 断言 4：硬下限 2 帧判红，3／5 为软目标
+
+    /// B1／B2／B4：进入段（软目标 3）命中 1／2／3，退出段（软目标 5）命中 1／2／4／5。
+    ///
+    /// 判据是 `S2DiagnosticMiddleFrameGate` 里的纯函数，门禁收口时（G6）调用它，
+    /// 再把结果按「有错就进 `errors`、有软目标行就进软目标行」两句接线；本条照同样
+    /// 两句接线后，用门禁真正用来拼报告头部的 `gateLines` 渲染，断言渲染出的报告。
+    /// 「每次回调最多消费一个阈值」的命中累计（G5）未动，不在本条范围。
+    func testIC152B_GateFloorIsTwoAndTargetsAreSoft() {
+        XCTAssertEqual(S2DiagnosticMiddleFrameGate.hardFloor, 2)
+        let segments: [(prefix: String, softTarget: Int, cases: [(hits: Int, expected: IC152ExpectedGate)])] = [
+            (
+                "双击进入 Nx：动画中间帧",
+                3,
+                [(1, .belowFloor), (2, .softTargetMissed), (3, .met)]
+            ),
+            (
+                "双击退出 Nx：动画中间帧",
+                5,
+                [(1, .belowFloor), (2, .softTargetMissed), (4, .softTargetMissed), (5, .met)]
+            )
+        ]
+        let prefixLabel = S2DiagnosticMiddleFrameGate.softTargetMissedPrefix
+        XCTAssertEqual(prefixLabel, "中间帧软目标未达：")
+
+        for segment in segments {
+            for testCase in segment.cases {
+                let context = segment.prefix + " 命中 " + String(testCase.hits)
+                let cadence = S2DiagnosticMiddleFrameGate.cadenceDescription(
+                    hits: testCase.hits,
+                    progressCallbackCount: 7,
+                    partialProgressCallbackCount: 6,
+                    firstProgressDelayMilliseconds: 120,
+                    durationMilliseconds: 1_000,
+                    progressSamples: [0.2, 0.6]
+                )
+                let outcome = S2DiagnosticMiddleFrameGate.evaluate(
+                    middlePrefix: segment.prefix,
+                    hits: testCase.hits,
+                    softTarget: segment.softTarget,
+                    cadence: cadence
+                )
+                var errors: [String] = []
+                var softTargetLines: [String] = []
+                if let error = outcome.error {
+                    errors.append(error)
+                }
+                if let line = outcome.softTargetLine {
+                    softTargetLines.append(line)
+                }
+                let reportLines = S2DiagnosticMiddleFrameGate.gateLines(
+                    errors: errors,
+                    softTargetLines: softTargetLines
+                )
+                let report = reportLines.joined(separator: "\n")
+                let softLineCount = reportLines.filter {
+                    $0.hasPrefix(prefixLabel)
+                }.count
+
+                switch testCase.expected {
+                case .belowFloor:
+                    XCTAssertEqual(errors.count, 1, context)
+                    XCTAssertTrue(report.contains("中间帧门禁：失败"), context)
+                    XCTAssertTrue(
+                        report.contains(segment.prefix + " 少于 2 帧"),
+                        context
+                    )
+                    XCTAssertTrue(
+                        (outcome.error ?? "").hasPrefix(segment.prefix + " 少于 2 帧"),
+                        "B1：错误文字不以「段名 少于 2 帧」开头（" + context + "）"
+                    )
+                    XCTAssertEqual(softLineCount, 0, context)
+                case .softTargetMissed:
+                    XCTAssertTrue(errors.isEmpty, context)
+                    XCTAssertTrue(report.contains("中间帧门禁：通过"), context)
+                    XCTAssertFalse(report.contains("少于"), context)
+                    XCTAssertEqual(softLineCount, 1, "软目标行不是恰 1 行（" + context + "）")
+                case .met:
+                    XCTAssertTrue(errors.isEmpty, context)
+                    XCTAssertTrue(report.contains("中间帧门禁：通过"), context)
+                    XCTAssertEqual(softLineCount, 0, "达标时不该有软目标行（" + context + "）")
+                }
+
+                // B4：错误行与软目标行都不得带样本标题串，软目标行不得以段名开头
+                // ——否则 testIC063 改口径后的样本计数会把它们数进去。
+                for line in errors + softTargetLines {
+                    for sampleTitle in [
+                        "## 双击进入 Nx：动画中间帧 #",
+                        "## 双击退出 Nx：动画中间帧 #"
+                    ] {
+                        XCTAssertFalse(line.contains(sampleTitle), context)
+                    }
+                }
+                for line in softTargetLines {
+                    XCTAssertFalse(line.hasPrefix("双击进入 Nx：动画中间帧"), context)
+                    XCTAssertFalse(line.hasPrefix("双击退出 Nx：动画中间帧"), context)
+                    XCTAssertTrue(line.contains(segment.prefix), context)
+                    XCTAssertTrue(
+                        line.contains("软目标 " + String(segment.softTarget) + " 帧"),
+                        context
+                    )
+                    XCTAssertTrue(
+                        line.contains("实际命中 " + String(testCase.hits) + " 帧"),
+                        context
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - 断言 5：归因文字带上进度样本
+
+    /// B3：G8 的归因文字追加进度样本（两位小数、逗号分隔），硬红与软未达两种情形都带；
+    /// 改前已有的五项数据一项不少。
+    func testIC152B_CadenceDescriptionCarriesProgressSamples() {
+        let samples: [CGFloat] = [0.12, 0.47, 0.83]
+        let cadence = S2DiagnosticMiddleFrameGate.cadenceDescription(
+            hits: 1,
+            progressCallbackCount: 4,
+            partialProgressCallbackCount: 3,
+            firstProgressDelayMilliseconds: 250,
+            durationMilliseconds: 1_000,
+            progressSamples: samples
+        )
+        XCTAssertTrue(cadence.contains("进度样本：0.12,0.47,0.83"), cadence)
+        // 改前的五项归因数据照旧。
+        XCTAssertTrue(cadence.contains("实际命中 1 帧"), cadence)
+        XCTAssertTrue(cadence.contains("进度回调 4 次"), cadence)
+        XCTAssertTrue(cadence.contains("其中进度<1 的 3 次"), cadence)
+        XCTAssertTrue(cadence.contains("首次进度回调相对过渡起始延迟 250.0 ms"), cadence)
+        XCTAssertTrue(cadence.contains("诊断时长 1000 ms"), cadence)
+
+        // 硬红与软未达都带样本。
+        let hard = S2DiagnosticMiddleFrameGate.evaluate(
+            middlePrefix: "双击进入 Nx：动画中间帧",
+            hits: 1,
+            softTarget: 3,
+            cadence: cadence
+        )
+        XCTAssertTrue((hard.error ?? "").contains("进度样本：0.12,0.47,0.83"))
+        let softCadence = S2DiagnosticMiddleFrameGate.cadenceDescription(
+            hits: 2,
+            progressCallbackCount: 4,
+            partialProgressCallbackCount: 3,
+            firstProgressDelayMilliseconds: 250,
+            durationMilliseconds: 1_000,
+            progressSamples: samples
+        )
+        let soft = S2DiagnosticMiddleFrameGate.evaluate(
+            middlePrefix: "双击进入 Nx：动画中间帧",
+            hits: 2,
+            softTarget: 3,
+            cadence: softCadence
+        )
+        XCTAssertTrue(
+            (soft.softTargetLine ?? "").contains("进度样本：0.12,0.47,0.83")
+        )
+
+        // 格式：两位小数、逗号分隔、小数点是点；没有样本写「无」。
+        XCTAssertEqual(
+            S2DiagnosticMiddleFrameGate.progressSampleText([0.5, 0.126, 0.994]),
+            "0.50,0.13,0.99"
+        )
+        XCTAssertEqual(S2DiagnosticMiddleFrameGate.progressSampleText([]), "无")
+        let empty = S2DiagnosticMiddleFrameGate.cadenceDescription(
+            hits: 0,
+            progressCallbackCount: 0,
+            partialProgressCallbackCount: 0,
+            firstProgressDelayMilliseconds: nil,
+            durationMilliseconds: 1_400,
+            progressSamples: []
+        )
+        XCTAssertTrue(empty.contains("进度样本：无"), empty)
+        XCTAssertTrue(empty.contains("无回调"), empty)
+    }
+
+    // MARK: - 断言 6：写入点与阈值不变
+
+    /// 惯例 38：`errors` 全仓两个写入点（G6 中间帧不足、G7 缺运行时视图），本卡不增不减。
+    /// B5：诊断时长、两段软目标、阈值公式、「每次回调最多消费一个阈值」全部不动。
+    ///
+    /// 扫的是**只剔注释、保留字符串字面量**的源码：正对照的 needle
+    /// `中间帧软目标未达：` 只可能出现在字面量里，喂给连字面量一并剔掉的变体会恒为 0
+    /// （IC-149 门禁二要抓的 #295 那类病）。
+    func testIC152B_ErrorWritePointsUnchanged() throws {
+        let pager = try XCTUnwrap(sourceWithoutComments(Self.pagerPath))
+        XCTAssertEqual(
+            occurrences(of: "errors.append(", in: pager),
+            2,
+            "中间帧门禁的 errors 写入点数量变了"
+        )
+        XCTAssertEqual(
+            occurrences(of: "secondsPerThreshold: TimeInterval = 0.2", in: pager),
+            1
+        )
+        XCTAssertEqual(occurrences(of: "minimumMiddleFrames: 3", in: pager), 1)
+        XCTAssertEqual(occurrences(of: "minimumMiddleFrames: 5", in: pager), 1)
+        // G4 阈值公式与 G5 每次回调只消费一个阈值。
+        XCTAssertEqual(
+            occurrences(
+                of: "CGFloat($0) / CGFloat(minimumMiddleFrames + 1)",
+                in: pager
+            ),
+            1
+        )
+        XCTAssertEqual(
+            occurrences(of: "self.middleThresholds.removeFirst()", in: pager),
+            1
+        )
+        // 正对照：软目标行的固定前缀确实在产品源码里。
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: "中间帧软目标未达：", in: pager),
+            1
+        )
+    }
+
     // MARK: - 夹具
 
     private static let pagerPath =
@@ -548,4 +764,11 @@ final class IC152DiagnosticPathTests: XCTestCase {
         }
         return value
     }
+}
+
+/// 断言 4 的期望判定。
+private enum IC152ExpectedGate {
+    case belowFloor
+    case softTargetMissed
+    case met
 }
