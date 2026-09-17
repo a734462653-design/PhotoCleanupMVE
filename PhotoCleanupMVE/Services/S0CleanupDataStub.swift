@@ -93,31 +93,36 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
                 id: .bigVideo,
                 candidateCount: 3 * scanStep,
                 candidateByteCount: 1_200_000_000 * step,
-                recognition: .counting
+                recognition: .counting,
+                coverAssetID: Self.coverAssetID(for: .bigVideo, candidateCount: 3 * scanStep)
             ),
             S0CategorySnapshot(
                 id: .screenshot,
                 candidateCount: 21 * scanStep,
                 candidateByteCount: 140_000_000 * step,
-                recognition: .counting
+                recognition: .counting,
+                coverAssetID: Self.coverAssetID(for: .screenshot, candidateCount: 21 * scanStep)
             ),
             S0CategorySnapshot(
                 id: .screenRecording,
                 candidateCount: 2 * scanStep,
                 candidateByteCount: 480_000_000 * step,
-                recognition: .counting
+                recognition: .counting,
+                coverAssetID: Self.coverAssetID(for: .screenRecording, candidateCount: 2 * scanStep)
             ),
             S0CategorySnapshot(
                 id: .duplicate,
                 candidateCount: 0,
                 candidateByteCount: 0,
-                recognition: .awaitingScanCompletion
+                recognition: .awaitingScanCompletion,
+                coverAssetID: Self.coverAssetID(for: .duplicate, candidateCount: 0)
             ),
             S0CategorySnapshot(
                 id: .similar,
                 candidateCount: 0,
                 candidateByteCount: 0,
-                recognition: .awaitingScanCompletion
+                recognition: .awaitingScanCompletion,
+                coverAssetID: Self.coverAssetID(for: .similar, candidateCount: 0)
             )
         ]
         return S0CleanupSnapshot(
@@ -143,31 +148,36 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
                 id: .bigVideo,
                 candidateCount: hasItems ? 12 : 0,
                 candidateByteCount: hasItems ? 4_800_000_000 : 0,
-                recognition: .settled
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .bigVideo, candidateCount: hasItems ? 12 : 0)
             ),
             S0CategorySnapshot(
                 id: .screenshot,
                 candidateCount: hasItems ? 84 : 0,
                 candidateByteCount: hasItems ? 560_000_000 : 0,
-                recognition: .settled
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .screenshot, candidateCount: hasItems ? 84 : 0)
             ),
             S0CategorySnapshot(
                 id: .screenRecording,
                 candidateCount: hasItems ? 9 : 0,
                 candidateByteCount: hasItems ? 1_920_000_000 : 0,
-                recognition: .settled
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .screenRecording, candidateCount: hasItems ? 9 : 0)
             ),
             S0CategorySnapshot(
                 id: .duplicate,
                 candidateCount: hasItems ? 46 : 0,
                 candidateByteCount: hasItems ? 730_000_000 : 0,
-                recognition: .settled
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .duplicate, candidateCount: hasItems ? 46 : 0)
             ),
             S0CategorySnapshot(
                 id: .similar,
                 candidateCount: hasItems ? 118 : 0,
                 candidateByteCount: hasItems ? 1_150_000_000 : 0,
-                recognition: .settled
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .similar, candidateCount: hasItems ? 118 : 0)
             )
         ]
         return S0CleanupSnapshot(
@@ -214,5 +224,27 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
                 availableCapacityBaseline: Self.ledgerBaseline
             )
         ]
+    }
+
+    // MARK: - 合成资产（IC-155）
+
+    /// 类别行封面：有项目的类别取合成资产列表的首元素（序号 1，体积最大的那一条），
+    /// 无项目为 nil（IC-155 裁定 二、A3）。
+    private static func coverAssetID(
+        for identifier: S0CategoryIdentifier,
+        candidateCount: Int
+    ) -> String? {
+        guard candidateCount > 0 else {
+            return nil
+        }
+        return syntheticAssetID(for: identifier, ordinal: 1)
+    }
+
+    /// 合成资产标识：`stub.<类别 rawValue>.<序号>`，序号从 1 起、按体积从大到小编。
+    private static func syntheticAssetID(
+        for identifier: S0CategoryIdentifier,
+        ordinal: Int
+    ) -> String {
+        "stub." + identifier.rawValue + "." + String(ordinal)
     }
 }
