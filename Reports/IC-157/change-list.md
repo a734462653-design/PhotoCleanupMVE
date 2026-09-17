@@ -11,6 +11,8 @@
 | 子项 B 提交 | `ad6dfd71fb946ccab484ea2bf22154024919b27a` `feat(IC-157 B): 类别页长按任一格进 S2 的手势与常驻行右侧提示「长按任一格逐张看」` |
 | 子项 C 提交 | `0a6c953c52a4ee857d427d4589ce7bfb94f62582` `feat(IC-157 C): 类别页身份上提到 App 持有的 S0CleanupFlowModel，长按接线进 S2，从 S2 回到类别页时重算` |
 | 报告 | 本文件与 `self-check.md`，另一个 docs 提交（同一分支，纪律 7：CI 编号推送后才产生） |
+| 报告提交 | `e8700ab3770cf66c77871aa1237354df3670fae4`（分支） |
+| 合并提交 | `ab3eed1f49262b1c6fa49272ee65c1aeb4a8ea5b`（`--no-ff`，父 `e97f394` 与 `e8700ab`）；合并后 `main` #316 一次绿 852 项 0 失败；G896 由 `main` 上的 docs 提交回填 |
 | 出厂值 | **无变更**。`S2CalibrationConfiguration.schemaVersion` 仍 **7**；`S0ScanRules.cacheSchemaVersion` 仍 **1**；`S0HomeMetrics` 仍 **52**；`S0CategoryPageMetrics` 仍 **42**（本卡不加常量） |
 
 ## 二、文件清单（`git diff --numstat e97f394 0a6c953`，全部在白名单内）
