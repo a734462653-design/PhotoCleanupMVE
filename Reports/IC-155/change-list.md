@@ -4,9 +4,9 @@
 - 分支：`feature/ic-155-category-data-and-cover`
 - 基线：`main` = `51b4b9564bc5e7f0bb371bda5c2946b7efd6283f`（IC-154 报告回填；IC-154 合并提交 `20a19df6827f98f42e62911cdadd714dd33d2f0f`）
 - 分支 tip（代码）：`4e3e6c8b22f2321cd43cc425df139756d63fe3b7`（CI #311 被测提交，一次绿 833 项 0 失败）
-- 分支 tip（含报告）：报告提交（报告提交自身的 SHA 无法写进自身）
-- 合并提交：合并后回填
-- 提交数：3 个代码提交（子项 A／B／C 各一）+ 1 个报告提交
+- 分支 tip（含报告）：`e76a68c94d0d8de887909c978cead3fb1e849fba`
+- 合并提交（`main`，`--no-ff`，执行端按卡内授权执行）：`07b7f76acb146690477b00c7500de0412851aaf1`（父 `51b4b9564bc5e7f0bb371bda5c2946b7efd6283f` 与 `e76a68c94d0d8de887909c978cead3fb1e849fba`）；合并后 `main` 运行 #312 attempt 1 红于 `testIC063…` 计时脆弱用例、原样复跑 attempt 2 绿 833 项 0 失败（G886，`self-check.md` 第九节）
+- 提交数：3 个代码提交（子项 A／B／C 各一）+ 1 个报告提交（分支）+ 合并提交 + 回填提交（`main`，本清单所在提交）
 - `S2CalibrationConfiguration.schemaVersion`：**7，未动**；`S0ScanRules.cacheSchemaVersion`：**1，未动**
 
 ---
@@ -18,7 +18,9 @@
 | 1 | `966149402b0bb422eee72cba1a8c91bcb1da5eab` | A | coverAssetID 进模型、S0CategoryAsset 进 Core、聚合器产出封面 |
 | 2 | `115263a33e232408b8c6b46034122d81b239009e` | B | 数据源协议加 categoryAssets(_:)，服务与桩各自实现 |
 | 3 | `4e3e6c8b22f2321cd43cc425df139756d63fe3b7` | C | 首页类别行接真封面（ThumbnailView 加 showsPlaceholderGlyph） |
-| 4 | 报告提交 | — | docs：自验报告与变更清单（#311 一次绿 833 项 0 失败） |
+| 4 | `e76a68c94d0d8de887909c978cead3fb1e849fba` | — | docs：自验报告与变更清单（#311 一次绿 833 项 0 失败） |
+| 合并 | `07b7f76acb146690477b00c7500de0412851aaf1` | — | Merge IC-155（父 `51b4b95` 与 `e76a68c`；树 `84c7e055088a19976e741622bca214539fb726b5` = `e76a68c` 的树） |
+| 回填 | 本提交（`main`） | — | docs：回填合并提交与 G886 |
 
 **可摘取单元（惯例 40，①实测）**：在草稿区另克隆一份仓库（`core.autocrlf=false`），从 `51b4b95` 分离检出后逐个 `cherry-pick`：
 
