@@ -250,4 +250,143 @@ final class IC156CategoryPageTests: XCTestCase {
         }
         return String(source[startRange.lowerBound..<endRange.lowerBound])
     }
+
+    // MARK: - 断言 3：进篮一次原子写入并登记类别名（子项 B）
+
+    func testIC156B_MarkPendingDeletionWritesAtomicallyAndRegistersName() {
+        let machine = makeReadyMachine(sessionID: "session-156B-atomic")
+        var published: [S1SessionSnapshot] = []
+        machine.persistenceSink = { published.append($0) }
+        XCTAssertEqual(published.count, 0)
+
+        XCTAssertTrue(
+            machine.markPendingDeletion(
+                assetIDs: ["a", "b", "c"],
+                virtualRangeID: "cat:bigVideo",
+                displayName: "大视频"
+            )
+        )
+        let store = machine.sessionStore
+        XCTAssertEqual(store.pendingDeletionAssetIDsByRangeID["cat:bigVideo"], ["a", "b", "c"])
+        for assetID in ["a", "b", "c"] {
+            XCTAssertEqual(store.firstMarkedRangeIDByAssetID[assetID], "cat:bigVideo", assetID)
+        }
+        XCTAssertEqual(store.allPendingDeletionAssetIDs, ["a", "b", "c"])
+        XCTAssertEqual(machine.badgeCount, 3)
+        // 单一写出口恰写一次，且写出的快照里名字与 `M` 同步。
+        XCTAssertEqual(published.count, 1)
+        XCTAssertEqual(published.last?.rangeNamesByID["cat:bigVideo"], "大视频")
+        XCTAssertEqual(
+            published.last?.pendingDeletionAssetIDsByRangeID["cat:bigVideo"],
+            ["a", "b", "c"]
+        )
+
+        // 提交能形成，类别来源的组名即登记的类别名。
+        let submission = machine.makeS3Submission()
+        XCTAssertNotNil(submission)
+        let group = submission?.groups.first { $0.sourceRangeID == "cat:bigVideo" }
+        XCTAssertEqual(group?.name, "大视频")
+        XCTAssertEqual(group?.orderedAssetIDs, ["a", "b", "c"])
+        XCTAssertEqual(submission?.assetCount, 3)
+
+        // 空输入一律拒绝、零副作用。
+        XCTAssertFalse(
+            machine.markPendingDeletion(
+                assetIDs: [],
+                virtualRangeID: "cat:screenshot",
+                displayName: "屏幕截图"
+            )
+        )
+        XCTAssertFalse(
+            machine.markPendingDeletion(
+                assetIDs: ["d"],
+                virtualRangeID: "",
+                displayName: "屏幕截图"
+            )
+        )
+        XCTAssertFalse(
+            machine.markPendingDeletion(
+                assetIDs: ["d"],
+                virtualRangeID: "cat:screenshot",
+                displayName: ""
+            )
+        )
+        XCTAssertEqual(machine.sessionStore, store)
+        XCTAssertEqual(published.count, 1)
+    }
+
+    // MARK: - 断言 4：首标范围不被改写，既有范围与对账照旧（子项 B）
+
+    func testIC156B_FirstMarkerWinsAndExistingRangesUntouched() {
+        let machine = makeReadyMachine(sessionID: "session-156B-first")
+        // 先经既有路径（S2 写回）把 a 标进普通范围 range-x。
+        XCTAssertTrue(
+            machine.applyS2PendingDeletionChange(
+                ["a"],
+                entryContext: SessionStore.S2EntryContext(
+                    rangeID: "range-x",
+                    orderedAssetIDs: ["a", "x2"],
+                    sortOrder: machine.sortOrder.sessionSortOrder
+                )
+            )
+        )
+        XCTAssertEqual(machine.sessionStore.firstMarkedRangeIDByAssetID["a"], "range-x")
+
+        XCTAssertTrue(
+            machine.markPendingDeletion(
+                assetIDs: ["a", "d"],
+                virtualRangeID: "cat:screenshot",
+                displayName: "屏幕截图"
+            )
+        )
+        let store = machine.sessionStore
+        XCTAssertEqual(store.firstMarkedRangeIDByAssetID["a"], "range-x")
+        XCTAssertEqual(store.firstMarkedRangeIDByAssetID["d"], "cat:screenshot")
+        XCTAssertEqual(store.pendingDeletionAssetIDsByRangeID["range-x"], ["a"])
+        XCTAssertEqual(store.pendingDeletionAssetIDsByRangeID["cat:screenshot"], ["a", "d"])
+        let groups = store.pendingDeletionGroupsByRangeID
+        let groupedCount = groups.values.reduce(0) { total, members in
+            total + members.count
+        }
+        XCTAssertEqual(groupedCount, store.allPendingDeletionAssetIDs.count)
+        XCTAssertEqual(groups["range-x"], ["a"])
+        XCTAssertEqual(groups["cat:screenshot"], ["d"])
+        // 已知后果（裁定 三）：虚拟范围不在 `R(T)` 里，排序走兜底分支。
+        XCTAssertGreaterThanOrEqual(machine.s3SubmissionOrderingFallback().rangesOutsideOrder, 1)
+
+        // 存在性对账经公开入口：d 已不存在，从 `M`／`F` 剔除，类别组消失，提交仍能形成。
+        machine.assetExistenceProbe = { $0.subtracting(["d"]) }
+        XCTAssertTrue(machine.reconcile(with: .success(Self.fixtureRanges)))
+        let reconciled = machine.sessionStore
+        XCTAssertFalse(reconciled.allPendingDeletionAssetIDs.contains("d"))
+        XCTAssertNil(reconciled.firstMarkedRangeIDByAssetID["d"])
+        XCTAssertNil(reconciled.pendingDeletionGroupsByRangeID["cat:screenshot"])
+        XCTAssertEqual(reconciled.pendingDeletionAssetIDsByRangeID["cat:screenshot"], ["a"])
+        XCTAssertEqual(reconciled.firstMarkedRangeIDByAssetID["a"], "range-x")
+        XCTAssertNotNil(machine.makeS3Submission())
+    }
+
+    /// 相册维度读到一个范围、进入就绪态的 S1 状态机（照 IC-132 的构造）。
+    private func makeReadyMachine(sessionID: String) -> S1StateMachine {
+        let machine = S1StateMachine(
+            sessionStore: SessionStore(sessionID: sessionID),
+            initialGroupingDimension: .album,
+            initialSortOrder: .newestFirst
+        )
+        guard let request = machine.currentReadRequest else {
+            XCTFail("新建状态机没有读取请求")
+            return machine
+        }
+        XCTAssertTrue(machine.completeRangeRead(.success(Self.fixtureRanges), for: request))
+        XCTAssertEqual(machine.state, .ready)
+        return machine
+    }
+
+    private static let fixtureRanges = [
+        S1Range(
+            id: "range-x",
+            displayName: "range-x-name",
+            assetIDsNewestFirst: ["a", "x2"]
+        )
+    ]
 }

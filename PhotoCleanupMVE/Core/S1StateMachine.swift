@@ -780,6 +780,37 @@ final class S1StateMachine: ObservableObject {
         return true
     }
 
+    /// IC-156 B：S0 类别页「移入待删篮」的会话层写入口（SPEC-S0 v2 第六节）。
+    ///
+    /// 把一批资产按虚拟范围 `virtualRangeID`（形如 `cat:<类别标识>`）写进 `M`；`F` 照
+    /// `setMarked` 的口径只在资产尚无首标范围时写入（SPEC-S1 v9 第 190 行），`D_全部`
+    /// 自然去重。同时把该范围的显示名登记进名字表——`makeS3Submission()` 要求每个被标记
+    /// 范围都有名字，否则整个提交入口静默失效；S3 组头即取这个名字。
+    ///
+    /// 写回是一次不可分割的更新（SPEC-S1 v9 第 209 行）：先在副本上逐个标记、再登记名字，
+    /// 最后一次赋值 `sessionStore`，持久化写出口因此只触发一次，快照里名字与 `M` 同步。
+    /// 不设加载态与遮挡门槛：清理 tab 不会被 S1 的 sheet 遮住，S1 尚在读取时会话档已恢复。
+    /// 输入为空（资产集合、范围标识或显示名任一为空）时返回 false，零副作用。
+    @discardableResult
+    func markPendingDeletion(
+        assetIDs: Set<String>,
+        virtualRangeID: String,
+        displayName: String
+    ) -> Bool {
+        guard !assetIDs.isEmpty,
+              !virtualRangeID.isEmpty,
+              !displayName.isEmpty else {
+            return false
+        }
+        var nextStore = sessionStore
+        for assetID in assetIDs.sorted() {
+            nextStore.setMarked(true, assetID: assetID, rangeID: virtualRangeID)
+        }
+        knownRangeNamesByID[virtualRangeID] = displayName
+        sessionStore = nextStore
+        return true
+    }
+
     private func publishSnapshotIfChanged() {
         guard let persistenceSink else {
             return
