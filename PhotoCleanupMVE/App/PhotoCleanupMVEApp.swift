@@ -46,7 +46,7 @@ struct PhotoCleanupMVEApp: App {
         S0TabContainer(
             selection: s0TabSelection,
             cleanupContent: {
-                s0Screen()
+                s0Screen(s1Machine: s1Machine)
             },
             organizeContent: {
                 s1Screen(machine: s1Machine)
@@ -84,13 +84,28 @@ struct PhotoCleanupMVEApp: App {
     /// 「去逐张整理」直接切 tab；类别页与 S3 的实际导航不在本卡——类别页属
     /// IC-148 之后，S3 的提交路径按 SPEC-S0 v1 第十节第 3 部分与 SPEC-S1 v9
     /// 第七节第 3 部分完全相同，S0 不另造一份，故此处不接线。
-    private func s0Screen() -> some View {
-        S0View(
+    ///
+    /// IC-156 D：构造点换成承载容器 `S0CleanupFlowView`（裁定 二），首页原样构造在容器里、
+    /// 类别页由容器推出；「移入待删篮」经 S1 状态机一次原子写入虚拟范围并登记类别名
+    /// （裁定 三），toast 时长与 S1 同一读法。首页待删篮胶囊 → S3 仍不接线（批次 5.3）。
+    private func s0Screen(s1Machine: S1StateMachine) -> some View {
+        S0CleanupFlowView(
             machine: s0Machine,
             dataProvider: s0DataProvider,
             onSwitchToOrganizeTab: {
                 s0TabSelection.select(.organize)
-            }
+            },
+            onMoveToBasket: { assetIDs, identifier in
+                s1Machine.markPendingDeletion(
+                    assetIDs: assetIDs,
+                    virtualRangeID: S0CategoryPageRange.prefix + identifier.rawValue,
+                    displayName: S0CategoryText.displayName(for: identifier)
+                )
+            },
+            toastDurationMilliseconds: coordinator
+                .s2Calibration
+                .configuration
+                .feedbackToastDurationMilliseconds
         )
     }
 

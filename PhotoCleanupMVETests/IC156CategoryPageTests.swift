@@ -333,7 +333,9 @@ final class IC156CategoryPageTests: XCTestCase {
 
     /// 断言 6 逐文件纪律的名单。
     private static let disciplineFiles = [
-        pagePath
+        pagePath,
+        // IC-156 D：流程容器同守 S0 纪律。
+        flowPath
     ]
 
     /// 与 IC-148 断言 4 同一名单。
@@ -469,6 +471,97 @@ final class IC156CategoryPageTests: XCTestCase {
         XCTAssertGreaterThan(values.count, 100)
         return values
     }
+
+    // MARK: - 断言 10：流程容器承载首页与类别页，App 只换构造点（子项 D）
+
+    func testIC156D_FlowHostsHomeAndPageAndAppOnlySwapsBuilder() throws {
+        let flow = try XCTUnwrap(strippedSource(Self.flowPath))
+        XCTAssertEqual(occurrences(of: "S0View(", in: flow), 1)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "NavigationStack", in: flow), 1)
+        XCTAssertEqual(occurrences(of: "navigationDestination(item:", in: flow), 1)
+        XCTAssertEqual(occurrences(of: ".returnedFromCategoryPage", in: flow), 1)
+        // 进篮成功后一处、返回首页一处；首页自己的摄入在 `S0View.swift`，不在此数。
+        XCTAssertEqual(occurrences(of: "machine.ingest(", in: flow), 2)
+        XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .tabBar)", in: flow), 1)
+        // 卡面写「恰 1」（类别页）。根页同样隐藏空导航栏：留着它会占去顶部安全区、把首页
+        // 整体下推一个导航栏高度（偏离登记于 IC-156 自验报告）。
+        XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .navigationBar)", in: flow), 2)
+        XCTAssertEqual(occurrences(of: "S0CategoryPageView(", in: flow), 1)
+        // 协调器与会话层只经 App 传闭包。
+        for forbidden in ["CleanupCoordinator", "SessionStore", "S1StateMachine"] {
+            XCTAssertEqual(occurrences(of: forbidden, in: flow), 0, forbidden)
+        }
+
+        let app = try XCTUnwrap(strippedSource(Self.appPath))
+        XCTAssertEqual(occurrences(of: "S0CleanupFlowView(", in: app), 1)
+        XCTAssertEqual(occurrences(of: "S0View(", in: app), 0)
+        XCTAssertEqual(occurrences(of: "markPendingDeletion(", in: app), 1)
+        XCTAssertEqual(occurrences(of: "S0CategoryPageRange.prefix", in: app), 1)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "S0CategoryText.displayName(for:", in: app), 1)
+        // `cc686d9` 为 2（S1 接线的形参标签与实参各一处），本卡加一处实参。
+        XCTAssertEqual(occurrences(of: "feedbackToastDurationMilliseconds", in: app), 3)
+        XCTAssertEqual(occurrences(of: "s0Screen(s1Machine: s1Machine)", in: app), 1)
+        // IC-147 断言 2／3 与 IC-153 断言 11 钉住的接线照旧。
+        XCTAssertEqual(occurrences(of: "advanceScan()", in: app), 2)
+        XCTAssertEqual(occurrences(of: "onSnapshotDidChange", in: app), 1)
+        XCTAssertEqual(occurrences(of: "S0ScanOutcomeTransition.events(", in: app), 1)
+        XCTAssertEqual(occurrences(of: "S0TabContainer(", in: app), 1)
+        XCTAssertEqual(occurrences(of: "tabContainer(s1Machine: machine)", in: app), 1)
+
+        // 构造签名照卡面 D1 的形参与顺序：编译期即核；只构造、不渲染（陷阱 23）。
+        _ = S0CleanupFlowView(
+            machine: S0StateMachine(),
+            dataProvider: S0CleanupDataStub(scenario: .readyWithItems),
+            onSwitchToOrganizeTab: {},
+            onMoveToBasket: { _, _ in true },
+            toastDurationMilliseconds: 2_000
+        )
+    }
+
+    // MARK: - 断言 11：进篮 → 返回 → 可落 S0-3，返回不重排（子项 D）
+
+    func testIC156D_ReturnRecomputesAndCanLandOnEmpty() {
+        let ready = S0CleanupDataStub(scenario: .readyWithItems)
+        let emptied = S0CleanupDataStub(scenario: .readyWithoutItems)
+
+        let machine = S0StateMachine()
+        machine.handle(.applicationOpened)
+        machine.ingest(ready.currentSnapshot())
+        machine.handle(.scanCompleted)
+        XCTAssertEqual(machine.state, .ready)
+        let reorderCount = machine.categoryReorderCount
+        XCTAssertEqual(reorderCount, 1)
+
+        XCTAssertEqual(
+            machine.handle(.categoryRowTapped(.bigVideo)),
+            .categoryPage(.bigVideo)
+        )
+        // 进篮后可清理量归零（模拟）：流程容器先摄入新快照，再发返回事件。
+        machine.ingest(emptied.currentSnapshot())
+        XCTAssertEqual(machine.handle(.returnedFromCategoryPage), .home(.empty))
+        XCTAssertEqual(machine.state, .empty)
+        XCTAssertEqual(machine.categoryReorderCount, reorderCount, "返回首页发生了重排")
+
+        // 对照：没进篮就返回，数据与进去前一致、仍是就绪。
+        let untouched = S0StateMachine()
+        untouched.handle(.applicationOpened)
+        untouched.ingest(ready.currentSnapshot())
+        untouched.handle(.scanCompleted)
+        let before = untouched.snapshot
+        XCTAssertEqual(
+            untouched.handle(.categoryRowTapped(.bigVideo)),
+            .categoryPage(.bigVideo)
+        )
+        untouched.ingest(ready.currentSnapshot())
+        XCTAssertEqual(untouched.handle(.returnedFromCategoryPage), .home(.ready))
+        XCTAssertEqual(untouched.snapshot, before)
+        XCTAssertEqual(untouched.categoryReorderCount, 1)
+    }
+
+    // MARK: - 子项 D 的路径
+
+    private static let flowPath = "PhotoCleanupMVE/Features/S0/S0CleanupFlowView.swift"
+    private static let appPath = "PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift"
 
     // MARK: - 断言 1：登记表恰 42 个常量、每个带出处（子项 A）
 
