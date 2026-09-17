@@ -4,8 +4,10 @@
 - 分支：`feature/ic-154-ci-maintenance`
 - 基线：`main` = `6dec2b18f04ad9c76c232aeadff81cdef116d721`（IC-153 报告回填；IC-153 合并提交 `9b4daa5b07db92eaaaa81ae7be0e0b30a8828afc`）
 - 分支 tip（代码）：`42b18d0024fc4580727988673e12720cf14015e0`
-- 提交数：4 个代码提交（子项 A／B／C 各一 + 子项 B 的一个修正）+ 1 个报告提交（分支）
-- **未合并**：G880 有三处条文按字面不可能满足（`self-check.md` 第三节），照第 178 条先例把合并交回决策会话；三条命令见 `self-check.md` 第十一节
+- 分支 tip（含报告）：`7e350bd994aa0c18c7ccc98c7dd04fcb8bd97eae`
+- 合并提交（`main`，`--no-ff`，Lynn 手工执行）：`20a19df6827f98f42e62911cdadd714dd33d2f0f`；合并后 `main` 运行 #310 attempt 1 红于 `testIC063…` 计时脆弱用例、原样复跑 attempt 2 绿 824 项 0 失败（G881，`self-check.md` 第八节）
+- 提交数：4 个代码提交（子项 A／B／C 各一 + 子项 B 的一个修正）+ 1 个报告提交（分支）+ 合并提交 + 本回填提交（`main`）
+- **已合并（回填）**：报告提交时 G880 有三处条文按字面不可能满足（`self-check.md` 第三节），照第 178 条先例把合并交回决策会话；决策会话裁定接受三处读法（Decision_log 第 181 条）后合并
 - 零产品改动：`PhotoCleanupMVE/`、`PhotoCleanupMVETests/`、`PhotoCleanupMVE.xcodeproj/` 各 **0** 命中；XCTest 项数不变
 - `schemaVersion`：**7，未动**
 
@@ -19,6 +21,8 @@
 | 2 | `f07b9b14e4d3433cac48534dddd2a90d39c775c6` | B | 失败行提取改全量扫描 + 去重 + 注解封顶 10 条 + 全量写作业摘要 |
 | 3 | `4b483fda188cbabf679ba40b128d1f07de8c388b` | C | 模拟器启动与 xcodebuild test 分段计时并发 notice |
 | 4 | `42b18d0024fc4580727988673e12720cf14015e0` | B（修正） | 自测步骤的 OK 行不再原样引用夹具里的失败行文本 |
+| 5 | `7e350bd994aa0c18c7ccc98c7dd04fcb8bd97eae` | — | docs：自验报告与变更清单（#309 绿 824 项 0 失败） |
+| 合并 | `20a19df6827f98f42e62911cdadd714dd33d2f0f` | — | Merge IC-154（父提交 `6dec2b1` 与 `7e350bd`） |
 
 提交 4 的来由：提交 3 为 tip 的 CI #308 全绿，但解析整包日志时发现自测步骤的一条 OK 行把夹具里的 `Test Case '-[PhotoCleanupMVETests.StormTests testStormManyAssertions]' failed (4.321 seconds).` 原样打进了作业日志，按「唯一 Test Case 行」核项数会数成 824 passed + **1 failed**（`self-check.md` 第 6.2 条）。提交 4 只改该步里的提示文字与注释（三条 OK 提示、三条失败提示、两段注释，另加两行注释说明缘由），检查逻辑与期望值一字未动。
 

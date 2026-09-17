@@ -5,6 +5,7 @@
 - **三个子项都已交付**，顺序 A → B → C，各自独立 commit：A `0a6b514`（作业时限 30、XCTest 步骤时限 25）、B `f07b9b1`（失败行提取脚本 + 新夹具 + 自测步骤 + 接线）、C `4b483fd`（模拟器启动与 xcodebuild 分段计时）；另有 B 的一个修正 `42b18d0`（自测 OK 行不再原样引用失败行文本，见第 6.2 条）。**零产品改动**（G877）。A、C 各自可单独摘取，B 是「`f07b9b1`→`42b18d0`」连续序列，临时克隆里逐个 cherry-pick 实证（`change-list.md` 第一节）。
 - **CI #309（run id `35123856312`，attempt 1，被测 `42b18d0024fc4580727988673e12720cf14015e0`）绿**：作业页 12 个步骤全 success（`ci.yml` 定义的 10 步 + Set up job／Complete job）、真实退出码 **0**、**824 项 0 失败、1 个 launch**、目的地 `OS:26.2, name:iPhone 16`、IPA **1618776 字节**、SHA-256 `771b41292118ea52882f428adc14eb38295a9b5d21229d21baaa69499b3857e9`。**自测步骤 12 行 OK +「失败行提取自测通过。」**（组一六项、组二、组三、负对照，另三份输出不含 `Executed`）；**分段耗时 notice「模拟器启动 94 s；xcodebuild test 412 s；总 508 s」**（94 + 412 = 506 ≤ 步骤 510 s）；作业 721 s，在 30 分钟时限内。
 - **CI 预算 3 次用 2 次**：#308（被测 `4b483fd`）同样全绿、824 项 0 失败、分段耗时「80 s；363 s；总 445 s」，但解析整包日志时发现自测步骤一条 OK 行原样打出了夹具里的 `Test Case '…' failed (…)` 行——按「唯一 Test Case 行」核项数会数出 824 passed + **1 failed**（本项目核对项数的常用手法，见 IC-149 报告第 4.1 节、IC-153 报告第 4.2 节）。修正后 #309 复核为 824 passed、**0 failed**。
+- **回填（决策会话验收后）**：第三节三处读法**已被决策会话接受**（Decision_log 第 181 条），合并提交 **`20a19df6827f98f42e62911cdadd714dd33d2f0f`**（`--no-ff`，父 `6dec2b18…`／`7e350bd9…`，合并树与分支 tip 树同一对象；决策会话两侧工具被 `[Merge Without Review]` 拒，三条命令由 Lynn 手工执行）；**G881**：`main` 运行 **#310** attempt 1 红于 `testIC063…` 计时脆弱用例（与本卡无关），原样复跑 **attempt 2 绿，824 项 0 失败**，分段耗时「模拟器启动 81 s；xcodebuild test 247 s；总 328 s」（第八节 G881）。以下为报告提交时的原文：
 - **未自行合并。** 卡内有三处条文按字面**不可能同时满足**（第三节）：B2 要求 `ci.yml` 内 `tail -n 50` 0 处、提取脚本恰 1 处调用，而卡内同时要求在 `ci.yml` 新增的自测步骤里跑「改前口径 `… | tail -n 50`」负对照、并对三份夹具调用脚本；B1 组二要求 `xctest-restarted.log` 的输出含「那只失败用例的 `Test Case … failed` 行」，而该既有夹具里根本没有这一行（崩溃的用例打不出结论行），夹具又在不得触碰之列。三处都按结果落实并如实给出字面计数；G880 以 B1／B2 为前置，照第 178 条先例（「G867 未被字面满足，执行端未自行合并，处置正确」）把合并交回，三条命令在第十一节。**G881 随合并待办。**
 - **卡内两条事实与实测不符（第四节，不影响交付，但影响对效果的预期）**：① 「#292a1 一只用例 22 条断言各印两遍共 44 行」——现取整包日志实测，第二遍是**工作流自己发的 `::error` 在下载日志里的回显**（`##[error]` 前缀），runner 上 tee 出来、交给提取逻辑的日志里每条只有一遍，那次也并没有被 `tail -n 50` 丢行；② 注解上限（卡内标③）已实证为①，且 **runner 自己那条 `Process completed with exit code N` 与 `::error` 同占每步 10 条额度**——注解发满 10 条时它会被挤掉。
 - **未覆盖（纪律 5）**：两次 CI 都全绿，「运行 XCTest」的**失败路径接线**（逐行 `::error` + 作业摘要）、`test-xcode.sh` 的**已启动／启动失败／xcodebuild 失败**三条路径、**步骤级 25 分钟与作业级 30 分钟时限**都没有在 runner 上被触发——前两者只有本机模拟（第 9.5、9.6 条，②），时限只有静态核对。提取脚本本身在 runner 上（bash 3.2 + macOS awk）由自测步骤实跑过。
@@ -287,7 +288,25 @@ hunk 头见 `change-list.md` 第二节。awk 切块 diff（`awk 'NR>=a && NR<=b'
 | 工作树净 | 报告提交后 `git status --porcelain` 空（第十一节） |
 | `main` 未被他人推进 | 报告提交前 `git ls-remote origin refs/heads/main` = `6dec2b18f04ad9c76c232aeadff81cdef116d721` ✔ |
 
-### G881（合并后 `main` 运行）—— 待合并后登记
+### G881：合并后 `main` 自动运行 —— 满足（回填，决策会话取数）
+
+| 项 | 值 |
+|---|---|
+| 运行编号 | **#310**，run id `35164870678`，事件 `push`，分支 `main`，被测 `20a19df6827f98f42e62911cdadd714dd33d2f0f`（合并提交） |
+| attempt 1 | **failure**（check-run `105023597768`，00:02:37Z → 00:11:36Z，539 s）：唯一失败用例 `testIC063AutomaticGeometryDiagnosticsExportsAllRequiredStages`（`S2CalibrationHarnessTests.swift:4146` `XCTAssertTrue failed`、`:4154` `XCTAssertGreaterThanOrEqual failed: ("1") is less than ("2")`），执行摘要 notice `Executed 824 tests, 1 failing test case(s), across 1 launch(es)`，唯一 Test Case 行 823 passed／1 failed——IC-151 #302a1 同款计时脆弱用例，与本卡零产品改动无关。**本卡生产路径第一次真跑**：注解 5 条按优先序（Test Case 失败行 → `:4146` → `:4154` → `** TEST FAILED **`）+ runner 的 `Process completed with exit code 65.`（5 ≤ 10，未被挤掉）；xcodebuild 失败路径照样打印并发出分段耗时「模拟器启动 92 s；xcodebuild test 388 s；总 481 s」；XCTest 步骤 483 s 后以 65 退出，构建与上传两步 skipped。作业摘要「XCTest 失败行（全量）」不经 API 暴露，未核验 |
+| attempt 2 | 按第 178 条口径对同一提交原样复跑（`actions/runs/35164870678/rerun`）：**success**（check-run `105026227632`，00:14:18Z → 00:23:28Z，**550 s**）；12 步全 success；执行摘要 notice `Executed 824 tests, 0 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 824 tests / 0 failures`；唯一 Test Case 行 **824 passed／0 failed**；`testIC063…` `passed (3.963 seconds)`；目的地 `{ platform:iOS Simulator, arch:arm64, id:2911FD29-A09E-4A81-BEA7-99A616FB7FC8, OS:26.2, name:iPhone 16 }`；`** TEST SUCCEEDED **`；`'All tests' started` 1 次；自测步骤 OK 行 22（IC-149 10 + IC-154 12）；`##[error]` 0 |
+| **分段耗时 notice（attempt 2）** | `模拟器启动 81 s；xcodebuild test 247 s；总 328 s`；XCTest 步骤 **330 s** |
+| IPA 校验 notice | `文件=PhotoCleanupMVE-unsigned.ipa，字节数=1618776，SHA-256=a5d8debd90d43372bf3c3e3ef049752ae877e653fc34923a166b30498922843c` |
+| artifact | `PhotoCleanupMVE-unsigned-20a19df6827f`，id `10474674095`，zip 1618946 字节，2026-12-16 前有效 |
+
+三段耗时数据点汇总（G881 是第一个 `main` 上的点）：
+
+| 运行 | 模拟器启动 | xcodebuild test | 脚本总 | XCTest 步骤 | 作业总 |
+|---|---|---|---|---|---|
+| #308（`4b483fd`） | 80 s | 363 s | 445 s | 448 s | 628 s |
+| #309（`42b18d0`） | 94 s | 412 s | 508 s | 510 s | 721 s |
+| #310 a1（`20a19df`，红） | 92 s | 388 s | 481 s | 483 s | 539 s |
+| **#310 a2（`20a19df`，G881）** | **81 s** | **247 s** | **328 s** | **330 s** | **550 s** |
 
 ---
 
@@ -480,9 +499,11 @@ CI 上 #309 的「运行结构自验」「扫描用户可见硬编码字符串�
 
 ---
 
-## 十一、合并（未执行）
+## 十一、合并（报告提交时未执行；决策会话验收后由 Lynn 手工执行，本节回填）
 
-理由见第 3.4 条。报告提交（纯 `Reports/**`，按 `paths-ignore` 不触发 CI）推送后，决策会话若接受第三节的读法，执行：
+**回填**：决策会话按 G877～G879 独立复核后接受第三节三处读法（Decision_log 第 181 条）；`git switch main` 与 `git merge --no-ff` 在决策会话的 PowerShell 与 Bash 两侧都被 `[Merge Without Review]` 拒，三条命令交 Lynn 执行。合并前远端 `main` = `6dec2b18f04ad9c76c232aeadff81cdef116d721`；合并提交 **`20a19df6827f98f42e62911cdadd714dd33d2f0f`**，父 `6dec2b18f04ad9c76c232aeadff81cdef116d721`（`main`）与 `7e350bd994aa0c18c7ccc98c7dd04fcb8bd97eae`（分支报告提交）；`git rev-parse 20a19df^{tree}` = `c75bcaef…` = 分支 tip `7e350bd` 的树对象；推送后 `git ls-remote origin refs/heads/main` = `20a19df…`。G881 见第八节。本回填提交（纯 `Reports/**`）照 IC-150～IC-153 的做法记在 `main` 上（纪律 7）。
+
+以下为报告提交时的原文。理由见第 3.4 条。报告提交（纯 `Reports/**`，按 `paths-ignore` 不触发 CI）推送后，决策会话若接受第三节的读法，执行：
 
 ```bash
 git switch main
@@ -534,5 +555,14 @@ git push origin main
 | `402cb6e52a11dc89ce2a8351b47314a5fe9185b8` | probe: IC-125 负对照（`probe/ic-125` tip） |
 | `486bcb769b59eb1146c5a231c7998847206777cc` | probe: IC-137 媒体播放探针（`probe/ic-137` tip） |
 | `d373afc7125104c01acfc296829229090e6871ce` | docs(IC-145): 自验报告与变更清单（`probe/ic-145` tip） |
+
+**回填后复核**：加入分支报告提交与合并提交后重跑同一命令，共 **15** 个 40 位串，**15／15** `git cat-file -e <sha>^{commit}` 退出码 0；新增两个：
+
+| SHA | 提交标题（节选） |
+|---|---|
+| `7e350bd994aa0c18c7ccc98c7dd04fcb8bd97eae` | docs(IC-154): 自验报告与变更清单（分支报告提交） |
+| `20a19df6827f98f42e62911cdadd714dd33d2f0f` | Merge IC-154（合并提交，#310 被测提交） |
+
+第十一节里的树对象只写 `c75bcaef…` 前缀：它不是提交，`^{commit}` 核验对它不适用。
 
 报告提交本身的 SHA 在提交之后才产生，不写进报告（纪律 7：本卡未合并，没有需要回填的合并提交；若决策会话合并后要回填 G881，照 IC-150～IC-153 的做法记在 `main` 上）。报告中的 64 位串是文件 SHA-256，不是提交，`^{commit}` 核验对它们不适用。
