@@ -794,7 +794,8 @@ final class IC147S0BehaviorTests: XCTestCase {
         let catalog = try loadCatalogValues()
         let s0Values = catalog.filter { $0.key.hasPrefix("s0.") }
         // IC-148 C 新增两条图例 key（`s0.home.legend.rest`／`.unscanned`）。
-        XCTAssertEqual(s0Values.count, 32)
+        // IC-156 C 新增类别页五条 key（`s0.categoryPage.*`）：32 → 37。
+        XCTAssertEqual(s0Values.count, 37)
         for (key, value) in s0Values {
             for wording in forbidden {
                 XCTAssertFalse(
@@ -824,7 +825,9 @@ final class IC147S0BehaviorTests: XCTestCase {
             "PhotoCleanupMVE/Features/S0/S0TabContainer.swift",
             // IC-148 C：两条图例 key 的引用点在分段条文件里，不加进来
             // 「不多不少」那条会因为少扫一个文件而假红。
-            "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift"
+            "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift",
+            // IC-156 C：类别页五条 key 的引用点在类别页文件里，理由同上。
+            "PhotoCleanupMVE/Features/S0/S0CategoryPageView.swift"
         ] {
             let source = try XCTUnwrap(sourceText(relativePath))
             referenced.formUnion(localizationKeys(in: source))
@@ -840,7 +843,8 @@ final class IC147S0BehaviorTests: XCTestCase {
         XCTAssertGreaterThan(referenced.count, 20)
         // 不多不少：目录里的 s0. key 集合恰等于 S0 源码引用的 s0. 集合。
         XCTAssertEqual(referenced.filter { $0.hasPrefix("s0.") }, catalogS0Keys)
-        XCTAssertEqual(catalogS0Keys.count, 32)
+        // IC-156 C：类别页五条 key，32 → 37。
+        XCTAssertEqual(catalogS0Keys.count, 37)
         // 跨前缀引用只允许一条：受限提示条。
         //
         // IC-148 B 第 6 条要求 S0 画受限提示条，而 SPEC-S0 v1 第十四节第 3 部分
