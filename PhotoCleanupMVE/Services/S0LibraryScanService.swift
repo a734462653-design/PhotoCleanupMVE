@@ -144,6 +144,49 @@ final class S0LibraryScanService {
         }
     }
 
+    /// IC-155 B：某类别的候选资产，即类别页网格的数据（裁定 二）。
+    ///
+    /// 集合即该类别的 `c.assets`：与 `S0ScanAggregator.snapshot` 同一份排除规则（未解析、
+    /// `D_全部`、账本）与同一个命中判定，因而项数恒等于当前快照该类别的 `candidateCount`。
+    /// 顺序体积降序、同体积标识升序，首项即该类别的 `coverAssetID`（聚合器同一口径）。
+    ///
+    /// 纯内存投影，不发任何源请求：`D_全部` 与 `currentSnapshot()` 同法在锁外先取，库内
+    /// 条目在同一把锁内一次取完。不记忆化——一次过滤加排序（③ H76 第 5 条实测卡顿再加）。
+    func categoryAssets(_ id: S0CategoryIdentifier) -> [S0CategoryAsset] {
+        let pending = pendingDeletionAssetIDs()
+        let candidates = withState { () -> [S0CategoryAsset] in
+            records.compactMap { element -> S0CategoryAsset? in
+                guard libraryIdentifiers.contains(element.key) else {
+                    return nil
+                }
+                let asset = element.value.classified(id: element.key)
+                guard !asset.isUnresolved,
+                      !S0ScanClassifier.isExcludedFromCategories(
+                          asset,
+                          pendingDeletionAssetIDs: pending,
+                          // 账本写入方是批次 5.3；与 `currentSnapshot()` 同为空集。
+                          ledgerAssetIDs: []
+                      ),
+                      S0ScanClassifier.primaryCategory(for: asset.hits) != nil,
+                      asset.hits.contains(id) else {
+                    return nil
+                }
+                return S0CategoryAsset(
+                    id: element.key,
+                    byteCount: asset.byteCount,
+                    isVideo: element.value.mediaType == .video,
+                    duration: element.value.duration
+                )
+            }
+        }
+        return candidates.sorted { lhs, rhs in
+            if lhs.byteCount != rhs.byteCount {
+                return lhs.byteCount > rhs.byteCount
+            }
+            return lhs.id < rhs.id
+        }
+    }
+
     // MARK: - 推进
 
     /// 启动或续扫。幂等：正在扫时再调无副作用（裁定 五）。

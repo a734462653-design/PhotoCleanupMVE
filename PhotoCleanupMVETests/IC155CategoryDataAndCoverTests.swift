@@ -315,6 +315,219 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
         XCTAssertTrue(scanningStart.categories.allSatisfy { $0.coverAssetID == nil })
     }
 
+    // MARK: - 断言 4：读接口与快照同源、有序（子项 B）
+
+    func testIC155B_CategoryAssetsMatchSnapshotAndOrder() {
+        let megabyte: Int64 = 1_000_000
+        let fixture = coverLibrary()
+        let service = makeService(fixture)
+        service.advanceScan()
+        XCTAssertTrue(
+            waitUntil {
+                !service.isScanInFlight && service.currentScanOutcome() == .completed
+            },
+            "夹具扫描没有完成"
+        )
+
+        let snapshot = service.currentSnapshot()
+        XCTAssertEqual(
+            snapshot.categories.map { $0.id },
+            [.bigVideo, .screenRecording, .screenshot]
+        )
+        let expectedOrders: [S0CategoryIdentifier: [String]] = [
+            .bigVideo: ["v-big-1", "v-big-2", "v-big-3", "rec-big"],
+            .screenRecording: ["rec-big", "rec-a", "rec-b"],
+            .screenshot: ["shot-1", "shot-2", "shot-3"]
+        ]
+        let metadataByID = fixture.metadataByIdentifier
+        for category in snapshot.categories {
+            let list = service.categoryAssets(category.id)
+            let listByteCount = list.reduce(Int64(0)) { total, item in
+                total + item.byteCount
+            }
+            XCTAssertEqual(list.map { $0.id }, expectedOrders[category.id])
+            XCTAssertEqual(list.count, category.candidateCount)
+            XCTAssertEqual(listByteCount, category.candidateByteCount)
+            XCTAssertEqual(list.first?.id, category.coverAssetID)
+            XCTAssertTrue(isOrderedBySizeThenIdentifier(list), category.id.rawValue)
+            for item in list {
+                let metadata = metadataByID[item.id]
+                XCTAssertNotNil(metadata, item.id)
+                XCTAssertEqual(item.isVideo, metadata?.mediaType == .video, item.id)
+                XCTAssertEqual(item.duration, metadata?.duration, item.id)
+            }
+        }
+        // 前置：并列确实存在，排序的第二键被走到；视频时长确实各不相同。
+        XCTAssertEqual(
+            service.categoryAssets(.bigVideo).prefix(2).map { $0.byteCount },
+            [250 * megabyte, 250 * megabyte]
+        )
+        XCTAssertEqual(
+            Set(service.categoryAssets(.bigVideo).map { $0.duration }).count,
+            4
+        )
+        XCTAssertTrue(service.categoryAssets(.screenshot).allSatisfy { !$0.isVideo })
+    }
+
+    // MARK: - 断言 5：排除规则同源、随待删篮与库内变化（子项 B）
+
+    func testIC155B_CategoryAssetsExcludePendingAndUnresolvedAndTrackRevision() {
+        let fixture = coverLibrary()
+        let service = makeService(fixture)
+        var pending: Set<String> = []
+        service.pendingDeletionAssetIDs = {
+            pending
+        }
+        service.advanceScan()
+        XCTAssertTrue(
+            waitUntil {
+                !service.isScanInFlight && service.currentScanOutcome() == .completed
+            },
+            "夹具扫描没有完成"
+        )
+        assertListsMatchSnapshot(service)
+
+        // 未解析的截图不在任何列表里，也不计入候选数（计入的话截图会是 4 条）。
+        let listed = [S0CategoryIdentifier.bigVideo, .screenRecording, .screenshot]
+            .flatMap { identifier in
+                service.categoryAssets(identifier).map { $0.id }
+            }
+        XCTAssertFalse(listed.contains("shot-unresolved"))
+        XCTAssertEqual(snapshotCategory(.screenshot, of: service)?.candidateCount, 3)
+
+        // 进待删篮：从列表消失，快照候选数同步减一，封面顺延到并列的另一条。
+        pending.insert("v-big-1")
+        XCTAssertFalse(service.categoryAssets(.bigVideo).contains { $0.id == "v-big-1" })
+        XCTAssertEqual(snapshotCategory(.bigVideo, of: service)?.candidateCount, 3)
+        XCTAssertEqual(snapshotCategory(.bigVideo, of: service)?.coverAssetID, "v-big-2")
+        XCTAssertEqual(service.categoryAssets(.bigVideo).first?.id, "v-big-2")
+        assertListsMatchSnapshot(service)
+
+        // 同属两个类别的资产进篮：两个列表一起少它。
+        pending.insert("rec-big")
+        XCTAssertEqual(
+            service.categoryAssets(.bigVideo).map { $0.id },
+            ["v-big-2", "v-big-3"]
+        )
+        XCTAssertEqual(
+            service.categoryAssets(.screenRecording).map { $0.id },
+            ["rec-a", "rec-b"]
+        )
+        assertListsMatchSnapshot(service)
+
+        // 移出待删篮：回到原位。
+        pending.remove("v-big-1")
+        XCTAssertEqual(service.categoryAssets(.bigVideo).first?.id, "v-big-1")
+        assertListsMatchSnapshot(service)
+
+        // 本服务不识别的两个类别恒为空。
+        XCTAssertEqual(service.categoryAssets(.duplicate), [])
+        XCTAssertEqual(service.categoryAssets(.similar), [])
+
+        // 库内删掉一条后再扫一遍：列表与快照一起少它。
+        fixture.removeAsset("shot-2")
+        service.advanceScan()
+        XCTAssertTrue(waitUntil { !service.isScanInFlight }, "第二遍没有结束")
+        XCTAssertEqual(
+            service.categoryAssets(.screenshot).map { $0.id },
+            ["shot-1", "shot-3"]
+        )
+        XCTAssertEqual(snapshotCategory(.screenshot, of: service)?.candidateCount, 2)
+        assertListsMatchSnapshot(service)
+    }
+
+    // MARK: - 断言 6：桩的合成列表确定且与快照一致（子项 B）
+
+    func testIC155B_StubListsAreDeterministicAndConsistent() {
+        var hookCount = 0
+        var nonEmptyListCount = 0
+        for scenario in S0CleanupDataStubScenario.allCases {
+            for step in 0...S0CleanupDataStub.scanStepCount {
+                let stub = S0CleanupDataStub(
+                    scenario: scenario,
+                    includesLedgerEntry: true,
+                    pendingDeletionByteCount: 1_000,
+                    scanStep: step
+                )
+                let twin = S0CleanupDataStub(
+                    scenario: scenario,
+                    includesLedgerEntry: true,
+                    pendingDeletionByteCount: 1_000,
+                    scanStep: step
+                )
+                stub.onSnapshotDidChange = {
+                    hookCount += 1
+                }
+                // 经协议取：桩确实满足加了读接口的协议。
+                let provider: any S0CleanupDataProviding = stub
+                let snapshot = provider.currentSnapshot()
+                for identifier in S0CategoryIdentifier.allCases {
+                    let label = [scenario.rawValue, String(step), identifier.rawValue]
+                        .joined(separator: "/")
+                    let list = provider.categoryAssets(identifier)
+                    XCTAssertEqual(list, twin.categoryAssets(identifier), label)
+                    XCTAssertEqual(list, provider.categoryAssets(identifier), label)
+                    guard let category = snapshot.categories.first(where: { $0.id == identifier }),
+                          category.hasItems else {
+                        XCTAssertEqual(list, [], label)
+                        continue
+                    }
+                    nonEmptyListCount += 1
+                    let listByteCount = list.reduce(Int64(0)) { total, item in
+                        total + item.byteCount
+                    }
+                    XCTAssertEqual(list.count, category.candidateCount, label)
+                    XCTAssertEqual(listByteCount, category.candidateByteCount, label)
+                    XCTAssertEqual(list.first?.id, category.coverAssetID, label)
+                    XCTAssertTrue(isOrderedBySizeThenIdentifier(list), label)
+                    XCTAssertEqual(Set(list.map { $0.id }).count, list.count, label)
+                    let expectsVideo = identifier == .bigVideo || identifier == .screenRecording
+                    XCTAssertTrue(list.allSatisfy { $0.isVideo == expectsVideo }, label)
+                }
+            }
+        }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertEqual(hookCount, 0, "桩调用了快照钩子")
+        // 正对照：就绪剧本 5 类 × 5 步 + 扫描剧本第 1～4 步各 3 类，确有非空列表被核过。
+        XCTAssertEqual(nonEmptyListCount, 37)
+        // 失败剧本：五个类别全空。
+        let failure = S0CleanupDataStub(scenario: .readFailure)
+        XCTAssertTrue(
+            S0CategoryIdentifier.allCases.allSatisfy { failure.categoryAssets($0).isEmpty }
+        )
+    }
+
+    // MARK: - 断言 7：协议只多一个要求，钩子行不动（子项 B，源码扫描）
+
+    func testIC155B_ProtocolGainsOneRequirementAndKeepsHookLine() throws {
+        let requirement = "func categoryAssets(_ id: S0CategoryIdentifier) -> [S0CategoryAsset]"
+        let view = try XCTUnwrap(strippedSource(Self.s0ViewPath))
+        XCTAssertEqual(occurrences(of: requirement, in: view), 1)
+        XCTAssertEqual(occurrences(of: "onSnapshotDidChange", in: view), 1)
+        XCTAssertEqual(
+            occurrences(of: "var onSnapshotDidChange: (() -> Void)? { get set }", in: view),
+            1
+        )
+        XCTAssertEqual(
+            occurrences(of: "protocol S0CleanupDataProviding: AnyObject {", in: view),
+            1
+        )
+
+        // 读接口不碰 PhotoKit：服务文件的取数调用仍只有那一处全库枚举。
+        let service = try XCTUnwrap(strippedSource(Self.servicePath))
+        XCTAssertEqual(occurrences(of: "PHAsset.fetchAssets(with: nil)", in: service), 1)
+        XCTAssertEqual(occurrences(of: "fetchAssets(withLocalIdentifiers", in: service), 0)
+        // 上一条 needle 遇到「左括号后换行再写实参标签」的写法会空转（缩略图视图正是这样
+        // 写的），故再按实参标签本身扫一遍。
+        XCTAssertEqual(occurrences(of: "withLocalIdentifiers", in: service), 0)
+        // 正对照：两处实现都在；实参标签 needle 在确实按标识取数的既有文件里命中非零。
+        XCTAssertEqual(occurrences(of: requirement, in: service), 1)
+        let stub = try XCTUnwrap(strippedSource(Self.stubPath))
+        XCTAssertEqual(occurrences(of: requirement, in: stub), 1)
+        let thumbnail = try XCTUnwrap(strippedSource(Self.thumbnailPath))
+        XCTAssertGreaterThan(occurrences(of: "withLocalIdentifiers", in: thumbnail), 0)
+    }
+
     // MARK: - 夹具
 
     private func scannedAsset(
@@ -363,10 +576,232 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
         snapshot.categories.first { $0.id == identifier }
     }
 
+    /// 断言 4／5 的样本库：三个类别各有并列，含一条同属两类的录屏、一条未解析的截图、
+    /// 一条不属任何类别的小视频与一张普通照片。视频时长各不相同。
+    private func coverLibrary() -> IC155LibraryFixture {
+        let megabyte: Int64 = 1_000_000
+        var assets: [S0AssetMetadata] = []
+        var readings: [String: IC155Reading] = [:]
+        func add(
+            _ identifier: String,
+            mediaType: S0ScannedMediaType,
+            isScreenshot: Bool = false,
+            pixelWidth: Int = 4_032,
+            pixelHeight: Int = 3_024,
+            duration: TimeInterval = 0,
+            videoFilename: String? = nil,
+            byteCount: Int64?
+        ) {
+            assets.append(
+                S0AssetMetadata(
+                    localIdentifier: identifier,
+                    modificationDate: IC155CategoryDataAndCoverTests.fixtureDate,
+                    creationDate: IC155CategoryDataAndCoverTests.fixtureDate
+                        .addingTimeInterval(TimeInterval(assets.count * 60)),
+                    mediaType: mediaType,
+                    isScreenshot: isScreenshot,
+                    pixelWidth: pixelWidth,
+                    pixelHeight: pixelHeight,
+                    duration: duration
+                )
+            )
+            readings[identifier] = IC155Reading(
+                videoFilename: videoFilename,
+                byteCount: byteCount
+            )
+        }
+        add(
+            "v-big-2",
+            mediaType: .video,
+            pixelWidth: 3_840,
+            pixelHeight: 2_160,
+            duration: 61.5,
+            videoFilename: "IMG_2001.MOV",
+            byteCount: 250 * megabyte
+        )
+        add(
+            "v-big-1",
+            mediaType: .video,
+            pixelWidth: 3_840,
+            pixelHeight: 2_160,
+            duration: 42.25,
+            videoFilename: "IMG_2002.MOV",
+            byteCount: 250 * megabyte
+        )
+        add(
+            "v-big-3",
+            mediaType: .video,
+            pixelWidth: 3_840,
+            pixelHeight: 2_160,
+            duration: 30,
+            videoFilename: "IMG_2003.MOV",
+            byteCount: 180 * megabyte
+        )
+        add(
+            "rec-big",
+            mediaType: .video,
+            pixelWidth: 886,
+            pixelHeight: 1_920,
+            duration: 95.5,
+            videoFilename: "ScreenRecording_02-02-2026 09-00-00_1.mp4",
+            byteCount: 120 * megabyte
+        )
+        add(
+            "rec-b",
+            mediaType: .video,
+            pixelWidth: 1_206,
+            pixelHeight: 2_622,
+            duration: 20,
+            videoFilename: "IMG_2004.MP4",
+            byteCount: 30 * megabyte
+        )
+        add(
+            "rec-a",
+            mediaType: .video,
+            pixelWidth: 886,
+            pixelHeight: 1_920,
+            duration: 21.75,
+            videoFilename: "ScreenRecording_02-02-2026 09-10-00_1.mp4",
+            byteCount: 30 * megabyte
+        )
+        add(
+            "shot-2",
+            mediaType: .photo,
+            isScreenshot: true,
+            pixelWidth: 1_206,
+            pixelHeight: 2_622,
+            byteCount: 4 * megabyte
+        )
+        add(
+            "shot-1",
+            mediaType: .photo,
+            isScreenshot: true,
+            pixelWidth: 1_206,
+            pixelHeight: 2_622,
+            byteCount: 4 * megabyte
+        )
+        add(
+            "shot-3",
+            mediaType: .photo,
+            isScreenshot: true,
+            pixelWidth: 1_206,
+            pixelHeight: 2_622,
+            byteCount: 2 * megabyte
+        )
+        add("photo-plain", mediaType: .photo, byteCount: 3 * megabyte)
+        add(
+            "shot-unresolved",
+            mediaType: .photo,
+            isScreenshot: true,
+            pixelWidth: 1_206,
+            pixelHeight: 2_622,
+            byteCount: nil
+        )
+        add(
+            "video-small",
+            mediaType: .video,
+            pixelWidth: 1_920,
+            pixelHeight: 1_080,
+            duration: 8,
+            videoFilename: "IMG_2005.MOV",
+            byteCount: 50 * megabyte
+        )
+        return IC155LibraryFixture(assets: assets, readings: readings)
+    }
+
+    private func makeService(_ fixture: IC155LibraryFixture) -> S0LibraryScanService {
+        S0LibraryScanService(
+            source: fixture.makeSource(),
+            cacheStore: S0ScanCacheStore(directoryURL: makeTemporaryDirectory())
+        )
+    }
+
+    private func snapshotCategory(
+        _ identifier: S0CategoryIdentifier,
+        of service: S0LibraryScanService
+    ) -> S0CategorySnapshot? {
+        service.currentSnapshot().categories.first { $0.id == identifier }
+    }
+
+    /// 三个类别各核一遍：项数、总字节、首项与封面、顺序。
+    private func assertListsMatchSnapshot(
+        _ service: S0LibraryScanService,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let snapshot = service.currentSnapshot()
+        XCTAssertEqual(snapshot.categories.count, 3, file: file, line: line)
+        for category in snapshot.categories {
+            let list = service.categoryAssets(category.id)
+            let listByteCount = list.reduce(Int64(0)) { total, item in
+                total + item.byteCount
+            }
+            XCTAssertEqual(list.count, category.candidateCount, file: file, line: line)
+            XCTAssertEqual(
+                listByteCount,
+                category.candidateByteCount,
+                file: file,
+                line: line
+            )
+            XCTAssertEqual(list.first?.id, category.coverAssetID, file: file, line: line)
+            XCTAssertTrue(
+                isOrderedBySizeThenIdentifier(list),
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    /// 体积降序、同体积标识升序（裁定 二）。
+    private func isOrderedBySizeThenIdentifier(_ list: [S0CategoryAsset]) -> Bool {
+        zip(list, list.dropFirst()).allSatisfy { pair in
+            pair.0.byteCount > pair.1.byteCount
+                || (pair.0.byteCount == pair.1.byteCount && pair.0.id < pair.1.id)
+        }
+    }
+
+    private var temporaryDirectories: [URL] = []
+
+    override func tearDown() {
+        for directory in temporaryDirectories {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        temporaryDirectories = []
+        super.tearDown()
+    }
+
+    /// 只给出路径、不建目录：缓存仓库第一次写入时才建。
+    private func makeTemporaryDirectory() -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("IC155-" + UUID().uuidString, isDirectory: true)
+        temporaryDirectories.append(directory)
+        return directory
+    }
+
+    /// 转主线程 run loop 直到条件成立或超时（服务的回调经主队列送达）。
+    @discardableResult
+    private func waitUntil(
+        timeout: TimeInterval = 10,
+        _ condition: () -> Bool
+    ) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while !condition() {
+            if Date() >= deadline {
+                return false
+            }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+        }
+        return true
+    }
+
     private static let fixtureDate = Date(timeIntervalSinceReferenceDate: 780_000_000.25)
     private static let stateMachinePath = "PhotoCleanupMVE/Core/S0StateMachine.swift"
     private static let behaviorTestsPath = "PhotoCleanupMVETests/IC147S0BehaviorTests.swift"
     private static let visualTestsPath = "PhotoCleanupMVETests/IC148S0VisualTests.swift"
+    private static let s0ViewPath = "PhotoCleanupMVE/Features/S0/S0View.swift"
+    private static let servicePath = "PhotoCleanupMVE/Services/S0LibraryScanService.swift"
+    private static let stubPath = "PhotoCleanupMVE/Services/S0CleanupDataStub.swift"
+    private static let thumbnailPath = "PhotoCleanupMVE/Features/Shared/ThumbnailView.swift"
 
     // MARK: - 源码扫描 helper（口径与 IC-147／IC-148／IC-153 一致）
 
@@ -441,5 +876,74 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
             searchStart = found.upperBound
         }
         return count
+    }
+}
+
+/// 夹具读数：一次资源枚举给出的视频文件名与字节（字节为 nil 即取不到）。
+private struct IC155Reading {
+    let videoFilename: String?
+    let byteCount: Int64?
+}
+
+/// 断言 4／5 的夹具源。三个闭包在非主线程上被调，库内元数据可在两遍扫描之间删减，
+/// 读写一律经锁（陷阱 10：并发驱动的 helper 必须并发安全）。
+private final class IC155LibraryFixture {
+    private let lock = NSLock()
+    private var assets: [S0AssetMetadata]
+    private let readings: [String: IC155Reading]
+
+    init(assets: [S0AssetMetadata], readings: [String: IC155Reading]) {
+        self.assets = assets
+        self.readings = readings
+    }
+
+    var metadataByIdentifier: [String: S0AssetMetadata] {
+        locked {
+            Dictionary(
+                assets.map { ($0.localIdentifier, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+    }
+
+    func removeAsset(_ identifier: String) {
+        locked { () -> Void in
+            assets.removeAll { $0.localIdentifier == identifier }
+        }
+    }
+
+    func makeSource() -> S0LibraryScanSource {
+        S0LibraryScanSource(
+            authorizationState: {
+                .authorized
+            },
+            enumerateAssets: { [self] in
+                self.currentAssets()
+            },
+            fetchResourcesAndBytes: { [self] identifier in
+                let reading = self.reading(for: identifier)
+                return (videoFilename: reading.videoFilename, byteCount: reading.byteCount)
+            }
+        )
+    }
+
+    private func currentAssets() -> [S0AssetMetadata] {
+        locked {
+            assets
+        }
+    }
+
+    private func reading(for identifier: String) -> IC155Reading {
+        locked {
+            readings[identifier] ?? IC155Reading(videoFilename: nil, byteCount: nil)
+        }
+    }
+
+    private func locked<T>(_ body: () throws -> T) rethrows -> T {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+        return try body()
     }
 }

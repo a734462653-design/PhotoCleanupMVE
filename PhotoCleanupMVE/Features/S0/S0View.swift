@@ -14,6 +14,9 @@ protocol S0CleanupDataProviding: AnyObject {
     func currentSnapshot() -> S0CleanupSnapshot
     /// 推进扫描。桩按剧本走下一步；真实现按增量缓存续扫。
     func advanceScan()
+    /// IC-155：某类别的候选资产，体积从大到小、同体积按标识升序。与当前快照同源：
+    /// 集合即该类别的候选集，项数即其候选数，首项即其封面。
+    func categoryAssets(_ id: S0CategoryIdentifier) -> [S0CategoryAsset]
     /// IC-153：快照变化钩子。真实现每次快照变化在主线程上调、每秒至多四次，
     /// 完成与失败那一次必达；桩从不调用。
     var onSnapshotDidChange: (() -> Void)? { get set }
