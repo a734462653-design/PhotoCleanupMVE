@@ -190,6 +190,10 @@ enum S0ScanAggregator {
         var cleanableByteCount: Int64 = 0
         var candidateCounts: [S0CategoryIdentifier: Int] = [:]
         var candidateByteCounts: [S0CategoryIdentifier: Int64] = [:]
+        // IC-155 裁定 一：每个类别当前的封面候选——体积最大者，同体积取标识升序
+        // 第一个。输入来自字典遍历、没有顺序，同体积若不定序，两次快照的封面会抖
+        // （陷阱 10）。候选集与 `candidateCount` 同源：只在下面同一个循环里更新。
+        var coverAssets: [S0CategoryIdentifier: S0ClassifiedAsset] = [:]
 
         for asset in assets where !asset.isUnresolved {
             libraryByteCount += asset.byteCount
@@ -208,6 +212,13 @@ enum S0ScanAggregator {
             for identifier in asset.hits {
                 candidateCounts[identifier, default: 0] += 1
                 candidateByteCounts[identifier, default: 0] += asset.byteCount
+                let precedesCover = coverAssets[identifier].map { cover in
+                    asset.byteCount > cover.byteCount
+                        || (asset.byteCount == cover.byteCount && asset.id < cover.id)
+                } ?? true
+                if precedesCover {
+                    coverAssets[identifier] = asset
+                }
             }
         }
 
@@ -216,7 +227,8 @@ enum S0ScanAggregator {
                 id: identifier,
                 candidateCount: candidateCounts[identifier] ?? 0,
                 candidateByteCount: candidateByteCounts[identifier] ?? 0,
-                recognition: context.recognition
+                recognition: context.recognition,
+                coverAssetID: coverAssets[identifier]?.id
             )
         }
         return S0CleanupSnapshot(

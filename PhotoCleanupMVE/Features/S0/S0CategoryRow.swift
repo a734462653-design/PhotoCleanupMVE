@@ -93,15 +93,21 @@ enum S0ByteCountSplit {
 /// 类别行。高 78、圆角 24（作触控形状）、封面位 60 圆角 16、色点 8，
 /// 全部取 `S0HomeMetrics`。
 ///
-/// **封面位本卡只做几何与占位态**：数据源尚无 `coverAssetID`（真实扫描服务排
-/// 批次 5.1，等 H68），本卡不给 `S0CategorySnapshot` 加没有生产者的字段。
-/// 占位态是一个**空槽**（只描边、不填色、不放任何图），照 `factoryPlaceholder`
-/// 登记制的既有做法——不显示错图、不放假图。
+/// **封面位**（IC-155）：`coverAssetID` 的生产者是扫描聚合（该类别候选集中体积最大的
+/// 一张）。占位态是一个**空槽**（只描边、不填色），照 `factoryPlaceholder` 登记制的
+/// 既有做法——不显示错图、不放假图；有标识时，共享缩略图视图以同边长、同圆角盖在空槽
+/// 上（真图态）。取图只发生在共享缩略图视图里，S0 的文件本身不碰照片库；该视图禁网络，
+/// 本机取不到缩略图（如 iCloud 优化储存）时它留空、不画系统图标，看到的仍是空槽。
 struct S0CategoryRowView: View {
     let category: S0CategorySnapshot
     /// 副行文案。为 nil 时不画副行——已就绪且有项目的类别，其体积读数在
     /// 右侧值位，登记表没有给该情形的副行文案，不重复画同一个数字。
     let subtitle: String?
+    /// IC-155：封面资产标识。为 nil 时只画空槽。
+    let coverAssetID: String?
+
+    /// 封面请求像素 = 封面边长 × 屏幕倍率（IC-155 裁定 三）。
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         HStack(spacing: S0HomeMetrics.categoryRowSpacing) {
@@ -121,15 +127,27 @@ struct S0CategoryRowView: View {
         )
     }
 
-    /// 封面空槽：只描边，取玻璃卡的外圈描边不透明度（同页同族）。
+    /// 封面位：描边空槽垫底（只描边，取玻璃卡的外圈描边不透明度，同页同族）；有标识时
+    /// 缩略图以同边长、同圆角盖在上面。缩略图视图自己先框后裁（陷阱 24），这里不再包一层。
     private var cover: some View {
-        RoundedRectangle(
-            cornerRadius: S0HomeMetrics.categoryCoverCornerRadius,
-            style: .continuous
-        )
-        .strokeBorder(
-            Color.white.opacity(S0HomeMetrics.cardOuterRingOpacity)
-        )
+        ZStack {
+            RoundedRectangle(
+                cornerRadius: S0HomeMetrics.categoryCoverCornerRadius,
+                style: .continuous
+            )
+            .strokeBorder(
+                Color.white.opacity(S0HomeMetrics.cardOuterRingOpacity)
+            )
+            if let coverAssetID {
+                ThumbnailView(
+                    assetIdentifier: coverAssetID,
+                    sideLength: S0HomeMetrics.categoryCoverSide,
+                    displayScale: displayScale,
+                    cornerRadius: S0HomeMetrics.categoryCoverCornerRadius,
+                    showsPlaceholderGlyph: false
+                )
+            }
+        }
         .frame(
             width: S0HomeMetrics.categoryCoverSide,
             height: S0HomeMetrics.categoryCoverSide

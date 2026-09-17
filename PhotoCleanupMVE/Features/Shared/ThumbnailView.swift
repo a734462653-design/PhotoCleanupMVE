@@ -10,6 +10,9 @@ struct ThumbnailView: View {
     var displayScale: CGFloat = 2
     /// IC-134 B：裁切圆角。默认 0 与既有行为一致（直角 + clipped）。
     var cornerRadius: CGFloat = 0
+    /// IC-155：取不到图时是否画系统照片图标。默认 true 与既有调用点（S3 网格）行为一致；
+    /// S0 类别行封面传 false——无图时留空，由调用方垫在下面的描边空槽兜底。
+    var showsPlaceholderGlyph: Bool = true
 
     @State private var image: UIImage?
     @State private var requestID: PHImageRequestID?
@@ -31,11 +34,13 @@ struct ThumbnailView: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-            } else {
+            } else if showsPlaceholderGlyph {
                 Image(systemName: "photo")
                     .resizable()
                     .scaledToFit()
                     .padding()
+            } else {
+                Color.clear
             }
         }
         .frame(width: sideLength, height: sideLength)

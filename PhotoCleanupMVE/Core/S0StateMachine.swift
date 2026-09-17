@@ -86,23 +86,39 @@ struct S0CategorySnapshot: Equatable, Sendable, Identifiable {
     let candidateCount: Int
     let candidateByteCount: Int64
     let recognition: S0CategoryRecognition
+    /// IC-155：类别行封面。SPEC-S0 v2 第三节「取该类别按当前排序的第一项」，而
+    /// 类别页恒按体积降序，故 = 候选集中 `SZ` 最大的资产，同体积取标识升序第一个；
+    /// 无候选为 nil。生产者是扫描聚合（裁定 一）。
+    let coverAssetID: String?
 
     init(
         id: S0CategoryIdentifier,
         candidateCount: Int,
         candidateByteCount: Int64,
-        recognition: S0CategoryRecognition
+        recognition: S0CategoryRecognition,
+        coverAssetID: String? = nil
     ) {
         self.id = id
         self.candidateCount = max(0, candidateCount)
         self.candidateByteCount = max(0, candidateByteCount)
         self.recognition = recognition
+        self.coverAssetID = coverAssetID
     }
 
     /// 「无项目」的类别灰显并沉底、不可点。
     var hasItems: Bool {
         candidateCount > 0
     }
+}
+
+/// IC-155：类别页网格的一格（SPEC-S0 v2 第六节：方形缩略图、单张体积标签、
+/// 视频类时长角标、勾）。四个字段即网格要的全部数据，多一个不加（第 171 条
+/// 口径）。`Core/` 不认识扫描实现的媒体类型，故只给「是不是视频」。
+struct S0CategoryAsset: Equatable, Sendable, Identifiable {
+    let id: String
+    let byteCount: Int64
+    let isVideo: Bool
+    let duration: TimeInterval
 }
 
 /// 待清空账本条目 `e`（SPEC-S0 v1 第二节第 2 部分）。条目在 S4 提交删除成功

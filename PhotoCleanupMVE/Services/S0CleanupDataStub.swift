@@ -81,6 +81,16 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
         scanStep += 1
     }
 
+    /// IC-155 B：确定性合成列表（裁定 二）。有项目的类别给 `candidateCount` 条、体积
+    /// 从大到小且总和恰为 `candidateByteCount`，首条即该行 `coverAssetID`；无项目的类别
+    /// 与失败剧本给空列表。与 `currentSnapshot()` 同一剧本、同一步数。
+    func categoryAssets(_ id: S0CategoryIdentifier) -> [S0CategoryAsset] {
+        guard let category = currentSnapshot().categories.first(where: { $0.id == id }) else {
+            return []
+        }
+        return Self.syntheticAssets(for: category)
+    }
+
     // MARK: - 剧本
 
     /// 扫描中：已扫部分随步数线性增长；重复与相似要等全库扫完才起算，
@@ -93,31 +103,36 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
                 id: .bigVideo,
                 candidateCount: 3 * scanStep,
                 candidateByteCount: 1_200_000_000 * step,
-                recognition: .counting
+                recognition: .counting,
+                coverAssetID: Self.coverAssetID(for: .bigVideo, candidateCount: 3 * scanStep)
             ),
             S0CategorySnapshot(
                 id: .screenshot,
                 candidateCount: 21 * scanStep,
                 candidateByteCount: 140_000_000 * step,
-                recognition: .counting
+                recognition: .counting,
+                coverAssetID: Self.coverAssetID(for: .screenshot, candidateCount: 21 * scanStep)
             ),
             S0CategorySnapshot(
                 id: .screenRecording,
                 candidateCount: 2 * scanStep,
                 candidateByteCount: 480_000_000 * step,
-                recognition: .counting
+                recognition: .counting,
+                coverAssetID: Self.coverAssetID(for: .screenRecording, candidateCount: 2 * scanStep)
             ),
             S0CategorySnapshot(
                 id: .duplicate,
                 candidateCount: 0,
                 candidateByteCount: 0,
-                recognition: .awaitingScanCompletion
+                recognition: .awaitingScanCompletion,
+                coverAssetID: Self.coverAssetID(for: .duplicate, candidateCount: 0)
             ),
             S0CategorySnapshot(
                 id: .similar,
                 candidateCount: 0,
                 candidateByteCount: 0,
-                recognition: .awaitingScanCompletion
+                recognition: .awaitingScanCompletion,
+                coverAssetID: Self.coverAssetID(for: .similar, candidateCount: 0)
             )
         ]
         return S0CleanupSnapshot(
@@ -143,31 +158,36 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
                 id: .bigVideo,
                 candidateCount: hasItems ? 12 : 0,
                 candidateByteCount: hasItems ? 4_800_000_000 : 0,
-                recognition: .settled
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .bigVideo, candidateCount: hasItems ? 12 : 0)
             ),
             S0CategorySnapshot(
                 id: .screenshot,
                 candidateCount: hasItems ? 84 : 0,
                 candidateByteCount: hasItems ? 560_000_000 : 0,
-                recognition: .settled
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .screenshot, candidateCount: hasItems ? 84 : 0)
             ),
             S0CategorySnapshot(
                 id: .screenRecording,
                 candidateCount: hasItems ? 9 : 0,
                 candidateByteCount: hasItems ? 1_920_000_000 : 0,
-                recognition: .settled
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .screenRecording, candidateCount: hasItems ? 9 : 0)
             ),
             S0CategorySnapshot(
                 id: .duplicate,
                 candidateCount: hasItems ? 46 : 0,
                 candidateByteCount: hasItems ? 730_000_000 : 0,
-                recognition: .settled
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .duplicate, candidateCount: hasItems ? 46 : 0)
             ),
             S0CategorySnapshot(
                 id: .similar,
                 candidateCount: hasItems ? 118 : 0,
                 candidateByteCount: hasItems ? 1_150_000_000 : 0,
-                recognition: .settled
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .similar, candidateCount: hasItems ? 118 : 0)
             )
         ]
         return S0CleanupSnapshot(
@@ -214,5 +234,65 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
                 availableCapacityBaseline: Self.ledgerBaseline
             )
         ]
+    }
+
+    // MARK: - 合成资产（IC-155）
+
+    /// 类别行封面：有项目的类别取合成资产列表的首元素（序号 1，体积最大的那一条），
+    /// 无项目为 nil（IC-155 裁定 二、A3）。
+    private static func coverAssetID(
+        for identifier: S0CategoryIdentifier,
+        candidateCount: Int
+    ) -> String? {
+        guard candidateCount > 0 else {
+            return nil
+        }
+        return syntheticAssetID(for: identifier, ordinal: 1)
+    }
+
+    /// 合成资产标识：`stub.<类别 rawValue>.<序号>`，序号从 1 起、按体积从大到小编。
+    private static func syntheticAssetID(
+        for identifier: S0CategoryIdentifier,
+        ordinal: Int
+    ) -> String {
+        "stub." + identifier.rawValue + "." + String(ordinal)
+    }
+
+    /// 合成视频时长的码率（字节每秒）。只为让类别页的时长角标有数可画。
+    private static let syntheticVideoBytesPerSecond: Int64 = 10_000_000
+
+    /// 合成列表：体积等差递减，公差取 `c.bytes ÷ n²`（整除），整除余下的字节逐一加到
+    /// 最大的几条上。**不是严格的等差数列**：多数剧本行（例如就绪截图 84 条共
+    /// 560 000 000 字节）不存在总和恰好相等的整数等差数列；余数前置后相邻差为公差或
+    /// 公差加一、总和恰为 `c.bytes`。本桩各剧本行的公差都大于零，列表因而严格递减、
+    /// 不出现同体积并列，序号顺序即「体积降序、同体积标识升序」的顺序。
+    private static func syntheticAssets(
+        for category: S0CategorySnapshot
+    ) -> [S0CategoryAsset] {
+        let count = category.candidateCount
+        guard count > 0 else {
+            return []
+        }
+        let total = category.candidateByteCount
+        let slots = Int64(count)
+        let difference = total / (slots * slots)
+        let spread = difference * (slots * (slots - 1) / 2)
+        let smallest = (total - spread) / slots
+        let remainder = total - spread - smallest * slots
+        let isVideo = category.id == .bigVideo || category.id == .screenRecording
+        return (0..<count).map { index -> S0CategoryAsset in
+            let rank = Int64(index)
+            let bonus: Int64 = rank < remainder ? 1 : 0
+            let byteCount = smallest + difference * (slots - 1 - rank) + bonus
+            let duration: TimeInterval = isVideo
+                ? TimeInterval(byteCount / syntheticVideoBytesPerSecond)
+                : 0
+            return S0CategoryAsset(
+                id: syntheticAssetID(for: category.id, ordinal: index + 1),
+                byteCount: byteCount,
+                isVideo: isVideo,
+                duration: duration
+            )
+        }
     }
 }

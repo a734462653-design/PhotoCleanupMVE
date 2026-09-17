@@ -268,19 +268,22 @@ final class IC153ScanServiceTests: XCTestCase {
                 id: .bigVideo,
                 candidateCount: 1,
                 candidateByteCount: 150 * megabyte,
-                recognition: .counting
+                recognition: .counting,
+                coverAssetID: "recording"
             ),
             S0CategorySnapshot(
                 id: .screenRecording,
                 candidateCount: 1,
                 candidateByteCount: 150 * megabyte,
-                recognition: .counting
+                recognition: .counting,
+                coverAssetID: "recording"
             ),
             S0CategorySnapshot(
                 id: .screenshot,
                 candidateCount: 1,
                 candidateByteCount: 3 * megabyte,
-                recognition: .counting
+                recognition: .counting,
+                coverAssetID: "screenshot"
             )
         ]
         XCTAssertEqual(snapshot.categories, expectedCategories)

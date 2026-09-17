@@ -1028,11 +1028,15 @@ final class IC148S0VisualTests: XCTestCase {
             0,
             "正对照失效：缩略图视图里都没有 Image("
         )
-        // 数据模型里没有 `coverAssetID`——本卡不加没有生产者的字段。
+        // 数据模型里的 `coverAssetID`：生产者已在（IC-155 裁定 一）。按声明行
+        // 计数——裸符号在 init 形参与赋值处还会各出现一次。
         let snapshot = try XCTUnwrap(
             strippedSource("PhotoCleanupMVE/Core/S0StateMachine.swift")
         )
-        XCTAssertEqual(occurrences(of: "coverAssetID", in: snapshot), 0)
+        XCTAssertEqual(
+            occurrences(of: "let coverAssetID: String?", in: snapshot),
+            1
+        )
 
         // 封面位是几何 + 空槽：引用了登记的边长与圆角，且只描边不填色。
         let row = try XCTUnwrap(
