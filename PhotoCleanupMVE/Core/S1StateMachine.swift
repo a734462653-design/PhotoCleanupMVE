@@ -304,6 +304,9 @@ final class S1StateMachine: ObservableObject {
 
     private var readGeneration = 0
     private var knownRangeNamesByID: [String: String] = [:]
+    /// IC-157 A：在途的虚拟范围（S0 类别页长按进 S2 时登记，写回成功即移除）。逐张镜像与
+    /// 整体写回据此绕过真实范围的守卫——虚拟范围不在 `R(T)` 里。内存态，不入会话档。
+    private(set) var activeVirtualRangeIDs: Set<String> = []
     private var lastPublishedSnapshot: S1SessionSnapshot?
 
     init(
@@ -668,6 +671,51 @@ final class S1StateMachine: ObservableObject {
         )
     }
 
+    /// IC-157 A：S0 类别页长按进 S2 的交接构造（SPEC-S0 v2 第十节第 1 部分）。
+    ///
+    /// 虚拟范围 `virtualRangeID`（形如 `cat:<类别标识>`）不在 `R(T)` 里，上面的真实范围入口必然
+    /// 拒绝，故另开本入口。顺序与起点由类别页给出（体积降序、被长按那张）；既有待删集合取
+    /// `M[virtualRangeID]` 与列表的交集。`totalAssetCount` 取列表长度——S2 入口守卫要求两者相等。
+    /// 不设加载态与遮挡门槛，理由同 `markPendingDeletion`。
+    ///
+    /// 成功时登记显示名并显式走一次快照写出口：名字表不是 `@Published`、没有 didSet，S2 往返
+    /// 可能是该范围的第一次标记，名字不落档则重启后提交入口静默失效。同时把该范围记为在途，
+    /// 逐张镜像与整体写回据此放行。输入不合法（范围标识或显示名为空、列表为空或有重复、
+    /// 起点不在列表里）返回 nil，零副作用。
+    func makeS2Handoff(virtualRangeID: String,
+                       displayName: String,
+                       orderedAssetIDs: [String],
+                       currentAssetID: String) -> S1ToS2Handoff? {
+        let assetIDSet = Set(orderedAssetIDs)
+        guard !virtualRangeID.isEmpty,
+              !displayName.isEmpty,
+              !orderedAssetIDs.isEmpty,
+              assetIDSet.count == orderedAssetIDs.count,
+              assetIDSet.contains(currentAssetID) else {
+            return nil
+        }
+
+        knownRangeNamesByID[virtualRangeID] = displayName
+        publishSnapshotIfChanged()
+        activeVirtualRangeIDs.insert(virtualRangeID)
+        let pendingDeletionAssetIDs = (
+            sessionStore.pendingDeletionAssetIDsByRangeID[virtualRangeID] ?? []
+        ).intersection(assetIDSet)
+
+        return S1ToS2Handoff(
+            sessionID: sessionStore.sessionID,
+            rangeDisplayInformation: S1RangeDisplayInformation(
+                rangeID: virtualRangeID,
+                displayName: displayName,
+                totalAssetCount: orderedAssetIDs.count
+            ),
+            orderedAssetIDs: orderedAssetIDs,
+            currentAssetID: currentAssetID,
+            pendingDeletionAssetIDs: pendingDeletionAssetIDs,
+            sessionMergedPendingDeletionCountProvider: { self.badgeCount }
+        )
+    }
+
     func makeS3Submission() -> SessionStore.S3Submission? {
         guard !isObscured, state != .loading else {
             return nil
@@ -715,7 +763,9 @@ final class S1StateMachine: ObservableObject {
         _ returned: SessionStore.S2Return,
         entryContext: SessionStore.S2EntryContext
     ) -> Bool {
-        guard !isObscured, state == .ready else {
+        // IC-157 A：在途的虚拟范围不看加载态与遮挡（同交接构造）；真实范围的门槛照旧。
+        guard activeVirtualRangeIDs.contains(entryContext.rangeID)
+                || (!isObscured && state == .ready) else {
             return false
         }
         var nextStore = sessionStore
@@ -726,6 +776,8 @@ final class S1StateMachine: ObservableObject {
             return false
         }
         sessionStore = nextStore
+        // 一次 S2 会话一次登记：写回成功即不再在途（真实范围标识不在集合里，移除为空操作）。
+        activeVirtualRangeIDs.remove(entryContext.rangeID)
         return true
     }
 
@@ -734,6 +786,21 @@ final class S1StateMachine: ObservableObject {
         _ pendingDeletionAssetIDs: Set<String>,
         entryContext: SessionStore.S2EntryContext
     ) -> Bool {
+        // IC-157 A：在途的虚拟范围只校验待删集合落在交接列表内——它不在 `R(T)` 里，不看加载态、
+        // 范围列表与排序；逐张写入与真实范围走同一段差分。
+        if activeVirtualRangeIDs.contains(entryContext.rangeID) {
+            guard pendingDeletionAssetIDs.isSubset(
+                of: Set(entryContext.orderedAssetIDs)
+            ) else {
+                return false
+            }
+            applyPendingDeletionDiff(
+                pendingDeletionAssetIDs,
+                rangeID: entryContext.rangeID
+            )
+            return true
+        }
+
         guard !isObscured,
               state == .ready,
               let range = ranges.first(where: { $0.id == entryContext.rangeID }),
@@ -745,26 +812,38 @@ final class S1StateMachine: ObservableObject {
             return false
         }
 
+        applyPendingDeletionDiff(
+            pendingDeletionAssetIDs,
+            rangeID: entryContext.rangeID
+        )
+        return true
+    }
+
+    /// IC-157 A：S2 逐张镜像的差分写入，真实范围与虚拟范围两条路径共用。`M` 只经 `setMarked`
+    /// 写入（陷阱 19），`F` 随之维护；先在副本上改完再一次赋值，写出口只触发一次。
+    private func applyPendingDeletionDiff(
+        _ pendingDeletionAssetIDs: Set<String>,
+        rangeID: String
+    ) {
         var nextStore = sessionStore
         let previous = nextStore.pendingDeletionAssetIDsByRangeID[
-            entryContext.rangeID
+            rangeID
         ] ?? []
         for assetID in previous.subtracting(pendingDeletionAssetIDs).sorted() {
             nextStore.setMarked(
                 false,
                 assetID: assetID,
-                rangeID: entryContext.rangeID
+                rangeID: rangeID
             )
         }
         for assetID in pendingDeletionAssetIDs.subtracting(previous).sorted() {
             nextStore.setMarked(
                 true,
                 assetID: assetID,
-                rangeID: entryContext.rangeID
+                rangeID: rangeID
             )
         }
         sessionStore = nextStore
-        return true
     }
 
     @discardableResult
