@@ -499,3 +499,5 @@ diff <(git show e97f394:PhotoCleanupMVE/Core/S1StateMachine.swift | awk '/^    f
 |---|---|
 | `ab3eed1f49262b1c6fa49272ee65c1aeb4a8ea5b` | 0 |
 | `e8700ab3770cf66c77871aa1237354df3670fae4` | 0 |
+
+  另有一个 40 位串是**树**对象 `fcb68d137065f3cea777227233bd5766721ef151`（G896 表「树」行）：对它跑 `^{commit}` 退出码为 1（它不是提交），改跑 `git cat-file -e fcb68d137065f3cea777227233bd5766721ef151^{tree}` 退出码 **0**，`git cat-file -t` = `tree`，`git rev-parse ab3eed1^{tree}` 与之相等。
