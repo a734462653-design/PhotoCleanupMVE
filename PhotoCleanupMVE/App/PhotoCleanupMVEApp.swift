@@ -8,6 +8,9 @@ struct PhotoCleanupMVEApp: App {
     /// 切 tab 不经过协调器，因而不可能碰到会话层数据。
     @StateObject private var s0Machine = S0StateMachine()
     @StateObject private var s0TabSelection = S0TabSelectionModel()
+    /// IC-157 C：类别页身份（裁定 一）。与 tab 选择态同层持有：进出 S2 时 tab 容器整棵重建而它不动，
+    /// 回来时承载容器直接推出类别页。
+    @StateObject private var s0FlowModel = S0CleanupFlowModel()
     @Environment(\.scenePhase) private var scenePhase
     private let s2PhotoImageStrategy = S2TemporaryPhotoKitImageStrategy()
     /// IC-153 C：S0 数据源换成真实扫描服务（批次 5.1），替换 IC-147 的桩。
@@ -88,10 +91,14 @@ struct PhotoCleanupMVEApp: App {
     /// IC-156 D：构造点换成承载容器 `S0CleanupFlowView`（裁定 二），首页原样构造在容器里、
     /// 类别页由容器推出；「移入待删篮」经 S1 状态机一次原子写入虚拟范围并登记类别名
     /// （裁定 三），toast 时长与 S1 同一读法。首页待删篮胶囊 → S3 仍不接线（批次 5.3）。
+    ///
+    /// IC-157 C：长按进 S2 经 S1 状态机的虚拟范围交接构造（裁定 二）交给协调器唯一的 S2 入口；
+    /// 协调器一字不动（裁定 四），类别页身份由 `s0FlowModel` 跨路由保持（裁定 一）。
     private func s0Screen(s1Machine: S1StateMachine) -> some View {
         S0CleanupFlowView(
             machine: s0Machine,
             dataProvider: s0DataProvider,
+            flowModel: s0FlowModel,
             onSwitchToOrganizeTab: {
                 s0TabSelection.select(.organize)
             },
@@ -101,6 +108,16 @@ struct PhotoCleanupMVEApp: App {
                     virtualRangeID: S0CategoryPageRange.prefix + identifier.rawValue,
                     displayName: S0CategoryText.displayName(for: identifier)
                 )
+            },
+            onEnterS2: { identifier, orderedAssetIDs, currentAssetID in
+                let virtualRangeID = S0CategoryPageRange.prefix + identifier.rawValue
+                guard let handoff = s1Machine.makeS2Handoff(virtualRangeID: virtualRangeID,
+                                                            displayName: S0CategoryText.displayName(for: identifier),
+                                                            orderedAssetIDs: orderedAssetIDs,
+                                                            currentAssetID: currentAssetID) else {
+                    return false
+                }
+                return coordinator.enterS2(from: handoff)
             },
             toastDurationMilliseconds: coordinator
                 .s2Calibration

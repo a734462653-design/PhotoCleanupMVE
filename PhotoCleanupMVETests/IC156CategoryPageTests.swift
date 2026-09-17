@@ -482,8 +482,9 @@ final class IC156CategoryPageTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(occurrences(of: "NavigationStack", in: flow), 1)
         XCTAssertEqual(occurrences(of: "navigationDestination(item:", in: flow), 1)
         XCTAssertEqual(occurrences(of: ".returnedFromCategoryPage", in: flow), 1)
-        // 进篮成功后一处、返回首页一处；首页自己的摄入在 `S0View.swift`，不在此数。
-        XCTAssertEqual(occurrences(of: "machine.ingest(", in: flow), 2)
+        // 进篮成功后一处、返回首页一处、从 S2 回到类别页一处（IC-157 裁定 一）；首页自己的摄入
+        // 在 `S0View.swift`，不在此数。
+        XCTAssertEqual(occurrences(of: "machine.ingest(", in: flow), 3)
         XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .tabBar)", in: flow), 1)
         // 卡面写「恰 1」（类别页）。根页同样隐藏空导航栏：留着它会占去顶部安全区、把首页
         // 整体下推一个导航栏高度（偏离登记于 IC-156 自验报告）。
@@ -498,7 +499,7 @@ final class IC156CategoryPageTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "S0CleanupFlowView(", in: app), 1)
         XCTAssertEqual(occurrences(of: "S0View(", in: app), 0)
         XCTAssertEqual(occurrences(of: "markPendingDeletion(", in: app), 1)
-        XCTAssertEqual(occurrences(of: "S0CategoryPageRange.prefix", in: app), 1)
+        XCTAssertEqual(occurrences(of: "S0CategoryPageRange.prefix", in: app), 2) // IC-157：进 S2 闭包一处
         XCTAssertGreaterThanOrEqual(occurrences(of: "S0CategoryText.displayName(for:", in: app), 1)
         // `cc686d9` 为 2（S1 接线的形参标签与实参各一处），本卡加一处实参。
         XCTAssertEqual(occurrences(of: "feedbackToastDurationMilliseconds", in: app), 3)
@@ -511,11 +512,14 @@ final class IC156CategoryPageTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "tabContainer(s1Machine: machine)", in: app), 1)
 
         // 构造签名照卡面 D1 的形参与顺序：编译期即核；只构造、不渲染（陷阱 23）。
+        // IC-157 C：加 `flowModel:` 与 `onEnterS2:`，顺序照其声明顺序（陷阱 16）。
         _ = S0CleanupFlowView(
             machine: S0StateMachine(),
             dataProvider: S0CleanupDataStub(scenario: .readyWithItems),
+            flowModel: S0CleanupFlowModel(),
             onSwitchToOrganizeTab: {},
             onMoveToBasket: { _, _ in true },
+            onEnterS2: { _, _, _ in false },
             toastDurationMilliseconds: 2_000
         )
     }

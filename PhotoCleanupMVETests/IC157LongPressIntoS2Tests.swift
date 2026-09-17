@@ -175,6 +175,218 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
         return values
     }
 
+    // MARK: - 断言 6：类别页身份上提、App 接线进 S2（子项 C）
+
+    func testIC157C_FlowModelHoistedAndAppWiresEnterS2() throws {
+        let flow = try XCTUnwrap(
+            strippedSource("PhotoCleanupMVE/Features/S0/S0CleanupFlowView.swift")
+        )
+        XCTAssertEqual(occurrences(of: "@State ", in: flow), 0)
+        XCTAssertEqual(occurrences(of: "@StateObject", in: flow), 0)
+        XCTAssertEqual(occurrences(of: "@ObservedObject", in: flow), 1)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "flowModel.presentedCategory", in: flow), 3)
+        // 进篮后、返回首页、从 S2 回到类别页各一处。
+        XCTAssertEqual(occurrences(of: "machine.ingest(", in: flow), 3)
+        XCTAssertGreaterThanOrEqual(occurrences(of: ".onAppear", in: flow), 1)
+        XCTAssertEqual(
+            occurrences(of: "static func shouldRecomputeOnAppear(presentedCategory:", in: flow),
+            1
+        )
+        XCTAssertGreaterThanOrEqual(occurrences(of: "onEnterS2", in: flow), 2)
+        XCTAssertEqual(occurrences(of: ".returnedFromCategoryPage", in: flow), 1)
+        XCTAssertEqual(occurrences(of: "navigationDestination(item:", in: flow), 1)
+        for forbidden in ["CleanupCoordinator", "SessionStore", "S1StateMachine"] {
+            XCTAssertEqual(occurrences(of: forbidden, in: flow), 0, forbidden)
+        }
+
+        let modelPath = "PhotoCleanupMVE/Features/S0/S0CleanupFlowModel.swift"
+        let model = try XCTUnwrap(strippedSource(modelPath))
+        XCTAssertEqual(
+            occurrences(of: "@Published var presentedCategory: S0CategoryIdentifier?", in: model),
+            1
+        )
+        XCTAssertEqual(occurrences(of: "ObservableObject", in: model), 1)
+        let importedModules = model
+            .components(separatedBy: Self.newline)
+            .filter { $0.hasPrefix("import ") }
+            .map { String($0.dropFirst("import ".count)) }
+        XCTAssertFalse(importedModules.isEmpty)
+        XCTAssertTrue(
+            Set(importedModules).isSubset(of: ["Combine", "Foundation"]),
+            importedModules.joined(separator: ",")
+        )
+
+        let app = try XCTUnwrap(strippedSource("PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift"))
+        XCTAssertEqual(occurrences(of: "S0CleanupFlowModel()", in: app), 1)
+        XCTAssertEqual(occurrences(of: "flowModel: s0FlowModel", in: app), 1)
+        XCTAssertEqual(occurrences(of: "makeS2Handoff(virtualRangeID:", in: app), 1)
+        // S1 范围交接一处 + 类别页长按一处。
+        XCTAssertEqual(occurrences(of: "enterS2(from:", in: app), 2)
+        XCTAssertEqual(occurrences(of: "S0CategoryPageRange.prefix", in: app), 2)
+        XCTAssertEqual(occurrences(of: "markPendingDeletion(", in: app), 1)
+        XCTAssertEqual(occurrences(of: "advanceScan()", in: app), 2)
+        XCTAssertEqual(occurrences(of: "onSnapshotDidChange", in: app), 1)
+        // `case .s2:` 分支原文（IC-147 断言 3 的字面量）逐字仍在：tab 容器不改路由结构。
+        let s2Branch = [
+            "case .s2:",
+            "                    if let machine = coordinator.s2Machine {",
+            "                        s2Screen(machine: machine)",
+            "                    } else {",
+            "                        ProgressView()",
+            "                    }"
+        ].joined(separator: Self.newline)
+        XCTAssertEqual(occurrences(of: s2Branch, in: app), 1)
+    }
+
+    // MARK: - 断言 7：经协调器往返——标记落档、类别页身份不被碰（子项 C）
+
+    /// 照 `IC131S1WriteBackToastTests` 的夹具起一台真实协调器（S1 读到一个范围、就绪），再走类别页
+    /// 长按的同一条接线：虚拟范围交接构造 → 协调器唯一的 S2 入口 → S2 上滑标记当前张 → 返回。
+    ///
+    /// ①依赖：`leaveS2` 返回前会对账一次；测试宿主无相册授权，范围读取回失败，对账在状态机里
+    /// 提前返回、不碰 `M`／`K`（IC-131 断言 4 的「会话层逐字未变」靠的是同一件事）。
+    func testIC157C_RoundTripThroughCoordinatorLandsMarksAndKeepsPageIdentity() async {
+        await MainActor.run {
+            let coordinator = CleanupCoordinator()
+            XCTAssertTrue(coordinator.enterS1(sessionID: "会话-157C-往返"))
+            let machine = unwrapC(coordinator.s1Machine)
+            let request = unwrapC(machine.currentReadRequest)
+            XCTAssertTrue(
+                machine.completeRangeRead(
+                    .success([
+                        S1Range(
+                            id: "范围-月",
+                            displayName: "2026 年 8 月",
+                            assetIDsNewestFirst: ["资产-C", "资产-B", "资产-A"]
+                        )
+                    ]),
+                    for: request
+                )
+            )
+            XCTAssertEqual(machine.state, .ready)
+
+            let flowModel = S0CleanupFlowModel()
+            flowModel.presentedCategory = .screenshot
+            let heldModel = flowModel
+
+            let assets = ["截图-大", "截图-中", "截图-小"]
+            let displayName = S0CategoryText.displayName(for: .screenshot)
+            XCTAssertEqual(displayName, "屏幕截图")
+            let virtualRangeID =
+                S0CategoryPageRange.prefix + S0CategoryIdentifier.screenshot.rawValue
+            XCTAssertEqual(virtualRangeID, "cat:screenshot")
+            let handoff = unwrapC(
+                machine.makeS2Handoff(virtualRangeID: virtualRangeID,
+                                      displayName: displayName,
+                                      orderedAssetIDs: assets,
+                                      currentAssetID: assets[1])
+            )
+            XCTAssertTrue(coordinator.enterS2(from: handoff))
+            XCTAssertEqual(coordinator.route, .s2)
+            let s2Machine = unwrapC(coordinator.s2Machine)
+            XCTAssertEqual(
+                s2Machine.entry.rangeDisplayInformation,
+                S2RangeDisplayInformation(
+                    rangeID: "cat:screenshot",
+                    displayName: "屏幕截图",
+                    totalAssetCount: 3
+                )
+            )
+            XCTAssertEqual(s2Machine.entry.orderedAssetIDs, assets)
+            XCTAssertEqual(s2Machine.entry.currentAssetID, assets[1])
+
+            // 上滑标记当前张（第二张）：逐张镜像经协调器立即落进 `M[cat:screenshot]` 并写 `F`。
+            XCTAssertTrue(s2Machine.handleSwipeUp())
+            XCTAssertEqual(
+                machine.sessionStore.pendingDeletionAssetIDsByRangeID["cat:screenshot"],
+                [assets[1]]
+            )
+            XCTAssertEqual(
+                machine.sessionStore.firstMarkedRangeIDByAssetID[assets[1]],
+                "cat:screenshot"
+            )
+
+            let payload = unwrapC(s2Machine.makeExitPayload())
+            XCTAssertTrue(coordinator.leaveS2(with: payload))
+            XCTAssertEqual(coordinator.route, .s1)
+            XCTAssertNil(coordinator.s2Machine)
+            XCTAssertEqual(coordinator.s1FeedbackEventCount, 0)
+            XCTAssertEqual(
+                machine.sessionStore.pendingDeletionAssetIDsByRangeID["cat:screenshot"],
+                [assets[1]]
+            )
+            XCTAssertNotNil(machine.sessionStore.continuationsByRangeID["cat:screenshot"])
+            XCTAssertTrue(machine.activeVirtualRangeIDs.isEmpty)
+            let submission = unwrapC(machine.makeS3Submission())
+            let group = submission.groups.first { $0.sourceRangeID == "cat:screenshot" }
+            XCTAssertEqual(group?.name, "屏幕截图")
+            XCTAssertEqual(group?.orderedAssetIDs, [assets[1]])
+
+            // 类别页身份独立于路由：协调器全程不碰它。
+            XCTAssertTrue(heldModel === flowModel)
+            XCTAssertEqual(flowModel.presentedCategory, .screenshot)
+        }
+    }
+
+    // MARK: - 断言 8：返回重算的谓词，与「摄入不重排」（子项 C）
+
+    /// 视图不装载（陷阱 23）：这里钉谓词与「摄入不重排」两件事；视图确实调用谓词由断言 6 的
+    /// 源码 needle 钉。
+    func testIC157C_ReturnRecomputeIsGuardedByPresentedCategory() async {
+        await MainActor.run {
+            XCTAssertFalse(S0CleanupFlowView.shouldRecomputeOnAppear(presentedCategory: nil))
+            for identifier in S0CategoryIdentifier.allCases {
+                XCTAssertTrue(
+                    S0CleanupFlowView.shouldRecomputeOnAppear(presentedCategory: identifier),
+                    identifier.rawValue
+                )
+            }
+
+            // 两台同样走过「开屏 → 扫描完成（重排一次）」的状态机；S2 内标记后数据源给出新快照。
+            let before = S0CleanupDataStub(scenario: .readyWithItems)
+            let after = S0CleanupDataStub(scenario: .readyWithoutItems)
+            XCTAssertNotEqual(before.currentSnapshot(), after.currentSnapshot())
+
+            let onHome = settledMachine(ingesting: before)
+            let homeSnapshot = onHome.snapshot
+            if S0CleanupFlowView.shouldRecomputeOnAppear(presentedCategory: nil) {
+                onHome.ingest(after.currentSnapshot())
+            }
+            XCTAssertEqual(onHome.snapshot, homeSnapshot)
+            XCTAssertEqual(onHome.categoryReorderCount, 1)
+
+            let onPage = settledMachine(ingesting: before)
+            if S0CleanupFlowView.shouldRecomputeOnAppear(presentedCategory: .screenshot) {
+                onPage.ingest(after.currentSnapshot())
+            }
+            XCTAssertEqual(onPage.snapshot, after.currentSnapshot())
+            XCTAssertEqual(onPage.categoryReorderCount, 1, "摄入发生了重排")
+        }
+    }
+
+    // MARK: - 子项 C 的 helper
+
+    private func settledMachine(ingesting stub: S0CleanupDataStub) -> S0StateMachine {
+        let machine = S0StateMachine()
+        machine.handle(.applicationOpened)
+        machine.ingest(stub.currentSnapshot())
+        machine.handle(.scanCompleted)
+        XCTAssertEqual(machine.categoryReorderCount, 1)
+        return machine
+    }
+
+    private func unwrapC<T>(
+        _ value: T?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> T {
+        guard let value else {
+            XCTFail("期望非空值", file: file, line: line)
+            fatalError("期望非空值")
+        }
+        return value
+    }
+
     // MARK: - 断言 1：虚拟范围交接在任一加载态下可构造并登记名字（子项 A）
 
     func testIC157A_VirtualHandoffBuildsInAnyStateAndRegistersName() {
