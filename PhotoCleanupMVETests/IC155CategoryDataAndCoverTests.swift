@@ -16,6 +16,129 @@ import XCTest
 /// 储存时的空槽、滚动与切 tab 时封面不闪不串，只有 H76 能判。
 final class IC155CategoryDataAndCoverTests: XCTestCase {
 
+    // 子项 C 的两条断言排在最前：子项 B 追加在断言 3 之后与文件末尾，与之隔开，子项 C 的
+    // 提交才能不经子项 B 直接摘到子项 A 上（任务卡摘取关系 A→C）。
+
+    // MARK: - 断言 8：封面位委托共享缩略图视图，S0 侧零照片库符号（子项 C，源码扫描）
+
+    func testIC155C_CoverSlotDelegatesToThumbnailViewWithoutPhotoKit() throws {
+        let rowFilePath = "PhotoCleanupMVE/Features/S0/S0CategoryRow.swift"
+        let homeFilePath = "PhotoCleanupMVE/Features/S0/S0View.swift"
+        let thumbnailFilePath = "PhotoCleanupMVE/Features/Shared/ThumbnailView.swift"
+        let gridFilePath = "PhotoCleanupMVE/Features/S3/S3View.swift"
+
+        let row = try XCTUnwrap(strippedSource(rowFilePath))
+        XCTAssertEqual(occurrences(of: "ThumbnailView(", in: row), 1)
+        XCTAssertEqual(occurrences(of: "showsPlaceholderGlyph: false", in: row), 1)
+        // 改前为 2 与 1：本卡各加一处（取图的边长与圆角）。
+        XCTAssertEqual(occurrences(of: "S0HomeMetrics.categoryCoverSide", in: row), 3)
+        XCTAssertEqual(occurrences(of: "S0HomeMetrics.categoryCoverCornerRadius", in: row), 2)
+        // 环境值声明与传参。
+        XCTAssertGreaterThanOrEqual(occurrences(of: "displayScale", in: row), 2)
+        XCTAssertEqual(occurrences(of: "import Photos", in: row), 0)
+        XCTAssertEqual(occurrences(of: "PHImageManager", in: row), 0)
+        let cover = try XCTUnwrap(
+            coverSlice(row),
+            "cover 切片没切到——声明文本变了，下面三条会静默放空"
+        )
+        XCTAssertEqual(occurrences(of: "if let coverAssetID", in: cover), 1)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "strokeBorder", in: cover), 1)
+        XCTAssertEqual(occurrences(of: ".fill(", in: cover), 0)
+
+        let home = try XCTUnwrap(strippedSource(homeFilePath))
+        XCTAssertEqual(occurrences(of: "coverAssetID: category.coverAssetID", in: home), 1)
+        XCTAssertEqual(occurrences(of: ".id(category.coverAssetID)", in: home), 1)
+
+        let thumbnail = try XCTUnwrap(strippedSource(thumbnailFilePath))
+        XCTAssertEqual(occurrences(of: "showsPlaceholderGlyph: Bool = true", in: thumbnail), 1)
+        XCTAssertEqual(occurrences(of: "isNetworkAccessAllowed = false", in: thumbnail), 1)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "Color.clear", in: thumbnail), 1)
+        // 正对照（针对 needle 本身）：两个照片库 needle 在缩略图视图里命中非零。
+        XCTAssertGreaterThan(occurrences(of: "import Photos", in: thumbnail), 0)
+        XCTAssertGreaterThan(occurrences(of: "PHImageManager", in: thumbnail), 0)
+        // 既有 S3 调用点仍是那一处，且没有传新参数（默认值兜住原行为）。
+        let grid = try XCTUnwrap(strippedSource(gridFilePath))
+        XCTAssertEqual(occurrences(of: "ThumbnailView(", in: grid), 1)
+        XCTAssertEqual(occurrences(of: "showsPlaceholderGlyph", in: grid), 0)
+    }
+
+    // MARK: - 断言 9：两种封面态都能离屏构造，封面不改行高（子项 C）
+
+    /// 只钉「不崩 + 行高」，不断言像素（陷阱 23：离屏快照恒 nil）。**夹具驱动，真机未覆盖。**
+    ///
+    /// 带封面的一态会把共享缩略图视图装进测试宿主，而它在 `onAppear` 里按标识向照片库取数；
+    /// 测试宿主里真发出这次取数，可能弹系统授权询问并波及后续用例。所以先让一个带 `onAppear`
+    /// 的探针走同一条离屏量尺寸的路径（并转一小段 run loop）：探针没被触发，才装载带封面的
+    /// 一态；被触发则该态只构造不装载，日志打出标记，自验报告标「未覆盖」（任务卡兜底条款）。
+    @MainActor
+    func testIC155C_RowBuildsForAllCoverStates() {
+        let proposal = CGSize(width: 361, height: 400)
+        let category = S0CategorySnapshot(
+            id: .bigVideo,
+            candidateCount: 12,
+            candidateByteCount: 4_800_000_000,
+            recognition: .settled,
+            coverAssetID: "IC155-cover-not-in-library"
+        )
+
+        var probeAppeared = false
+        let probe = UIHostingController(
+            rootView: Color.clear
+                .frame(width: 10, height: 10)
+                .onAppear {
+                    probeAppeared = true
+                }
+        )
+        _ = probe.sizeThatFits(in: proposal)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+
+        let placeholder = UIHostingController(
+            rootView: S0CategoryRowView(
+                category: category,
+                subtitle: nil,
+                coverAssetID: nil
+            )
+        ).sizeThatFits(in: proposal)
+        XCTAssertEqual(placeholder.height, S0HomeMetrics.categoryRowHeight, accuracy: 0.5)
+
+        let covered = S0CategoryRowView(
+            category: category,
+            subtitle: nil,
+            coverAssetID: category.coverAssetID
+        )
+        XCTAssertEqual(covered.coverAssetID, "IC155-cover-not-in-library")
+        guard !probeAppeared else {
+            print(
+                "IC155C-SIZING probeAppeared=true coveredHosted=false placeholder="
+                    + String(format: "%.2fx%.2f", placeholder.width, placeholder.height)
+            )
+            return
+        }
+        let coveredSize = UIHostingController(rootView: covered).sizeThatFits(in: proposal)
+        print(
+            "IC155C-SIZING probeAppeared=false coveredHosted=true placeholder="
+                + String(format: "%.2fx%.2f", placeholder.width, placeholder.height)
+                + " covered="
+                + String(format: "%.2fx%.2f", coveredSize.width, coveredSize.height)
+        )
+        XCTAssertEqual(coveredSize.height, S0HomeMetrics.categoryRowHeight, accuracy: 0.5)
+        XCTAssertEqual(coveredSize.height, placeholder.height, accuracy: 0.5)
+    }
+
+    /// `private var cover` 的切片：与 IC-148 断言 14 同一锚点、同一收口（换行 + 四空格
+    /// 缩进的右花括号；换行符用 `UnicodeScalar` 拼，不写转义字面量）。
+    private func coverSlice(_ source: String) -> String? {
+        let memberClose = String(Character(UnicodeScalar(UInt8(10)))) + "    }"
+        guard let start = source.range(of: "private var cover: some View {"),
+              let end = source.range(
+                  of: memberClose,
+                  range: start.upperBound..<source.endIndex
+              ) else {
+            return nil
+        }
+        return String(source[start.lowerBound..<end.lowerBound])
+    }
+
     // MARK: - 断言 1：封面 = 候选集中体积最大者，同体积取标识升序（子项 A）
 
     func testIC155A_CoverIsLargestCandidateWithDeterministicTie() {

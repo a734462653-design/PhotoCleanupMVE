@@ -499,8 +499,10 @@ struct S0View: View {
                     } label: {
                         S0CategoryRowView(
                             category: category,
-                            subtitle: categorySubtitle(for: category)
+                            subtitle: categorySubtitle(for: category),
+                            coverAssetID: category.coverAssetID
                         )
+                        .id(category.coverAssetID)
                     }
                     .buttonStyle(.plain)
                     .disabled(!machine.acceptsCategoryRowTap(category.id))
