@@ -837,11 +837,14 @@ final class IC148S0VisualTests: XCTestCase {
     func testIC148CAssertion10CatalogHasExactlyThirtyTwoS0Keys() throws {
         let catalog = try loadCatalogValues()
         let catalogS0Keys = Set(catalog.keys.filter { $0.hasPrefix("s0.") })
-        XCTAssertEqual(catalogS0Keys.count, 32)
+        // IC-156 C：类别页五条 key，32 → 37。
+        XCTAssertEqual(catalogS0Keys.count, 37)
 
         var referenced: Set<String> = []
         for relativePath in Self.viewFiles + [
-            "PhotoCleanupMVE/Features/S0/S0TabContainer.swift"
+            "PhotoCleanupMVE/Features/S0/S0TabContainer.swift",
+            // IC-156 C：类别页五条 key 的引用点在类别页文件里，不加进来「互为子集」假红。
+            "PhotoCleanupMVE/Features/S0/S0CategoryPageView.swift"
         ] {
             let source = try XCTUnwrap(sourceText(relativePath))
             referenced.formUnion(localizationKeys(in: source))

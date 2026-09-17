@@ -221,6 +221,61 @@
         }
       }
     },
+    "s0.categoryPage.selectAll" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全选"
+          }
+        }
+      }
+    },
+    "s0.categoryPage.selected" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选 {count} 项 · {bytes}"
+          }
+        }
+      }
+    },
+    "s0.categoryPage.submit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移入待删篮 · {count} 项 {bytes}"
+          }
+        }
+      }
+    },
+    "s0.categoryPage.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 个 · {bytes} · 按体积从大到小"
+          }
+        }
+      }
+    },
+    "s0.categoryPage.toast" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已移入待删篮"
+          }
+        }
+      }
+    },
     "s0.home.category.counting" : {
       "extractionState" : "manual",
       "localizations" : {
