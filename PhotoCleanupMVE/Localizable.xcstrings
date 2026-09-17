@@ -221,6 +221,17 @@
         }
       }
     },
+    "s0.categoryPage.longPressHint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "长按任一格逐张看"
+          }
+        }
+      }
+    },
     "s0.categoryPage.selectAll" : {
       "extractionState" : "manual",
       "localizations" : {

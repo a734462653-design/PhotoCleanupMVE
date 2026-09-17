@@ -795,7 +795,7 @@ final class IC147S0BehaviorTests: XCTestCase {
         let s0Values = catalog.filter { $0.key.hasPrefix("s0.") }
         // IC-148 C 新增两条图例 key（`s0.home.legend.rest`／`.unscanned`）。
         // IC-156 C 新增类别页五条 key（`s0.categoryPage.*`）：32 → 37。
-        XCTAssertEqual(s0Values.count, 37)
+        XCTAssertEqual(s0Values.count, 38) // IC-157 B：长按提示一条，37 → 38。
         for (key, value) in s0Values {
             for wording in forbidden {
                 XCTAssertFalse(
@@ -844,7 +844,7 @@ final class IC147S0BehaviorTests: XCTestCase {
         // 不多不少：目录里的 s0. key 集合恰等于 S0 源码引用的 s0. 集合。
         XCTAssertEqual(referenced.filter { $0.hasPrefix("s0.") }, catalogS0Keys)
         // IC-156 C：类别页五条 key，32 → 37。
-        XCTAssertEqual(catalogS0Keys.count, 37)
+        XCTAssertEqual(catalogS0Keys.count, 38) // IC-157 B：长按提示一条，37 → 38。
         // 跨前缀引用只允许一条：受限提示条。
         //
         // IC-148 B 第 6 条要求 S0 画受限提示条，而 SPEC-S0 v1 第十四节第 3 部分

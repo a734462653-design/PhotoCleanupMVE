@@ -166,8 +166,9 @@ final class IC156CategoryPageTests: XCTestCase {
             occurrences(of: "S1ChromeTypography.circleIconPointSize", in: circleHelper),
             1
         )
-        // 登记表引用：卡面下限 ≥ 20 为③估计，按实装数写死（57）。42 个登记值逐个被引用。
-        XCTAssertEqual(occurrences(of: "S0CategoryPageMetrics.", in: page), 57)
+        // 登记表引用：卡面下限 ≥ 20 为③估计，按实装数写死（IC-156 为 57；IC-157 常驻行右侧
+        // 提示与左文同一字号与明度，加两处 → 59）。42 个登记值逐个被引用。
+        XCTAssertEqual(occurrences(of: "S0CategoryPageMetrics.", in: page), 59)
         let metrics = try XCTUnwrap(strippedSource(Self.metricsPath))
         let metricsBody = try XCTUnwrap(
             slice(metrics, from: "enum S0CategoryPageMetrics {", to: Self.topLevelClose)
@@ -212,13 +213,14 @@ final class IC156CategoryPageTests: XCTestCase {
 
     func testIC156C_CatalogGainsFiveKeysAndBothGatesAreUpdated() throws {
         let catalog = try loadCatalogValues()
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 37)
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 5)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 38)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 6)
 
         let expected: [String: String] = [
             "s0.categoryPage.subtitle": "{count} 个 · {bytes} · 按体积从大到小",
             "s0.categoryPage.selectAll": "全选",
             "s0.categoryPage.selected": "已选 {count} 项 · {bytes}",
+            "s0.categoryPage.longPressHint": "长按任一格逐张看",
             "s0.categoryPage.submit": "移入待删篮 · {count} 项 {bytes}",
             "s0.categoryPage.toast": "已移入待删篮"
         ]
@@ -231,7 +233,7 @@ final class IC156CategoryPageTests: XCTestCase {
                 key
             )
         }
-        // 页面只引用这五条，一条不多（`longPressHint` 归 IC-157）。
+        // 页面只引用这六条，一条不多（`longPressHint` IC-157 已登记）。
         XCTAssertEqual(localizationKeys(in: pageRaw), Set(expected.keys))
 
         // 占位符：项数与字节量只出现在副行、常驻行、主按钮三条里，各一次。
@@ -480,8 +482,9 @@ final class IC156CategoryPageTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(occurrences(of: "NavigationStack", in: flow), 1)
         XCTAssertEqual(occurrences(of: "navigationDestination(item:", in: flow), 1)
         XCTAssertEqual(occurrences(of: ".returnedFromCategoryPage", in: flow), 1)
-        // 进篮成功后一处、返回首页一处；首页自己的摄入在 `S0View.swift`，不在此数。
-        XCTAssertEqual(occurrences(of: "machine.ingest(", in: flow), 2)
+        // 进篮成功后一处、返回首页一处、从 S2 回到类别页一处（IC-157 裁定 一）；首页自己的摄入
+        // 在 `S0View.swift`，不在此数。
+        XCTAssertEqual(occurrences(of: "machine.ingest(", in: flow), 3)
         XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .tabBar)", in: flow), 1)
         // 卡面写「恰 1」（类别页）。根页同样隐藏空导航栏：留着它会占去顶部安全区、把首页
         // 整体下推一个导航栏高度（偏离登记于 IC-156 自验报告）。
@@ -496,7 +499,7 @@ final class IC156CategoryPageTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "S0CleanupFlowView(", in: app), 1)
         XCTAssertEqual(occurrences(of: "S0View(", in: app), 0)
         XCTAssertEqual(occurrences(of: "markPendingDeletion(", in: app), 1)
-        XCTAssertEqual(occurrences(of: "S0CategoryPageRange.prefix", in: app), 1)
+        XCTAssertEqual(occurrences(of: "S0CategoryPageRange.prefix", in: app), 2) // IC-157：进 S2 闭包一处
         XCTAssertGreaterThanOrEqual(occurrences(of: "S0CategoryText.displayName(for:", in: app), 1)
         // `cc686d9` 为 2（S1 接线的形参标签与实参各一处），本卡加一处实参。
         XCTAssertEqual(occurrences(of: "feedbackToastDurationMilliseconds", in: app), 3)
@@ -509,11 +512,14 @@ final class IC156CategoryPageTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "tabContainer(s1Machine: machine)", in: app), 1)
 
         // 构造签名照卡面 D1 的形参与顺序：编译期即核；只构造、不渲染（陷阱 23）。
+        // IC-157 C：加 `flowModel:` 与 `onEnterS2:`，顺序照其声明顺序（陷阱 16）。
         _ = S0CleanupFlowView(
             machine: S0StateMachine(),
             dataProvider: S0CleanupDataStub(scenario: .readyWithItems),
+            flowModel: S0CleanupFlowModel(),
             onSwitchToOrganizeTab: {},
             onMoveToBasket: { _, _ in true },
+            onEnterS2: { _, _, _ in false },
             toastDurationMilliseconds: 2_000
         )
     }
