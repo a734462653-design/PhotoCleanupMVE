@@ -4,9 +4,9 @@
 - 分支：`feature/ic-156-category-page`
 - 基线：`main` = `cc686d92d29ba4adcc41607983ae47a199179be7`（IC-155 报告回填；IC-155 合并提交 `07b7f76acb146690477b00c7500de0412851aaf1`）
 - 分支 tip（代码）：`c92c641dae3da60d020af1ee20be67dd9d4b9b0e`（CI #313 被测提交：attempt 1 红于已知计时脆弱用例 `testIC063…`、同一提交原样复跑 attempt 2 绿 844 项 0 失败，`self-check.md` 第四节）
-- 分支 tip（含报告）：本清单所在的报告提交
-- 合并提交与合并后 `main` 的运行（G891）：合并后在 `main` 上回填
-- 提交数：4 个代码提交（子项 A／B／C／D 各一）+ 1 个报告提交（分支）
+- 分支 tip（含报告）：`8504a7d75c8bfad4b08b8f1e5fa3745f1eebfc02`
+- 合并提交（`main`，`--no-ff`，执行端按卡内授权执行）：`c42edd1ded6ccd1e7ec0d17b2e3745560cdbfa78`（父 `cc686d92d29ba4adcc41607983ae47a199179be7` 与 `8504a7d75c8bfad4b08b8f1e5fa3745f1eebfc02`）；合并后 `main` 运行 #314 attempt 1 一次绿 844 项 0 失败（G891，`self-check.md` 第九节）
+- 提交数：4 个代码提交（子项 A／B／C／D 各一）+ 1 个报告提交（分支）+ 合并提交 + 回填提交（`main`，本清单所在提交）
 - `S2CalibrationConfiguration.schemaVersion`：**7，未动**；`S0ScanRules.cacheSchemaVersion`：**1，未动**；`S0HomeMetrics`：**52，未动**
 
 ---
@@ -19,7 +19,9 @@
 | 2 | `bf271092cb3800660f5552b1bf8255cb328dc4b8` | B | S1StateMachine.markPendingDeletion——类别页进篮的会话层原子写入口 | `d5957c364a94d490a825a5e3b9ce1d11de0b12cb` |
 | 3 | `0fb15af71803e8fe3554b53e3ed5d217d80f6574` | C | 类别页视图、选择模型、toast 与五条文案（S0CategoryPageView） | `8db48585e9a45400fcac981714b664b6ed52e4b5` |
 | 4 | `c92c641dae3da60d020af1ee20be67dd9d4b9b0e` | D | 承载容器 S0CleanupFlowView 与 App 接线——类别页可进可回、进篮写会话层并重算 | `34d577200c9d729be3415b77d359fe02584a5244` |
-| 5 | 本提交 | — | docs：自验报告与变更清单 | — |
+| 5 | `8504a7d75c8bfad4b08b8f1e5fa3745f1eebfc02` | — | docs：自验报告与变更清单（#313 a1 红于 testIC063、原样复跑 a2 绿 844 项 0 失败） | `5327beb601f0f422fc299f012b27e1ec54c72ffc` |
+| 合并 | `c42edd1ded6ccd1e7ec0d17b2e3745560cdbfa78` | — | Merge IC-156（父 `cc686d9` 与 `8504a7d`） | `5327beb601f0f422fc299f012b27e1ec54c72ffc`（= `8504a7d` 的树） |
+| 回填 | 本提交（`main`） | — | docs：回填合并提交与 G891 | — |
 
 ### 可摘取单元（惯例 40，①实测）
 

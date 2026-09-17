@@ -5,7 +5,7 @@
 - **四个子项都已交付**，顺序 A → B → C → D，各自独立 commit：A `55f2819`（登记表 `S0CategoryPageMetrics` 42 个常量与符号、虚拟范围前缀）、B `bf27109`（`S1StateMachine.markPendingDeletion` 会话层原子写入口）、C `0fb15af`（类别页视图、选择模型、toast、五条文案、既有断言改口径五处）、D `c92c641`（承载容器 `S0CleanupFlowView` 与 App 接线）。克隆仓库实测：A 单独、A→B、A→C、A→B→C→D 无冲突；**卡内写的「B 单独」「B→A→C→D」实测冲突**（第 7.4 条）。
 - **CI #313**（run id `35189147747`，被测提交 `c92c641dae3da60d020af1ee20be67dd9d4b9b0e`）：**attempt 1 红，只红已知计时脆弱用例** `testIC063AutomaticGeometryDiagnosticsExportsAllRequiredStages`（`:4146` 门禁 + `:4154` 中间帧 0 < 2），844 项 843 过、退出码 65；IC-156 十一项与卡内点名的既有用例全部 passed。**同一提交原样复跑 attempt 2 绿**：12 个步骤全 success、真实退出码 **0**、**844 项 0 失败、1 个 launch**（无宿主重启）、目的地 `OS:26.2, name:iPhone 16`、IPA **1679665 字节**、SHA-256 `3621bc6c168a9e4a13e7ced6f1e7ed96bf8377fc8156c035464d44f9575ae10f`、分段耗时「模拟器启动 59 s；xcodebuild test 243 s；总 303 s」，`testIC063…` passed（3.104 s）。项数对账 **833 + 11 = 844** ✔。分支 CI 预算 3 次用 **2** 次（a1 + 原样复跑 a2，零代码改动）。
 - **断言 1～11 全部 `passed`**（第五节逐条给函数名与耗时）；IC-147 16／16、IC-148 14／14、IC-155 9／9、IC-151 8／8、IC-153 13／13、IC-132 9／9、IC-127 26／26、IC-129 6／6 逐条 `passed`（a1 与 a2 各自核）。
-- **G887～G889 满足，G890 满足**（第九节；G890 的「绿」取 a2，a1 的红逐条核实只属 `testIC063…`）。合并提交与 **G891**（合并后 `main` 自动运行）是合并之后才产生的信息，合并后在 `main` 上回填（第十二节）。
+- **G887～G889 满足，G890 满足**（第九节；G890 的「绿」取 a2，a1 的红逐条核实只属 `testIC063…`）。**已按卡内授权 `--no-ff` 合并入 `main`：合并提交 `c42edd1ded6ccd1e7ec0d17b2e3745560cdbfa78`**（父 `cc686d9` 与报告提交 `8504a7d`），合并树与 `8504a7d` 的树同一对象（`5327beb6…`）。**G891**：合并后 `main` 自动运行 **#314**（run id `35190738456`）attempt 1 **一次绿**——844 项 0 失败、1 个 launch、真实退出码 0、`OS:26.2, name:iPhone 16`、IPA 1679665 字节、分段耗时「模拟器启动 118 s；xcodebuild test 413 s；总 532 s」（第九节 G891）。
 - **卡内有四处条文与正确实现冲突或自相矛盾（第 7.1～7.4 条），另有六处实现取舍、卡面留白或坐标偏差（第 7.5～7.10 条），都已按卡的意图或卡内兜底条款落实，请决策会话追认**。影响交付形态的是两处：**NavigationStack 根页同样隐藏系统导航栏**（第 7.2 条，③ 不隐藏会把首页整体下推一个导航栏高度；流程文件里该串因此 2 处，卡面断言 10 写「恰 1」）；**摘取单元 B 单独不成立**（第 7.4 条，B 往 A 新建的测试文件末尾追加，产品改动本身可单独摘取）。
 - **人工判定项 H77 七条原样保留给 Lynn**（第十三节），执行端不代为下结论。版式、勾选手感、滚动时的缩略图、toast 观感、进篮后首页数字同步、S3 组头、冷启动后类别组仍在，**模拟器上一律未覆盖**（夹具驱动，陷阱 1、23）。
 
@@ -287,11 +287,27 @@
 | IC-147 16 项、IC-148 14 项、IC-132 与 IC-127 的会话层用例、IC-155 九项逐条 `passed` | 16／16、14／14；IC-132 9／9、IC-127 `testIC127B_*`／`C_*`／`E_*` 14／14（全部 26／26）；9／9（a1、a2 各自核，第五节表后） | ✔ |
 | pbxproj 撞号扫描 | 分支 tip 复扫：对象定义 216、重复 0；四个新文件引用 id 各 3 次（定义、构建文件的 `fileRef`、组 children），四个新构建文件 id 各 2 次（定义、Sources 阶段） | ✔ |
 | 工作树净 | 合并前 `git status --porcelain` 只有本卡报告目录 `Reports/IC-156/`，随报告提交入库后为空（第十二节） | ✔ |
-| `main` 未被他人推进 | 06:33:42Z `git ls-remote origin refs/heads/main` = `cc686d92d29ba4adcc41607983ae47a199179be7` = 本地 `main` | ✔ |
+| `main` 未被他人推进 | 06:33:42Z 与合并前 06:38:09Z 两次 `git ls-remote origin refs/heads/main` = `cc686d92d29ba4adcc41607983ae47a199179be7` = 本地 `main` | ✔ |
 
 ### G891（合并后 `main`）
 
-合并后回填（合并提交推送后 `main` 的自动运行编号、结果与分段耗时 notice，写入 `main` 上的回填提交，第十二节）。
+合并提交 `c42edd1ded6ccd1e7ec0d17b2e3745560cdbfa78` 推送后（`git ls-remote origin refs/heads/main` = 该 SHA）自动触发 **#314**（run id `35190738456`，事件 `push`，分支 `main`，被测提交 = 合并提交）。
+
+| 项 | attempt 1 |
+|---|---|
+| check-run id（现取） | `105102524380` |
+| 作业 | 06:38:49Z → 06:51:45Z，**success**（12 分 56 秒，作业级时限 30 分钟之内） |
+| 步骤 | 12 步全 success；「运行 XCTest」06:39:34Z → 06:48:29Z（8 分 55 秒，步骤级时限 25 分钟之内），日志 `XCTest 已全部通过。` ⟹ 真实退出码 **0**；「构建未签名应用」→ 06:51:30Z；「上传可下载的未签名 IPA」→ 06:51:32Z |
+| 执行摘要 notice | `Executed 844 tests, 0 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 844 tests / 0 failures` |
+| 分段耗时 notice | `模拟器启动 118 s；xcodebuild test 413 s；总 532 s` |
+| IPA 校验 notice | `文件=PhotoCleanupMVE-unsigned.ipa，字节数=1679665，SHA-256=d8193ee725775c6ec1d8fc8afd8b821c9a9a5c46618dcd3873c5bb618da150ca`；artifact `PhotoCleanupMVE-unsigned-c42edd1ded6c`，id `10484291484`，zip 1679835 字节 |
+| 注解 | 仅上述 3 条 notice；error／warning **0** 条 |
+| 整包日志（zip 246 735 字节，剔回显后） | 目的地 `{ platform:iOS Simulator, arch:arm64, id:2911FD29-A09E-4A81-BEA7-99A616FB7FC8, OS:26.2, name:iPhone 16 }`；`Executed 844 tests, with 0 failures (0 unexpected) in 38.689 (45.551) seconds`；`** TEST SUCCEEDED **`；`All tests` 起跑每个日志文件 1 次、无宿主重启；唯一 Test Case 844：passed **844**、failed 0；`.swift:<行>: error` 行 0；`testIC063…` passed（3.993 s） |
+| IC-156 十一项与点名的既有用例 | IC-156 11／11、IC-147 16／16、IC-148 14／14、IC-155 9／9、IC-151 8／8、IC-153 13／13、IC-132 9／9、IC-127 26／26、IC-129 6／6 全部 passed |
+
+**说明**：合并树 `5327beb6…` 与报告提交 `8504a7d` 的树同一对象，与 #313 测过的代码（`c92c641`）逐字节相同，差别只在 `Reports/`（`paths-ignore` 内、测试不读）。IPA SHA-256 与 #313 a2 不同属预期（IPA 不可复现，字节数相同）。
+
+**CI 次数说明（纪律 2）**：分支上 2 次（#313 a1 红于 `testIC063…`、原样复跑 a2 绿，均未改代码）；合并后 `main` 自动运行 1 次（#314 一次绿）。三次均未改动任何代码。
 
 ---
 
@@ -333,18 +349,21 @@
 | 2 | `bf271092cb3800660f5552b1bf8255cb328dc4b8` | 子项 B |
 | 3 | `0fb15af71803e8fe3554b53e3ed5d217d80f6574` | 子项 C |
 | 4 | `c92c641dae3da60d020af1ee20be67dd9d4b9b0e` | 子项 D（CI #313 被测提交） |
-| 5 | 本报告提交 | docs：自验报告与变更清单 |
-| 合并 | 合并后回填 | Merge IC-156（`--no-ff`） |
+| 5 | `8504a7d75c8bfad4b08b8f1e5fa3745f1eebfc02` | docs：自验报告与变更清单（#313 a1 红于 testIC063、原样复跑 a2 绿 844 项 0 失败） |
+| 合并 | `c42edd1ded6ccd1e7ec0d17b2e3745560cdbfa78` | Merge IC-156（`--no-ff`，父 `cc686d92d29ba4adcc41607983ae47a199179be7` 与 `8504a7d75c8bfad4b08b8f1e5fa3745f1eebfc02`；树 `5327beb601f0f422fc299f012b27e1ec54c72ffc` = `8504a7d` 的树） |
+| 回填 | 本回填提交（`main`） | docs：回填合并提交与 G891（本提交无法写进自身 SHA） |
 
-**报告提交方式（纪律 7）**：采用「同一张卡、同一分支内追加一个 docs 提交」——四个代码提交先推送以触发 CI，#313 的运行编号、两次 attempt 的日志实证与 IPA 校验是推送后才产生的信息，由本报告提交补入；`Reports/**` 在 `paths-ignore` 内，报告提交不触发 CI（预期行为）。合并提交 SHA 与 G891 是合并之后才产生的信息，照 IC-155 回填提交 `cc686d92d29ba4adcc41607983ae47a199179be7` 的先例，在 `main` 上以一个回填 docs 提交写入。
+**报告提交方式（纪律 7）**：采用「同一张卡、同一分支内追加一个 docs 提交」——四个代码提交先推送以触发 CI，#313 的运行编号、两次 attempt 的日志实证与 IPA 校验是推送后才产生的信息，由报告提交 `8504a7d` 补入；`Reports/**` 在 `paths-ignore` 内，报告提交不触发 CI（预期行为）。合并提交 SHA 与 G891 是合并之后才产生的信息，照 IC-155 回填提交 `cc686d92d29ba4adcc41607983ae47a199179be7` 的先例，在 `main` 上以一个回填 docs 提交写入。
 
-**40 位 SHA 核验**（报告写完、报告提交前，`<scratchpad>/ic156/verify_shas156.py` 抽出两份报告里全部独立的 40 位十六进制串，在主仓库逐个 `git cat-file -e`）：共 **18** 个；**13** 个是提交（`git cat-file -e <sha>^{commit}` 退出码 0：四个代码提交 `55f2819415c6…`／`bf271092cb38…`／`0fb15af71803…`／`c92c641dae3d…`、基线 `cc686d92d29b…`、IC-155 合并提交 `07b7f76acb14…`、七条冻结／探针 tip），**5** 个是树对象（`^{commit}` 不适用，改 `git cat-file -e <sha>^{tree}` 退出码 0：`5d5f977c…`／`d5957c36…`／`8db48585…`／`34d57720…` 分别是四个代码提交自身的树，`361bef2e…` 是 `git merge-tree --write-tree` 写入主仓库的 A→C 合成树），**缺失 0**。
+**合并执行记录**：报告提交推送后 06:38:09Z `git ls-remote origin refs/heads/main` 仍为 `cc686d9`；`git switch main`（本地 `main` = `cc686d9`、与 `origin/main` 一致）→ `git merge --no-ff feature/ic-156-category-page -F <消息文件>` 退出码 0（无冲突）→ 06:38:36Z `git push origin main` 退出码 0（`cc686d9..c42edd1`）；推送后 `git ls-remote` = `c42edd1ded6ccd1e7ec0d17b2e3745560cdbfa78`。Bash 一侧未遇到 `[Merge Without Review]` 拒绝。
+
+**40 位 SHA 核验**（回填写完、回填提交前，`<scratchpad>/ic156/verify_shas156.py` 抽出两份报告里全部独立的 40 位十六进制串，在主仓库逐个 `git cat-file -e`）：共 **21** 个；**15** 个是提交（`git cat-file -e <sha>^{commit}` 退出码 0：四个代码提交 `55f2819415c6…`／`bf271092cb38…`／`0fb15af71803…`／`c92c641dae3d…`、报告提交 `8504a7d75c8b…`、合并提交 `c42edd1ded6c…`、基线 `cc686d92d29b…`、IC-155 合并提交 `07b7f76acb14…`、七条冻结／探针 tip），**6** 个是树对象（`^{commit}` 不适用，改 `git cat-file -e <sha>^{tree}` 退出码 0：`5d5f977c…`／`d5957c36…`／`8db48585…`／`34d57720…` 分别是四个代码提交自身的树，`5327beb6…` 是报告提交与合并提交共同的树，`361bef2e…` 是 `git merge-tree --write-tree` 写入主仓库的 A→C 合成树），**缺失 0**。分支报告提交 `8504a7d` 时同一脚本核过当时的 18 个，缺失 0。
 
 ---
 
 ## 十三、人工判定项 H77（留给 Lynn 真机，执行端不代为下结论）
 
-装合并后 `main` 的产物（同一包可连判 H72～H76）。
+装合并后 `main` 的产物（同一包可连判 H72～H76）：#314 artifact `PhotoCleanupMVE-unsigned-c42edd1ded6c`（IPA 1679665 字节，SHA-256 `d8193ee725775c6ec1d8fc8afd8b821c9a9a5c46618dcd3873c5bb618da150ca`）。
 
 1. **进得去、回得来**：首页点任一有项目的类别行进类别页（无项目的灰行点不动）；返回圆钮回首页，tab bar 回来，首页数字与进去前一致（没进篮时）。
 2. **版式**：恒深色氛围底与首页同一质感；顶排返回圆钮与「全选」胶囊是 S1 同款玻璃；大标题带类别色点，副行「N 个 · X GB · 按体积从大到小」；三列网格从大到小，右下体积标签，视频左下有播放符与时长，右上圆圈勾；网格滚到底部时最后一行不被主按钮压死（渐隐 + 底距）。
