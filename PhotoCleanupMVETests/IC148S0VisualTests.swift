@@ -838,7 +838,7 @@ final class IC148S0VisualTests: XCTestCase {
         let catalog = try loadCatalogValues()
         let catalogS0Keys = Set(catalog.keys.filter { $0.hasPrefix("s0.") })
         // IC-156 C：类别页五条 key，32 → 37。
-        XCTAssertEqual(catalogS0Keys.count, 37)
+        XCTAssertEqual(catalogS0Keys.count, 38) // IC-157 B：长按提示一条，37 → 38。
 
         var referenced: Set<String> = []
         for relativePath in Self.viewFiles + [

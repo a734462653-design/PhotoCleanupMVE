@@ -166,8 +166,9 @@ final class IC156CategoryPageTests: XCTestCase {
             occurrences(of: "S1ChromeTypography.circleIconPointSize", in: circleHelper),
             1
         )
-        // 登记表引用：卡面下限 ≥ 20 为③估计，按实装数写死（57）。42 个登记值逐个被引用。
-        XCTAssertEqual(occurrences(of: "S0CategoryPageMetrics.", in: page), 57)
+        // 登记表引用：卡面下限 ≥ 20 为③估计，按实装数写死（IC-156 为 57；IC-157 常驻行右侧
+        // 提示与左文同一字号与明度，加两处 → 59）。42 个登记值逐个被引用。
+        XCTAssertEqual(occurrences(of: "S0CategoryPageMetrics.", in: page), 59)
         let metrics = try XCTUnwrap(strippedSource(Self.metricsPath))
         let metricsBody = try XCTUnwrap(
             slice(metrics, from: "enum S0CategoryPageMetrics {", to: Self.topLevelClose)
@@ -212,13 +213,14 @@ final class IC156CategoryPageTests: XCTestCase {
 
     func testIC156C_CatalogGainsFiveKeysAndBothGatesAreUpdated() throws {
         let catalog = try loadCatalogValues()
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 37)
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 5)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 38)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 6)
 
         let expected: [String: String] = [
             "s0.categoryPage.subtitle": "{count} 个 · {bytes} · 按体积从大到小",
             "s0.categoryPage.selectAll": "全选",
             "s0.categoryPage.selected": "已选 {count} 项 · {bytes}",
+            "s0.categoryPage.longPressHint": "长按任一格逐张看",
             "s0.categoryPage.submit": "移入待删篮 · {count} 项 {bytes}",
             "s0.categoryPage.toast": "已移入待删篮"
         ]
@@ -231,7 +233,7 @@ final class IC156CategoryPageTests: XCTestCase {
                 key
             )
         }
-        // 页面只引用这五条，一条不多（`longPressHint` 归 IC-157）。
+        // 页面只引用这六条，一条不多（`longPressHint` IC-157 已登记）。
         XCTAssertEqual(localizationKeys(in: pageRaw), Set(expected.keys))
 
         // 占位符：项数与字节量只出现在副行、常驻行、主按钮三条里，各一次。

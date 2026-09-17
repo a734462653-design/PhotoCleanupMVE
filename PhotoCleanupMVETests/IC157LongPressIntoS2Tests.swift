@@ -15,6 +15,166 @@ import XCTest
 /// 首页数字同步，只有 H78 能判。
 final class IC157LongPressIntoS2Tests: XCTestCase {
 
+    // MARK: - 断言 4：长按手势与提示行守页面纪律（子项 B）
+
+    func testIC157B_LongPressGestureAndHintKeepDiscipline() throws {
+        let pagePath = "PhotoCleanupMVE/Features/S0/S0CategoryPageView.swift"
+        let page = try XCTUnwrap(strippedSource(pagePath))
+        XCTAssertEqual(occurrences(of: "LongPressGesture()", in: page), 1)
+        XCTAssertEqual(occurrences(of: ".simultaneousGesture(", in: page), 1)
+        // 格仍是按钮：「全选」与格各一处尾随闭包写法（返回钮与主按钮是 `action:` 写法）。
+        XCTAssertEqual(occurrences(of: "Button {", in: page), 2)
+        XCTAssertEqual(occurrences(of: "onTapGesture", in: page), 0)
+        // `onLongPressGesture` 含子串 `onLongPress`，故调用与形参各按带标点的写法计数。
+        XCTAssertEqual(occurrences(of: "onLongPressGesture", in: page), 0)
+        XCTAssertEqual(occurrences(of: "minimumDuration", in: page), 0)
+        XCTAssertEqual(occurrences(of: "maximumDistance", in: page), 0)
+        XCTAssertEqual(occurrences(of: "onLongPress(", in: page), 1)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "onLongPress:", in: page), 1)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "selection.items.map(", in: page), 1)
+
+        let pageRaw = try XCTUnwrap(sourceText(pagePath))
+        XCTAssertEqual(
+            occurrences(of: "L10n.text(\"s0.categoryPage.longPressHint\"", in: pageRaw),
+            1
+        )
+
+        // 提示行与左文同一字号与明度：两处明度写法都在常驻行切片里。
+        let pinnedRow = try XCTUnwrap(
+            slice(
+                page,
+                from: "private var pinnedRow: some View {",
+                to: "private var gridScroll: some View {"
+            ),
+            "常驻行切片没切到——声明文本变了"
+        )
+        XCTAssertGreaterThanOrEqual(occurrences(of: "HStack", in: pinnedRow), 1)
+        XCTAssertEqual(
+            occurrences(
+                of: "dimmedText(opacity: S0CategoryPageMetrics.pinnedRowOpacity)",
+                in: pinnedRow
+            ),
+            2
+        )
+        XCTAssertEqual(
+            occurrences(of: "S0CategoryPageMetrics.pinnedRowFontSize", in: pinnedRow),
+            2
+        )
+
+        // IC-156 断言 6 钉住的几处照旧。
+        XCTAssertEqual(occurrences(of: "S1ChromeTypography.titleFontSize", in: page), 1)
+        XCTAssertEqual(occurrences(of: "Image(systemName: ", in: page), 3)
+        let allowed: Set<String> = ["0", "1", "2"]
+        let literals = numericLiterals(in: page)
+        XCTAssertTrue(
+            literals.isSubset(of: allowed),
+            "出现了 0／1／2 之外的裸数：" + literals.subtracting(allowed).sorted().joined(separator: ",")
+        )
+
+        // 正对照：同一套剥离口径下，`onLongPressGesture` 在 S2 视图里确有命中，上面的 0 不是空转。
+        let s2View = try XCTUnwrap(strippedSource("PhotoCleanupMVE/Features/S2/S2View.swift"))
+        XCTAssertGreaterThan(occurrences(of: "onLongPressGesture", in: s2View), 0)
+    }
+
+    // MARK: - 断言 5：目录加长按提示一条，四处既有计数同步（子项 B）
+
+    func testIC157B_CatalogGainsLongPressHint() throws {
+        let catalog = try loadCatalogValues()
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 38)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 6)
+        let hint = try XCTUnwrap(catalog["s0.categoryPage.longPressHint"])
+        XCTAssertEqual(hint, "长按任一格逐张看")
+        XCTAssertFalse(hint.contains("{"))
+
+        // 既有测试的整句 needle（不写死行号）。IC-156 文件另有一处与文案无关的 `37)`，
+        // 故不拿裸 `37)`／`38)` 计数。
+        let behavior = try XCTUnwrap(sourceText("PhotoCleanupMVETests/IC147S0BehaviorTests.swift"))
+        XCTAssertEqual(occurrences(of: "s0Values.count, 38)", in: behavior), 1)
+        XCTAssertEqual(occurrences(of: "catalogS0Keys.count, 38)", in: behavior), 1)
+        let visual = try XCTUnwrap(sourceText("PhotoCleanupMVETests/IC148S0VisualTests.swift"))
+        XCTAssertEqual(occurrences(of: "catalogS0Keys.count, 38)", in: visual), 1)
+        let categoryPage = try XCTUnwrap(
+            sourceText("PhotoCleanupMVETests/IC156CategoryPageTests.swift")
+        )
+        XCTAssertEqual(
+            occurrences(of: "hasPrefix(\"s0.\") }.count, 38)", in: categoryPage),
+            1
+        )
+    }
+
+    // MARK: - 子项 B 的 helper
+
+    /// 数值字面量提取，口径同 IC-148／IC-156 `numericLiterals(in:)`。
+    private func numericLiterals(in source: String) -> Set<String> {
+        var literals: Set<String> = []
+        let characters = Array(source)
+        var index = 0
+        while index < characters.count {
+            guard characters[index].isNumber else {
+                index += 1
+                continue
+            }
+            let previous = index > 0 ? characters[index - 1] : " "
+            if previous.isLetter || previous == "_" {
+                // 标识符内的数字：跳过整个标识符。判据含数字，否则指针不前进、循环不终止。
+                while index < characters.count,
+                      characters[index].isLetter
+                          || characters[index].isNumber
+                          || characters[index] == "_" {
+                    index += 1
+                }
+                continue
+            }
+            var end = index
+            while end < characters.count,
+                  characters[end].isNumber
+                      || characters[end] == "."
+                      || characters[end] == "_" {
+                end += 1
+            }
+            if end < characters.count, characters[end].isLetter {
+                index = end
+                continue
+            }
+            var token = String(characters[index..<end])
+            while token.hasSuffix(".") {
+                token.removeLast()
+            }
+            token = token.replacingOccurrences(of: "_", with: "")
+            if previous == "-" {
+                token = "-" + token
+            }
+            if !token.isEmpty {
+                literals.insert(token)
+            }
+            index = end
+        }
+        return literals
+    }
+
+    /// 目录 zh-Hans 取值，口径同 IC-147／IC-156。
+    private func loadCatalogValues() throws -> [String: String] {
+        let url = repoRoot()
+            .appendingPathComponent("PhotoCleanupMVE/Localizable.xcstrings")
+        let data = try Data(contentsOf: url)
+        let object = try JSONSerialization.jsonObject(with: data)
+        let root = try XCTUnwrap(object as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+        var values: [String: String] = [:]
+        for (key, entry) in strings {
+            guard let entry = entry as? [String: Any],
+                  let localizations = entry["localizations"] as? [String: Any],
+                  let chinese = localizations["zh-Hans"] as? [String: Any],
+                  let unit = chinese["stringUnit"] as? [String: Any],
+                  let value = unit["value"] as? String else {
+                continue
+            }
+            values[key] = value
+        }
+        XCTAssertGreaterThan(values.count, 100)
+        return values
+    }
+
     // MARK: - 断言 1：虚拟范围交接在任一加载态下可构造并登记名字（子项 A）
 
     func testIC157A_VirtualHandoffBuildsInAnyStateAndRegistersName() {

@@ -271,6 +271,9 @@ struct S0CategoryPageView: View {
     let category: S0CategorySnapshot
     private let onMoveToBasket: (Set<String>) -> Bool
     private let onBack: () -> Void
+    /// IC-157 B：长按任一格进 S2。实参是网格当前顺序（全部项标识）与被长按那张的标识；
+    /// 不改 `SEL`、不进篮。
+    private let onLongPress: ([String], String) -> Void
     private let toastDurationMilliseconds: Double
 
     @State private var selection: S0CategoryPageSelection
@@ -281,11 +284,13 @@ struct S0CategoryPageView: View {
         items: [S0CategoryAsset],
         onMoveToBasket: @escaping (Set<String>) -> Bool,
         onBack: @escaping () -> Void,
+        onLongPress: @escaping ([String], String) -> Void = { _, _ in },
         toastDurationMilliseconds: Double
     ) {
         self.category = category
         self.onMoveToBasket = onMoveToBasket
         self.onBack = onBack
+        self.onLongPress = onLongPress
         self.toastDurationMilliseconds = toastDurationMilliseconds
         _selection = State(initialValue: S0CategoryPageSelection(items: items))
     }
@@ -365,16 +370,24 @@ struct S0CategoryPageView: View {
         .padding(.top, S0CategoryPageMetrics.titleTopSpacing)
     }
 
-    // MARK: - 常驻「已选」行（右侧留空：长按入口归 IC-157）
+    // MARK: - 常驻「已选」行（右侧长按提示，与左文同一字号与明度：IC-157）
 
     private var pinnedRow: some View {
-        Text(
-            L10n.text("s0.categoryPage.selected", replacing: selection.selectedTextReplacements)
-        )
-        .font(.system(size: S0CategoryPageMetrics.pinnedRowFontSize))
-        .foregroundStyle(
-            S0HomePalette.dimmedText(opacity: S0CategoryPageMetrics.pinnedRowOpacity)
-        )
+        HStack {
+            Text(
+                L10n.text("s0.categoryPage.selected", replacing: selection.selectedTextReplacements)
+            )
+            .font(.system(size: S0CategoryPageMetrics.pinnedRowFontSize))
+            .foregroundStyle(
+                S0HomePalette.dimmedText(opacity: S0CategoryPageMetrics.pinnedRowOpacity)
+            )
+            Spacer(minLength: 0)
+            Text(L10n.text("s0.categoryPage.longPressHint"))
+                .font(.system(size: S0CategoryPageMetrics.pinnedRowFontSize))
+                .foregroundStyle(
+                    S0HomePalette.dimmedText(opacity: S0CategoryPageMetrics.pinnedRowOpacity)
+                )
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, S0CategoryPageMetrics.textHorizontalInset)
         .padding(.top, S0CategoryPageMetrics.pinnedRowTopSpacing)
@@ -419,6 +432,12 @@ struct S0CategoryPageView: View {
             )
         }
         .buttonStyle(.plain)
+        // IC-157 B：长按与按钮并存（按钮语义与点按反馈保留），时长取系统默认。
+        .simultaneousGesture(
+            LongPressGesture().onEnded { _ in
+                onLongPress(selection.items.map(\.id), item.id)
+            }
+        )
     }
 
     /// 格边长 = (宽 − 两侧页面边距 − 列间距之和) ÷ 列数。
