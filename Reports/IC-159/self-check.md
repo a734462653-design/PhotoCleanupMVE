@@ -2,10 +2,10 @@
 
 ## 一、结论（先行）
 
-1. **子项 T 达成，CI 一次绿。** 分支运行 **#318**（id `35309928089`，attempt 1），被测提交 `b7b1b738224f54d563e09bb352743257f2741a1e`，十二步全 success，XCTest **852 项 0 失败**（单次 launch），真实退出码 **0**。
-2. **裁定 一（本卡命题）在 CI 上成立①**：`testIC063…` 块内唯一一条 `[error] building pipeline path_exterior-jba6la8feba4 took 0.832387 seconds`（设备 `os_log` 时刻 `05:19:23.560466`）落在 `IC063_WARMUP_GATE_END`（`05:19:25.318`）**之前**——Metal 管线编译发生在**预热导出**里；计时导出全程无 build 行。
-3. `testIC063AutomaticGeometryDiagnosticsExportsAllRequiredStages` **passed (6.920 seconds)**；计时导出报告 `采样总数：15`、`中间帧门禁：通过`、进入中间帧 3 帧、退出中间帧 5 帧、**零**软目标未达行。
-4. **预热里确实"吃掉"了一帧**②：预热报告 `采样总数：14`、`中间帧门禁：通过`、带一行 `中间帧软目标未达：…软目标 3 帧（实际命中 2 帧…）`。这正是四次「零相关改动单独红」的机制在预热段显影——本卡把它挪出了计时段。
+1. **子项 T 达成，CI 一次绿（分支与合并后各一次，均 attempt 1）。** 分支运行 **#318**（id `35309928089`），被测提交 `b7b1b738224f54d563e09bb352743257f2741a1e`；合并后 `main` 运行 **#319**（id `35311251297`），被测提交 `4d7c98e84837dda82e6f1a0068cc324b8ec90085`。两次都十二步全 success、XCTest **852 项 0 失败**（单次 launch）、真实退出码 **0**。合并提交 `4d7c98e84837dda82e6f1a0068cc324b8ec90085`（`--no-ff`），已推送。
+2. **裁定 一（本卡命题）在 CI 上成立①，两次运行各一份实证**：`testIC063…` 块内唯一一条 `[error] building pipeline path_exterior-jba6la8feba4 took …`（#318 0.832387 s，设备时刻 `05:19:23.560466`；#319 0.782808 s，`05:44:58.679299`）都落在 `IC063_WARMUP_GATE_END`（`05:19:25.318`／`05:45:00.771`）**之前**——Metal 管线编译发生在**预热导出**里；两次计时导出段全程零 build 行、零 invalidation 行。
+3. `testIC063AutomaticGeometryDiagnosticsExportsAllRequiredStages` **passed (6.920 seconds)**（#318）／**passed (6.598 seconds)**（#319）；两次计时导出报告都是 `采样总数：15`、`中间帧门禁：通过`、进入中间帧 3 帧、退出中间帧 5 帧、**零**软目标未达行。
+4. **预热里确实"吃掉"了一帧**②：两次运行的预热报告都是 `采样总数：14`、`中间帧门禁：通过`、带一行 `中间帧软目标未达：…软目标 3 帧（实际命中 2 帧…）`（#319 的进度样本只剩 `0.98,1.00`，编译几乎吃掉整段进入动画）。这正是四次「零相关改动单独红」的机制在预热段显影——本卡把它挪出了计时段。
 5. 产品零改动：`PhotoCleanupMVE/` 全部 **49** 个文件两侧 SHA-256 相同（聚合 `27348CE8…6523`），`.github/`／`Scripts/`／`project.pbxproj` 两侧同一 git 对象；`S2CalibrationHarnessTests.swift` diff 恰 **+28／−0**，其余测试文件未动。`schemaVersion` 仍 **7**。
 6. **人工判定项：无**（纯测试侧改动）。
 7. G902、G903 满足；G904 见第十一节（合并后运行）。
@@ -225,19 +225,86 @@
 
 ## 十一、合并与 G904
 
-（本节在合并与合并后运行完成后，由同一张卡、同一链上的 docs 提交补记——纪律 7 允许的第二种形态：报告已随分支 docs 提交推送，CI 编号等推送后才产生的信息在同卡内追加。）
-
 ### 报告提交形态说明（纪律 7）
 
-代码提交 `b7b1b73` 先行推送以触发 CI；两份报告作为**同一分支的一个 docs 提交**随后推送（`Reports/**` 与 `**.md` 在 `paths-ignore` 内，不触发 CI，属预期行为，见 CLAUDE.md 第五节）。未跨卡回填。
+代码提交 `b7b1b73` 先行推送以触发 CI；两份报告作为**同一分支的一个 docs 提交** `319130bff055cee78432dcf9995c5848755fe300` 随后推送（`Reports/**` 与 `**.md` 在 `paths-ignore` 内，不触发 CI，属预期行为，见 CLAUDE.md 第五节）。合并后 G904 数据由 `main` 上**同一张卡的第二个 docs 提交**补记（本节即是）。未跨卡回填。
 
 ### 合并
 
-待填：合并提交 SHA、父提交、推送结果。
+| 项 | 值 |
+|---|---|
+| 合并提交 | `4d7c98e84837dda82e6f1a0068cc324b8ec90085` |
+| 方式 | `git merge --no-ff feature/ic-159-testic063-pipeline-warmup -F <msgfile>` |
+| 父提交 | `15bf53f042a30a1ace0dfea2cf289973f019c67d`（`main` 基线）与 `319130bff055cee78432dcf9995c5848755fe300`（分支 tip） |
+| 合并前核对 | `git ls-remote origin refs/heads/main` 仍 `15bf53f…`（未被他人推进）；工作树 `git status --porcelain` 空 |
+| 合并内容 | 3 个文件、+407：`S2CalibrationHarnessTests.swift` +28、`Reports/IC-159/change-list.md` +122、`Reports/IC-159/self-check.md` +257 |
+| 推送 | `git push origin main` → `15bf53f..4d7c98e  main -> main`，一次成功 |
+| 权限层 | Bash 侧 `git merge --no-ff` **一次通过**，未出现 `[Merge Without Review]` 拒绝（IC-157 曾需换到 PowerShell，本次不需要） |
 
-### G904：合并后 `main` 运行
+### G904：合并后 `main` 运行 #319
 
-待填：运行编号、结论、项数与失败数、真实退出码、分段耗时 notice、IPA 校验、`testIC063…` 用时与裁定 三的五项材料（第二份）。
+| 项 | 值 |
+|---|---|
+| 运行编号 | **#319** |
+| run id / attempt | `35311251297` / **1** |
+| 被测提交 | `4d7c98e84837dda82e6f1a0068cc324b8ec90085`（分支 `main`） |
+| 结论 | `completed` / **`success`**；十二步全 `success`（`non-success: []`） |
+| 起止 | `2026-09-18T05:33:13Z` → `05:50:30Z`（作业 `05:33:22Z`→`05:50:29Z`，约 17 分 07 秒；作业时限 30 分钟、步骤级 25 分钟均未触及） |
+| XCTest 项数 | **852 项，0 失败**（`::notice XCTest 执行摘要::Executed 852 tests, 0 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 852 tests / 0 failures`）；按唯一 `Test Case` 身份计亦为 **852 起 / 852 有结果 / 0 failed** |
+| 真实退出码 | **0**（步骤「运行 XCTest」`success` + `ci.yml:385` `exit "$test_status"`；日志内 `** TEST SUCCEEDED **`，无 `Restarting after`、`Fatal`、`error:`） |
+| 目的地实证行 | `{ platform:iOS Simulator, arch:arm64, id:2911FD29-A09E-4A81-BEA7-99A616FB7FC8, OS:26.2, name:iPhone 16 }` |
+| 分段耗时 notice 原文 | `XCTest 分段耗时：模拟器启动 91 s；xcodebuild test 683 s；总 775 s`（本次 runner 明显慢于 #318 的 87／320／409 s，仍全绿） |
+| IPA 校验 notice 原文 | `未签名 IPA 校验：文件=PhotoCleanupMVE-unsigned.ipa，字节数=1687402，SHA-256=65727b37457916dbea73e7dd7fd3f4980b2d3ff57a4303e4f2c5484ca094b4df`（字节数与 #318 相同、SHA-256 不同——IPA 不可复现，符合既有结论） |
+| artifact | `PhotoCleanupMVE-unsigned-4d7c98e84837`，id `10534480130`，容器 1 687 572 字节 |
+| `IC152DiagnosticPathTests` | **6／6 passed** |
+| 函数名含 `DoubleTap` 的用例 | **33 个全部 passed，0 失败** |
+
+#### 裁定 三的五项材料（第二份，#319）
+
+**① `IC063_WARMUP_GATE_BEGIN…END` 块原文**
+
+```
+2026-09-18T05:45:00.5819190Z IC063_WARMUP_GATE_BEGIN
+2026-09-18T05:45:00.5907260Z 采样总数：14
+2026-09-18T05:45:00.6207430Z 中间帧门禁：通过
+2026-09-18T05:45:00.7705640Z 中间帧软目标未达：双击进入 Nx：动画中间帧 软目标 3 帧（实际命中 2 帧；进度回调 5 次，其中进度<1 的 3 次≈CADisplayLink 回调次数；首次进度回调相对过渡起始延迟 96.1 ms；诊断时长 1000 ms；进度样本：0.98,1.00）
+2026-09-18T05:45:00.7711250Z IC063_WARMUP_GATE_END
+```
+
+**② `IC063_DIAGNOSTICS_SAMPLE_BEGIN` 之后两行（计时导出）**
+
+```
+2026-09-18T05:45:03.7720690Z IC063_DIAGNOSTICS_SAMPLE_BEGIN
+2026-09-18T05:45:03.8160970Z 采样总数：15
+2026-09-18T05:45:03.8320080Z 中间帧门禁：通过
+```
+
+计时报告内进入中间帧 **3**、退出中间帧 **5**、软目标未达行 **0**。
+
+**③ `Invalidating cache` 行数**：块内 **2** 条（`05:44:57.898020`、`05:44:58.630086`）；全步骤日志亦为 2 条，全部落在 `testIC063…` 块内。
+
+**④ `building pipeline` 行与位置**
+
+```
+2026-09-18T05:44:58.6941020Z 2026-09-18 05:44:58.679299+0000 PhotoCleanupMVE[31880:87438] [error] building pipeline path_exterior-jba6la8feba4 took 0.782808 seconds
+```
+
+**落在 `IC063_WARMUP_GATE_END` 之前**（块内 build 行 idx 6、`BEGIN` idx 7、`END` idx 11；写入时刻 `05:44:58.694` < `05:45:00.771`）。计时导出段零 build 行。全步骤日志 `building pipeline` 共 **1** 条。**⟹ 本卡命题在合并后运行上再次成立①。**
+
+**⑤ 用例耗时**：`passed (6.598 seconds)`（#318 为 6.920 s）。
+
+#### 两次运行的对读（②）
+
+| 项 | #318（分支） | #319（合并后 `main`） |
+|---|---|---|
+| 编译时长 | 0.832387 s | 0.782808 s |
+| 编译位置 | `IC063_WARMUP_GATE_END` 之前 | 同 |
+| 预热报告 | 14 样本、门禁通过、进入中间帧 2／软目标 3（进度样本 0.43…0.62，首帧延迟 16.2 ms） | 14 样本、门禁通过、进入中间帧 2／软目标 3（进度样本 0.98,1.00，首帧延迟 96.1 ms） |
+| 计时报告 | 15 样本、门禁通过、进入 3／退出 5、零软目标未达 | 同 |
+| 用例耗时 | 6.920 s | 6.598 s |
+| 新增三条失败文案出现次数 | 0／0／0 | 0／0／0 |
+
+#319 的预热进度样本只剩 `0.98,1.00`（首次回调延迟 96.1 ms）——编译几乎吃掉整段进入动画；即便如此，**门禁失败没有发生在计时段**，两次计时导出都是满帧。这正是本卡要的效果②。
 
 ## 十二、40 位 SHA 核验（陷阱 15）
 
@@ -249,6 +316,8 @@
 | `ab3eed1f49262b1c6fa49272ee65c1aeb4a8ea5b` | commit（IC-157 合并） | `git cat-file -e <sha>^{commit}` | **0** |
 | `b7b1b738224f54d563e09bb352743257f2741a1e` | commit（子项 T） | `git cat-file -e <sha>^{commit}` | **0** |
 | `5cb67332437a446d98733ddc942e2905392d2891` | commit（IC-158 分支 tip，未动） | `git cat-file -e <sha>^{commit}` | **0** |
+| `319130bff055cee78432dcf9995c5848755fe300` | commit（分支报告 docs 提交） | `git cat-file -e <sha>^{commit}` | **0** |
+| `4d7c98e84837dda82e6f1a0068cc324b8ec90085` | commit（合并提交） | `git cat-file -e <sha>^{commit}` | **0** |
 | `87aec05f066b973f9224282a8edb1795fb09c454` | tree（`PhotoCleanupMVE/`） | `git cat-file -e <sha>^{tree}` | **0** |
 | `74088388c62a10eb277921ecf74e766a2d407e80` | tree（`.github/`） | `git cat-file -e <sha>^{tree}` | **0** |
 | `514886dc0afc4083237c976c0f7be6ce597c50a8` | tree（`Scripts/`） | `git cat-file -e <sha>^{tree}` | **0** |

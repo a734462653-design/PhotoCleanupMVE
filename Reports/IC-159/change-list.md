@@ -8,7 +8,8 @@
 | 基线 `main` | `15bf53f042a30a1ace0dfea2cf289973f019c67d` |
 | 分支 | `feature/ic-159-testic063-pipeline-warmup` |
 | 子项 T 提交 | `b7b1b738224f54d563e09bb352743257f2741a1e` `IC-159 T：testIC063 计时导出前先跑一次丢弃的预热导出` |
-| 报告 | 本文件与 `self-check.md`，另一个 docs 提交（同一分支，纪律 7：CI 编号推送后才产生；SHA 在 `self-check.md` 第十一节实读补记） |
+| 报告 | 本文件与 `self-check.md`；分支 docs 提交 `319130bff055cee78432dcf9995c5848755fe300`（纪律 7：CI 编号推送后才产生），合并后 G904 由 `main` 上同卡第二个 docs 提交补记 |
+| 合并提交 | `4d7c98e84837dda82e6f1a0068cc324b8ec90085`（`--no-ff`，父 `15bf53f` 与 `319130b`）；分支运行 **#318** 一次绿 852／0，合并后 `main` 运行 **#319** 一次绿 852／0 |
 | 产品目录 | **零改动**。`PhotoCleanupMVE/` 全部 49 个文件两侧 SHA-256 相同（第五节聚合表） |
 | 出厂值 | **无变更**。`S2CalibrationConfiguration.schemaVersion` 仍 **7**；`S0ScanRules.cacheSchemaVersion` 仍 **1**；`S0HomeMetrics` 仍 **52**；`S0CategoryPageMetrics` 仍 **42**；本卡不加常量、不加用例（XCTest 仍 852 项） |
 | 占位值登记 | **无**。本卡不新增 `factoryPlaceholder` 项、不改任何出厂值集合，故不递增 `schemaVersion`（第六节纪律的前提未触发） |
