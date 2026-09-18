@@ -4331,6 +4331,9 @@ final class S2GeometryDiagnosticsRun {
     private var errors: [String] = []
     /// IC-152 B（裁定 二）：中间帧软目标未达的诊断行。**不进 `errors`、不判红**。
     private var softTargetLines: [String] = []
+    /// IC-158 B：两段各自的步长上限触发次数，写进报告归因宿主停顿；正常运行恒 0。
+    private var entryClampedCallbacks = 0
+    private var exitClampedCallbacks = 0
     private var cancelled = false
     private var middleThresholds: [CGFloat] = []
     private var activeMiddlePrefix = ""
@@ -4560,6 +4563,14 @@ final class S2GeometryDiagnosticsRun {
                 if let line = outcome.softTargetLine {
                     self.softTargetLines.append(line)
                 }
+                // IC-158 B：本段上限触发次数的唯一读点（惯例 38）。
+                let clamped = controller.diagnosticCurrentPage?
+                    .doubleTapClampedCallbackCount ?? 0
+                if middlePrefix == "双击进入 Nx：动画中间帧" {
+                    self.entryClampedCallbacks = clamped
+                } else {
+                    self.exitClampedCallbacks = clamped
+                }
                 controller.waitForDiagnosticStableState(
                     visibility: stableVisibility,
                     zoomState: stableZoomState
@@ -4756,6 +4767,11 @@ final class S2GeometryDiagnosticsRun {
         lines.append(contentsOf: S2DiagnosticMiddleFrameGate.gateLines(
             errors: errors,
             softTargetLines: softTargetLines
+        ))
+        // IC-158 B：停顿痕迹行，接在门禁几行之后、第一个样本之前。
+        lines.append(S2DiagnosticMiddleFrameGate.clampLine(
+            entryClampedCallbacks: entryClampedCallbacks,
+            exitClampedCallbacks: exitClampedCallbacks
         ))
         for sample in samples {
             lines.append(contentsOf: [
@@ -5063,6 +5079,18 @@ enum S2DiagnosticMiddleFrameGate {
         }
         lines.append(contentsOf: softTargetLines)
         return lines
+    }
+
+    /// IC-158 B：步长上限触发次数那一行。正常帧率下恒 0／0；非 0 即该次运行里宿主
+    /// 主线程停顿过、进度被夹紧后分步走完——门禁因此不再判红，但停顿这个信号要在
+    /// 报告里留下可 grep 的痕迹。**不得**以段名开头、不得含样本标题串（同
+    /// `softTargetMissedPrefix` 的约束：同前缀的非样本文字会把样本计数搅乱）。
+    static func clampLine(
+        entryClampedCallbacks: Int,
+        exitClampedCallbacks: Int
+    ) -> String {
+        "步长上限触发：进入段 \(entryClampedCallbacks) 次，" +
+            "退出段 \(exitClampedCallbacks) 次"
     }
 }
 

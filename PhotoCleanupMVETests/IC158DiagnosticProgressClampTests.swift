@@ -381,6 +381,88 @@ final class IC158DiagnosticProgressClampTests: XCTestCase {
         )
     }
 
+    // MARK: - 断言 5：报告带上停顿痕迹行，且它不混进样本标题
+
+    func testIC158B_ReportCarriesClampLineAndItStaysOutOfSampleTitles() throws {
+        XCTAssertEqual(
+            S2DiagnosticMiddleFrameGate.clampLine(
+                entryClampedCallbacks: 0,
+                exitClampedCallbacks: 0
+            ),
+            "步长上限触发：进入段 0 次，退出段 0 次"
+        )
+        let busy = S2DiagnosticMiddleFrameGate.clampLine(
+            entryClampedCallbacks: 7,
+            exitClampedCallbacks: 12
+        )
+        XCTAssertTrue(busy.contains("进入段 7 次"), busy)
+        XCTAssertTrue(busy.contains("退出段 12 次"), busy)
+
+        // 与软目标行同一套约束（IC-152 B4）：不带样本标题串、不以段名开头。
+        for line in [
+            S2DiagnosticMiddleFrameGate.clampLine(
+                entryClampedCallbacks: 0,
+                exitClampedCallbacks: 0
+            ),
+            busy
+        ] {
+            XCTAssertTrue(line.hasPrefix("步长上限触发："), line)
+            for sampleTitle in [
+                "## 双击进入 Nx：动画中间帧 #",
+                "## 双击退出 Nx：动画中间帧 #"
+            ] {
+                XCTAssertFalse(line.contains(sampleTitle), line)
+            }
+            XCTAssertFalse(line.hasPrefix("双击进入 Nx：动画中间帧"), line)
+            XCTAssertFalse(line.hasPrefix("双击退出 Nx：动画中间帧"), line)
+        }
+
+        // 正对照：既有门禁拼装一字未变。
+        XCTAssertEqual(
+            S2DiagnosticMiddleFrameGate.gateLines(errors: [], softTargetLines: []),
+            ["中间帧门禁：通过"]
+        )
+
+        let pager = try XCTUnwrap(sourceWithoutComments(Self.pagerPath))
+        XCTAssertGreaterThanOrEqual(occurrences(of: "clampLine(", in: pager), 2)
+        XCTAssertEqual(
+            occurrences(of: "doubleTapClampedCallbackCount ?? 0", in: pager),
+            1,
+            "运行类读上限触发次数的读点不是恰一处"
+        )
+
+        // 位置：门禁几行之后、第一个样本之前。
+        let report = try XCTUnwrap(
+            slice(
+                pager,
+                from: "private func makeReport() -> String {",
+                to: Self.memberClose
+            ),
+            "报告拼装没切到——声明文本变了，断言会静默放空"
+        )
+        XCTAssertEqual(occurrences(of: "gateLines(", in: report), 1)
+        XCTAssertEqual(occurrences(of: "clampLine(", in: report), 1)
+        XCTAssertEqual(occurrences(of: "for sample in samples", in: report), 1)
+        let gateLines = try XCTUnwrap(report.range(of: "gateLines("))
+        let clampLine = try XCTUnwrap(report.range(of: "clampLine("))
+        let firstSample = try XCTUnwrap(report.range(of: "for sample in samples"))
+        XCTAssertLessThan(gateLines.lowerBound, clampLine.lowerBound)
+        XCTAssertLessThan(clampLine.lowerBound, firstSample.lowerBound)
+
+        // B4：`testIC063…` 多了一条 `contains`，既有那条照旧。
+        let harness = try XCTUnwrap(
+            sourceText("PhotoCleanupMVETests/S2CalibrationHarnessTests.swift")
+        )
+        XCTAssertEqual(
+            occurrences(of: "report.contains(\"步长上限触发：\")", in: harness),
+            1
+        )
+        XCTAssertEqual(
+            occurrences(of: "report.contains(\"中间帧门禁：通过\")", in: harness),
+            1
+        )
+    }
+
     // MARK: - 夹具
 
     private static let pagerPath =

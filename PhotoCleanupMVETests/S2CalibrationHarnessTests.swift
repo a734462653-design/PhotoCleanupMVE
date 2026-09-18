@@ -4144,6 +4144,7 @@ final class S2CalibrationHarnessTests: XCTestCase {
         let report = diagnostics.reportText
         XCTAssertFalse(diagnostics.isExporting)
         XCTAssertTrue(report.contains("中间帧门禁：通过"))
+        XCTAssertTrue(report.contains("步长上限触发："))
         XCTAssertTrue(report.contains("V=显示、s=1 稳定态"))
         XCTAssertTrue(report.contains("单击后 V=隐藏、s=1 稳定态"))
         XCTAssertTrue(report.contains("双击进入 Nx：动画结束稳定态"))
