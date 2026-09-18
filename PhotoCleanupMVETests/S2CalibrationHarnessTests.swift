@@ -4136,6 +4136,34 @@ final class S2CalibrationHarnessTests: XCTestCase {
             diagnostics.isExporting || !diagnostics.reportText.isEmpty,
             "诊断协调器应在期限内挂载并开始导出"
         )
+        // IC-159：预热导出——模拟器着色器缓存失效后，双击过渡首次渲染要同步编译
+        // Metal 管线（`path_exterior`，七次运行实测 0.57～30.8 s），落在计时段内即红。
+        // 先完整跑一次导出并丢弃，编译落在这里；下面的计时导出在同一进程里不再编译。
+        guard diagnostics.isExporting || !diagnostics.reportText.isEmpty else {
+            return // 挂载断言已红，不再叠加失败行
+        }
+        let warmUpDeadline = Date(timeIntervalSinceNow: 60)
+        while diagnostics.isExporting, Date() < warmUpDeadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+        guard !diagnostics.isExporting else {
+            XCTFail("预热导出未在 60 s 内完成")
+            return
+        }
+        let warmUpReport = diagnostics.reportText
+        XCTAssertFalse(warmUpReport.isEmpty, "预热导出没有产出报告")
+        let warmUpGateLines = warmUpReport.components(separatedBy: "\n").filter {
+            $0.hasPrefix("采样总数：") || $0.hasPrefix("中间帧门禁：") ||
+                $0.hasPrefix("错误：") || $0.hasPrefix("中间帧软目标未达：")
+        }
+        print("IC063_WARMUP_GATE_BEGIN")
+        print(warmUpGateLines.joined(separator: "\n"))
+        print("IC063_WARMUP_GATE_END")
+        diagnostics.export()
+        XCTAssertTrue(
+            diagnostics.isExporting || diagnostics.reportText != warmUpReport,
+            "计时导出没有起飞"
+        )
         let deadline = Date(timeIntervalSinceNow: 10)
         while diagnostics.isExporting, Date() < deadline {
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
