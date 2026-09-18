@@ -1400,6 +1400,18 @@ enum S2DiagnosticDoubleTapTiming {
     static func durationSeconds(minimumMiddleFrames: Int) -> TimeInterval {
         Double(max(1, minimumMiddleFrames) + 2) * secondsPerThreshold
     }
+
+    /// IC-158 A：诊断路径下每次回调允许推进的**线性**进度上限 = 阈值间距的四分之一
+    /// （进入 n=3 → 1/16，退出 n=5 → 1/24）。
+    ///
+    /// 宿主主线程停顿后，第一次回调的墙钟进度可能已越过多个阈值、甚至直达终点，
+    /// 中间帧一个都采不到；夹到这个上限后，停顿后的回调逐次分步走完。四分之一是为了
+    /// 「每次回调至多跨一个阈值」：缓动斜率最大约 1.72，四分之一间距的线性步对应的
+    /// 缓动后增量不到半个间距。正常帧率下每次回调的墙钟增量远小于本上限，从不触发。
+    /// 产品双击不传上限，不受此处影响。
+    static func maximumLinearProgressStep(minimumMiddleFrames: Int) -> CGFloat {
+        1 / CGFloat(4 * (max(1, minimumMiddleFrames) + 1))
+    }
 }
 
 enum S2DoubleTapTransitionEvent {
@@ -1531,6 +1543,14 @@ final class S2NativeZoomPageController: UIViewController,
     private var doubleTapDisplayLink: CADisplayLink?
     private var doubleTapTransitionStartTimestamp: CFTimeInterval?
     private var doubleTapTransitionDuration: TimeInterval = 0
+    /// IC-158 A：本次过渡每次回调的线性进度上限。只有诊断入口传值；nil ⟹ 不夹紧
+    /// （产品双击与既有夹具都走这一条）。
+    private var doubleTapMaximumLinearProgressStep: CGFloat?
+    /// IC-158 A：上一次回调夹紧后的线性进度，下一次夹紧的基准。
+    private var doubleTapLastLinearProgress: CGFloat = 0
+    /// IC-158 A：本次过渡里上限实际触发的回调次数。诊断报告读它归因宿主停顿，
+    /// 正常帧率下恒 0。运行类与测试要读，故 `private(set)`。
+    private(set) var doubleTapClampedCallbackCount = 0
     private var doubleTapFocusPoint = CGPoint.zero
     private var activeDoubleTapTargetScale: CGFloat = 1
     private var doubleTapTargetPage: S2NativePageContent?
@@ -1872,7 +1892,8 @@ final class S2NativeZoomPageController: UIViewController,
         targetScale: CGFloat,
         at focusPoint: CGPoint,
         configuration: S2CalibrationConfiguration,
-        durationOverrideSeconds: TimeInterval? = nil
+        durationOverrideSeconds: TimeInterval? = nil,
+        maximumLinearProgressStep: CGFloat? = nil
     ) -> Bool {
         guard !isDoubleTapTransitionActive,
               !isPresentationTransitionActive,
@@ -1953,6 +1974,10 @@ final class S2NativeZoomPageController: UIViewController,
         activeDoubleTapTargetScale = targetScale
         doubleTapLatestPage = nil
         doubleTapTransitionStartTimestamp = nil
+        // IC-158 A：上限与它的两个记账量与进度样本同处清零，一次过渡一套。
+        doubleTapMaximumLinearProgressStep = maximumLinearProgressStep
+        doubleTapLastLinearProgress = 0
+        doubleTapClampedCallbackCount = 0
         // IC-110 A：时长改常量（≈300ms）。`policy.shouldAnimate` 仍作为
         // 「是否动画」的闸门保持不变——关动画、时长置 0 的既有测试路径照旧生效；
         // 只有时长取值不再跟随 `animationDurationMilliseconds`。
@@ -2213,9 +2238,19 @@ final class S2NativeZoomPageController: UIViewController,
             (doubleTapTransitionStartTimestamp ?? displayLink.timestamp)
         // IC-110 A：线性进度只用于计时与收口判定；落到几何上的是缓动后进度。
         // 缓动端点恒等，故终点几何与既有契约一致。
-        let linearProgress = doubleTapTransitionDuration > 0
+        var linearProgress = doubleTapTransitionDuration > 0
             ? CGFloat(elapsed / doubleTapTransitionDuration)
             : 1
+        // IC-158 A：诊断路径限制每次回调的线性推进量。宿主主线程停顿后，墙钟进度可能
+        // 一步跨过全部阈值直达终点（#310a1／#312a1／#313a1 三次红的机理）；夹到上限后
+        // 停顿后的回调逐次分步走完，阈值一个不漏。收口判断照旧用夹紧后的值。
+        // 产品双击不传上限，这一段整体跳过。
+        if let step = doubleTapMaximumLinearProgressStep,
+           linearProgress > doubleTapLastLinearProgress + step {
+            linearProgress = doubleTapLastLinearProgress + step
+            doubleTapClampedCallbackCount += 1
+        }
+        doubleTapLastLinearProgress = linearProgress
         applyDoubleTapTransitionProgress(
             S2DoubleTapTransitionTiming.easedProgress(linearProgress)
         )
@@ -3400,6 +3435,10 @@ final class S2NativePagerViewController: UIViewController,
             configuration: diagnosticConfiguration,
             durationOverrideSeconds:
                 S2DiagnosticDoubleTapTiming.durationSeconds(
+                    minimumMiddleFrames: minimumMiddleFrames
+                ),
+            maximumLinearProgressStep:
+                S2DiagnosticDoubleTapTiming.maximumLinearProgressStep(
                     minimumMiddleFrames: minimumMiddleFrames
                 )
         )
