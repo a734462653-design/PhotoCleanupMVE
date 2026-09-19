@@ -7,4 +7,8 @@ import Combine
 /// 推出与返回都只改它。不引用会话层与任何状态机。
 final class S0CleanupFlowModel: ObservableObject {
     @Published var presentedCategory: S0CategoryIdentifier? = nil
+
+    /// IC-160 A（裁定 二）：类别页勾选跨 S2 往返的保留集。**不发布**——它只在类别页
+    /// 重建时被读一次用于播种，发布变化只会引发多余的重绘。返回首页时由容器清空。
+    var preservedSelection: Set<String> = []
 }

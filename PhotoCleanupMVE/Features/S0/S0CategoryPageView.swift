@@ -9,8 +9,11 @@ struct S0CategoryPageSelection: Equatable {
     private(set) var items: [S0CategoryAsset]
     private(set) var selected: Set<String> = []
 
-    init(items: [S0CategoryAsset]) {
+    /// IC-160 A（裁定 三）：`preselected` 是跨 S2 往返带回来的保留集，与当前网格求交——
+    /// 在 S2 里被标记的那几张已从列表消失，不该留在已选集合里。缺省为空即旧行为。
+    init(items: [S0CategoryAsset], preselected: Set<String> = []) {
         self.items = items
+        self.selected = preselected.intersection(Set(items.map { $0.id }))
     }
 
     /// 网格全部项的字节和（副行的体积）。
