@@ -483,7 +483,11 @@ final class IC161SimilarPhotosProbeTests: XCTestCase {
             printByteCount: 3_072,
             wallClockSeconds: 4,
             memoryMinimumBytes: 7_500,
-            cancelled: false
+            cancelled: false,
+            // IC-161 B 给结果加了相邻对三字段；本夹具只测特征报告，给空值即可。
+            neighborPairs: [],
+            distanceFailedCount: 0,
+            sampleAssetIDs: []
         )
     }
 
