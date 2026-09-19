@@ -778,6 +778,9 @@ struct S2View: View {
     /// 用现成对象而不是工厂闭包：闭包体是非隔离的，在里面调 `@MainActor` 的
     /// 协调器方法会触发隔离检查；由 App 层在自身的主线程上下文里造好传进来。
     private let assetSizeProber: S2AssetSizeProbing?
+    /// IC-161 A：相似照片特征探针的取数实现。未接线（nil）时探针按钮禁用。
+    /// 口径同 `assetSizeProber`：由 App 层造好传进来，面板按钮显式触发才取数。
+    private let similarPhotosProber: SimilarPhotosFeatureProbing?
     /// IC-146 A：分享取项实现。默认走 PhotoKit；测试注入桩。
     private let shareItemResolver: any S2ShareItemResolving
 
@@ -792,6 +795,13 @@ struct S2View: View {
     @StateObject private var primaryMark: S2PrimaryMarkPresenter
     /// IC-099b R2：字节数探针。**只在面板按钮触发时才取数**；未接线时按钮不可用。
     @StateObject private var assetSizeProbe = S2AssetSizeProbeCoordinator()
+    /// IC-161 A：相似照片特征探针。**只在面板按钮触发时才取数**；未接线时按钮不可用。
+    @StateObject private var similarPhotosProbe =
+        SimilarPhotosFeatureProbeCoordinator()
+    /// IC-161 A：探针的样本上限与并发度。只影响探针自己的取数，不进配置、不落盘。
+    @State private var similarPhotosSampleLimit = SimilarPhotosSampleLimit.fiveHundred
+    @State private var similarPhotosConcurrency =
+        SimilarPhotosProbeLimits.concurrencyOptions[0]
     /// IC-108 B：双击丝滑度探针。默认关闭；关闭时不向 pager 传引用，埋点零开销。
     @StateObject private var doubleTapProbe =
         S2DoubleTapSmoothnessProbeCoordinator()
@@ -833,6 +843,7 @@ struct S2View: View {
         assetCreationDate: @escaping (String) -> Date? = { _ in nil },
         assetVolumeProvider: S2AssetVolumeProviding? = nil,
         assetSizeProber: S2AssetSizeProbing? = nil,
+        similarPhotosProber: SimilarPhotosFeatureProbing? = nil,
         shareItemResolver: any S2ShareItemResolving =
             S2PhotoKitShareItemResolver(),
         photoContent: @escaping PhotoContent,
@@ -880,6 +891,7 @@ struct S2View: View {
         self.assetCreationDate = assetCreationDate
         self.assetVolumeProvider = assetVolumeProvider
         self.assetSizeProber = assetSizeProber
+        self.similarPhotosProber = similarPhotosProber
         self.shareItemResolver = shareItemResolver
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
@@ -2777,6 +2789,7 @@ struct S2View: View {
                 }
                 assetSizeProbeSection
                 doubleTapProbeSection
+                similarPhotosProbeSection
                 // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
                 // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
@@ -2830,6 +2843,90 @@ struct S2View: View {
                 .font(.system(.caption2, design: .monospaced))
                 .textSelection(.enabled)
         }
+    }
+
+    /// IC-161 A：调试面板的相似照片特征探针段（裁定 一、二）。只量取图与特征计算的
+    /// 耗时、环境量与特征体积，**不改任何产品行为、不写持久化、不碰产品图片请求路径**。
+    /// 关闭态零副作用：不点「开始提取」就不取数。
+    @ViewBuilder
+    private var similarPhotosProbeSection: some View {
+        Divider()
+        Text(L10n.text("s2.calibration.similar_probe.title"))
+        similarPhotosLimitPicker
+        similarPhotosConcurrencyPicker
+        Button(L10n.text("s2.calibration.similar_probe.start")) {
+            guard let prober = similarPhotosProber else {
+                return
+            }
+            similarPhotosProbe.run(
+                limit: similarPhotosSampleLimit,
+                concurrency: similarPhotosConcurrency,
+                using: prober
+            )
+        }
+        .disabled(
+            similarPhotosProber == nil || similarPhotosProbe.isRunning
+        )
+        .s2MinimumTouchTarget()
+        if similarPhotosProbe.isRunning {
+            ProgressView(similarPhotosProbe.progressText)
+            Button(L10n.text("s2.calibration.similar_probe.cancel")) {
+                similarPhotosProbe.cancel()
+            }
+            .s2MinimumTouchTarget()
+        }
+        if !similarPhotosProbe.reportText.isEmpty {
+            ShareLink(item: similarPhotosProbe.reportText) {
+                Text(L10n.text(
+                    "s2.calibration.similar_probe.share"
+                ))
+            }
+            .s2MinimumTouchTarget()
+            Text(verbatim: similarPhotosProbe.reportText)
+                .font(.system(.caption2, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    }
+
+    /// 样本上限选择器。纯数字档用 `Text(verbatim:)`（不进目录），「全部」走目录文案。
+    @ViewBuilder
+    private var similarPhotosLimitPicker: some View {
+        Picker(
+            selection: $similarPhotosSampleLimit,
+            label: Text(L10n.text("s2.calibration.similar_probe.limit_label"))
+        ) {
+            ForEach(SimilarPhotosSampleLimit.allCases) { limit in
+                similarPhotosLimitLabel(limit).tag(limit)
+            }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    @ViewBuilder
+    private func similarPhotosLimitLabel(
+        _ limit: SimilarPhotosSampleLimit
+    ) -> some View {
+        if let digits = limit.digitsLabel {
+            Text(verbatim: digits)
+        } else {
+            Text(L10n.text("s2.calibration.similar_probe.limit_all"))
+        }
+    }
+
+    /// 并发度选择器。取值 1／2／4，纯数字标签。
+    @ViewBuilder
+    private var similarPhotosConcurrencyPicker: some View {
+        Picker(
+            selection: $similarPhotosConcurrency,
+            label: Text(L10n.text(
+                "s2.calibration.similar_probe.concurrency_label"
+            ))
+        ) {
+            ForEach(SimilarPhotosProbeLimits.concurrencyOptions, id: \.self) { value in
+                Text(verbatim: String(value)).tag(value)
+            }
+        }
+        .pickerStyle(.segmented)
     }
 
     /// IC-108 B：调试面板的双击丝滑度探针段。只读区 + 复制入口，模式照 IC-099b。

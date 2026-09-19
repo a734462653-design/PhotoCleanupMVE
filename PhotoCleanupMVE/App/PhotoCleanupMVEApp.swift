@@ -16,6 +16,9 @@ struct PhotoCleanupMVEApp: App {
     /// IC-153 C：S0 数据源换成真实扫描服务（批次 5.1），替换 IC-147 的桩。
     /// 构造无副作用：不发 PhotoKit 请求、不读缓存文件，第一次推进扫描才开始。
     private let s0DataProvider = S0LibraryScanService()
+    /// IC-161 A：相似照片探针的取数实现（探针，不参与任何产品路径）。构造无副作用：
+    /// 只建一条私有并发队列，不发 PhotoKit 请求、不碰 Vision，面板按钮触发才取数。
+    private let similarPhotosProber = SimilarPhotosFeatureProbeService()
 
     /// IC-131 B：S1 视图构造抽成 builder。加参数后仍留在 Scene body 的多层
     /// 嵌套里会把类型检查推到超时（IC-108／IC-113 三次实例），构造点一律外提。
@@ -147,6 +150,7 @@ struct PhotoCleanupMVEApp: App {
                 coordinator.makeS2AssetVolumeProvider(),
             assetSizeProber:
                 coordinator.makeS2AssetSizeProber(),
+            similarPhotosProber: similarPhotosProber,
             photoContent: { context in
                 AnyView(
                     S2TemporaryPhotoImageView(
