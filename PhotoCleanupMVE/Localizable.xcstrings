@@ -111,6 +111,83 @@
         }
       }
     },
+    "deck.home.bar.caption" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "占 {percent} · {bytes}"
+          }
+        }
+      }
+    },
+    "deck.home.hero.label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可清理的空间"
+          }
+        }
+      }
+    },
+    "deck.home.open.action" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "去清理"
+          }
+        }
+      }
+    },
+    "deck.home.open.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 项 · 从大到小"
+          }
+        }
+      }
+    },
+    "deck.home.released" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "累计已腾出"
+          }
+        }
+      }
+    },
+    "deck.home.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "占 {percent}"
+          }
+        }
+      }
+    },
+    "deck.home.suggest" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建议先清 · 最大 {count} 个 {bytes}"
+          }
+        }
+      }
+    },
     "deletion.failure.asset_unavailable" : {
       "extractionState" : "manual",
       "localizations" : {

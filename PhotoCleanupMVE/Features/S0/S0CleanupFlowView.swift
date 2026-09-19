@@ -80,19 +80,44 @@ struct S0CleanupFlowView: View {
         }
     }
 
-    /// 首页原样构造（陷阱 16：构造点外提）。
+    /// 首页构造点（陷阱 16：构造点外提）。
+    ///
+    /// IC-162 A（裁定 一）：「卡片叠」预览与旧首页并存，由编译期常量二选一；
+    /// **旧构造的实参逐字不动**，两只回调外提成下面两个方法，新旧共用。
+    @ViewBuilder
     private var homeScreen: some View {
-        S0View(
-            machine: machine,
-            dataProvider: dataProvider,
-            onEnterCategoryPage: { identifier in
-                // IC-160 B：从首页进任一类别都是新的一轮，保留集先清空（防御：从 S2 改走
-                // 待删篮路径回到首页时，模型里可能还留着上一个类别的保留集）。
-                flowModel.preservedSelection = []
-                flowModel.presentedCategory = identifier
-            },
-            onSwitchToOrganizeTab: onSwitchToOrganizeTab
-        )
+        if S0DeckPreview.isEnabled {
+            S0DeckHomeView(
+                machine: machine,
+                dataProvider: dataProvider,
+                onEnterCategoryPage: { identifier in
+                    enterCategory(identifier)
+                },
+                onSwitchToOrganizeTab: onSwitchToOrganizeTab
+            )
+        } else {
+            S0View(
+                machine: machine,
+                dataProvider: dataProvider,
+                onEnterCategoryPage: { identifier in
+                    enterCategory(identifier)
+                },
+                onSwitchToOrganizeTab: onSwitchToOrganizeTab
+            )
+        }
+    }
+
+    /// IC-160 B：从首页进任一类别都是新的一轮，保留集先清空（防御：从 S2 改走
+    /// 待删篮路径回到首页时，模型里可能还留着上一个类别的保留集）。
+    private func enterCategory(_ identifier: S0CategoryIdentifier) {
+        flowModel.preservedSelection = []
+        flowModel.presentedCategory = identifier
+    }
+
+    /// 返回首页即一轮结束：勾选不跨类别、不跨进出首页保留（IC-160 裁定 一）。
+    private func leaveCategory() {
+        flowModel.preservedSelection = []
+        flowModel.presentedCategory = nil
     }
 
     /// 类别页（陷阱 16：构造点外提）。数据取自状态机当前快照的该类别与数据源的有序列表；
@@ -107,9 +132,7 @@ struct S0CleanupFlowView: View {
                     moveToBasket(assetIDs, from: identifier)
                 },
                 onBack: {
-                    // 返回首页即一轮结束：勾选不跨类别、不跨进出首页保留（裁定 一）。
-                    flowModel.preservedSelection = []
-                    flowModel.presentedCategory = nil
+                    leaveCategory()
                 },
                 onLongPress: { orderedAssetIDs, currentAssetID in
                     _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)

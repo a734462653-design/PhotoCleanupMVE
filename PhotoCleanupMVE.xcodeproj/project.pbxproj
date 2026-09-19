@@ -70,6 +70,11 @@
 		20000000000000000000005B /* S0CleanupFlowView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000005E /* S0CleanupFlowView.swift */; };
 		20000000000000000000005C /* IC157LongPressIntoS2Tests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000005F /* IC157LongPressIntoS2Tests.swift */; };
 		20000000000000000000005E /* IC160SelectionSurvivesS2Tests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000061 /* IC160SelectionSurvivesS2Tests.swift */; };
+		20000000000000000000005F /* S0DeckMetrics.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000062 /* S0DeckMetrics.swift */; };
+		200000000000000000000060 /* S0DeckHomeModel.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000063 /* S0DeckHomeModel.swift */; };
+		200000000000000000000061 /* S0DeckCoverView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000064 /* S0DeckCoverView.swift */; };
+		200000000000000000000062 /* S0DeckHomeView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000065 /* S0DeckHomeView.swift */; };
+		200000000000000000000063 /* IC162DeckPreviewTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000066 /* IC162DeckPreviewTests.swift */; };
 		20000000000000000000005D /* S0CleanupFlowModel.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000060 /* S0CleanupFlowModel.swift */; };
 		20000000000000000000001F /* S1StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* S1StateMachine.swift */; };
 		200000000000000000000020 /* S1View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* S1View.swift */; };
@@ -178,6 +183,11 @@
 		10000000000000000000005E /* S0CleanupFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0CleanupFlowView.swift; sourceTree = "<group>"; };
 		10000000000000000000005F /* IC157LongPressIntoS2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC157LongPressIntoS2Tests.swift; sourceTree = "<group>"; };
 		100000000000000000000061 /* IC160SelectionSurvivesS2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC160SelectionSurvivesS2Tests.swift; sourceTree = "<group>"; };
+		100000000000000000000062 /* S0DeckMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0DeckMetrics.swift; sourceTree = "<group>"; };
+		100000000000000000000063 /* S0DeckHomeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0DeckHomeModel.swift; sourceTree = "<group>"; };
+		100000000000000000000064 /* S0DeckCoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0DeckCoverView.swift; sourceTree = "<group>"; };
+		100000000000000000000065 /* S0DeckHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0DeckHomeView.swift; sourceTree = "<group>"; };
+		100000000000000000000066 /* IC162DeckPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC162DeckPreviewTests.swift; sourceTree = "<group>"; };
 		100000000000000000000060 /* S0CleanupFlowModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0CleanupFlowModel.swift; sourceTree = "<group>"; };
 		100000000000000000000022 /* S1StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000023 /* S1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1View.swift; sourceTree = "<group>"; };
@@ -319,6 +329,10 @@
 				10000000000000000000005D /* S0CategoryPageView.swift */,
 				10000000000000000000005E /* S0CleanupFlowView.swift */,
 				100000000000000000000060 /* S0CleanupFlowModel.swift */,
+				100000000000000000000062 /* S0DeckMetrics.swift */,
+				100000000000000000000063 /* S0DeckHomeModel.swift */,
+				100000000000000000000064 /* S0DeckCoverView.swift */,
+				100000000000000000000065 /* S0DeckHomeView.swift */,
 				100000000000000000000049 /* S0View.swift */,
 			);
 			path = S0;
@@ -418,6 +432,7 @@
 				10000000000000000000005C /* IC156CategoryPageTests.swift */,
 				10000000000000000000005F /* IC157LongPressIntoS2Tests.swift */,
 				100000000000000000000061 /* IC160SelectionSurvivesS2Tests.swift */,
+				100000000000000000000066 /* IC162DeckPreviewTests.swift */,
 				100000000000000000000013 /* S3StateMachineTests.swift */,
 				100000000000000000000014 /* SnapshotInvariantTests.swift */,
 				100000000000000000000015 /* VolumeFormattingTests.swift */,
@@ -555,6 +570,10 @@
 				20000000000000000000005A /* S0CategoryPageView.swift（源码） */,
 				20000000000000000000005B /* S0CleanupFlowView.swift（源码） */,
 				20000000000000000000005D /* S0CleanupFlowModel.swift（源码） */,
+				20000000000000000000005F /* S0DeckMetrics.swift（源码） */,
+				200000000000000000000060 /* S0DeckHomeModel.swift（源码） */,
+				200000000000000000000061 /* S0DeckCoverView.swift（源码） */,
+				200000000000000000000062 /* S0DeckHomeView.swift（源码） */,
 				200000000000000000000046 /* S0View.swift（源码） */,
 				200000000000000000000047 /* S0CleanupDataStub.swift（源码） */,
 				200000000000000000000052 /* S0ScanRules.swift（源码） */,
@@ -630,6 +649,7 @@
 				200000000000000000000059 /* IC156CategoryPageTests.swift（测试源码） */,
 				20000000000000000000005C /* IC157LongPressIntoS2Tests.swift（测试源码） */,
 				20000000000000000000005E /* IC160SelectionSurvivesS2Tests.swift（测试源码） */,
+				200000000000000000000063 /* IC162DeckPreviewTests.swift（测试源码） */,
 				200000000000000000000010 /* S3StateMachineTests.swift（测试源码） */,
 				200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */,
 				200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */,
