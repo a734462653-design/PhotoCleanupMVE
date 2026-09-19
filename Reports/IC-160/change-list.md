@@ -9,7 +9,8 @@
 | 分支 | `feature/ic-160-category-selection-survives-s2` |
 | 子项 A 提交 | `6c3cecd7bb76ea8d2ac31c97c1e6191970db94f2` `feat(IC-160 A): 选择模型加播种口、流程模型加不发布的保留集` |
 | 子项 B 提交 | `59a449670bd68866ab87e4067e77e2ff287336ba` `feat(IC-160 B): 类别页回报勾选、流程容器播种与清空保留集` |
-| 报告 | 本文件与 `self-check.md`，另一个 docs 提交（同一分支，纪律 7：CI 编号推送后才产生；SHA 在 `self-check.md` 第十二节实读补记） |
+| 报告 | 本文件与 `self-check.md`；分支 docs 提交 `91969d580ad2a0dcc90e6209a13a909da0d60229`，合并后 G908 由 `main` 上同卡第二个 docs 提交补记 |
+| 合并提交 | `dff2e7946d6297672eba1a001952cbe737a183e1`（`--no-ff`，父 `d64b7f2` 与 `91969d5`）；分支运行 **#320** 一次绿 856／0，合并后 `main` 运行 **#321** 一次绿 856／0 |
 | 出厂值 | **无变更**。`S2CalibrationConfiguration.schemaVersion` 仍 **7**；`S0HomeMetrics` 仍 **52**；`S0CategoryPageMetrics` 仍 **42**；目录 `s0.` 仍 **38**（本卡不加常量、不加文案） |
 | 占位值登记 | **无**。不新增 `factoryPlaceholder` 项、不改任何出厂值集合，故不递增 `schemaVersion` |
 | 项数 | 852 + 4 = **856**（A 单独摘取时 852 + 3 = 855） |

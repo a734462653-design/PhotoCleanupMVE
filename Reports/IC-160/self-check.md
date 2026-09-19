@@ -313,8 +313,71 @@
 
 ## 十二、合并与 G908
 
-待填。
+### 报告提交形态说明（纪律 7）
+
+两个代码提交 `6c3cecd`、`59a4496` 先行推送以触发 CI；两份报告作为**同一分支的一个 docs 提交** `91969d580ad2a0dcc90e6209a13a909da0d60229` 随后推送（`Reports/**` 与 `**.md` 在 `paths-ignore` 内，不触发 CI，属预期行为）。合并后 G908 数据由 `main` 上**同一张卡的第二个 docs 提交**补记（本节即是）。未跨卡回填。
+
+### 合并
+
+| 项 | 值 |
+|---|---|
+| 合并提交 | `dff2e7946d6297672eba1a001952cbe737a183e1` |
+| 方式 | `git merge --no-ff feature/ic-160-category-selection-survives-s2 -F <msgfile>` |
+| 父提交 | `d64b7f28286374099143c18565a326fc9f05d762`（基线）与 `91969d580ad2a0dcc90e6209a13a909da0d60229`（分支 tip） |
+| 合并前核对 | 远端 `main` 仍 `d64b7f2…`；工作树 `git status --porcelain` 空 |
+| 合并内容 | 7 个文件、+674／−2（产品三文件 +38／−2、新测试 +238、pbxproj +4、报告两份 +396） |
+| 推送 | `git push origin main` → `d64b7f2..dff2e79  main -> main`，一次成功 |
+| 权限层 | Bash 侧 `git merge --no-ff` **一次通过**，未出现 `[Merge Without Review]` 拒绝 |
+
+### G908：合并后 `main` 运行 #321
+
+| 项 | 值 |
+|---|---|
+| 运行编号 | **#321** |
+| run id / attempt | `35431289507` / **1** |
+| 被测提交 | `dff2e7946d6297672eba1a001952cbe737a183e1`（分支 `main`） |
+| 结论 | `completed` / **`success`**；十二步全 `success` |
+| 起止 | `2026-09-19T08:10:30Z` → `08:21:36Z`（作业约 10 分 56 秒） |
+| XCTest 项数 | **856 项，0 失败**（执行摘要 notice 原文：`Executed 856 tests, 0 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 856 tests / 0 failures`）；按唯一 `Test Case` 身份计亦为 856 起／856 有结果／0 failed |
+| 真实退出码 | **0**（步骤 `success` + `exit "$test_status"`；`** TEST SUCCEEDED **`，无 `Restarting after`） |
+| 目的地实证行 | `{ platform:iOS Simulator, arch:arm64, id:2911FD29-A09E-4A81-BEA7-99A616FB7FC8, OS:26.2, name:iPhone 16 }` |
+| 分段耗时 notice 原文 | `XCTest 分段耗时：模拟器启动 107 s；xcodebuild test 347 s；总 456 s` |
+| IPA 校验 notice 原文 | `未签名 IPA 校验：文件=PhotoCleanupMVE-unsigned.ipa，字节数=1690601，SHA-256=11c51ef9b2fd33b624d30c1194e894da9f831c5106b19f7229dd6bce4dad0c96`（字节数与 #320 相同、SHA-256 不同——IPA 不可复现，符合既有结论） |
+| artifact（H79 装这一个） | `PhotoCleanupMVE-unsigned-dff2e7946d62`，id `10580543734`，容器 1 690 771 字节 |
+| 四条断言 | 全部 **passed**（0.001／0.001／0.002／0.008 s） |
+| 既有相关族 | `IC147` 16、`IC148` 14、`IC151` 8、`IC152` 6、`IC153` 13、`IC155` 9、`IC156` 11、`IC157` 8——**共 85 条全过** |
+| `testIC063…` | **passed (6.816 seconds)**；块内 `building pipeline path_exterior-jba6la8feba4 took 0.761832 seconds` 落在 `IC063_WARMUP_GATE_END` **之前**；预热报告 `采样总数：13`、`中间帧门禁：失败`（进入中间帧 1 帧），计时导出 `采样总数：15`、`中间帧门禁：通过` |
+
+### 两次运行对读
+
+| 项 | #320（分支） | #321（合并后 `main`） |
+|---|---|---|
+| 项数／失败 | 856／0 | 856／0 |
+| 四条断言 | 全 passed | 全 passed |
+| 分段耗时 | 65／288／354 s | 107／347／456 s |
+| IPA 字节数 | 1 690 601 | 1 690 601（SHA-256 不同） |
+| `testIC063…` | 6.351 s passed；预热门禁**失败**（12 样本、进入 0 帧），计时 15 样本通过 | 6.816 s passed；预热门禁**失败**（13 样本、进入 1 帧），计时 15 样本通过 |
+
+②旁证（本卡不改 `testIC063` 与产品动画，只登记）：IC-159 的预热导出在这两次运行里**第一次真的把门禁判失败**——0.68／0.76 s 的 Metal 管线编译吃掉了预热段的进入动画，而两次计时导出都是 15 样本满帧通过。IC-159 裁定 二「预热报告即使『中间帧门禁：失败』也不残留到第二次」由此取得实证①。
 
 ## 十三、40 位 SHA 核验（陷阱 15）
 
-待填。
+报告内每个 40 位 SHA 均来自实读命令输出（`git rev-parse`／`git log --parents`／`git ls-remote`／`gh api` 的 `head_sha`），无短前缀补全。逐条 `git cat-file -e <sha>^{commit}`：
+
+| SHA | 含义 | 退出码 |
+|---|---|---|
+| `d64b7f28286374099143c18565a326fc9f05d762` | 基线 `main` | **0** |
+| `4d7c98e84837dda82e6f1a0068cc324b8ec90085` | IC-159 合并提交（继承） | **0** |
+| `6c3cecd7bb76ea8d2ac31c97c1e6191970db94f2` | 子项 A | **0** |
+| `59a449670bd68866ab87e4067e77e2ff287336ba` | 子项 B（#320 被测提交） | **0** |
+| `91969d580ad2a0dcc90e6209a13a909da0d60229` | 分支报告 docs 提交 | **0** |
+| `dff2e7946d6297672eba1a001952cbe737a183e1` | 合并提交（#321 被测提交） | **0** |
+| `5cb67332437a446d98733ddc942e2905392d2891` | IC-158 分支 tip（未动） | **0** |
+| `b368a6caee846e664391b0620350395bfe6fbc7f` | 冻结链 ic-089 | **0** |
+| `6736f1e3ebf2a3fd9a0c00f1bcd2c83f81dec74d` | 冻结链 ic-091 | **0** |
+| `a7cc1ec727a3a493f5263e688a316cbf4c743562` | 冻结链 ic-092 | **0** |
+| `486bcb769b59eb1146c5a231c7998847206777cc` | 探针 ic-137 | **0** |
+| `d373afc7125104c01acfc296829229090e6871ce` | 探针 ic-145 | **0** |
+| `9db02b93eccbb87d126602901807e70823535111` | 探针 ic-067 | **0** |
+
+64 位十六进制串（聚合 SHA-256、逐文件 SHA-256、IPA 校验值）不是 git 对象，不参与 `cat-file` 核验；各自来源已在对应节注明。
