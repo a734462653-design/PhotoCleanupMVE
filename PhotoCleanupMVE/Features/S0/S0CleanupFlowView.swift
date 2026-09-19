@@ -34,6 +34,11 @@ struct S0CleanupFlowView: View {
     /// IC-157 C：上提到 App 持有的模型，跨进出 S2 存活（裁定 一）。
     @ObservedObject var flowModel: S0CleanupFlowModel
 
+    /// IC-162 B：「卡片叠」预览里首页展开卡 → 类别页页头的 zoom 过渡命名空间。
+    /// 两只新视图各收一个形参；系统版本判定与两只过渡修饰符只出现在新视图文件里
+    /// （本文件的数字字面量被钉在 0／1／2 之内，写版本号进来必红）。
+    @Namespace private var deckNamespace
+
     init(
         machine: S0StateMachine,
         dataProvider: any S0CleanupDataProviding,
@@ -93,7 +98,8 @@ struct S0CleanupFlowView: View {
                 onEnterCategoryPage: { identifier in
                     enterCategory(identifier)
                 },
-                onSwitchToOrganizeTab: onSwitchToOrganizeTab
+                onSwitchToOrganizeTab: onSwitchToOrganizeTab,
+                transitionNamespace: deckNamespace
             )
         } else {
             S0View(
@@ -122,27 +128,52 @@ struct S0CleanupFlowView: View {
 
     /// 类别页（陷阱 16：构造点外提）。数据取自状态机当前快照的该类别与数据源的有序列表；
     /// 快照里恒有三条元数据类别，点得进来的类别在此必非 nil（③，报告登记）。
+    ///
+    /// IC-162 B（裁定 一）：新旧类别页并存，由同一个编译期常量二选一；**旧构造的实参
+    /// 逐字不动**。新类别页不经 `initialSelection:`／`onSelectionChange:` 形参拿保留集，
+    /// 而是直接收 `flowModel`，在自己的文件里按 IC-160 的口径读写；两层 `.toolbar` 也
+    /// 由它自己挂，流程文件里不为它再写。
     @ViewBuilder
     private func page(for identifier: S0CategoryIdentifier) -> some View {
         if let category = machine.category(identifier) {
-            S0CategoryPageView(
-                category: category,
-                items: dataProvider.categoryAssets(identifier),
-                onMoveToBasket: { assetIDs in
-                    moveToBasket(assetIDs, from: identifier)
-                },
-                onBack: {
-                    leaveCategory()
-                },
-                onLongPress: { orderedAssetIDs, currentAssetID in
-                    _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
-                },
-                initialSelection: flowModel.preservedSelection,
-                onSelectionChange: { flowModel.preservedSelection = $0 },
-                toastDurationMilliseconds: toastDurationMilliseconds
-            )
-            .toolbar(.hidden, for: .tabBar)
-            .toolbar(.hidden, for: .navigationBar)
+            if S0DeckPreview.isEnabled {
+                S0DeckCategoryPageView(
+                    machine: machine,
+                    category: category,
+                    items: dataProvider.categoryAssets(identifier),
+                    flowModel: flowModel,
+                    onMoveToBasket: { assetIDs in
+                        moveToBasket(assetIDs, from: identifier)
+                    },
+                    onBack: {
+                        leaveCategory()
+                    },
+                    onLongPress: { orderedAssetIDs, currentAssetID in
+                        _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
+                    },
+                    toastDurationMilliseconds: toastDurationMilliseconds,
+                    transitionNamespace: deckNamespace
+                )
+            } else {
+                S0CategoryPageView(
+                    category: category,
+                    items: dataProvider.categoryAssets(identifier),
+                    onMoveToBasket: { assetIDs in
+                        moveToBasket(assetIDs, from: identifier)
+                    },
+                    onBack: {
+                        leaveCategory()
+                    },
+                    onLongPress: { orderedAssetIDs, currentAssetID in
+                        _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
+                    },
+                    initialSelection: flowModel.preservedSelection,
+                    onSelectionChange: { flowModel.preservedSelection = $0 },
+                    toastDurationMilliseconds: toastDurationMilliseconds
+                )
+                .toolbar(.hidden, for: .tabBar)
+                .toolbar(.hidden, for: .navigationBar)
+            }
         }
     }
 

@@ -188,6 +188,61 @@
         }
       }
     },
+    "deck.page.rest.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其余 {count} 个"
+          }
+        }
+      }
+    },
+    "deck.page.selected" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选 {count} 项"
+          }
+        }
+      }
+    },
+    "deck.page.submit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移入待删篮"
+          }
+        }
+      }
+    },
+    "deck.page.top.action" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全选这 {count} 个"
+          }
+        }
+      }
+    },
+    "deck.page.top.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最大的 {count} 个"
+          }
+        }
+      }
+    },
     "deletion.failure.asset_unavailable" : {
       "extractionState" : "manual",
       "localizations" : {

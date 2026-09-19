@@ -33,6 +33,9 @@ struct S0DeckHomeView: View {
     private let onSwitchToOrganizeTab: () -> Void
     private let onOpenSystemSettings: () -> Void
     private let onRetry: () -> Void
+    /// IC-162 B：进类别页的 zoom 过渡命名空间。宿主是流程容器（`Namespace.ID` 没有
+    /// 缺省值，故排在带缺省值的八个之后，由调用方显式给出）。
+    private let transitionNamespace: Namespace.ID
 
     init(
         machine: S0StateMachine,
@@ -42,7 +45,8 @@ struct S0DeckHomeView: View {
         onOpenAccountSheet: @escaping () -> Void = {},
         onSwitchToOrganizeTab: @escaping () -> Void = {},
         onOpenSystemSettings: @escaping () -> Void = {},
-        onRetry: @escaping () -> Void = {}
+        onRetry: @escaping () -> Void = {},
+        transitionNamespace: Namespace.ID
     ) {
         self.machine = machine
         self.dataProvider = dataProvider
@@ -52,6 +56,7 @@ struct S0DeckHomeView: View {
         self.onSwitchToOrganizeTab = onSwitchToOrganizeTab
         self.onOpenSystemSettings = onOpenSystemSettings
         self.onRetry = onRetry
+        self.transitionNamespace = transitionNamespace
     }
 
     var body: some View {
@@ -465,6 +470,10 @@ struct S0DeckHomeView: View {
         .buttonStyle(.plain)
         .disabled(!card.isEnterable)
         .opacity(Self.cardOpacity(for: card))
+        // IC-162 B：这张卡即进类别页的过渡源（iOS 18 起放大成页头，iOS 17 走默认 push）。
+        .modifier(
+            S0DeckZoomSource(id: card.id, namespace: transitionNamespace)
+        )
         .offset(y: offset(forIndex: index))
     }
 

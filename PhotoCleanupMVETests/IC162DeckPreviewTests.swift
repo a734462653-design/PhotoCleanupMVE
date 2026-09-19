@@ -170,6 +170,81 @@ final class IC162DeckPreviewTests: XCTestCase {
         XCTAssertEqual(empty.byteCount, 0)
     }
 
+    // MARK: - 子项 B
+
+    // MARK: - 断言 5：两节按上限切分，顺序不变（子项 B）
+
+    func testIC162B_SectionsSplitAtLimit() {
+        let twelve = Self.assets(count: 12)
+        let split = S0DeckHomeModel.sections(twelve, topLimit: 10)
+        XCTAssertEqual(split.top.count, 10)
+        XCTAssertEqual(split.rest.count, 2)
+        // 顺序不变：两节拼回去就是原列表。
+        XCTAssertEqual((split.top + split.rest).map { $0.id }, twelve.map { $0.id })
+        XCTAssertEqual(split.top.map { $0.id }, twelve.prefix(10).map { $0.id })
+        XCTAssertEqual(split.rest.map { $0.id }, ["10", "11"])
+
+        // 正好 10 项：只有第一节，页面据此不画第二节。
+        let ten = S0DeckHomeModel.sections(Self.assets(count: 10), topLimit: 10)
+        XCTAssertEqual(ten.top.count, 10)
+        XCTAssertTrue(ten.rest.isEmpty)
+
+        // 不足与空：不崩、不出负数。
+        let three = S0DeckHomeModel.sections(Self.assets(count: 3), topLimit: 10)
+        XCTAssertEqual(three.top.count, 3)
+        XCTAssertTrue(three.rest.isEmpty)
+        let none = S0DeckHomeModel.sections([], topLimit: 10)
+        XCTAssertTrue(none.top.isEmpty)
+        XCTAssertTrue(none.rest.isEmpty)
+    }
+
+    // MARK: - 断言 6：「全选这 N 个」并入已选且幂等（子项 B）
+
+    /// 页面的并入写法是「已选的不再 `toggle`」——直接逐个 `toggle` 会把先前手动勾上的
+    /// 那几张反选掉。本条用真的 `S0CategoryPageSelection` 走同一条路径。
+    func testIC162B_SelectingTopSectionUnionsIntoSelection() {
+        let twelve = Self.assets(count: 12)
+        var selection = S0CategoryPageSelection(items: twelve)
+        let split = S0DeckHomeModel.sections(twelve, topLimit: 10)
+
+        // 先手动勾上第 11 项（不在第一节里）。
+        selection.toggle(twelve[10].id)
+        XCTAssertEqual(selection.selected, [twelve[10].id])
+
+        // 再把第一节并入：已选的不得被反选。
+        for item in split.top where !selection.selected.contains(item.id) {
+            selection.toggle(item.id)
+        }
+        XCTAssertEqual(selection.selected.count, 11)
+        XCTAssertTrue(selection.selected.contains(twelve[10].id))
+        // 手算：前 10 项 300…291 之和 2955，加第 11 项 290。
+        XCTAssertEqual(selection.selectedByteCount, 3_245)
+        XCTAssertEqual(
+            selection.selectedByteCount,
+            split.top.reduce(into: Int64(0)) { $0 += $1.byteCount }
+                + twelve[10].byteCount
+        )
+
+        // 幂等：同一节再并入一次，已选集合与体积都不变。
+        for item in split.top where !selection.selected.contains(item.id) {
+            selection.toggle(item.id)
+        }
+        XCTAssertEqual(selection.selected.count, 11)
+        XCTAssertEqual(selection.selectedByteCount, 3_245)
+
+        // 负对照：若并入写成无条件逐个 `toggle`，第二次点「全选这 N 个」就会把整节
+        // 反选掉，只剩手动勾的那一项——这正是本条要钉住的坑。
+        var naive = S0CategoryPageSelection(items: twelve)
+        naive.toggle(twelve[10].id)
+        for item in split.top {
+            naive.toggle(item.id)
+        }
+        for item in split.top {
+            naive.toggle(item.id)
+        }
+        XCTAssertEqual(naive.selected, [twelve[10].id])
+    }
+
     // MARK: - 夹具
 
     /// 三条类别：第一条有项目、第二条无项目（应被丢掉）、第三条有项目。

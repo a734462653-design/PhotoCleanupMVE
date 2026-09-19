@@ -98,6 +98,16 @@ enum S0DeckHomeModel {
         return (count, total)
     }
 
+    /// IC-162 B：类别页的两节切分。前 `topLimit` 项为「最大的 N 个」，其余为「其余 M 个」；
+    /// 总数 ≤ `topLimit` 时第二节为空（页面据此不画第二节）。两节都保持入参顺序。
+    static func sections(
+        _ items: [S0CategoryAsset],
+        topLimit: Int
+    ) -> (top: [S0CategoryAsset], rest: [S0CategoryAsset]) {
+        let count = max(0, min(topLimit, items.count))
+        return (Array(items.prefix(count)), Array(items.dropFirst(count)))
+    }
+
     // MARK: - 私有
 
     private static func fraction(of byteCount: Int64, in library: Int64) -> Double {
