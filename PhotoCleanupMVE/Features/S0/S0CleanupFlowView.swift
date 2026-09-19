@@ -86,6 +86,9 @@ struct S0CleanupFlowView: View {
             machine: machine,
             dataProvider: dataProvider,
             onEnterCategoryPage: { identifier in
+                // IC-160 B：从首页进任一类别都是新的一轮，保留集先清空（防御：从 S2 改走
+                // 待删篮路径回到首页时，模型里可能还留着上一个类别的保留集）。
+                flowModel.preservedSelection = []
                 flowModel.presentedCategory = identifier
             },
             onSwitchToOrganizeTab: onSwitchToOrganizeTab
@@ -104,11 +107,15 @@ struct S0CleanupFlowView: View {
                     moveToBasket(assetIDs, from: identifier)
                 },
                 onBack: {
+                    // 返回首页即一轮结束：勾选不跨类别、不跨进出首页保留（裁定 一）。
+                    flowModel.preservedSelection = []
                     flowModel.presentedCategory = nil
                 },
                 onLongPress: { orderedAssetIDs, currentAssetID in
                     _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
                 },
+                initialSelection: flowModel.preservedSelection,
+                onSelectionChange: { flowModel.preservedSelection = $0 },
                 toastDurationMilliseconds: toastDurationMilliseconds
             )
             .toolbar(.hidden, for: .tabBar)
