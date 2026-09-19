@@ -2857,6 +2857,35 @@ struct S2View: View {
         }
     }
 
+    /// IC-108 B：调试面板的双击丝滑度探针段。只读区 + 复制入口，模式照 IC-099b。
+    /// 探针只做观测，不改双击 / 缩放 / 解码任何行为。
+    @ViewBuilder
+    private var doubleTapProbeSection: some View {
+        Divider()
+        Text(L10n.text("s2.calibration.double_tap_probe.title"))
+        Button(
+            doubleTapProbe.isRecording
+                ? L10n.text("s2.calibration.double_tap_probe.stop")
+                : L10n.text("s2.calibration.double_tap_probe.start")
+        ) {
+            if doubleTapProbe.isRecording {
+                doubleTapProbe.stop()
+            } else {
+                doubleTapProbe.start()
+            }
+        }
+        .s2MinimumTouchTarget()
+        if !doubleTapProbe.reportText.isEmpty {
+            ShareLink(item: doubleTapProbe.reportText) {
+                Text(L10n.text("s2.calibration.double_tap_probe.share"))
+            }
+            .s2MinimumTouchTarget()
+            Text(verbatim: doubleTapProbe.reportText)
+                .font(.system(.caption2, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    }
+
     /// IC-161 A：调试面板的相似照片特征探针段（裁定 一、二）。只量取图与特征计算的
     /// 耗时、环境量与特征体积，**不改任何产品行为、不写持久化、不碰产品图片请求路径**。
     /// 关闭态零副作用：不点「开始提取」就不取数。
@@ -3070,35 +3099,6 @@ struct S2View: View {
                 assetIDs: aestheticsProbe.highestAssetIDs,
                 limit: AestheticsScoreProbeText.extremesLimit
             )
-        }
-    }
-
-    /// IC-108 B：调试面板的双击丝滑度探针段。只读区 + 复制入口，模式照 IC-099b。
-    /// 探针只做观测，不改双击 / 缩放 / 解码任何行为。
-    @ViewBuilder
-    private var doubleTapProbeSection: some View {
-        Divider()
-        Text(L10n.text("s2.calibration.double_tap_probe.title"))
-        Button(
-            doubleTapProbe.isRecording
-                ? L10n.text("s2.calibration.double_tap_probe.stop")
-                : L10n.text("s2.calibration.double_tap_probe.start")
-        ) {
-            if doubleTapProbe.isRecording {
-                doubleTapProbe.stop()
-            } else {
-                doubleTapProbe.start()
-            }
-        }
-        .s2MinimumTouchTarget()
-        if !doubleTapProbe.reportText.isEmpty {
-            ShareLink(item: doubleTapProbe.reportText) {
-                Text(L10n.text("s2.calibration.double_tap_probe.share"))
-            }
-            .s2MinimumTouchTarget()
-            Text(verbatim: doubleTapProbe.reportText)
-                .font(.system(.caption2, design: .monospaced))
-                .textSelection(.enabled)
         }
     }
 
