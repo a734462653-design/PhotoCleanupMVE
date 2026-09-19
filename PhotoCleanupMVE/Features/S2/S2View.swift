@@ -802,6 +802,9 @@ struct S2View: View {
     @State private var similarPhotosSampleLimit = SimilarPhotosSampleLimit.fiveHundred
     @State private var similarPhotosConcurrency =
         SimilarPhotosProbeLimits.concurrencyOptions[0]
+    /// IC-161 B：分组核对的距离阈值。阈值只在面板里，不写死在任何判据里。
+    @State private var similarPhotosGroupThreshold =
+        SimilarPhotosProbeLimits.thresholdOptions[1]
     /// IC-108 B：双击丝滑度探针。默认关闭；关闭时不向 pager 传引用，埋点零开销。
     @StateObject private var doubleTapProbe =
         S2DoubleTapSmoothnessProbeCoordinator()
@@ -2790,6 +2793,7 @@ struct S2View: View {
                 assetSizeProbeSection
                 doubleTapProbeSection
                 similarPhotosProbeSection
+                similarPhotosGroupSection
                 // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
                 // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
@@ -2927,6 +2931,74 @@ struct S2View: View {
             }
         }
         .pickerStyle(.segmented)
+    }
+
+    /// IC-161 B：调试面板的分组核对段（裁定 三）。**没有自己的协调器、不取数**：只对特征段
+    /// 留下的相邻对做纯函数重算，阈值是本视图的一个 `@State`。数字只能说明分出了多少组，
+    /// 只有眼睛能说明分得对不对——所以列出样例组供人工核对。
+    @ViewBuilder
+    private var similarPhotosGroupSection: some View {
+        Divider()
+        Text(L10n.text("s2.calibration.similar_group.title"))
+        if similarPhotosProbe.neighborPairs.isEmpty {
+            Text(L10n.text("s2.calibration.similar_group.empty"))
+        } else {
+            similarPhotosThresholdPicker
+            if !similarPhotosProbe.groupingReportText.isEmpty {
+                ShareLink(item: similarPhotosProbe.groupingReportText) {
+                    Text(L10n.text(
+                        "s2.calibration.similar_group.share"
+                    ))
+                }
+                .s2MinimumTouchTarget()
+                Text(verbatim: similarPhotosProbe.groupingReportText)
+                    .font(.system(.caption2, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+            similarPhotosGroupPreview
+        }
+    }
+
+    /// 阈值选择器。七档纯数字标签，不进目录。
+    @ViewBuilder
+    private var similarPhotosThresholdPicker: some View {
+        Picker(
+            selection: $similarPhotosGroupThreshold,
+            label: Text(L10n.text(
+                "s2.calibration.similar_group.threshold_label"
+            ))
+        ) {
+            ForEach(SimilarPhotosProbeLimits.thresholdOptions, id: \.self) { value in
+                Text(verbatim: SimilarPhotosProbeFormat.decimal(value, digits: 2))
+                    .tag(value)
+            }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    /// 按组大小降序的前 30 组。**容器必须惰性**：面板外层是非惰性的 `VStack`，
+    /// 不惰性的话一出结果就同时发几百个取图请求。
+    @ViewBuilder
+    private var similarPhotosGroupPreview: some View {
+        let groups = SimilarPhotosGrouping.previewGroups(
+            SimilarPhotosGrouping.groups(
+                itemCount: similarPhotosProbe.sampleAssetIDs.count,
+                pairs: similarPhotosProbe.neighborPairs,
+                threshold: similarPhotosGroupThreshold
+            ),
+            limit: SimilarPhotosProbeLimits.previewGroupLimit
+        )
+        LazyVStack(alignment: .leading) {
+            ForEach(Array(groups.enumerated()), id: \.offset) { entry in
+                S2SimilarGroupThumbnailRow(
+                    assetIDs: entry.element.compactMap { index in
+                        index >= 0 && index < similarPhotosProbe.sampleAssetIDs.count
+                            ? similarPhotosProbe.sampleAssetIDs[index]
+                            : nil
+                    }
+                )
+            }
+        }
     }
 
     /// IC-108 B：调试面板的双击丝滑度探针段。只读区 + 复制入口，模式照 IC-099b。
@@ -6060,4 +6132,35 @@ enum S2PreviewData {
 
 #Preview("S2-6") {
     S2PreviewData.view(for: .hiddenNx)
+}
+
+/// IC-161 B：分组核对的一行横向缩略图（陷阱 16：单独抽一层，隔开面板的类型检查）。
+/// 横向容器同样惰性，滚到哪张才取哪张；缩略图组件一字未改，取图照旧禁网络。
+private struct S2SimilarGroupThumbnailRow: View {
+    let assetIDs: [String]
+
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            LazyHStack {
+                ForEach(
+                    assetIDs.prefix(SimilarPhotosProbeLimits.previewThumbnailLimit),
+                    id: \.self
+                ) { assetID in
+                    ThumbnailView(
+                        assetIdentifier: assetID,
+                        displayScale: displayScale
+                    )
+                }
+                if assetIDs.count > SimilarPhotosProbeLimits.previewThumbnailLimit {
+                    Text(
+                        verbatim: "+" + String(
+                            assetIDs.count - SimilarPhotosProbeLimits.previewThumbnailLimit
+                        )
+                    )
+                }
+            }
+        }
+    }
 }

@@ -193,6 +193,150 @@ final class IC161SimilarPhotosProbeTests: XCTestCase {
         XCTAssertFalse(coordinator.canExport)
     }
 
+    // MARK: - 断言 4：并查集分组（子项 B）
+
+    func testIC161B_GroupingIsUnionFindOverThresholdEdges() {
+        let pairs: [(Int, Int, Double)] = [
+            (0, 1, 0.10),
+            (1, 2, 0.35),
+            (3, 4, 0.20),
+            (4, 5, 0.90)
+        ]
+        XCTAssertEqual(
+            SimilarPhotosGrouping.groups(itemCount: 6, pairs: pairs, threshold: 0.30),
+            [[0, 1], [3, 4]]
+        )
+        XCTAssertEqual(
+            SimilarPhotosGrouping.groups(itemCount: 6, pairs: pairs, threshold: 0.40),
+            [[0, 1, 2], [3, 4]]
+        )
+        XCTAssertEqual(
+            SimilarPhotosGrouping.groups(itemCount: 6, pairs: pairs, threshold: 0.05),
+            []
+        )
+        XCTAssertEqual(
+            SimilarPhotosGrouping.groups(itemCount: 6, pairs: pairs, threshold: 1.0),
+            [[0, 1, 2], [3, 4, 5]]
+        )
+        // 距离**等于**阈值算相似。
+        XCTAssertEqual(
+            SimilarPhotosGrouping.groups(
+                itemCount: 3,
+                pairs: [(0, 1, 0.30)],
+                threshold: 0.30
+            ),
+            [[0, 1]]
+        )
+        // 越界下标忽略，不崩。
+        XCTAssertEqual(
+            SimilarPhotosGrouping.groups(
+                itemCount: 6,
+                pairs: pairs + [(5, 9, 0.01), (-1, 0, 0.01)],
+                threshold: 0.30
+            ),
+            [[0, 1], [3, 4]]
+        )
+
+        let summary = SimilarPhotosGrouping.summary(groups: [[0, 1, 2], [3, 4]])
+        XCTAssertEqual(summary.groupCount, 2)
+        XCTAssertEqual(summary.groupedCount, 5)
+        XCTAssertEqual(summary.largestGroupSize, 3)
+        XCTAssertEqual(summary.removableCount, 3)
+        let empty = SimilarPhotosGrouping.summary(groups: [])
+        XCTAssertEqual(empty.groupCount, 0)
+        XCTAssertEqual(empty.groupedCount, 0)
+        XCTAssertEqual(empty.largestGroupSize, 0)
+        XCTAssertEqual(empty.removableCount, 0)
+
+        // 核对列表按组大小降序取前 N 组。
+        XCTAssertEqual(
+            SimilarPhotosGrouping.previewGroups([[0, 1], [3, 4, 5]], limit: 30),
+            [[3, 4, 5], [0, 1]]
+        )
+        XCTAssertEqual(
+            SimilarPhotosGrouping.previewGroups([[0, 1], [3, 4, 5]], limit: 1),
+            [[3, 4, 5]]
+        )
+    }
+
+    // MARK: - 断言 5：相邻窗口、直方图分档与分组报告（子项 B）
+
+    func testIC161B_NeighborWindowAndHistogram() {
+        let times: [Double] = [0, 10, 20, 700, 710, 5_000]
+        let wide = SimilarPhotosGrouping.neighborIndexPairs(
+            times: times,
+            maximumNeighbors: 12,
+            windowSeconds: 600
+        )
+        XCTAssertEqual(
+            wide.map { [$0.0, $0.1] },
+            [[0, 1], [0, 2], [1, 2], [3, 4]]
+        )
+        let narrow = SimilarPhotosGrouping.neighborIndexPairs(
+            times: times,
+            maximumNeighbors: 1,
+            windowSeconds: 600
+        )
+        XCTAssertEqual(
+            narrow.map { [$0.0, $0.1] },
+            [[0, 1], [1, 2], [3, 4]]
+        )
+
+        // 分档公式是「先乘后取整」：`Int(0.30 / 0.05)` 在双精度下是 5，会落错档。
+        let values: [Double] = [0.00, 0.049, 0.05, 0.15, 0.30, 0.60, 0.70, 1.15, 2.5]
+        let buckets = SimilarPhotosGrouping.histogram(
+            values: values,
+            bucketMilliWidth: 50,
+            bucketCount: 40
+        )
+        XCTAssertEqual(buckets.count, 41)
+        XCTAssertEqual(buckets[0], 2)
+        XCTAssertEqual(buckets[1], 1)
+        XCTAssertEqual(buckets[3], 1)
+        XCTAssertEqual(buckets[6], 1)
+        XCTAssertEqual(buckets[12], 1)
+        XCTAssertEqual(buckets[14], 1)
+        XCTAssertEqual(buckets[23], 1)
+        XCTAssertEqual(buckets[40], 1)
+        XCTAssertEqual(buckets.reduce(into: 0) { $0 += $1 }, values.count)
+
+        let report = SimilarPhotosGroupingProbeText.report(
+            pairs: [(0, 1, 0.10), (1, 2, 0.35), (3, 4, 0.20), (4, 5, 0.90)],
+            distanceFailedCount: 2,
+            sampleCount: 6
+        )
+        XCTAssertTrue(report.allSatisfy { $0.isASCII })
+        for needle in [
+            "format=ic161-grouping-v1",
+            "pairs=",
+            "distance_failed=",
+            "window_neighbors=12",
+            "window_seconds=600",
+            "chunk=64",
+            "distance min=",
+            "p10=",
+            "p50=",
+            "p90=",
+            "max=",
+            "threshold=",
+            "groups=",
+            "grouped=",
+            "largest=",
+            "removable="
+        ] {
+            XCTAssertTrue(report.contains(needle), needle)
+        }
+        // 七档阈值各一行。
+        let thresholdLines = report
+            .components(separatedBy: Self.newline)
+            .filter { $0.hasPrefix("threshold=") }
+        XCTAssertEqual(thresholdLines.count, 7)
+        XCTAssertEqual(
+            thresholdLines.count,
+            SimilarPhotosProbeLimits.thresholdOptions.count
+        )
+    }
+
     // MARK: - 夹具与 helper
 
     static let probePath = "PhotoCleanupMVE/Services/SimilarPhotosProbe.swift"

@@ -98,6 +98,12 @@ struct SimilarPhotosFeatureProbeResult {
     let wallClockSeconds: Double
     let memoryMinimumBytes: Int
     let cancelled: Bool
+    /// IC-161 B：时间上相邻的成对距离（下标、下标、距离）。随运行留在内存里，不写缓存。
+    let neighborPairs: [(Int, Int, Double)]
+    /// `computeDistance` 抛错的对数（例如两张的特征版本不一致）。
+    let distanceFailedCount: Int
+    /// 样本的资产标识，按时间升序；分组段的肉眼核对列表按下标取缩略图。
+    let sampleAssetIDs: [String]
 }
 
 // MARK: - 纯函数：分位数与外推
@@ -339,6 +345,233 @@ enum SimilarPhotosFeatureProbeText {
     }
 }
 
+// MARK: - 纯函数：相邻对、直方图与分组
+
+/// 相邻对生成、距离直方图与并查集分组（裁定 三）。纯函数，测试直接断言。
+enum SimilarPhotosGrouping {
+    /// 分组汇总。
+    struct Summary: Equatable {
+        let groupCount: Int
+        let groupedCount: Int
+        let largestGroupSize: Int
+        let removableCount: Int
+    }
+
+    /// 时间上相邻的下标对：每个下标只与其后最多 `maximumNeighbors` 个、且拍摄时间差不超过
+    /// `windowSeconds` 的下标配对。`times` 须按升序传入（样本本来就按拍摄时间升序）。
+    static func neighborIndexPairs(
+        times: [Double],
+        maximumNeighbors: Int,
+        windowSeconds: Double
+    ) -> [(Int, Int)] {
+        var pairs: [(Int, Int)] = []
+        guard maximumNeighbors > 0 else {
+            return pairs
+        }
+        for first in times.indices {
+            var taken = 0
+            var second = first + 1
+            while second < times.count, taken < maximumNeighbors {
+                if times[second] - times[first] > windowSeconds {
+                    break
+                }
+                pairs.append((first, second))
+                taken += 1
+                second += 1
+            }
+        }
+        return pairs
+    }
+
+    /// 距离直方图。**先乘后取整**：`Int((value * 1000).rounded()) / bucketMilliWidth`——
+    /// 写成 `Int(value / 0.05)` 在双精度下会把 0.30、0.15、0.60、0.70 落到前一档
+    /// （`0.30 / 0.05 == 5.999...`）。返回 `bucketCount + 1` 个计数，末位是溢出档。
+    static func histogram(
+        values: [Double],
+        bucketMilliWidth: Int,
+        bucketCount: Int
+    ) -> [Int] {
+        let count = max(1, bucketCount)
+        var buckets = [Int](repeating: 0, count: count + 1)
+        guard bucketMilliWidth > 0 else {
+            return buckets
+        }
+        for value in values {
+            let milli = max(0, Int((value * 1_000).rounded()))
+            let index = milli / bucketMilliWidth
+            if index >= count {
+                buckets[count] += 1
+            } else {
+                buckets[index] += 1
+            }
+        }
+        return buckets
+    }
+
+    /// 实测 max 超出 40 档时把档宽放大到 max 的 1/40（旧版 revision 的距离是几十的量级）。
+    static func bucketMilliWidth(forMaximum maximum: Double) -> Int {
+        let standard = SimilarPhotosProbeLimits.histogramBucketMilliWidth
+        let count = SimilarPhotosProbeLimits.histogramBucketCount
+        let maximumMilli = Int((maximum * 1_000).rounded())
+        guard maximumMilli > standard * count else {
+            return standard
+        }
+        let widened = (maximumMilli + count - 1) / count
+        return max(standard, widened)
+    }
+
+    /// 并查集分组：距离 **小于等于** 阈值连边，取连通分量，只留 >= 2 张的组。
+    /// 组内下标升序、组按首元素升序；越界下标的对忽略。
+    static func groups(
+        itemCount: Int,
+        pairs: [(Int, Int, Double)],
+        threshold: Double
+    ) -> [[Int]] {
+        guard itemCount > 0 else {
+            return []
+        }
+        var parent = Array(0..<itemCount)
+        func root(_ value: Int) -> Int {
+            var current = value
+            while parent[current] != current {
+                parent[current] = parent[parent[current]]
+                current = parent[current]
+            }
+            return current
+        }
+        for pair in pairs {
+            guard pair.0 >= 0, pair.0 < itemCount,
+                  pair.1 >= 0, pair.1 < itemCount,
+                  pair.2 <= threshold else {
+                continue
+            }
+            let left = root(pair.0)
+            let right = root(pair.1)
+            if left != right {
+                parent[right] = left
+            }
+        }
+        var members: [Int: [Int]] = [:]
+        for index in 0..<itemCount {
+            members[root(index), default: []].append(index)
+        }
+        let grouped = members.values
+            .filter { $0.count >= 2 }
+            .map { $0.sorted() }
+        return grouped.sorted { left, right in
+            (left.first ?? 0) < (right.first ?? 0)
+        }
+    }
+
+    static func summary(groups: [[Int]]) -> Summary {
+        let groupedCount = groups.reduce(into: 0) { total, group in
+            total += group.count
+        }
+        let largest = groups.map { $0.count }.max() ?? 0
+        let removable = groups.reduce(into: 0) { total, group in
+            total += max(0, group.count - 1)
+        }
+        return Summary(
+            groupCount: groups.count,
+            groupedCount: groupedCount,
+            largestGroupSize: largest,
+            removableCount: removable
+        )
+    }
+
+    /// 肉眼核对列表：按组大小降序（同大小按首元素升序）取前 `limit` 组。
+    static func previewGroups(_ groups: [[Int]], limit: Int) -> [[Int]] {
+        let ordered = groups.sorted { left, right in
+            if left.count != right.count {
+                return left.count > right.count
+            }
+            return (left.first ?? 0) < (right.first ?? 0)
+        }
+        return Array(ordered.prefix(max(0, limit)))
+    }
+}
+
+/// 分组段的报告文本。纯函数，测试直接断言；全 ASCII。
+enum SimilarPhotosGroupingProbeText {
+    static let formatIdentifier = "ic161-grouping-v1"
+
+    static func report(
+        pairs: [(Int, Int, Double)],
+        distanceFailedCount: Int,
+        sampleCount: Int
+    ) -> String {
+        let distances = pairs.map { $0.2 }
+        let milliWidth = SimilarPhotosGrouping.bucketMilliWidth(
+            forMaximum: distances.max() ?? 0
+        )
+        let buckets = SimilarPhotosGrouping.histogram(
+            values: distances,
+            bucketMilliWidth: milliWidth,
+            bucketCount: SimilarPhotosProbeLimits.histogramBucketCount
+        )
+        var lines: [String] = []
+        lines.append("format=" + formatIdentifier)
+        lines.append(
+            [
+                "sampled=" + String(sampleCount),
+                "pairs=" + String(pairs.count),
+                "distance_failed=" + String(distanceFailedCount)
+            ].joined(separator: " ")
+        )
+        lines.append(
+            [
+                "window_neighbors=" + String(SimilarPhotosProbeLimits.windowNeighbors),
+                "window_seconds=" + String(Int(SimilarPhotosProbeLimits.windowSeconds)),
+                "chunk=" + String(SimilarPhotosProbeLimits.chunkSize)
+            ].joined(separator: " ")
+        )
+        lines.append(distanceLine(distances))
+        lines.append(
+            [
+                "histogram bucket_milli=" + String(milliWidth),
+                "counts=" + buckets.map { String($0) }.joined(separator: ",")
+            ].joined(separator: " ")
+        )
+        for threshold in SimilarPhotosProbeLimits.thresholdOptions {
+            let summary = SimilarPhotosGrouping.summary(
+                groups: SimilarPhotosGrouping.groups(
+                    itemCount: sampleCount,
+                    pairs: pairs,
+                    threshold: threshold
+                )
+            )
+            lines.append(
+                [
+                    "threshold=" + SimilarPhotosProbeFormat.decimal(threshold, digits: 2),
+                    "groups=" + String(summary.groupCount),
+                    "grouped=" + String(summary.groupedCount),
+                    "largest=" + String(summary.largestGroupSize),
+                    "removable=" + String(summary.removableCount)
+                ].joined(separator: " ")
+            )
+        }
+        return lines.joined(separator: SimilarPhotosProbeFormat.newline)
+    }
+
+    static func distanceLine(_ distances: [Double]) -> String {
+        let parts = [
+            "distance",
+            "min=" + SimilarPhotosProbeFormat.optionalDecimal(distances.min()),
+            "p10=" + SimilarPhotosProbeFormat.optionalDecimal(
+                SimilarPhotosProbeMath.percentile(distances, percent: 10)
+            ),
+            "p50=" + SimilarPhotosProbeFormat.optionalDecimal(
+                SimilarPhotosProbeMath.percentile(distances, percent: 50)
+            ),
+            "p90=" + SimilarPhotosProbeFormat.optionalDecimal(
+                SimilarPhotosProbeMath.percentile(distances, percent: 90)
+            ),
+            "max=" + SimilarPhotosProbeFormat.optionalDecimal(distances.max())
+        ]
+        return parts.joined(separator: " ")
+    }
+}
+
 // MARK: - 探针常量
 
 /// 探针自己的上限常量。不是产品取值，不进 `S2CalibrationConfiguration`。
@@ -349,6 +582,17 @@ enum SimilarPhotosProbeLimits {
     static let targetSide: CGFloat = 360
     /// 面板并发度选择器的取值。
     static let concurrencyOptions = [1, 2, 4]
+    /// 只比时间上相邻的照片：每张最多与其后 12 张比，且拍摄时间差不超过 600 s（裁定 三）。
+    static let windowNeighbors = 12
+    static let windowSeconds: Double = 600
+    /// 距离直方图：档宽 0.05（毫单位 50）、40 档 + 一个溢出档。
+    static let histogramBucketMilliWidth = 50
+    static let histogramBucketCount = 40
+    /// 肉眼核对列表：按组大小降序取前 30 组，每组先列 10 张。
+    static let previewGroupLimit = 30
+    static let previewThumbnailLimit = 10
+    /// 面板阈值选择器的七档。
+    static let thresholdOptions: [Double] = [0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80]
 }
 
 // MARK: - 取数接口与协调器
@@ -397,6 +641,9 @@ final class SimilarPhotosFeatureProbeCoordinator: ObservableObject {
 
     /// 本次运行的样本标识，供分组段的肉眼核对列表取缩略图。关 App 即丢，不写缓存。
     private(set) var sampleAssetIDs: [String] = []
+    /// IC-161 B：时间上相邻的成对距离。分组段只对它做纯函数重算，自己不取数。
+    private(set) var neighborPairs: [(Int, Int, Double)] = []
+    @Published private(set) var groupingReportText = ""
 
     private let cancellation = SimilarPhotosCancellationToken()
     private var environmentStart = SimilarPhotosEnvironmentSample(
@@ -420,7 +667,9 @@ final class SimilarPhotosFeatureProbeCoordinator: ObservableObject {
         }
         isRunning = true
         reportText = ""
+        groupingReportText = ""
         sampleAssetIDs = []
+        neighborPairs = []
         progressText = SimilarPhotosFeatureProbeText.progress(finished: 0, total: 0)
         cancellation.reset()
         batteryMonitoringWasEnabled = UIDevice.current.isBatteryMonitoringEnabled
@@ -478,6 +727,13 @@ final class SimilarPhotosFeatureProbeCoordinator: ObservableObject {
             environmentStart: environmentStart,
             environmentEnd: environmentEnd
         )
+        sampleAssetIDs = result.sampleAssetIDs
+        neighborPairs = result.neighborPairs
+        groupingReportText = SimilarPhotosGroupingProbeText.report(
+            pairs: result.neighborPairs,
+            distanceFailedCount: result.distanceFailedCount,
+            sampleCount: result.sampleAssetIDs.count
+        )
         isRunning = false
         progressText = ""
     }
@@ -491,6 +747,9 @@ private final class SimilarPhotosMeasurementCollector {
     private var measurements: [SimilarPhotosFeatureMeasurement] = []
     private var minimumMemoryBytes = Int.max
     private var firstPrint: (count: Int, typeRawValue: Int, bytes: Int)?
+    private var observations: [Int: VNFeaturePrintObservation] = [:]
+    private var pairs: [(Int, Int, Double)] = []
+    private var distanceFailedCount = 0
 
     func append(_ measurement: SimilarPhotosFeatureMeasurement) {
         lock.lock()
@@ -505,6 +764,49 @@ private final class SimilarPhotosMeasurementCollector {
             return
         }
         firstPrint = (count, typeRawValue, bytes)
+    }
+
+    func storeObservation(_ observation: VNFeaturePrintObservation, at index: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        observations[index] = observation
+    }
+
+    /// 取出仍在内存里的观测；块算完后只保留末尾若干个供跨块比对，其余随块释放。
+    func observationPair(_ first: Int, _ second: Int) -> (
+        VNFeaturePrintObservation,
+        VNFeaturePrintObservation
+    )? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let left = observations[first], let right = observations[second] else {
+            return nil
+        }
+        return (left, right)
+    }
+
+    func pruneObservations(keeping indices: Set<Int>) {
+        lock.lock()
+        defer { lock.unlock() }
+        observations = observations.filter { indices.contains($0.key) }
+    }
+
+    func appendPair(_ pair: (Int, Int, Double)) {
+        lock.lock()
+        defer { lock.unlock() }
+        pairs.append(pair)
+    }
+
+    func noteDistanceFailure() {
+        lock.lock()
+        defer { lock.unlock() }
+        distanceFailedCount += 1
+    }
+
+    var pairSnapshot: (pairs: [(Int, Int, Double)], distanceFailedCount: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (pairs, distanceFailedCount)
     }
 
     func noteMemory(_ bytes: Int) {
@@ -588,6 +890,19 @@ final class SimilarPhotosFeatureProbeService: SimilarPhotosFeatureProbing {
         let sample = limit.maximumCount.map { Array(inventory.candidates.prefix($0)) }
             ?? inventory.candidates
 
+        let sampleAssetIDs = sample.map { $0.localIdentifier }
+        let times = sample.map { $0.creationDate?.timeIntervalSince1970 ?? 0 }
+        // 只比时间上相邻的照片：下标对先一次算好（只是下标，不占内存），距离随块算。
+        let indexPairs = SimilarPhotosGrouping.neighborIndexPairs(
+            times: times,
+            maximumNeighbors: SimilarPhotosProbeLimits.windowNeighbors,
+            windowSeconds: SimilarPhotosProbeLimits.windowSeconds
+        )
+        var pairsBySecond: [Int: [Int]] = [:]
+        for pair in indexPairs {
+            pairsBySecond[pair.1, default: []].append(pair.0)
+        }
+
         let collector = SimilarPhotosMeasurementCollector()
         let manager = PHImageManager.default()
         let semaphore = DispatchSemaphore(value: max(1, concurrency))
@@ -622,6 +937,7 @@ final class SimilarPhotosFeatureProbeService: SimilarPhotosFeatureProbing {
                     )
                     collector.append(outcome.measurement)
                     if let observation = outcome.observation {
+                        collector.storeObservation(observation, at: index)
                         collector.notePrint(
                             count: observation.elementCount,
                             typeRawValue: Int(observation.elementType.rawValue),
@@ -631,6 +947,25 @@ final class SimilarPhotosFeatureProbeService: SimilarPhotosFeatureProbing {
                 }
             }
             group.wait()
+            // 块内并发算特征，块算完后**顺序**算该块涉及的相邻对距离（裁定 三）。
+            for second in chunkStart..<chunkEnd {
+                for first in pairsBySecond[second] ?? [] {
+                    guard let observations = collector.observationPair(first, second) else {
+                        continue
+                    }
+                    var value = Float(0)
+                    do {
+                        try observations.0.computeDistance(&value, to: observations.1)
+                    } catch {
+                        collector.noteDistanceFailure()
+                        continue
+                    }
+                    collector.appendPair((first, second, Double(value)))
+                }
+            }
+            // 只留本块末尾 12 个观测供跨块比对，其余随块释放：特征不常驻内存。
+            let carryStart = max(chunkStart, chunkEnd - SimilarPhotosProbeLimits.windowNeighbors)
+            collector.pruneObservations(keeping: Set(carryStart..<chunkEnd))
             processed = collector.finishedCount
             progress(processed, sample.count)
             // 每一块采一次可用内存，取最小值：特征随块释放，量到的才是提取的水位。
@@ -639,6 +974,8 @@ final class SimilarPhotosFeatureProbeService: SimilarPhotosFeatureProbing {
 
         let wallClockSeconds = Date().timeIntervalSince(runStart)
         let snapshot = collector.snapshot
+        let pairSnapshot = collector.pairSnapshot
+        collector.pruneObservations(keeping: [])
         return SimilarPhotosFeatureProbeResult(
             libraryImageCount: inventory.libraryImageCount,
             screenshotCount: inventory.screenshotCount,
@@ -652,7 +989,10 @@ final class SimilarPhotosFeatureProbeService: SimilarPhotosFeatureProbing {
             printByteCount: snapshot.printBytes,
             wallClockSeconds: wallClockSeconds,
             memoryMinimumBytes: snapshot.minimumMemoryBytes,
-            cancelled: cancellation.isCancelled
+            cancelled: cancellation.isCancelled,
+            neighborPairs: pairSnapshot.pairs,
+            distanceFailedCount: pairSnapshot.distanceFailedCount,
+            sampleAssetIDs: sampleAssetIDs
         )
     }
 
