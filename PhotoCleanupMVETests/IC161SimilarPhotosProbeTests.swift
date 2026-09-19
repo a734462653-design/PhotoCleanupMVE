@@ -337,6 +337,101 @@ final class IC161SimilarPhotosProbeTests: XCTestCase {
         )
     }
 
+    // MARK: - 断言 6：画质评分分档、报告与产品文件终态（子项 C）
+
+    func testIC161C_AestheticsReportBucketsAndFinalShape() throws {
+        // 分档：先乘后取整；最后一档右闭，1.0 不越界。
+        XCTAssertEqual(AestheticsScoreProbeText.bucketIndex(score: -1.0), 0)
+        XCTAssertEqual(AestheticsScoreProbeText.bucketIndex(score: -0.9), 1)
+        XCTAssertEqual(AestheticsScoreProbeText.bucketIndex(score: -0.3), 7)
+        XCTAssertEqual(AestheticsScoreProbeText.bucketIndex(score: 0.0), 10)
+        XCTAssertEqual(AestheticsScoreProbeText.bucketIndex(score: 0.99), 19)
+        XCTAssertEqual(AestheticsScoreProbeText.bucketIndex(score: 1.0), 19)
+
+        let scores: [Double] = [-1.0, -0.9, -0.3, 0.0, 0.99, 1.0]
+        let buckets = AestheticsScoreProbeText.histogram(scores: scores)
+        XCTAssertEqual(buckets.count, 20)
+        XCTAssertEqual(buckets.reduce(into: 0) { $0 += $1 }, scores.count)
+
+        let result = AestheticsScoreProbeResult(
+            available: true,
+            sampledCount: scores.count,
+            measurements: scores.enumerated().map { entry in
+                AestheticsScoreMeasurement(
+                    assetID: "asset" + String(entry.offset),
+                    visionMilliseconds: Double(entry.offset + 1),
+                    overallScore: Float(entry.element),
+                    isUtility: entry.offset < 2
+                )
+            },
+            lowestAssetIDs: ["asset0", "asset1"],
+            highestAssetIDs: ["asset5", "asset4"],
+            wallClockSeconds: 2.5,
+            cancelled: false
+        )
+        let report = AestheticsScoreProbeText.report(result: result)
+        XCTAssertTrue(report.allSatisfy { $0.isASCII })
+        for needle in [
+            "format=ic161-aesthetics-v1",
+            "available=true",
+            "vision_ms p50=",
+            "utility_count=",
+            "utility_ratio=",
+            "lowest20=",
+            "highest20="
+        ] {
+            XCTAssertTrue(report.contains(needle), needle)
+        }
+        XCTAssertTrue(report.contains("utility_count=2"))
+        XCTAssertTrue(report.contains("lowest20=asset0,asset1"))
+        XCTAssertTrue(report.contains("highest20=asset5,asset4"))
+
+        // 不可用时报告恰两行。
+        let unavailable = AestheticsScoreProbeText.report(
+            result: AestheticsScoreProbeResult(
+                available: false,
+                sampledCount: 0,
+                measurements: [],
+                lowestAssetIDs: [],
+                highestAssetIDs: [],
+                wallClockSeconds: 0,
+                cancelled: false
+            )
+        )
+        let unavailableLines = unavailable.components(separatedBy: Self.newline)
+        XCTAssertEqual(unavailableLines.count, 2)
+        XCTAssertEqual(unavailableLines.first, "format=ic161-aesthetics-v1")
+        XCTAssertEqual(unavailableLines.last, "available=false")
+
+        // 产品文件终态：两个协调器、两处 run、画质协调器同样零副作用。
+        let source = try XCTUnwrap(strippedSource(Self.probePath))
+        XCTAssertEqual(occurrences(of: "func run(", in: source), 2)
+        XCTAssertEqual(occurrences(of: ": ObservableObject {", in: source), 2)
+        let head = try XCTUnwrap(
+            slice(
+                source,
+                from: "final class AestheticsScoreProbeCoordinator",
+                to: "    func "
+            ),
+            "画质协调器切片没切到——类声明或第一个方法的文本变了"
+        )
+        XCTAssertGreaterThan(head.count, 0)
+        for needle in Self.sideEffectNeedles {
+            XCTAssertEqual(
+                occurrences(of: needle, in: head),
+                0,
+                "画质协调器的属性初值区出现了 " + needle
+            )
+        }
+        XCTAssertGreaterThanOrEqual(occurrences(of: "#available(iOS 18", in: source), 1)
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: "VNCalculateImageAestheticsScoresRequest", in: source),
+            1
+        )
+        XCTAssertEqual(occurrences(of: "return " + Self.quote, in: source), 0)
+        XCTAssertEqual(occurrences(of: "isNetworkAccessAllowed = true", in: source), 0)
+    }
+
     // MARK: - 夹具与 helper
 
     static let probePath = "PhotoCleanupMVE/Services/SimilarPhotosProbe.swift"

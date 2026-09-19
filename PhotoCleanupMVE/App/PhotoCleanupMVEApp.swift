@@ -19,6 +19,8 @@ struct PhotoCleanupMVEApp: App {
     /// IC-161 A：相似照片探针的取数实现（探针，不参与任何产品路径）。构造无副作用：
     /// 只建一条私有并发队列，不发 PhotoKit 请求、不碰 Vision，面板按钮触发才取数。
     private let similarPhotosProber = SimilarPhotosFeatureProbeService()
+    /// IC-161 C：画质评分探针的取数实现（iOS 18+ 才有结果）。构造同样无副作用。
+    private let aestheticsProber = AestheticsScoreProbeService()
 
     /// IC-131 B：S1 视图构造抽成 builder。加参数后仍留在 Scene body 的多层
     /// 嵌套里会把类型检查推到超时（IC-108／IC-113 三次实例），构造点一律外提。
@@ -151,6 +153,7 @@ struct PhotoCleanupMVEApp: App {
             assetSizeProber:
                 coordinator.makeS2AssetSizeProber(),
             similarPhotosProber: similarPhotosProber,
+            aestheticsProber: aestheticsProber,
             photoContent: { context in
                 AnyView(
                     S2TemporaryPhotoImageView(

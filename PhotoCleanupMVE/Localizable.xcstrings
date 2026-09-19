@@ -947,6 +947,83 @@
         }
       }
     },
+    "s2.calibration.aesthetics_probe.cancel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\u53d6\u6d88"
+          }
+        }
+      }
+    },
+    "s2.calibration.aesthetics_probe.highest" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\u5206\u6570\u6700\u9ad8\u7684 20 \u5f20"
+          }
+        }
+      }
+    },
+    "s2.calibration.aesthetics_probe.lowest" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\u5206\u6570\u6700\u4f4e\u7684 20 \u5f20"
+          }
+        }
+      }
+    },
+    "s2.calibration.aesthetics_probe.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\u590d\u5236\u8bc4\u5206\u62a5\u544a"
+          }
+        }
+      }
+    },
+    "s2.calibration.aesthetics_probe.start" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\u5f00\u59cb\u8bc4\u5206"
+          }
+        }
+      }
+    },
+    "s2.calibration.aesthetics_probe.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\u753b\u8d28\u8bc4\u5206\u63a2\u9488"
+          }
+        }
+      }
+    },
+    "s2.calibration.aesthetics_probe.unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\u9700\u8981 iOS 18 \u6216\u66f4\u9ad8\u7248\u672c"
+          }
+        }
+      }
+    },
     "s2.calibration.similar_group.empty" : {
       "extractionState" : "manual",
       "localizations" : {

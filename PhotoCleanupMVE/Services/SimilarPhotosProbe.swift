@@ -572,6 +572,321 @@ enum SimilarPhotosGroupingProbeText {
     }
 }
 
+// MARK: - 共用取图
+
+/// 同步取图（**禁网络**）。同步请求阻塞调用线程，只在探针自己的队列上用；不在本机的
+/// 照片按 `PHImageResultIsInCloudKey` 标记后跳过，不下载。
+enum SimilarPhotosImageFetch {
+    struct Outcome {
+        let cgImage: CGImage?
+        let milliseconds: Double
+        let inCloud: Bool
+    }
+
+    static func fetch(asset: PHAsset, manager: PHImageManager) -> Outcome {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .fast
+        options.isSynchronous = true
+        options.isNetworkAccessAllowed = false
+
+        var image: UIImage?
+        var info: [AnyHashable: Any]?
+        let start = Date()
+        manager.requestImage(
+            for: asset,
+            targetSize: CGSize(
+                width: SimilarPhotosProbeLimits.targetSide,
+                height: SimilarPhotosProbeLimits.targetSide
+            ),
+            contentMode: .aspectFit,
+            options: options
+        ) { result, resultInfo in
+            image = result
+            info = resultInfo
+        }
+        return Outcome(
+            cgImage: image?.cgImage,
+            milliseconds: Date().timeIntervalSince(start) * 1_000,
+            inCloud: (info?[PHImageResultIsInCloudKey] as? Bool) == true
+        )
+    }
+}
+
+// MARK: - 画质评分（iOS 18+）
+
+/// 单张的画质评分测量。**只存 `Float` 与 `Bool`**：18+ 的 Vision 类型不出现在任何存储属性上。
+struct AestheticsScoreMeasurement: Equatable {
+    let assetID: String
+    let visionMilliseconds: Double
+    let overallScore: Float
+    let isUtility: Bool
+}
+
+/// 一次画质评分运行的全部产出。`available == false` 表示系统版本不够，报告只有两行。
+struct AestheticsScoreProbeResult {
+    let available: Bool
+    let sampledCount: Int
+    let measurements: [AestheticsScoreMeasurement]
+    let lowestAssetIDs: [String]
+    let highestAssetIDs: [String]
+    let wallClockSeconds: Double
+    let cancelled: Bool
+}
+
+/// 画质评分段的报告文本。纯函数，测试直接断言；全 ASCII。
+enum AestheticsScoreProbeText {
+    static let formatIdentifier = "ic161-aesthetics-v1"
+    /// 分数域 -1…1 闭区间，20 档、档宽 0.1、**最后一档右闭**（`[0.9, 1.0]`）。
+    static let bucketCount = 20
+    static let extremesLimit = 20
+
+    /// 分档：`min(19, Int(((score + 1.0) * 100).rounded()) / 10)`——先乘后取整，右闭不越界。
+    static func bucketIndex(score: Double) -> Int {
+        let milli = Int(((score + 1.0) * 100).rounded())
+        let index = max(0, milli) / 10
+        return min(bucketCount - 1, index)
+    }
+
+    static func histogram(scores: [Double]) -> [Int] {
+        var buckets = [Int](repeating: 0, count: bucketCount)
+        for score in scores {
+            buckets[bucketIndex(score: score)] += 1
+        }
+        return buckets
+    }
+
+    static func report(result: AestheticsScoreProbeResult) -> String {
+        var lines: [String] = []
+        lines.append("format=" + formatIdentifier)
+        guard result.available else {
+            lines.append("available=false")
+            return lines.joined(separator: SimilarPhotosProbeFormat.newline)
+        }
+        lines.append("available=true")
+        let scores = result.measurements.map { Double($0.overallScore) }
+        let durations = result.measurements.map { $0.visionMilliseconds }
+        let utilityCount = result.measurements.filter { $0.isUtility }.count
+        let ratio = result.measurements.isEmpty
+            ? 0
+            : Double(utilityCount) / Double(result.measurements.count)
+        lines.append(
+            [
+                "sampled=" + String(result.sampledCount),
+                "scored=" + String(result.measurements.count),
+                "cancelled=" + String(result.cancelled),
+                "wall_clock_s=" + SimilarPhotosProbeFormat.decimal(result.wallClockSeconds)
+            ].joined(separator: " ")
+        )
+        lines.append(
+            SimilarPhotosProbeFormat.statisticsLine(name: "vision_ms", values: durations)
+        )
+        lines.append(
+            [
+                "utility_count=" + String(utilityCount),
+                "utility_ratio=" + SimilarPhotosProbeFormat.decimal(ratio)
+            ].joined(separator: " ")
+        )
+        lines.append(
+            [
+                "score",
+                "min=" + SimilarPhotosProbeFormat.optionalDecimal(scores.min()),
+                "p50=" + SimilarPhotosProbeFormat.optionalDecimal(
+                    SimilarPhotosProbeMath.percentile(scores, percent: 50)
+                ),
+                "max=" + SimilarPhotosProbeFormat.optionalDecimal(scores.max())
+            ].joined(separator: " ")
+        )
+        lines.append(
+            [
+                "histogram bucket_width=0.100",
+                "counts=" + histogram(scores: scores).map { String($0) }.joined(separator: ",")
+            ].joined(separator: " ")
+        )
+        lines.append("lowest20=" + result.lowestAssetIDs.joined(separator: ","))
+        lines.append("highest20=" + result.highestAssetIDs.joined(separator: ","))
+        return lines.joined(separator: SimilarPhotosProbeFormat.newline)
+    }
+}
+
+/// 画质评分的取数接口。
+protocol AestheticsScoreProbing: AnyObject {
+    func measure(
+        limit: SimilarPhotosSampleLimit,
+        cancellation: SimilarPhotosCancellationToken,
+        progress: @escaping (Int, Int) -> Void,
+        completion: @escaping (AestheticsScoreProbeResult) -> Void
+    )
+}
+
+/// 画质评分探针的协调器。与特征段各自独立可跑；只有面板按钮显式 `run` 才开始。
+final class AestheticsScoreProbeCoordinator: ObservableObject {
+    @Published private(set) var isRunning = false
+    @Published private(set) var progressText = ""
+    @Published private(set) var reportText = ""
+
+    /// 分数最低与最高的各 20 张，供面板列缩略图供人工核对。
+    private(set) var lowestAssetIDs: [String] = []
+    private(set) var highestAssetIDs: [String] = []
+
+    private let cancellation = SimilarPhotosCancellationToken()
+
+    var canExport: Bool {
+        !isRunning && !reportText.isEmpty
+    }
+
+    func run(
+        limit: SimilarPhotosSampleLimit,
+        using prober: AestheticsScoreProbing
+    ) {
+        guard !isRunning else {
+            return
+        }
+        isRunning = true
+        reportText = ""
+        lowestAssetIDs = []
+        highestAssetIDs = []
+        progressText = SimilarPhotosFeatureProbeText.progress(finished: 0, total: 0)
+        cancellation.reset()
+        prober.measure(
+            limit: limit,
+            cancellation: cancellation,
+            progress: { [weak self] finished, total in
+                DispatchQueue.main.async {
+                    self?.progressText = SimilarPhotosFeatureProbeText.progress(
+                        finished: finished,
+                        total: total
+                    )
+                }
+            },
+            completion: { [weak self] result in
+                self?.finish(with: result)
+            }
+        )
+    }
+
+    func cancel() {
+        cancellation.cancel()
+    }
+
+    private func finish(with result: AestheticsScoreProbeResult) {
+        reportText = AestheticsScoreProbeText.report(result: result)
+        lowestAssetIDs = result.lowestAssetIDs
+        highestAssetIDs = result.highestAssetIDs
+        isRunning = false
+        progressText = ""
+    }
+}
+
+/// 画质评分的 Vision 实现。并发固定 1（串行队列）；iOS 17 上整段不可用。
+final class AestheticsScoreProbeService: AestheticsScoreProbing {
+    private let queue = DispatchQueue(
+        label: "ic161.similar-photos.aesthetics",
+        qos: .utility
+    )
+
+    func measure(
+        limit: SimilarPhotosSampleLimit,
+        cancellation: SimilarPhotosCancellationToken,
+        progress: @escaping (Int, Int) -> Void,
+        completion: @escaping (AestheticsScoreProbeResult) -> Void
+    ) {
+        queue.async { [weak self] in
+            guard let self else {
+                return
+            }
+            var result = AestheticsScoreProbeResult(
+                available: false,
+                sampledCount: 0,
+                measurements: [],
+                lowestAssetIDs: [],
+                highestAssetIDs: [],
+                wallClockSeconds: 0,
+                cancelled: false
+            )
+            if #available(iOS 18.0, *) {
+                result = self.score(
+                    limit: limit,
+                    cancellation: cancellation,
+                    progress: progress
+                )
+            }
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }
+    }
+
+    @available(iOS 18.0, *)
+    private func score(
+        limit: SimilarPhotosSampleLimit,
+        cancellation: SimilarPhotosCancellationToken,
+        progress: @escaping (Int, Int) -> Void
+    ) -> AestheticsScoreProbeResult {
+        let inventory = SimilarPhotosFeatureProbeService.fetchCandidates()
+        let sample = limit.maximumCount.map { Array(inventory.candidates.prefix($0)) }
+            ?? inventory.candidates
+        let manager = PHImageManager.default()
+        let runStart = Date()
+        var measurements: [AestheticsScoreMeasurement] = []
+        for (index, asset) in sample.enumerated() {
+            guard !cancellation.isCancelled else {
+                break
+            }
+            let fetched = SimilarPhotosImageFetch.fetch(asset: asset, manager: manager)
+            guard let cgImage = fetched.cgImage else {
+                continue
+            }
+            let visionStart = Date()
+            guard let scored = AestheticsScoreProbeService.scores(for: cgImage) else {
+                continue
+            }
+            measurements.append(
+                AestheticsScoreMeasurement(
+                    assetID: asset.localIdentifier,
+                    visionMilliseconds: Date().timeIntervalSince(visionStart) * 1_000,
+                    overallScore: scored.score,
+                    isUtility: scored.isUtility
+                )
+            )
+            progress(index + 1, sample.count)
+        }
+        let ordered = measurements.sorted { left, right in
+            if left.overallScore != right.overallScore {
+                return left.overallScore < right.overallScore
+            }
+            return left.assetID < right.assetID
+        }
+        let limitCount = AestheticsScoreProbeText.extremesLimit
+        return AestheticsScoreProbeResult(
+            available: true,
+            sampledCount: sample.count,
+            measurements: measurements,
+            lowestAssetIDs: ordered.prefix(limitCount).map { $0.assetID },
+            highestAssetIDs: ordered.suffix(limitCount).reversed().map { $0.assetID },
+            wallClockSeconds: Date().timeIntervalSince(runStart),
+            cancelled: cancellation.isCancelled
+        )
+    }
+
+    /// 18+ 类型只出现在本函数体内与它的可用性标注上。
+    @available(iOS 18.0, *)
+    static func scores(for cgImage: CGImage) -> (score: Float, isUtility: Bool)? {
+        let request = VNCalculateImageAestheticsScoresRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            return nil
+        }
+        let results: [Any] = request.results ?? []
+        guard let observation = results.first as? VNImageAestheticsScoresObservation else {
+            return nil
+        }
+        return (observation.overallScore, observation.isUtility)
+    }
+}
+
 // MARK: - 探针常量
 
 /// 探针自己的上限常量。不是产品取值，不进 `S2CalibrationConfiguration`。
@@ -1029,35 +1344,14 @@ final class SimilarPhotosFeatureProbeService: SimilarPhotosFeatureProbing {
         measurement: SimilarPhotosFeatureMeasurement,
         observation: VNFeaturePrintObservation?
     ) {
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.resizeMode = .fast
-        options.isSynchronous = true
-        options.isNetworkAccessAllowed = false
+        let fetched = SimilarPhotosImageFetch.fetch(asset: asset, manager: manager)
+        let fetchMilliseconds = fetched.milliseconds
 
-        var image: UIImage?
-        var info: [AnyHashable: Any]?
-        let fetchStart = Date()
-        manager.requestImage(
-            for: asset,
-            targetSize: CGSize(
-                width: SimilarPhotosProbeLimits.targetSide,
-                height: SimilarPhotosProbeLimits.targetSide
-            ),
-            contentMode: .aspectFit,
-            options: options
-        ) { result, resultInfo in
-            image = result
-            info = resultInfo
-        }
-        let fetchMilliseconds = Date().timeIntervalSince(fetchStart) * 1_000
-
-        guard let cgImage = image?.cgImage else {
-            let inCloud = (info?[PHImageResultIsInCloudKey] as? Bool) == true
+        guard let cgImage = fetched.cgImage else {
             let measurement = SimilarPhotosFeatureMeasurement(
                 fetchMilliseconds: fetchMilliseconds,
                 visionMilliseconds: 0,
-                outcome: inCloud ? .inCloud : .failed
+                outcome: fetched.inCloud ? .inCloud : .failed
             )
             return (measurement, nil)
         }

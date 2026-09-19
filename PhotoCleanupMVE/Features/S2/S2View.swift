@@ -781,6 +781,8 @@ struct S2View: View {
     /// IC-161 A：相似照片特征探针的取数实现。未接线（nil）时探针按钮禁用。
     /// 口径同 `assetSizeProber`：由 App 层造好传进来，面板按钮显式触发才取数。
     private let similarPhotosProber: SimilarPhotosFeatureProbing?
+    /// IC-161 C：画质评分探针的取数实现（iOS 18+ 才有结果）。未接线时按钮禁用。
+    private let aestheticsProber: AestheticsScoreProbing?
     /// IC-146 A：分享取项实现。默认走 PhotoKit；测试注入桩。
     private let shareItemResolver: any S2ShareItemResolving
 
@@ -805,6 +807,9 @@ struct S2View: View {
     /// IC-161 B：分组核对的距离阈值。阈值只在面板里，不写死在任何判据里。
     @State private var similarPhotosGroupThreshold =
         SimilarPhotosProbeLimits.thresholdOptions[1]
+    /// IC-161 C：画质评分探针。与特征段各自独立可跑。
+    @StateObject private var aestheticsProbe = AestheticsScoreProbeCoordinator()
+    @State private var aestheticsSampleLimit = SimilarPhotosSampleLimit.fiveHundred
     /// IC-108 B：双击丝滑度探针。默认关闭；关闭时不向 pager 传引用，埋点零开销。
     @StateObject private var doubleTapProbe =
         S2DoubleTapSmoothnessProbeCoordinator()
@@ -847,6 +852,7 @@ struct S2View: View {
         assetVolumeProvider: S2AssetVolumeProviding? = nil,
         assetSizeProber: S2AssetSizeProbing? = nil,
         similarPhotosProber: SimilarPhotosFeatureProbing? = nil,
+        aestheticsProber: AestheticsScoreProbing? = nil,
         shareItemResolver: any S2ShareItemResolving =
             S2PhotoKitShareItemResolver(),
         photoContent: @escaping PhotoContent,
@@ -895,6 +901,7 @@ struct S2View: View {
         self.assetVolumeProvider = assetVolumeProvider
         self.assetSizeProber = assetSizeProber
         self.similarPhotosProber = similarPhotosProber
+        self.aestheticsProber = aestheticsProber
         self.shareItemResolver = shareItemResolver
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
@@ -2794,6 +2801,7 @@ struct S2View: View {
                 doubleTapProbeSection
                 similarPhotosProbeSection
                 similarPhotosGroupSection
+                aestheticsProbeSection
                 // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
                 // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
@@ -2998,6 +3006,70 @@ struct S2View: View {
                     }
                 )
             }
+        }
+    }
+
+    /// IC-161 C：调试面板的画质评分探针段（裁定 四）。iOS 18 以下整段显示不可用；
+    /// 与特征段各自独立可跑，样本口径相同、并发固定 1。
+    @ViewBuilder
+    private var aestheticsProbeSection: some View {
+        Divider()
+        Text(L10n.text("s2.calibration.aesthetics_probe.title"))
+        if #available(iOS 18.0, *) {
+            aestheticsProbeBody
+        } else {
+            Text(L10n.text("s2.calibration.aesthetics_probe.unavailable"))
+        }
+    }
+
+    @ViewBuilder
+    private var aestheticsProbeBody: some View {
+        Picker(
+            selection: $aestheticsSampleLimit,
+            label: Text(L10n.text("s2.calibration.similar_probe.limit_label"))
+        ) {
+            ForEach(SimilarPhotosSampleLimit.allCases) { limit in
+                similarPhotosLimitLabel(limit).tag(limit)
+            }
+        }
+        .pickerStyle(.segmented)
+        Button(L10n.text("s2.calibration.aesthetics_probe.start")) {
+            guard let prober = aestheticsProber else {
+                return
+            }
+            aestheticsProbe.run(limit: aestheticsSampleLimit, using: prober)
+        }
+        .disabled(
+            aestheticsProber == nil || aestheticsProbe.isRunning
+        )
+        .s2MinimumTouchTarget()
+        if aestheticsProbe.isRunning {
+            ProgressView(aestheticsProbe.progressText)
+            Button(L10n.text("s2.calibration.aesthetics_probe.cancel")) {
+                aestheticsProbe.cancel()
+            }
+            .s2MinimumTouchTarget()
+        }
+        if !aestheticsProbe.reportText.isEmpty {
+            ShareLink(item: aestheticsProbe.reportText) {
+                Text(L10n.text(
+                    "s2.calibration.aesthetics_probe.share"
+                ))
+            }
+            .s2MinimumTouchTarget()
+            Text(verbatim: aestheticsProbe.reportText)
+                .font(.system(.caption2, design: .monospaced))
+                .textSelection(.enabled)
+            Text(L10n.text("s2.calibration.aesthetics_probe.lowest"))
+            S2SimilarGroupThumbnailRow(
+                assetIDs: aestheticsProbe.lowestAssetIDs,
+                limit: AestheticsScoreProbeText.extremesLimit
+            )
+            Text(L10n.text("s2.calibration.aesthetics_probe.highest"))
+            S2SimilarGroupThumbnailRow(
+                assetIDs: aestheticsProbe.highestAssetIDs,
+                limit: AestheticsScoreProbeText.extremesLimit
+            )
         }
     }
 
@@ -6138,27 +6210,21 @@ enum S2PreviewData {
 /// 横向容器同样惰性，滚到哪张才取哪张；缩略图组件一字未改，取图照旧禁网络。
 private struct S2SimilarGroupThumbnailRow: View {
     let assetIDs: [String]
+    var limit = SimilarPhotosProbeLimits.previewThumbnailLimit
 
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         ScrollView(.horizontal) {
             LazyHStack {
-                ForEach(
-                    assetIDs.prefix(SimilarPhotosProbeLimits.previewThumbnailLimit),
-                    id: \.self
-                ) { assetID in
+                ForEach(assetIDs.prefix(limit), id: \.self) { assetID in
                     ThumbnailView(
                         assetIdentifier: assetID,
                         displayScale: displayScale
                     )
                 }
-                if assetIDs.count > SimilarPhotosProbeLimits.previewThumbnailLimit {
-                    Text(
-                        verbatim: "+" + String(
-                            assetIDs.count - SimilarPhotosProbeLimits.previewThumbnailLimit
-                        )
-                    )
+                if assetIDs.count > limit {
+                    Text(verbatim: "+" + String(assetIDs.count - limit))
                 }
             }
         }
