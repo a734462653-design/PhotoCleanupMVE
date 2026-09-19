@@ -9,8 +9,11 @@ struct S0CategoryPageSelection: Equatable {
     private(set) var items: [S0CategoryAsset]
     private(set) var selected: Set<String> = []
 
-    init(items: [S0CategoryAsset]) {
+    /// IC-160 A（裁定 三）：`preselected` 是跨 S2 往返带回来的保留集，与当前网格求交——
+    /// 在 S2 里被标记的那几张已从列表消失，不该留在已选集合里。缺省为空即旧行为。
+    init(items: [S0CategoryAsset], preselected: Set<String> = []) {
         self.items = items
+        self.selected = preselected.intersection(Set(items.map { $0.id }))
     }
 
     /// 网格全部项的字节和（副行的体积）。
@@ -274,6 +277,9 @@ struct S0CategoryPageView: View {
     /// IC-157 B：长按任一格进 S2。实参是网格当前顺序（全部项标识）与被长按那张的标识；
     /// 不改 `SEL`、不进篮。
     private let onLongPress: ([String], String) -> Void
+    /// IC-160 B：勾选每次变化都回报给流程模型（裁定 二）。页面仍是已选集合的唯一写入者，
+    /// 模型只存一份跨 S2 往返用的副本。
+    private let onSelectionChange: (Set<String>) -> Void
     private let toastDurationMilliseconds: Double
 
     @State private var selection: S0CategoryPageSelection
@@ -285,14 +291,22 @@ struct S0CategoryPageView: View {
         onMoveToBasket: @escaping (Set<String>) -> Bool,
         onBack: @escaping () -> Void,
         onLongPress: @escaping ([String], String) -> Void = { _, _ in },
+        initialSelection: Set<String> = [],
+        onSelectionChange: @escaping (Set<String>) -> Void = { _ in },
         toastDurationMilliseconds: Double
     ) {
         self.category = category
         self.onMoveToBasket = onMoveToBasket
         self.onBack = onBack
         self.onLongPress = onLongPress
+        self.onSelectionChange = onSelectionChange
         self.toastDurationMilliseconds = toastDurationMilliseconds
-        _selection = State(initialValue: S0CategoryPageSelection(items: items))
+        _selection = State(
+            initialValue: S0CategoryPageSelection(
+                items: items,
+                preselected: initialSelection
+            )
+        )
     }
 
     var body: some View {
@@ -306,6 +320,15 @@ struct S0CategoryPageView: View {
                 gridScroll
             }
             bottomBar
+        }
+        .onChange(of: selection.selected) { _, current in
+            onSelectionChange(current)
+        }
+        // IC-160 B（裁定 三）：`.onChange` 不对初值触发——出现时先回报一次，模型即收敛为
+        // 页面真正显示的那一份；否则已消失的标识会留在保留集里，日后它重新回到网格时会被
+        // 自动勾上，与裁定 一的口径不符。
+        .onAppear {
+            onSelectionChange(selection.selected)
         }
     }
 
