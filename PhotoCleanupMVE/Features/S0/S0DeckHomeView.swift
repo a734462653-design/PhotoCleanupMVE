@@ -498,6 +498,7 @@ struct S0DeckHomeView: View {
                 style: .continuous
             )
         )
+        // r7.py `.dk .edge` 是两道 inset 阴影：一圈 0.12 的描边，加上缘一道 0.34 的高光。
         .overlay {
             RoundedRectangle(
                 cornerRadius: S0DeckMetrics.cardCornerRadius,
@@ -506,6 +507,16 @@ struct S0DeckHomeView: View {
             .strokeBorder(
                 S0DeckMetrics.text.opacity(S0DeckMetrics.cardRingOpacity),
                 lineWidth: S0DeckMetrics.cardRingWidth
+            )
+        }
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: S0DeckMetrics.cardCornerRadius,
+                style: .continuous
+            )
+            .strokeBorder(
+                S0DeckTopHighlight.gradient,
+                lineWidth: S0DeckMetrics.glassTopHighlightWidth
             )
         }
         .shadow(
@@ -744,12 +755,16 @@ struct S0DeckHomeView: View {
                 )
             Spacer(minLength: 0)
             stripValue(parts)
-            Image(systemName: S0DeckSymbol.chevron)
-                .foregroundStyle(
-                    S0DeckMetrics.dimmedText(
-                        opacity: S0DeckMetrics.stripChevronOpacity
+            // 裁定 二：「其余照片」不可点，**不画右箭头**（与 `showsDisclosure` 同口径：
+            // 只有能进类别页的条才画）。
+            if card.isEnterable {
+                Image(systemName: S0DeckSymbol.chevron)
+                    .foregroundStyle(
+                        S0DeckMetrics.dimmedText(
+                            opacity: S0DeckMetrics.stripChevronOpacity
+                        )
                     )
-                )
+            }
         }
         .padding(.leading, S0DeckMetrics.stripLeadingInset)
         .padding(.trailing, S0DeckMetrics.stripTrailingInset)
@@ -1064,6 +1079,23 @@ struct S0DeckSuggestion: Equatable {
     let isVisible: Bool
     let count: Int
     let byteCount: Int64
+}
+
+/// 顶缘高光：CSS 的 `inset 0 0.5px 0 rgba(255,255,255,0.34)` 只亮上缘，SwiftUI 侧
+/// 用一道自上而下收到零的竖向渐变描边近似（与 `S0GlassSurface` 的既有做法同制）。
+enum S0DeckTopHighlight {
+    static var gradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                S0DeckMetrics.text.opacity(
+                    S0DeckMetrics.glassTopHighlightOpacity
+                ),
+                S0DeckMetrics.text.opacity(0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
 }
 
 /// 卡上的两道压暗渐变。取值全部来自 `S0DeckMetrics`，视图体内不写裸数。

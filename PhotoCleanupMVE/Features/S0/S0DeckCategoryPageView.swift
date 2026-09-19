@@ -433,24 +433,29 @@ struct S0DeckCategoryPageView: View {
         }
     }
 
+    /// 网格空了（整类都进了待删篮）时整节不画——否则会读出「最大的 0 个」与
+    /// 「全选这 0 个」。
+    @ViewBuilder
     private func topSectionHeader(_ items: [S0CategoryAsset]) -> some View {
-        sectionHeader(
-            title: L10n.text(
-                "deck.page.top.title",
-                replacing: ["count": String(items.count)]
-            ),
-            detail: S0ByteCountText.string(
-                forByteCount: S0DeckHomeModel.topSum(
-                    items,
-                    limit: items.count
-                ).byteCount
-            ),
-            action: L10n.text(
-                "deck.page.top.action",
-                replacing: ["count": String(items.count)]
-            ),
-            handler: { selectTopSection(items) }
-        )
+        if !items.isEmpty {
+            sectionHeader(
+                title: L10n.text(
+                    "deck.page.top.title",
+                    replacing: ["count": String(items.count)]
+                ),
+                detail: S0ByteCountText.string(
+                    forByteCount: S0DeckHomeModel.topSum(
+                        items,
+                        limit: items.count
+                    ).byteCount
+                ),
+                action: L10n.text(
+                    "deck.page.top.action",
+                    replacing: ["count": String(items.count)]
+                ),
+                handler: { selectTopSection(items) }
+            )
+        }
     }
 
     @ViewBuilder
@@ -936,9 +941,7 @@ struct S0DeckGlassPanel: ViewModifier {
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(
-                        S0DeckMetrics.text.opacity(
-                            S0DeckMetrics.glassTopHighlightOpacity
-                        ),
+                        S0DeckTopHighlight.gradient,
                         lineWidth: S0DeckMetrics.glassTopHighlightWidth
                     )
             }
