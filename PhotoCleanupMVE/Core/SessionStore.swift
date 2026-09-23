@@ -275,8 +275,10 @@ struct SessionStore: Equatable, Sendable {
         }
 
         var nextState = state
+        // IC-163 A：只覆盖交接列表内的标记；列表外的既有标记（类别页已进篮、不在网格里的项）原样保留。
+        let previous = nextState.pendingDeletionAssetIDsByRangeID[entryContext.rangeID] ?? []
         nextState.pendingDeletionAssetIDsByRangeID[entryContext.rangeID] =
-            returned.pendingDeletionAssetIDs
+            previous.subtracting(assetIDSet).union(returned.pendingDeletionAssetIDs)
 
         let remainingAssetIDs = Self.allPendingDeletionAssetIDs(in: nextState)
         nextState.firstMarkedRangeIDByAssetID =

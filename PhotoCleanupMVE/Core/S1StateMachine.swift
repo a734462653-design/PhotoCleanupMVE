@@ -796,7 +796,8 @@ final class S1StateMachine: ObservableObject {
             }
             applyPendingDeletionDiff(
                 pendingDeletionAssetIDs,
-                rangeID: entryContext.rangeID
+                rangeID: entryContext.rangeID,
+                scope: Set(entryContext.orderedAssetIDs)
             )
             return true
         }
@@ -814,22 +815,26 @@ final class S1StateMachine: ObservableObject {
 
         applyPendingDeletionDiff(
             pendingDeletionAssetIDs,
-            rangeID: entryContext.rangeID
+            rangeID: entryContext.rangeID,
+            scope: Set(entryContext.orderedAssetIDs)
         )
         return true
     }
 
     /// IC-157 A：S2 逐张镜像的差分写入，真实范围与虚拟范围两条路径共用。`M` 只经 `setMarked`
     /// 写入（陷阱 19），`F` 随之维护；先在副本上改完再一次赋值，写出口只触发一次。
+    /// IC-163 A：取消标记只落在 `scope`（交接列表）内——真实范围的列表恒为整个范围，行为不变；
+    /// 虚拟范围里已进篮、不在网格里的项不在列表内，不被抹掉。
     private func applyPendingDeletionDiff(
         _ pendingDeletionAssetIDs: Set<String>,
-        rangeID: String
+        rangeID: String,
+        scope: Set<String>
     ) {
         var nextStore = sessionStore
         let previous = nextStore.pendingDeletionAssetIDsByRangeID[
             rangeID
         ] ?? []
-        for assetID in previous.subtracting(pendingDeletionAssetIDs).sorted() {
+        for assetID in previous.intersection(scope).subtracting(pendingDeletionAssetIDs).sorted() {
             nextStore.setMarked(
                 false,
                 assetID: assetID,
