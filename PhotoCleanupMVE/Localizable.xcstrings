@@ -276,6 +276,17 @@
         }
       }
     },
+    "s0.categoryPage.sort.sizeAscending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从小到大"
+          }
+        }
+      }
+    },
     "s0.categoryPage.submit" : {
       "extractionState" : "manual",
       "localizations" : {

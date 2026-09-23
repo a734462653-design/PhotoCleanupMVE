@@ -68,9 +68,11 @@ enum S0DeckHomeModel {
 
     // MARK: - IC-163 C：类别页排序与按月分节（裁定 四）
 
-    /// 类别页的排序态。`size` 是入参顺序（数据源已按体积降序给出），另两个按拍摄日期。
+    /// 类别页的排序态。`size` 是入参顺序（数据源已按体积降序给出）；IC-167 C 加 `sizeAscending`
+    /// （按体积升序，在本层重排）；另两个按拍摄日期。
     enum SortOrder {
         case size
+        case sizeAscending
         case newestFirst
         case oldestFirst
     }
@@ -84,6 +86,7 @@ enum S0DeckHomeModel {
     /// 按排序态排列网格项。
     ///
     /// - `.size`：原样返回入参顺序；
+    /// - `.sizeAscending`（IC-167 C，SPEC-S0 v4 第六节）：按字节升序，同体积按标识升序；与日期无关；
     /// - `.newestFirst`／`.oldestFirst`：有日期的按日期降序／升序，同日期按标识升序；
     ///   **无日期的一律排最后**，相互之间保持入参顺序。
     static func sorted(
@@ -91,6 +94,13 @@ enum S0DeckHomeModel {
         by order: SortOrder,
         dates: [String: Date]
     ) -> [S0CategoryAsset] {
+        if order == .sizeAscending {
+            return items.sorted { lhs, rhs in
+                lhs.byteCount != rhs.byteCount
+                    ? lhs.byteCount < rhs.byteCount
+                    : lhs.id < rhs.id
+            }
+        }
         guard order != .size else {
             return items
         }

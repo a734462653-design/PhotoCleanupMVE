@@ -9,7 +9,8 @@ import SwiftUI
 /// - 页头 = 展开卡那张照片放大（262 高）+ 返回／排序／全选 + 名称、体积、副行、占比角标 + 总条，
 ///   随内容一起滚走；滚过阈值后顶上出现一条玻璃导航（返回 · 名称 体积 占比 · 排序 全选）。
 /// - IC-163 C（裁定 三、四）：「最大的 N 个」「其余 M 个」两节撤销。排序钮三项——从大到小
-///   （默认，整页一张网格）、最新在前、最旧在前（按月分节，无日期的归最后一节）。
+///   （默认，整页一张网格）、最新在前、最旧在前（按月分节，无日期的归最后一节）。IC-167 C 加
+///   「从小到大」（整页一张网格，按体积升序、同体积按标识升序），共四项。
 /// - 底栏是一条玻璃：左「已选 N 项」+ 体积，右「移入待删篮」。
 ///
 /// 行为逐条照旧类别页（IC-162 裁定 五）：勾选、全选、长按进 S2、进篮成功才从网格
@@ -445,7 +446,7 @@ struct S0DeckCategoryPageView: View {
         }
     }
 
-    /// IC-163 C（裁定 四）：排序是系统 `Menu`，三项互斥。取回日期之前整只菜单禁用——
+    /// IC-163 C（裁定 四）：排序是系统 `Menu`，三项互斥（IC-167 C 起四项：加「从小到大」）。取回日期之前整只菜单禁用——
     /// `Menu` 里逐项 `.disabled` 在 iOS 17 上不可靠，不用。
     private func sortMenu<MenuLabel: View>(
         @ViewBuilder label: () -> MenuLabel
@@ -454,6 +455,8 @@ struct S0DeckCategoryPageView: View {
             Picker(L10n.text("s1.sort.accessibility"), selection: $sortOrder) {
                 Text(L10n.text("s0.categoryPage.sort.size"))
                     .tag(S0DeckHomeModel.SortOrder.size)
+                Text(L10n.text("s0.categoryPage.sort.sizeAscending"))
+                    .tag(S0DeckHomeModel.SortOrder.sizeAscending)
                 Text(L10n.text("s1.sort.newest_first"))
                     .tag(S0DeckHomeModel.SortOrder.newestFirst)
                 Text(L10n.text("s1.sort.oldest_first"))
@@ -503,7 +506,7 @@ struct S0DeckCategoryPageView: View {
         let side = cellWidth(forWidth: width)
         let ordered = displayedItems
         switch sortOrder {
-        case .size:
+        case .size, .sizeAscending:
             grid(ordered, width: side, topSpacing: S0DeckMetrics.monthSectionSpacing)
         case .newestFirst, .oldestFirst:
             VStack(alignment: .leading, spacing: 0) {
@@ -879,11 +882,13 @@ struct S0DeckCategoryPageView: View {
         return formatter.string(from: monthStart)
     }
 
-    /// 副行的排序名：与排序菜单三项同文案（后两项复用逐张整理 tab 的排序文案）。
+    /// 副行的排序名：与排序菜单各项同文案（后两项复用逐张整理 tab 的排序文案；IC-167 C 起四项）。
     private var sortOrderName: String {
         switch sortOrder {
         case .size:
             return L10n.text("s0.categoryPage.sort.size")
+        case .sizeAscending:
+            return L10n.text("s0.categoryPage.sort.sizeAscending")
         case .newestFirst:
             return L10n.text("s1.sort.newest_first")
         case .oldestFirst:

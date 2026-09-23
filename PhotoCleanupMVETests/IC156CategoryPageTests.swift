@@ -231,14 +231,16 @@ final class IC156CategoryPageTests: XCTestCase {
     func testIC156C_CatalogGainsFiveKeysAndBothGatesAreUpdated() throws {
         // IC-165 C（裁定 六）：`s0.` 38 → 39、`s0.categoryPage.` 6 → 9（删长按提示，加返回、
         // 排序名、月份计数、未知日期；副行、已选、主按钮三条改值）。IC-166 B：S0-3 副句一条，`s0.` → 40。
+        // IC-167：B 删首页胶囊一条、C 加排序「从小到大」一条，`s0.` 仍 40；`s0.categoryPage.` 9 → 10。
         let catalog = try loadCatalogValues()
         XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 40)
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 9)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 10)
 
         let expected: [String: String] = [
             "s0.categoryPage.back": "返回",
             "s0.categoryPage.subtitle": "{count} 项 · {order}",
             "s0.categoryPage.sort.size": "从大到小",
+            "s0.categoryPage.sort.sizeAscending": "从小到大",
             "s0.categoryPage.selectAll": "全选",
             "s0.categoryPage.selected": "已选 {count} 项",
             "s0.categoryPage.submit": "移入待删篮",

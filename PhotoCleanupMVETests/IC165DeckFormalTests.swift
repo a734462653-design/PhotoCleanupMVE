@@ -221,8 +221,9 @@ final class IC165DeckFormalTests: XCTestCase {
 
         let catalog = try loadCatalogValues()
         // IC-166 B：S0-3 副句 `s0.home.hero.empty.subtitle` 一条，39 → 40。
+        // IC-167：B 删首页胶囊一条、C 加排序「从小到大」一条，`s0.` 仍 40；`s0.categoryPage.` 9 → 10。
         XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 40)
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 9)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 10)
         XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("deck.") }.count, 0)
         for obsolete in [
             "s0.home.hero.growing",
