@@ -90,7 +90,7 @@ struct PhotoCleanupMVEApp: App {
     ///
     /// IC-156 D：构造点换成承载容器 `S0CleanupFlowView`（裁定 二），首页原样构造在容器里、
     /// 类别页由容器推出；「移入待删篮」经 S1 状态机一次原子写入虚拟范围并登记类别名
-    /// （裁定 三），toast 时长与 S1 同一读法。首页待删篮胶囊 → S3 仍不接线（批次 5.3）。
+    /// （裁定 三），toast 时长与 S1 同一读法。IC-167 B：首页与类别页待删篮入口 → S3 经本闭包接线（先对账再提交）。
     ///
     /// IC-157 C：长按进 S2 经 S1 状态机的虚拟范围交接构造（裁定 二）交给协调器唯一的 S2 入口；
     /// 协调器一字不动（裁定 四），类别页身份由 `s0FlowModel` 跨路由保持（裁定 一）。
@@ -122,7 +122,12 @@ struct PhotoCleanupMVEApp: App {
             toastDurationMilliseconds: coordinator
                 .s2Calibration
                 .configuration
-                .feedbackToastDurationMilliseconds
+                .feedbackToastDurationMilliseconds,
+            onEnterConfirmation: {
+                coordinator.reconcileS1WithPhotoLibrary()
+                guard let submission = s1Machine.makeS3Submission() else { return }
+                _ = coordinator.enterConfirmationFromS1(submission)
+            }
         )
     }
 

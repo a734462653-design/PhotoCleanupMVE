@@ -241,6 +241,7 @@ final class IC165DeckFormalTests: XCTestCase {
         XCTAssertEqual(catalog["s0.home.hero.label"], "可清理的空间")
 
         // 跨前缀借用恰为 SPEC-S0 v3 第十四节第 3 部分登记的四条。
+        // IC-167 B：SPEC-S0 v4 加待删篮入口的无障碍标签一条，四条 → 五条（目录级扫描自动含新文件）。
         var files = try swiftFiles(inDirectory: Self.s0Directory)
         files.append(Self.coverPath)
         files.append(Self.datesPath)
@@ -255,7 +256,8 @@ final class IC165DeckFormalTests: XCTestCase {
                 "s1.limited.banner",
                 "s1.sort.accessibility",
                 "s1.sort.newest_first",
-                "s1.sort.oldest_first"
+                "s1.sort.oldest_first",
+                "s1.trash.accessibility"
             ]
         )
     }

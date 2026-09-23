@@ -155,17 +155,6 @@
         }
       }
     },
-    "s0.basket.capsule" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "{count} · {volume}"
-          }
-        }
-      }
-    },
     "s0.category.bigVideo" : {
       "extractionState" : "manual",
       "localizations" : {
