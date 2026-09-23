@@ -111,6 +111,127 @@
         }
       }
     },
+    "deck.home.bar.caption" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "占 {percent} · {bytes}"
+          }
+        }
+      }
+    },
+    "deck.home.hero.label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可清理的空间"
+          }
+        }
+      }
+    },
+    "deck.home.open.action" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "去清理"
+          }
+        }
+      }
+    },
+    "deck.home.open.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 项 · 从大到小"
+          }
+        }
+      }
+    },
+    "deck.home.released" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "累计已腾出"
+          }
+        }
+      }
+    },
+    "deck.home.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "占 {percent}"
+          }
+        }
+      }
+    },
+    "deck.page.month.count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 项"
+          }
+        }
+      }
+    },
+    "deck.page.selected" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选 {count} 项"
+          }
+        }
+      }
+    },
+    "deck.page.sort.size" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从大到小"
+          }
+        }
+      }
+    },
+    "deck.page.submit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移入待删篮"
+          }
+        }
+      }
+    },
+    "deck.page.undated" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知日期"
+          }
+        }
+      }
+    },
     "deletion.failure.asset_unavailable" : {
       "extractionState" : "manual",
       "localizations" : {
