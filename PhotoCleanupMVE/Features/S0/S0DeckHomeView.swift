@@ -146,7 +146,7 @@ struct S0DeckHomeView: View {
 
     private var accountButton: some View {
         Button(action: onOpenAccountSheet) {
-            Image(systemName: S0HomeSymbol.account)
+            Image(systemName: S0DeckSymbol.account)
                 .foregroundStyle(S0DeckMetrics.text)
                 .s1ChromeCircleGlass()
         }
@@ -187,7 +187,7 @@ struct S0DeckHomeView: View {
     private var heroBlock: some View {
         HStack(alignment: .bottom, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                Text(L10n.text("deck.home.hero.label"))
+                Text(L10n.text("s0.home.hero.label"))
                     .font(
                         .system(
                             size: S0DeckMetrics.heroLabelFontSize,
@@ -289,7 +289,7 @@ struct S0DeckHomeView: View {
                 )
             )
             VStack(alignment: .trailing, spacing: 0) {
-                Text(L10n.text("deck.home.released"))
+                Text(L10n.text("s0.home.released"))
                     .font(.system(size: S0DeckMetrics.releasedLabelFontSize))
                     .foregroundStyle(
                         S0DeckMetrics.dimmedText(
@@ -470,7 +470,7 @@ struct S0DeckHomeView: View {
                     .foregroundStyle(S0DeckMetrics.text)
                 Text(
                     L10n.text(
-                        "deck.home.bar.caption",
+                        "s0.home.bar.caption",
                         replacing: Self.shareReplacements(for: card)
                     )
                 )
@@ -542,7 +542,6 @@ struct S0DeckHomeView: View {
         }
         .buttonStyle(.plain)
         .disabled(!card.isEnterable)
-        .opacity(Self.cardOpacity(for: card))
         // IC-162 B：这张卡即进类别页的过渡源（iOS 18 起放大成页头，iOS 17 走默认 push）。
         .modifier(
             S0DeckZoomSource(id: card.id, namespace: transitionNamespace)
@@ -684,7 +683,7 @@ struct S0DeckHomeView: View {
     private func shareBadge(_ card: S0DeckHomeModel.Card) -> some View {
         Text(
             L10n.text(
-                "deck.home.share",
+                "s0.home.share",
                 replacing: Self.shareReplacements(for: card)
             )
         )
@@ -727,7 +726,7 @@ struct S0DeckHomeView: View {
                 .monospacedDigit()
             Text(
                 L10n.text(
-                    "deck.home.open.subtitle",
+                    "s0.home.open.subtitle",
                     replacing: ["count": String(candidateCount(for: card))]
                 )
             )
@@ -752,7 +751,7 @@ struct S0DeckHomeView: View {
     /// 嵌套按钮会把点按语义拆成两处。
     private var openActionLabel: some View {
         HStack(spacing: S0DeckMetrics.openActionItemSpacing) {
-            Text(L10n.text("deck.home.open.action"))
+            Text(L10n.text("s0.home.open.action"))
             Image(systemName: S0DeckSymbol.chevron)
         }
         .font(
@@ -1057,7 +1056,7 @@ struct S0DeckHomeView: View {
 
     static func name(for card: S0DeckHomeModel.Card) -> String {
         guard let identifier = card.category else {
-            return L10n.text("s0.home.legend.rest")
+            return L10n.text("s0.category.rest")
         }
         return S0CategoryText.displayName(for: identifier)
     }
@@ -1074,14 +1073,6 @@ struct S0DeckHomeView: View {
 
     static func shareText(for card: S0DeckHomeModel.Card) -> String {
         String(card.percent) + S0DeckSymbol.percentSign
-    }
-
-    /// 「尚未开始识别」的条整条压到 0.55（裁定 四）；「其余照片」卡不可点但不压暗。
-    static func cardOpacity(for card: S0DeckHomeModel.Card) -> Double {
-        guard card.category != nil, !card.isEnterable else {
-            return 1
-        }
-        return S0DeckMetrics.stripAwaitingOpacity
     }
 }
 

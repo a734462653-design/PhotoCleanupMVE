@@ -856,12 +856,14 @@ final class IC153ScanServiceTests: XCTestCase {
         let view = try XCTUnwrap(strippedSource(Self.s0ViewPath))
         XCTAssertEqual(occurrences(of: "machine.handle(", in: view), 4)
         XCTAssertEqual(occurrences(of: "machine.ingest", in: view), 1)
-        XCTAssertEqual(occurrences(of: "onSnapshotDidChange", in: view), 1)
+        XCTAssertEqual(occurrences(of: "PHAsset", in: view), 0)
+        // IC-165 C：协议从退役的旧首页原样搬进自己的文件；钩子要求行恰一处（首页本身 0 处）。
+        let provider = try XCTUnwrap(strippedSource(Self.providerPath))
+        XCTAssertEqual(occurrences(of: "onSnapshotDidChange", in: provider), 1)
         XCTAssertEqual(
-            occurrences(of: "var onSnapshotDidChange: (() -> Void)? { get set }", in: view),
+            occurrences(of: "var onSnapshotDidChange: (() -> Void)? { get set }", in: provider),
             1
         )
-        XCTAssertEqual(occurrences(of: "PHAsset", in: view), 0)
 
         // 迁移映射：每个（起点，回报）组合把给出的事件喂给真实状态机，`SC` 落到回报
         // 对应的值；起点与回报一致时不给事件。
@@ -1267,7 +1269,9 @@ final class IC153ScanServiceTests: XCTestCase {
     private static let servicePath = "PhotoCleanupMVE/Services/S0LibraryScanService.swift"
     private static let scannerPath = "PhotoCleanupMVE/Services/AssetSizeScanner.swift"
     private static let appPath = "PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift"
-    private static let s0ViewPath = "PhotoCleanupMVE/Features/S0/S0View.swift"
+    /// IC-165 C：首页改为「卡片叠」`S0DeckHomeView`；数据源协议在自己的文件里。
+    private static let s0ViewPath = "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift"
+    private static let providerPath = "PhotoCleanupMVE/Features/S0/S0CleanupDataProviding.swift"
     /// 换行符用 `UnicodeScalar` 拼、不写转义字面量（IC-148 #294 的 heredoc 教训）。
     private static let newline = String(Character(UnicodeScalar(UInt8(10))))
     /// 双引号同理。

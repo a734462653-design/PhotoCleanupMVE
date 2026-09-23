@@ -111,127 +111,6 @@
         }
       }
     },
-    "deck.home.bar.caption" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "占 {percent} · {bytes}"
-          }
-        }
-      }
-    },
-    "deck.home.hero.label" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可清理的空间"
-          }
-        }
-      }
-    },
-    "deck.home.open.action" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "去清理"
-          }
-        }
-      }
-    },
-    "deck.home.open.subtitle" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "{count} 项 · 从大到小"
-          }
-        }
-      }
-    },
-    "deck.home.released" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "累计已腾出"
-          }
-        }
-      }
-    },
-    "deck.home.share" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "占 {percent}"
-          }
-        }
-      }
-    },
-    "deck.page.month.count" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "{count} 项"
-          }
-        }
-      }
-    },
-    "deck.page.selected" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已选 {count} 项"
-          }
-        }
-      }
-    },
-    "deck.page.sort.size" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从大到小"
-          }
-        }
-      }
-    },
-    "deck.page.submit" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移入待删篮"
-          }
-        }
-      }
-    },
-    "deck.page.undated" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未知日期"
-          }
-        }
-      }
-    },
     "deletion.failure.asset_unavailable" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -309,6 +188,17 @@
         }
       }
     },
+    "s0.category.rest" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其余照片"
+          }
+        }
+      }
+    },
     "s0.category.screenRecording" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -342,13 +232,24 @@
         }
       }
     },
-    "s0.categoryPage.longPressHint" : {
+    "s0.categoryPage.back" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "长按任一格逐张看"
+            "value" : "返回"
+          }
+        }
+      }
+    },
+    "s0.categoryPage.month.count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 项"
           }
         }
       }
@@ -370,7 +271,18 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已选 {count} 项 · {bytes}"
+            "value" : "已选 {count} 项"
+          }
+        }
+      }
+    },
+    "s0.categoryPage.sort.size" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从大到小"
           }
         }
       }
@@ -381,7 +293,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "移入待删篮 · {count} 项 {bytes}"
+            "value" : "移入待删篮"
           }
         }
       }
@@ -392,7 +304,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "{count} 个 · {bytes} · 按体积从大到小"
+            "value" : "{count} 项 · {order}"
           }
         }
       }
@@ -408,35 +320,24 @@
         }
       }
     },
-    "s0.home.category.counting" : {
+    "s0.categoryPage.undated" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "统计中 · {scanned} / {total}"
+            "value" : "未知日期"
           }
         }
       }
     },
-    "s0.home.category.empty" : {
+    "s0.home.bar.caption" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无项目"
-          }
-        }
-      }
-    },
-    "s0.home.category.waiting" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "扫描完成后开始识别"
+            "value" : "占 {percent} · {bytes}"
           }
         }
       }
@@ -507,46 +408,13 @@
         }
       }
     },
-    "s0.home.hero.growing" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "数字会继续增长"
-          }
-        }
-      }
-    },
     "s0.home.hero.label" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "可清理约"
-          }
-        }
-      }
-    },
-    "s0.home.hero.library" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片库共 {total}"
-          }
-        }
-      }
-    },
-    "s0.home.hero.overlap" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "部分项目同属多个类别"
+            "value" : "可清理的空间"
           }
         }
       }
@@ -573,24 +441,24 @@
         }
       }
     },
-    "s0.home.legend.rest" : {
+    "s0.home.open.action" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "其余照片"
+            "value" : "去清理"
           }
         }
       }
     },
-    "s0.home.legend.unscanned" : {
+    "s0.home.open.subtitle" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未扫描"
+            "value" : "{count} 项 · 从大到小"
           }
         }
       }
@@ -646,6 +514,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "设备可用空间 +{released}"
+          }
+        }
+      }
+    },
+    "s0.home.released" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "累计已腾出"
+          }
+        }
+      }
+    },
+    "s0.home.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "占 {percent}"
           }
         }
       }

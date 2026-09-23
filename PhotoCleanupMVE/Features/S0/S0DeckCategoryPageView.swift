@@ -2,17 +2,17 @@ import SwiftUI
 
 /// IC-162 B：「卡片叠」语言下的类别页（画布 r9.py O1／O2）。
 ///
-/// **本文件是预览，不是实装**：`S0CategoryPageView.swift` 一字未动，两者由
-/// `S0DeckPreview.isEnabled` 在 `S0CleanupFlowView.page(for:)` 里二选一（裁定 一）。
+/// IC-165 起为正式类别页（SPEC-S0 v3 第六节），旧类别页退役；页面自用的 zoom 过渡两只修饰符在
+/// `S0DeckZoomTransition.swift`（系统版本判定只在那一个文件）。
 ///
-/// 与旧类别页的差别只在版式与排序：
+/// 版式与排序：
 /// - 页头 = 展开卡那张照片放大（262 高）+ 返回／排序／全选 + 名称、体积、副行、占比角标 + 总条，
 ///   随内容一起滚走；滚过阈值后顶上出现一条玻璃导航（返回 · 名称 体积 占比 · 排序 全选）。
 /// - IC-163 C（裁定 三、四）：「最大的 N 个」「其余 M 个」两节撤销。排序钮三项——从大到小
 ///   （默认，整页一张网格）、最新在前、最旧在前（按月分节，无日期的归最后一节）。
 /// - 底栏是一条玻璃：左「已选 N 项」+ 体积，右「移入待删篮」。
 ///
-/// 行为逐条照 `S0CategoryPageView`（裁定 五）：勾选、全选、长按进 S2、进篮成功才从网格
+/// 行为逐条照旧类别页（IC-162 裁定 五）：勾选、全选、长按进 S2、进篮成功才从网格
 /// 删项并出 toast、零选中主按钮禁用不隐藏；勾选集合仍是页面唯一写入者，跨 S2 往返的保留集
 /// 按 IC-160 的口径读写 `S0CleanupFlowModel.preservedSelection`（`init` 按「保留集 ∩ 当前
 /// 列表」播种，根视图 `.onChange` 与 `.onAppear` 两处回报——`.onChange` 不对初值触发）。
@@ -184,6 +184,7 @@ struct S0DeckCategoryPageView: View {
                     .foregroundStyle(S0DeckMetrics.text)
                     .s1ChromeCircleGlass()
             }
+            .accessibilityLabel(L10n.text("s0.categoryPage.back"))
             Spacer(minLength: 0)
             // IC-163 C：页头不在玻璃容器里，排序圆钮照返回钮的写法各自借 S1 玻璃。
             sortMenu {
@@ -262,8 +263,11 @@ struct S0DeckCategoryPageView: View {
             }
             Text(
                 L10n.text(
-                    "deck.home.open.subtitle",
-                    replacing: ["count": String(selection.items.count)]
+                    "s0.categoryPage.subtitle",
+                    replacing: [
+                        "count": String(selection.items.count),
+                        "order": sortOrderName
+                    ]
                 )
             )
             .font(.system(size: S0DeckMetrics.pageTitleSubFontSize))
@@ -280,7 +284,7 @@ struct S0DeckCategoryPageView: View {
     private var shareBadge: some View {
         Text(
             L10n.text(
-                "deck.home.share",
+                "s0.home.share",
                 replacing: ["percent": sharePercentText]
             )
         )
@@ -352,6 +356,7 @@ struct S0DeckCategoryPageView: View {
                             height: S0DeckMetrics.compactNavBackSide
                         )
                 }
+                .accessibilityLabel(L10n.text("s0.categoryPage.back"))
                 compactNavTitle
                 HStack(spacing: S1ChromeLayout.itemSpacing) {
                     compactNavSort
@@ -401,7 +406,7 @@ struct S0DeckCategoryPageView: View {
             .foregroundStyle(S0DeckMetrics.text)
             Text(
                 L10n.text(
-                    "deck.home.share",
+                    "s0.home.share",
                     replacing: ["percent": sharePercentText]
                 )
             )
@@ -428,8 +433,8 @@ struct S0DeckCategoryPageView: View {
                 )
                 .foregroundStyle(S0DeckMetrics.text)
                 .frame(
-                    width: S1ChromeLayout.rowHeight,
-                    height: S1ChromeLayout.rowHeight
+                    width: S0DeckMetrics.compactNavBackSide,
+                    height: S0DeckMetrics.compactNavBackSide
                 )
                 .background(
                     S0DeckMetrics.text.opacity(
@@ -447,7 +452,7 @@ struct S0DeckCategoryPageView: View {
     ) -> some View {
         Menu {
             Picker(L10n.text("s1.sort.accessibility"), selection: $sortOrder) {
-                Text(L10n.text("deck.page.sort.size"))
+                Text(L10n.text("s0.categoryPage.sort.size"))
                     .tag(S0DeckHomeModel.SortOrder.size)
                 Text(L10n.text("s1.sort.newest_first"))
                     .tag(S0DeckHomeModel.SortOrder.newestFirst)
@@ -539,7 +544,7 @@ struct S0DeckCategoryPageView: View {
             Spacer(minLength: 0)
             Text(
                 L10n.text(
-                    "deck.page.month.count",
+                    "s0.categoryPage.month.count",
                     replacing: ["count": String(count)]
                 )
             )
@@ -709,7 +714,7 @@ struct S0DeckCategoryPageView: View {
                 Image(systemName: S0DeckSymbol.check)
                     .font(
                         .system(
-                            size: S0DeckMetrics.gridLabelFontSize,
+                            size: S0DeckMetrics.gridCheckGlyphFontSize,
                             weight: .bold
                         )
                     )
@@ -725,7 +730,7 @@ struct S0DeckCategoryPageView: View {
     // MARK: - 底栏玻璃与 toast
 
     private var dock: some View {
-        VStack(spacing: S2OverlayLayout.minimumSpacing) {
+        VStack(spacing: S0DeckMetrics.toastToDockSpacing) {
             toastView
             dockBar
         }
@@ -737,13 +742,13 @@ struct S0DeckCategoryPageView: View {
     private var toastView: some View {
         if let text = toast.activeText {
             Text(text)
-                .font(.subheadline)
+                .font(.system(size: S0DeckMetrics.toastFontSize))
                 .foregroundStyle(S0DeckMetrics.text)
-                .padding(.horizontal, S2OverlayLayout.minimumSpacing * 2)
-                .padding(.vertical, S2OverlayLayout.minimumSpacing)
+                .padding(.horizontal, S0DeckMetrics.toastHorizontalPadding)
+                .padding(.vertical, S0DeckMetrics.toastVerticalPadding)
                 .s1ChromeGlassBackground(
                     in: RoundedRectangle(
-                        cornerRadius: S0DeckMetrics.compactNavCornerRadius,
+                        cornerRadius: S0DeckMetrics.toastCornerRadius,
                         style: .continuous
                     ),
                     interactive: false
@@ -775,7 +780,7 @@ struct S0DeckCategoryPageView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(
                 L10n.text(
-                    "deck.page.selected",
+                    "s0.categoryPage.selected",
                     replacing: ["count": String(selection.selected.count)]
                 )
             )
@@ -808,7 +813,7 @@ struct S0DeckCategoryPageView: View {
             HStack(spacing: S0DeckMetrics.dockButtonItemSpacing) {
                 Image(systemName: S0DeckSymbol.trash)
                     .foregroundStyle(S0DeckMetrics.accent)
-                Text(L10n.text("deck.page.submit"))
+                Text(L10n.text("s0.categoryPage.submit"))
                     .foregroundStyle(S0DeckMetrics.background)
             }
             .font(
@@ -866,12 +871,24 @@ struct S0DeckCategoryPageView: View {
     /// 月份节标题：有日期按系统语言环境的「年 月」模板（中文即 2026年3月），无日期取目录文案。
     private func monthTitle(for monthStart: Date?) -> String {
         guard let monthStart else {
-            return L10n.text("deck.page.undated")
+            return L10n.text("s0.categoryPage.undated")
         }
         let formatter = DateFormatter()
         formatter.locale = Locale.current
         formatter.setLocalizedDateFormatFromTemplate("yMMMM")
         return formatter.string(from: monthStart)
+    }
+
+    /// 副行的排序名：与排序菜单三项同文案（后两项复用逐张整理 tab 的排序文案）。
+    private var sortOrderName: String {
+        switch sortOrder {
+        case .size:
+            return L10n.text("s0.categoryPage.sort.size")
+        case .newestFirst:
+            return L10n.text("s1.sort.newest_first")
+        case .oldestFirst:
+            return L10n.text("s1.sort.oldest_first")
+        }
     }
 
     private var segmentBarModel: S0SegmentBarModel {

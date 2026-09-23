@@ -7,8 +7,6 @@ enum S0DeckSymbol {
     static let chevron = "chevron.right"
     /// 类别页返回。
     static let back = "chevron.left"
-    /// 「建议先清」角标与节动作的火花。
-    static let sparkle = "sparkles"
     /// 网格视频格的播放符。
     static let play = "play.fill"
     /// 网格勾选。
@@ -19,6 +17,8 @@ enum S0DeckSymbol {
     static let sort = "arrow.up.arrow.down"
     /// 百分号。占比的实参形如 `36%`，百分号在实参里拼，不进目录值。
     static let percentSign = "%"
+    /// IC-165 C（裁定 三）：顶排人像圆钮，由退役的旧首页 `S0HomeSymbol` 并入（值不变）。
+    static let account = "person.crop.circle"
 }
 
 /// IC-162 A：「卡片叠」首页与新类别页的视觉登记制常量的唯一落点。
@@ -71,15 +71,6 @@ enum S0DeckMetrics {
         opacity: 1
     )
 
-    /// `#F59B5B`。取值出处：r9.py `.sec .act { color: #F59B5B }`。
-    static let sectionAction = Color(
-        .sRGB,
-        red: 245.0 / 255,
-        green: 155.0 / 255,
-        blue: 91.0 / 255,
-        opacity: 1
-    )
-
     /// `#161B18`：卡与格取不到图时的纯色底。取值出处：r7.py `.dk { background: #161B18 }`。
     static let cardBase = Color(
         .sRGB,
@@ -94,8 +85,14 @@ enum S0DeckMetrics {
     /// `#F26B4E`。取值出处：r7.py `C["video"]`。
     static let colorVideo = accent
 
-    /// `#F59B5B`。取值出处：r7.py `C["sim"]`。
-    static let colorSimilar = sectionAction
+    /// `#F59B5B`。取值出处：r7.py `C["sim"]`（IC-165 起不再借已删的节动作色，直接登记同值）。
+    static let colorSimilar = Color(
+        .sRGB,
+        red: 245.0 / 255,
+        green: 155.0 / 255,
+        blue: 91.0 / 255,
+        opacity: 1
+    )
 
     /// `#FFD37A`。取值出处：r7.py `C["shot"]`。
     static let colorScreenshot = Color(
@@ -359,10 +356,6 @@ enum S0DeckMetrics {
     /// 取值出处：r7.py `.dk .row .ch { opacity: 0.45 }`。
     static let stripChevronOpacity: Double = 0.45
 
-    /// 「尚未开始识别」的条整条压暗。取值出处：SPEC-S0 v1 第三节第 1 部分
-    /// （与 `S0CategoryRowProse.awaitingRecognitionOpacity` 同值同源）。
-    static let stripAwaitingOpacity: Double = 0.55
-
     // MARK: - 展开卡（r7.py `.dk.open`）
 
     /// 展开卡底部压暗渐变的四个停靠点。取值出处：r7.py
@@ -543,10 +536,6 @@ enum S0DeckMetrics {
     /// 取值出处：r9.py `.sec { height: 32px }`。
     static let sectionHeight: CGFloat = 32
 
-    /// 页头总条底缘 → 第一节标题。取值出处：r9.py `.tbar` 底缘与
-    /// `.sec { top: 324px }` 之差（跳过本卡不做的 tag 行）。
-    static let sectionTopSpacing: CGFloat = 20
-
     /// 取值出处：r9.py `.sec .a { font-size: 15px }`。
     static let sectionTitleFontSize: CGFloat = 15
 
@@ -555,27 +544,6 @@ enum S0DeckMetrics {
 
     /// 取值出处：r9.py `.sec .a b { margin-left: 8px }`。
     static let sectionTitleItemSpacing: CGFloat = 8
-
-    /// 取值出处：r9.py `.sec .act { height: 30px }`。
-    static let sectionActionHeight: CGFloat = 30
-
-    /// 取值出处：r9.py `.sec .act { border-radius: 15px }`。
-    static let sectionActionCornerRadius: CGFloat = 15
-
-    /// 取值出处：r9.py `.sec .act { padding: 0 12px }`。
-    static let sectionActionHorizontalPadding: CGFloat = 12
-
-    /// 取值出处：r9.py `.sec .act { gap: 4px }`。
-    static let sectionActionItemSpacing: CGFloat = 4
-
-    /// 取值出处：r9.py `.sec .act { font-size: 13px }`。
-    static let sectionActionFontSize: CGFloat = 13
-
-    /// 取值出处：r9.py `.sec .act { box-shadow: inset 0 0 0 1px rgba(245,155,91,0.55) }` 的线宽。
-    static let sectionActionRingWidth: CGFloat = 1
-
-    /// 取值出处：同上 `0.55`。
-    static let sectionActionRingOpacity: Double = 0.55
 
     /// 节标题 → 该节网格。取值出处：r9.py `.sec { top: 324px }` 与
     /// `.grid { top: 362px }` 之差，减去节行高 32。
@@ -653,6 +621,26 @@ enum S0DeckMetrics {
     /// 选中格的描边线宽。取值出处：r9.py `.cell.on .edge { inset 0 0 0 3px #F26B4E }`。
     static let gridSelectedRingWidth: CGFloat = 3
 
+    /// 勾符号字号（weight bold）。取值出处：SPEC-S0 v3 第十四节第 2 部分。
+    static let gridCheckGlyphFontSize: CGFloat = 13
+
+    // MARK: - 类别页 toast（SPEC-S0 v3 第十四节第 2 部分）
+
+    /// 「已移入待删篮」字号。取值出处：SPEC-S0 v3 第十四节第 2 部分。
+    static let toastFontSize: CGFloat = 15
+
+    /// 取值出处：SPEC-S0 v3 第十四节第 2 部分。
+    static let toastHorizontalPadding: CGFloat = 16
+
+    /// 取值出处：SPEC-S0 v3 第十四节第 2 部分。
+    static let toastVerticalPadding: CGFloat = 8
+
+    /// 取值出处：SPEC-S0 v3 第十四节第 2 部分。
+    static let toastCornerRadius: CGFloat = 27
+
+    /// toast 底缘 → 底栏顶缘。取值出处：SPEC-S0 v3 第十四节第 2 部分。
+    static let toastToDockSpacing: CGFloat = 8
+
     // MARK: - 类别页底栏与收起后的导航（r9.py `.dock` / `.cnav`）
 
     /// 取值出处：r9.py `.dock { left: 12px; right: 12px }`。
@@ -709,9 +697,6 @@ enum S0DeckMetrics {
 
     /// 取值出处：r9.py `.cnav { left: 10px; right: 10px }`。
     static let compactNavHorizontalInset: CGFloat = 10
-
-    /// 取值出处：r9.py `.cnav { top: 54px }`。
-    static let compactNavTopInset: CGFloat = 54
 
     /// 取值出处：r9.py `.cnav { height: 54px }`。
     static let compactNavHeight: CGFloat = 54
