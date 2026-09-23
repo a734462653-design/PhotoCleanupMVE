@@ -3,17 +3,12 @@ import Foundation
 /// IC-153 A：扫描规则登记常量（批次 5.1 扫描服务）。
 ///
 /// 分类、去重、聚合、缓存与回调节奏里的门槛**一律经本表取值**，不写裸数：
-/// `IC153ScanServiceTests` 断言 3 钉住本表恰七个常量、每个都注明出处，
+/// `IC153ScanServiceTests` 断言 3 钉住本表恰六个常量、每个都注明出处，
 /// 分类与聚合文件内的数值字面量只允许 0 与 1。
 ///
 /// 这些是扫描规则，不是标定参数：不进 `S2CalibrationConfiguration`、不上标定
 /// 面板，`schemaVersion` 因而不变（任务卡「基线与分支」一节）。
 enum S0ScanRules {
-    /// 大视频门槛：视频的 `SZ(a)` 大于等于 100 MB（十进制字节）即进 `bigVideo`。
-    /// 出处：IC-153 裁定 一；Decision_log 第 180 条 ④（Lynn 2026-09-16 定案取默认值）。
-    /// 改门槛只改这一处；执行端不得改动，H75 第 3 条判它的直觉是否对。
-    static let bigVideoMinimumByteCount: Int64 = 100_000_000
-
     /// 屏幕录制的文件名前缀，大小写敏感；只读视频主资源的原始文件名。
     /// 出处：SPEC-S0 v2 第十二节第 4 条（v2 订正，H68 实测见 Decision_log 第 175 条）。
     static let screenRecordingFilenamePrefix = "ScreenRecording_"

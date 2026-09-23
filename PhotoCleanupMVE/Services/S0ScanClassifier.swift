@@ -106,10 +106,10 @@ enum S0ScanClassifier {
             hits.insert(.screenshot)
         }
         if mediaType == .video {
+            // IC-163 D（第 187 条）：「视频」类 = 全部已解析的视频；录屏证据命中的只归录屏，两类互斥。
             if evidence.filenamePrefixMatched || evidence.resolutionMatched {
                 hits.insert(.screenRecording)
-            }
-            if byteCount >= S0ScanRules.bigVideoMinimumByteCount {
+            } else {
                 hits.insert(.bigVideo)
             }
         }
