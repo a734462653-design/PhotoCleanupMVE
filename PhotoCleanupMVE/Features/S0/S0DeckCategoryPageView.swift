@@ -31,7 +31,7 @@ struct S0DeckCategoryPageView: View {
     private let flowModel: S0CleanupFlowModel
     private let onMoveToBasket: (Set<String>) -> Bool
     private let onBack: () -> Void
-    private let onLongPress: ([String], String) -> Void
+    private let onLongPress: ([String], String) -> Bool
     private let toastDurationMilliseconds: Double
     private let transitionNamespace: Namespace.ID
     /// IC-167 D（裁定 五）：页头与收起导航条两只待删篮入口的回调（与首页入口同一回调）。
@@ -53,7 +53,7 @@ struct S0DeckCategoryPageView: View {
         flowModel: S0CleanupFlowModel,
         onMoveToBasket: @escaping (Set<String>) -> Bool,
         onBack: @escaping () -> Void,
-        onLongPress: @escaping ([String], String) -> Void,
+        onLongPress: @escaping ([String], String) -> Bool,
         toastDurationMilliseconds: Double,
         transitionNamespace: Namespace.ID,
         onEnterConfirmation: @escaping () -> Void = {}
@@ -612,7 +612,13 @@ struct S0DeckCategoryPageView: View {
         // IC-163 C：交接顺序 = 网格当前显示顺序（排序后）。
         .simultaneousGesture(
             LongPressGesture().onEnded { _ in
-                onLongPress(displayedItems.map(\.id), item.id)
+                // IC-168 E（裁定 三）：进 S2 失败（交接构造或协调器入口拒绝）时本页出一条短提示。
+                if !onLongPress(displayedItems.map(\.id), item.id) {
+                    toast.present(
+                        text: L10n.text("s0.categoryPage.toast.enterFailed"),
+                        durationMilliseconds: toastDurationMilliseconds
+                    )
+                }
             }
         )
     }

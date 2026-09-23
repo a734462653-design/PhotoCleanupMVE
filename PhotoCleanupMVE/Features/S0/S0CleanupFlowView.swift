@@ -139,7 +139,7 @@ struct S0CleanupFlowView: View {
                     leaveCategory()
                 },
                 onLongPress: { orderedAssetIDs, currentAssetID in
-                    _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
+                    onEnterS2(identifier, orderedAssetIDs, currentAssetID)
                 },
                 toastDurationMilliseconds: toastDurationMilliseconds,
                 transitionNamespace: deckNamespace,

@@ -232,9 +232,10 @@ final class IC156CategoryPageTests: XCTestCase {
         // IC-165 C（裁定 六）：`s0.` 38 → 39、`s0.categoryPage.` 6 → 9（删长按提示，加返回、
         // 排序名、月份计数、未知日期；副行、已选、主按钮三条改值）。IC-166 B：S0-3 副句一条，`s0.` → 40。
         // IC-167：B 删首页胶囊一条、C 加排序「从小到大」一条，`s0.` 仍 40；`s0.categoryPage.` 9 → 10。
+        // IC-168 E：类别页进入失败提示一条，`s0.` 40 → 41、`s0.categoryPage.` 10 → 11。
         let catalog = try loadCatalogValues()
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 40)
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 10)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 41)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 11)
 
         let expected: [String: String] = [
             "s0.categoryPage.back": "返回",
@@ -245,6 +246,7 @@ final class IC156CategoryPageTests: XCTestCase {
             "s0.categoryPage.selected": "已选 {count} 项",
             "s0.categoryPage.submit": "移入待删篮",
             "s0.categoryPage.toast": "已移入待删篮",
+            "s0.categoryPage.toast.enterFailed": "暂时无法逐张查看，请重试。",
             "s0.categoryPage.month.count": "{count} 项",
             "s0.categoryPage.undated": "未知日期"
         ]
@@ -255,7 +257,7 @@ final class IC156CategoryPageTests: XCTestCase {
             XCTAssertEqual(catalog[key], value, key)
             XCTAssertTrue(pageKeys.contains(key), key)
         }
-        // 页面引用的 `s0.categoryPage.` 恰这九条；全部 key 另有占比角标一条与借用的排序三条。
+        // 页面引用的 `s0.categoryPage.` 恰是上面映射里的这些条；全部 key 另有占比角标一条与借用的排序三条。
         XCTAssertEqual(
             pageKeys.filter { $0.hasPrefix("s0.categoryPage.") },
             Set(expected.keys)

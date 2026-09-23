@@ -542,7 +542,8 @@ final class IC148S0VisualTests: XCTestCase {
         let catalog = try loadCatalogValues()
         let catalogS0Keys = Set(catalog.keys.filter { $0.hasPrefix("s0.") })
         // IC-156 C：32 → 37；IC-157 B：→ 38；IC-165 C：→ 39；IC-166 B：S0-3 副句一条 → 40。
-        XCTAssertEqual(catalogS0Keys.count, 40)
+        // IC-168 E：类别页进入失败提示一条 → 41。
+        XCTAssertEqual(catalogS0Keys.count, 41)
 
         // IC-165 C：与 IC-147 断言 11 同一份四文件名单（`s0.category.*` 五条在文本 helper 里）。
         var referenced: Set<String> = []

@@ -320,6 +320,17 @@
         }
       }
     },
+    "s0.categoryPage.toast.enterFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂时无法逐张查看，请重试。"
+          }
+        }
+      }
+    },
     "s0.categoryPage.undated" : {
       "extractionState" : "manual",
       "localizations" : {
