@@ -9,9 +9,9 @@ struct S0SegmentBarModel: Equatable {
 
     /// 一段的身份。
     enum Kind: Equatable {
-        /// 某个类别段，用该类别的登记色。
+        /// 某个类别段，用该类别的登记色（IC-166 起含 `.category(.rest)`「其余照片」）。
         case category(S0CategoryIdentifier)
-        /// 「其余照片」段：中性白 `segmentRestOpacity`，独立成段并进图例。
+        /// 兜底段：只在 `LIB ≤ 0` 时整条独占（IC-166 裁定 五），没有对应的卡。
         case rest
         /// 「未扫描」段：只在 `SC=扫描中` 出现。**未扫段即进度呈现，
         /// 不引入独立进度条**（SPEC-S0 v1 第三节第 1 部分）。
@@ -30,7 +30,8 @@ struct S0SegmentBarModel: Equatable {
 
     let segments: [Segment]
 
-    /// 全部段宽之和。构造保证恒为 1（`LIB` 为零时由「其余照片」独占）。
+    /// 全部段宽之和。归属去重后 `Σ c.bytes = LIB`，和恒为 1（`LIB` 为零时由兜底段独占）；
+    /// `Σ c.bytes ≠ LIB` 的输入不再夹断（SPEC-S0 v3 下不存在，IC-166 裁定 五）。
     var totalWidthFraction: Double {
         segments.reduce(into: 0) { total, segment in
             total += segment.widthFraction
@@ -41,13 +42,13 @@ struct S0SegmentBarModel: Equatable {
         segments.filter { $0.hatchFraction > 0 }.count
     }
 
-    /// 构造。
+    /// 构造（SPEC-S0 v3 第二节第 2 部分，IC-166 裁定 五）。
     ///
-    /// - 类别段宽 = `c.bytes / LIB`，按给定顺序依次取，取到预算用尽为止
-    ///   （`c.bytes` 是**全量不去重**的，各类别之和可以超过 `LIB`，故必须夹住）。
-    /// - 斜纹宽 = `等待清空(c) / LIB`，`等待清空(c)` 按 `categoryID` 归并账本条目。
-    /// - 「未扫描」段宽 = `1 − 已扫占比`，只在扫描中出现。
-    /// - 「其余照片」段补齐到 1。
+    /// - `p` = 已扫张数 / 总张数（扫描中）；不在扫描中为 1。
+    /// - 每个 `c.bytes > 0` 的类别（含「其余照片」）按给定顺序出段，段宽 = `c.bytes / LIB × p`；
+    ///   预算夹断与补齐段随 v3 作废。
+    /// - 斜纹宽 = `等待清空(c) / LIB`，`等待清空(c)` 按 `categoryID` 归并账本条目，不超过段宽。
+    /// - 「未扫描」段宽 = `1 − p`，只在扫描中出现。
     static func make(
         categories: [S0CategorySnapshot],
         ledgerEntries: [S0LedgerEntry],
@@ -57,7 +58,7 @@ struct S0SegmentBarModel: Equatable {
     ) -> S0SegmentBarModel {
         let library = Double(max(0, libraryTotalByteCount))
         guard library > 0 else {
-            // `LIB` 取不到时整条归「其余照片」，总和仍为 1。
+            // `LIB` 取不到时整条归兜底段，总和仍为 1。
             return S0SegmentBarModel(
                 segments: [
                     Segment(
@@ -70,10 +71,10 @@ struct S0SegmentBarModel: Equatable {
             )
         }
 
-        let unscannedFraction = isScanning
-            ? max(0, min(1, 1 - scannedRatio(progress)))
-            : 0
-        var budget = 1 - unscannedFraction
+        let scannedFraction = isScanning
+            ? max(0, min(1, scannedRatio(progress)))
+            : 1
+        let unscannedFraction = 1 - scannedFraction
 
         var pendingByCategory: [S0CategoryIdentifier: Int64] = [:]
         for entry in ledgerEntries {
@@ -81,38 +82,22 @@ struct S0SegmentBarModel: Equatable {
         }
 
         var segments: [Segment] = []
-        var restByteCount = max(0, libraryTotalByteCount)
         for category in categories where category.candidateByteCount > 0 {
-            guard budget > 0 else {
-                break
-            }
-            let raw = Double(category.candidateByteCount) / library
-            let taken = max(0, min(raw, budget))
-            guard taken > 0 else {
+            let width = Double(category.candidateByteCount) / library * scannedFraction
+            guard width > 0 else {
                 continue
             }
             let pending = Double(pendingByCategory[category.id] ?? 0) / library
             segments.append(
                 Segment(
                     kind: .category(category.id),
-                    widthFraction: taken,
-                    hatchFraction: max(0, min(pending, taken)),
+                    widthFraction: width,
+                    hatchFraction: max(0, min(pending, width)),
                     byteCount: category.candidateByteCount
                 )
             )
-            budget -= taken
-            restByteCount = max(0, restByteCount - category.candidateByteCount)
         }
 
-        // 「其余照片」补齐；夹过之后 `budget` 不可能为负。
-        segments.append(
-            Segment(
-                kind: .rest,
-                widthFraction: max(0, budget),
-                hatchFraction: 0,
-                byteCount: restByteCount
-            )
-        )
         if unscannedFraction > 0 {
             segments.append(
                 Segment(

@@ -57,13 +57,16 @@ struct S0ClassifiedAsset: Equatable, Sendable {
 /// 纯函数、零 PhotoKit。门槛与前缀一律经 `S0ScanRules`，本文件不写裸数。
 enum S0ScanClassifier {
     /// 归属优先序（SPEC-S0 v2 第二节第 2 部分）。本卡只实装前三个类别，重复与
-    /// 相似不出现（裁定 二）。同时也是快照 `categories` 的给出顺序——排序由状态机
-    /// 做，这里不排。
+    /// 相似不出现（裁定 二）。快照 `categories` 的给出顺序见 `snapshotOrder`（IC-166）。
     static let attributionPriority: [S0CategoryIdentifier] = [
         .bigVideo,
         .screenRecording,
         .screenshot
     ]
+
+    /// IC-166 裁定 一：快照 `categories` 的给出顺序——归属优先序之后缀「其余照片」。
+    /// 排序由状态机做，这里不排。
+    static let snapshotOrder: [S0CategoryIdentifier] = attributionPriority + [.rest]
 
     /// 屏幕录制的两条证据。照片一律两个假：录屏判据只对视频成立，而本机截屏的
     /// 像素恰好也是登记尺寸，不先分视频就会把截图当成录屏的证据存进缓存。
@@ -147,6 +150,14 @@ enum S0ScanClassifier {
         attributionPriority.first { hits.contains($0) }
     }
 
+    /// IC-166 裁定 一：归属。命中多个按优先序取最高；一个都没命中归「其余照片」——
+    /// `rest` 不是命中（`hits` 从不产出它），是无命中的归属。
+    static func attributedCategory(
+        for hits: Set<S0CategoryIdentifier>
+    ) -> S0CategoryIdentifier {
+        primaryCategory(for: hits) ?? .rest
+    }
+
     /// A3 排除规则：`D_全部` 内、账本内、未解析的资产一律不进任何 `c.assets`。
     /// 隐藏与「最近删除」不在这里判——源的枚举层根本不交出它们（子项 C）。
     static func isExcludedFromCategories(
@@ -172,13 +183,15 @@ struct S0ScanAggregationContext: Equatable, Sendable {
     let isLimitedAuthorization: Bool
 }
 
-/// IC-153 A4：聚合。
+/// IC-153 A4：聚合。IC-166 起按 SPEC-S0 v3 第二节第 2 部分的口径：
 ///
-/// - `c.count`／`c.bytes` 按**全量**（同一资产可计入多个类别）；
-/// - `cleanableAssetCount`／`cleanableByteCount` 按**去重归属**，每条资产只计一次；
-/// - `LIB` = 全部已解析资产的字节和，含不属任何类别的、含 `D_全部` 内的；
-/// - `pendingDeletionByteCount` = `D_全部` 内已解析资产的字节和；
-/// - `categories` 恒为三条，顺序即归属优先序。
+/// - 排除集（未解析、`D_全部`、账本）之外的每条资产**恰归属一个类别**
+///   （`attributedCategory`：无命中归「其余照片」），`c.count`／`c.bytes` 只计归属类别，
+///   各类别两两不交；
+/// - `LIB` = 排除集之外的已解析资产字节和 = `Σ c.bytes`；
+/// - `cleanableAssetCount` = `N_成员` = `Σ c.count`；`cleanableByteCount` = `LIB`，二者恒等；
+/// - `pendingDeletionByteCount` = `D_全部` 内已解析资产的字节和（口径不变）；
+/// - `categories` 恒为四条，顺序即 `snapshotOrder`。
 enum S0ScanAggregator {
     static func snapshot(
         of assets: [S0ClassifiedAsset],
@@ -196,7 +209,6 @@ enum S0ScanAggregator {
         var coverAssets: [S0CategoryIdentifier: S0ClassifiedAsset] = [:]
 
         for asset in assets where !asset.isUnresolved {
-            libraryByteCount += asset.byteCount
             if context.pendingDeletionAssetIDs.contains(asset.id) {
                 pendingDeletionByteCount += asset.byteCount
             }
@@ -204,25 +216,27 @@ enum S0ScanAggregator {
                 asset,
                 pendingDeletionAssetIDs: context.pendingDeletionAssetIDs,
                 ledgerAssetIDs: context.ledgerAssetIDs
-            ), S0ScanClassifier.primaryCategory(for: asset.hits) != nil else {
+            ) else {
                 continue
             }
+            // IC-166 裁定 二：`LIB` 在排除判定之后累加（排除 `D_全部` 与账本）。
+            libraryByteCount += asset.byteCount
             cleanableAssetCount += 1
             cleanableByteCount += asset.byteCount
-            for identifier in asset.hits {
-                candidateCounts[identifier, default: 0] += 1
-                candidateByteCounts[identifier, default: 0] += asset.byteCount
-                let precedesCover = coverAssets[identifier].map { cover in
-                    asset.byteCount > cover.byteCount
-                        || (asset.byteCount == cover.byteCount && asset.id < cover.id)
-                } ?? true
-                if precedesCover {
-                    coverAssets[identifier] = asset
-                }
+            // IC-166 裁定 一：只对归属类别累加一次，无命中归「其余照片」。
+            let identifier = S0ScanClassifier.attributedCategory(for: asset.hits)
+            candidateCounts[identifier, default: 0] += 1
+            candidateByteCounts[identifier, default: 0] += asset.byteCount
+            let precedesCover = coverAssets[identifier].map { cover in
+                asset.byteCount > cover.byteCount
+                    || (asset.byteCount == cover.byteCount && asset.id < cover.id)
+            } ?? true
+            if precedesCover {
+                coverAssets[identifier] = asset
             }
         }
 
-        let categories = S0ScanClassifier.attributionPriority.map { identifier in
+        let categories = S0ScanClassifier.snapshotOrder.map { identifier in
             S0CategorySnapshot(
                 id: identifier,
                 candidateCount: candidateCounts[identifier] ?? 0,

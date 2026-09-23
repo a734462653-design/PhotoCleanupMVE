@@ -167,8 +167,7 @@ final class S0LibraryScanService {
                           // 账本写入方是批次 5.3；与 `currentSnapshot()` 同为空集。
                           ledgerAssetIDs: []
                       ),
-                      S0ScanClassifier.primaryCategory(for: asset.hits) != nil,
-                      asset.hits.contains(id) else {
+                      S0ScanClassifier.attributedCategory(for: asset.hits) == id else {
                     return nil
                 }
                 return S0CategoryAsset(

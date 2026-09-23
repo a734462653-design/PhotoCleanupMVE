@@ -59,9 +59,10 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
 
     func testIC157B_CatalogGainsLongPressHint() throws {
         // IC-165 C（裁定 六）：长按提示条目删去（位置未定、未定前不显示），类别页新增返回、
-        // 排序名、月份计数、未知日期四条：`s0.` 38 → 39、`s0.categoryPage.` 6 → 9。
+        // 排序名、月份计数、未知日期四条：`s0.` 38 → 39、`s0.categoryPage.` 6 → 9。IC-166 B：S0-3 副句
+        // 一条，`s0.` → 40。
         let catalog = try loadCatalogValues()
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 39)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 40)
         XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 9)
         XCTAssertNil(catalog["s0.categoryPage.longPressHint"])
         let expected = [
@@ -78,15 +79,15 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
         // 既有测试的整句 needle（不写死行号）。IC-156 文件另有一处与文案无关的 `37)`，
         // 故不拿裸 `38)`／`39)` 计数。
         let behavior = try XCTUnwrap(sourceText("PhotoCleanupMVETests/IC147S0BehaviorTests.swift"))
-        XCTAssertEqual(occurrences(of: "s0Values.count, 39)", in: behavior), 1)
-        XCTAssertEqual(occurrences(of: "catalogS0Keys.count, 39)", in: behavior), 1)
+        XCTAssertEqual(occurrences(of: "s0Values.count, 40)", in: behavior), 1)
+        XCTAssertEqual(occurrences(of: "catalogS0Keys.count, 40)", in: behavior), 1)
         let visual = try XCTUnwrap(sourceText("PhotoCleanupMVETests/IC148S0VisualTests.swift"))
-        XCTAssertEqual(occurrences(of: "catalogS0Keys.count, 39)", in: visual), 1)
+        XCTAssertEqual(occurrences(of: "catalogS0Keys.count, 40)", in: visual), 1)
         let categoryPage = try XCTUnwrap(
             sourceText("PhotoCleanupMVETests/IC156CategoryPageTests.swift")
         )
         XCTAssertEqual(
-            occurrences(of: "hasPrefix(\"s0.\") }.count, 39)", in: categoryPage),
+            occurrences(of: "hasPrefix(\"s0.\") }.count, 40)", in: categoryPage),
             1
         )
     }

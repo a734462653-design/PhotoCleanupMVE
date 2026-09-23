@@ -6,14 +6,10 @@ import Foundation
 /// 不 import SwiftUI／Photos：本层只把状态机给的快照折成一摞卡。
 enum S0DeckHomeModel {
 
-    /// 「其余照片」卡的标识。类别卡取 `S0CategoryIdentifier` 的 `rawValue`，
-    /// 与之不可能重名（五个 rawValue 都不含下划线）。
-    static let restCardID = "__rest__"
-
-    /// 一张卡。`category` 为 nil 即「其余照片」卡。
+    /// 一张卡。标识取类别的 `rawValue`；IC-166 起「其余照片」也是类别（`.rest`），与其他类别卡同制。
     struct Card: Equatable, Identifiable {
         let id: String
-        let category: S0CategoryIdentifier?
+        let category: S0CategoryIdentifier
         let byteCount: Int64
         /// 占照片库总占用的比例，夹在 `[0, 1]`。
         let fraction: Double
@@ -28,11 +24,9 @@ enum S0DeckHomeModel {
     /// 摞出卡片。入参顺序即卡的上下次序（调用方给 `machine.orderedCategories`）。
     ///
     /// - 只保留 `hasItems` 的类别；
-    /// - `restByteCount > 0` 时末尾追加一张「其余照片」卡，不可点；
     /// - `libraryTotalByteCount ≤ 0`（扫描早期取不到 `LIB`）时占比一律 0，不崩、不除零。
     static func cards(
         categories: [S0CategorySnapshot],
-        restByteCount: Int64,
         libraryTotalByteCount: Int64
     ) -> [Card] {
         var result: [Card] = []
@@ -55,19 +49,6 @@ enum S0DeckHomeModel {
                 )
             )
         }
-        guard restByteCount > 0 else {
-            return result
-        }
-        result.append(
-            Card(
-                id: restCardID,
-                category: nil,
-                byteCount: restByteCount,
-                fraction: fraction(of: restByteCount, in: libraryTotalByteCount),
-                percent: percent(of: restByteCount, in: libraryTotalByteCount),
-                isEnterable: false
-            )
-        )
         return result
     }
 

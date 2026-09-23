@@ -906,7 +906,6 @@ struct S0DeckCategoryPageView: View {
     private var sharePercentText: String {
         let cards = S0DeckHomeModel.cards(
             categories: [category],
-            restByteCount: 0,
             libraryTotalByteCount: machine.snapshot.libraryTotalByteCount
         )
         let percent = cards.first?.percent ?? 0

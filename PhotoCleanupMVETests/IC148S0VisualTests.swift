@@ -385,11 +385,11 @@ final class IC148S0VisualTests: XCTestCase {
     // MARK: - 断言 8：宽度分配
 
     func testIC148CAssertion08SegmentWidthsAlwaysSumToOne() {
-        // (a) 全为零。
+        // (a) 全为零。IC-166 裁定 五：v3 下类别全零即 `LIB = 0`（`Σ c.bytes = LIB`），走零 LIB 分支。
         let zero = S0SegmentBarModel.make(
             categories: [settledCategory(bytes: 0)],
             ledgerEntries: [],
-            libraryTotalByteCount: 48_000_000_000,
+            libraryTotalByteCount: 0,
             progress: S0ScanProgress(scannedAssetCount: 10, totalAssetCount: 10),
             isScanning: false
         )
@@ -412,11 +412,13 @@ final class IC148S0VisualTests: XCTestCase {
             accuracy: 0.000_001
         )
 
-        // (c) 多类别 + 未扫。
+        // (c) 多类别 + 未扫。IC-166 裁定 五：加「其余照片」行使 `Σ c.bytes = LIB`
+        // （4.8 + 0.56 + 42.64 = 48 GB）。
         let mixed = S0SegmentBarModel.make(
             categories: [
                 settledCategory(id: .bigVideo, bytes: 4_800_000_000),
-                settledCategory(id: .screenshot, bytes: 560_000_000)
+                settledCategory(id: .screenshot, bytes: 560_000_000),
+                settledCategory(id: .rest, bytes: 42_640_000_000)
             ],
             ledgerEntries: [],
             libraryTotalByteCount: 48_000_000_000,
@@ -427,9 +429,14 @@ final class IC148S0VisualTests: XCTestCase {
         // 未扫段 = 1 − 已扫占比。
         let unscanned = mixed.segments.first { $0.kind == .unscanned }
         XCTAssertEqual(unscanned?.widthFraction ?? 0, 0.7, accuracy: 0.000_001)
-        // 类别段宽 = c.bytes / LIB。
+        // 类别段宽 = c.bytes / LIB × 已扫占比（v3 张数进度缩放）：0.1 × 0.3、
+        // 0.56／48 × 0.3、42.64／48 × 0.3。
         let bigVideo = mixed.segments.first { $0.kind == .category(.bigVideo) }
-        XCTAssertEqual(bigVideo?.widthFraction ?? 0, 0.1, accuracy: 0.000_001)
+        XCTAssertEqual(bigVideo?.widthFraction ?? 0, 0.03, accuracy: 0.000_001)
+        let screenshot = mixed.segments.first { $0.kind == .category(.screenshot) }
+        XCTAssertEqual(screenshot?.widthFraction ?? 0, 0.0035, accuracy: 0.000_001)
+        let rest = mixed.segments.first { $0.kind == .category(.rest) }
+        XCTAssertEqual(rest?.widthFraction ?? 0, 0.2665, accuracy: 0.000_001)
 
         // `LIB` 为零：整条归其余照片，总和仍为 1。
         let noLibrary = S0SegmentBarModel.make(
@@ -441,19 +448,37 @@ final class IC148S0VisualTests: XCTestCase {
         )
         XCTAssertEqual(noLibrary.totalWidthFraction, 1, accuracy: 0.000_001)
 
-        // 各类别之和超过 LIB（`c.bytes` 不去重）时仍夹到 1，其余段不为负。
-        let overflow = S0SegmentBarModel.make(
+        // (e) IC-166 裁定 五：原「各类别之和超过 LIB 时夹到 1」随 v3 归属去重作废，改为扫描中缩放——
+        // `Σ c.bytes = LIB`、已扫 3／10：首段占比大于已扫占比也不吃掉后面的段（旧预算式在此只剩
+        // 首段 0.3 + 未扫 0.7），各段 = 占比 × 0.3，非零 LIB 时没有兜底段。
+        let scaled = S0SegmentBarModel.make(
             categories: [
                 settledCategory(id: .bigVideo, bytes: 40_000_000_000),
-                settledCategory(id: .similar, bytes: 40_000_000_000)
+                settledCategory(id: .similar, bytes: 8_000_000_000)
             ],
             ledgerEntries: [],
             libraryTotalByteCount: 48_000_000_000,
-            progress: S0ScanProgress(scannedAssetCount: 10, totalAssetCount: 10),
-            isScanning: false
+            progress: S0ScanProgress(scannedAssetCount: 3, totalAssetCount: 10),
+            isScanning: true
         )
-        XCTAssertEqual(overflow.totalWidthFraction, 1, accuracy: 0.000_001)
-        for segment in overflow.segments {
+        XCTAssertEqual(scaled.totalWidthFraction, 1, accuracy: 0.000_001)
+        XCTAssertEqual(
+            scaled.segments.first { $0.kind == .category(.bigVideo) }?.widthFraction ?? 0,
+            0.25,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            scaled.segments.first { $0.kind == .category(.similar) }?.widthFraction ?? 0,
+            0.05,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            scaled.segments.first { $0.kind == .unscanned }?.widthFraction ?? 0,
+            0.7,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(scaled.segments.filter { $0.kind == .rest }.count, 0)
+        for segment in scaled.segments {
             XCTAssertGreaterThanOrEqual(segment.widthFraction, 0)
         }
     }
@@ -516,8 +541,8 @@ final class IC148S0VisualTests: XCTestCase {
     func testIC148CAssertion10CatalogHasExactlyThirtyTwoS0Keys() throws {
         let catalog = try loadCatalogValues()
         let catalogS0Keys = Set(catalog.keys.filter { $0.hasPrefix("s0.") })
-        // IC-156 C：32 → 37；IC-157 B：→ 38；IC-165 C：→ 39。
-        XCTAssertEqual(catalogS0Keys.count, 39)
+        // IC-156 C：32 → 37；IC-157 B：→ 38；IC-165 C：→ 39；IC-166 B：S0-3 副句一条 → 40。
+        XCTAssertEqual(catalogS0Keys.count, 40)
 
         // IC-165 C：与 IC-147 断言 11 同一份四文件名单（`s0.category.*` 五条在文本 helper 里）。
         var referenced: Set<String> = []

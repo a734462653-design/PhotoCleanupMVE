@@ -764,15 +764,9 @@ enum S0DeckMetrics {
             return colorDuplicate
         case .similar:
             return colorSimilar
-        }
-    }
-
-    /// 卡的颜色：类别卡取类别色，「其余照片」卡取中性色。
-    static func cardColor(for identifier: S0CategoryIdentifier?) -> Color {
-        guard let identifier else {
+        case .rest:
             return colorRest
         }
-        return categoryColor(for: identifier)
     }
 
     /// 前景色派生：主文字纯色、副文字按登记不透明度压暗（照 `S0HomePalette` 的体例）。

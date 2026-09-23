@@ -26,6 +26,8 @@ enum S0CategoryText {
             return L10n.text("s0.category.duplicate")
         case .similar:
             return L10n.text("s0.category.similar")
+        case .rest:
+            return L10n.text("s0.category.rest")
         }
     }
 }

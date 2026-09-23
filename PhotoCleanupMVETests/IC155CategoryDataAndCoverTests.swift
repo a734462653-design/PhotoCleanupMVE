@@ -126,12 +126,14 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
         )
         XCTAssertEqual(
             snapshot.categories.map { $0.id },
-            [.bigVideo, .screenRecording, .screenshot]
+            [.bigVideo, .screenRecording, .screenshot, .rest]
         )
         // 视频与录屏互斥（IC-163 裁定 五）：唯一的普通视频在账本内，「视频」类无候选、封面为 nil。
         XCTAssertEqual(category(.bigVideo, in: snapshot)?.coverAssetID, nil)
         XCTAssertEqual(category(.screenRecording, in: snapshot)?.coverAssetID, "recording")
         XCTAssertEqual(category(.screenshot, in: snapshot)?.coverAssetID, "shot-a")
+        // IC-166：唯一的普通照片归「其余照片」并成为其封面。
+        XCTAssertEqual(category(.rest, in: snapshot)?.coverAssetID, "plain-photo")
         // 候选集与 `candidateCount` 同源：截图三条（3 MB + 5 MB × 2）。
         XCTAssertEqual(category(.screenshot, in: snapshot)?.candidateCount, 3)
         XCTAssertEqual(
@@ -165,7 +167,7 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
             "recording"
         )
 
-        // 全部候选都未解析：三个类别都无项目，封面一律 nil。
+        // 全部候选都未解析：四个类别（IC-166 起含「其余照片」）都无项目，封面一律 nil。
         let allUnresolved = [recording, screenshot, shotB, shotA].map { asset in
             S0ScanClassifier.classified(
                 S0ScannedAsset(
@@ -187,7 +189,7 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
             of: allUnresolved,
             context: aggregationContext(pending: [], ledger: [])
         )
-        XCTAssertEqual(empty.categories.count, 3)
+        XCTAssertEqual(empty.categories.count, 4)
         for emptyCategory in empty.categories {
             XCTAssertEqual(emptyCategory.candidateCount, 0)
             XCTAssertNil(emptyCategory.coverAssetID)
@@ -279,9 +281,10 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
 
         let context = aggregationContext(pending: [], ledger: [])
         let reference = S0ScanAggregator.snapshot(of: orders[0], context: context)
+        // IC-166：第四条「其余照片」的封面是唯一的普通照片。
         XCTAssertEqual(
             reference.categories.map { $0.coverAssetID },
-            ["big-a", "rec-y", "shot-a"]
+            ["big-a", "rec-y", "shot-a", "plain-photo"]
         )
         for order in orders {
             let snapshot = S0ScanAggregator.snapshot(of: order, context: context)
@@ -338,7 +341,8 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
             )
         }
         let readyEmpty = S0CleanupDataStub(scenario: .readyWithoutItems).currentSnapshot()
-        XCTAssertEqual(readyEmpty.categories.count, 5)
+        // IC-166 裁定 三：桩加「其余照片」一行，5 → 6。
+        XCTAssertEqual(readyEmpty.categories.count, 6)
         XCTAssertTrue(readyEmpty.categories.allSatisfy { $0.coverAssetID == nil })
         let scanningStart = S0CleanupDataStub(scenario: .scanning).currentSnapshot()
         XCTAssertTrue(scanningStart.categories.allSatisfy { $0.coverAssetID == nil })
@@ -361,12 +365,14 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
         let snapshot = service.currentSnapshot()
         XCTAssertEqual(
             snapshot.categories.map { $0.id },
-            [.bigVideo, .screenRecording, .screenshot]
+            [.bigVideo, .screenRecording, .screenshot, .rest]
         )
+        // IC-166：唯一的普通照片归「其余照片」。
         let expectedOrders: [S0CategoryIdentifier: [String]] = [
             .bigVideo: ["v-big-1", "v-big-2", "v-big-3", "video-small"],
             .screenRecording: ["rec-big", "rec-a", "rec-b"],
-            .screenshot: ["shot-1", "shot-2", "shot-3"]
+            .screenshot: ["shot-1", "shot-2", "shot-3"],
+            .rest: ["photo-plain"]
         ]
         let metadataByID = fixture.metadataByIdentifier
         for category in snapshot.categories {
@@ -517,9 +523,10 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
         }
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
         XCTAssertEqual(hookCount, 0, "桩调用了快照钩子")
-        // 正对照：就绪剧本 5 类 × 5 步 + 扫描剧本第 1～4 步各 3 类，确有非空列表被核过。
-        XCTAssertEqual(nonEmptyListCount, 37)
-        // 失败剧本：五个类别全空。
+        // 正对照：就绪剧本 6 类 × 5 步 + 扫描剧本第 1～4 步各 4 类（IC-166 起含「其余照片」），
+        // 确有非空列表被核过。
+        XCTAssertEqual(nonEmptyListCount, 46)
+        // 失败剧本：六个类别全空。
         let failure = S0CleanupDataStub(scenario: .readFailure)
         XCTAssertTrue(
             S0CategoryIdentifier.allCases.allSatisfy { failure.categoryAssets($0).isEmpty }
@@ -752,14 +759,14 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
         service.currentSnapshot().categories.first { $0.id == identifier }
     }
 
-    /// 三个类别各核一遍：项数、总字节、首项与封面、顺序。
+    /// 四个类别（IC-166 起含「其余照片」）各核一遍：项数、总字节、首项与封面、顺序。
     private func assertListsMatchSnapshot(
         _ service: S0LibraryScanService,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         let snapshot = service.currentSnapshot()
-        XCTAssertEqual(snapshot.categories.count, 3, file: file, line: line)
+        XCTAssertEqual(snapshot.categories.count, 4, file: file, line: line)
         for category in snapshot.categories {
             let list = service.categoryAssets(category.id)
             let listByteCount = list.reduce(Int64(0)) { total, item in

@@ -73,8 +73,17 @@ struct S0DeckHomeView: View {
         case .scanning, .ready:
             deckScreen
         case .empty:
+            // IC-166 裁定 三：副句「已扫描 N 项」取既有进度字段（扫描完成时 = 全库可见资产数）。
             centeredBlock(
                 title: L10n.text("s0.home.hero.empty.title"),
+                subtitle: L10n.text(
+                    "s0.home.hero.empty.subtitle",
+                    replacing: [
+                        "count": String(
+                            machine.snapshot.progress.scannedAssetCount
+                        )
+                    ]
+                ),
                 action: L10n.text("s0.home.hero.empty.action"),
                 handler: onSwitchToOrganizeTab
             )
@@ -455,7 +464,7 @@ struct S0DeckHomeView: View {
                     cornerRadius: S0DeckMetrics.totalBarCaptionDotCornerRadius,
                     style: .continuous
                 )
-                .fill(S0DeckMetrics.cardColor(for: card.category))
+                .fill(S0DeckMetrics.categoryColor(for: card.category))
                 .frame(
                     width: S0DeckMetrics.totalBarCaptionDotSide,
                     height: S0DeckMetrics.totalBarCaptionDotSide
@@ -784,7 +793,7 @@ struct S0DeckHomeView: View {
                 cornerRadius: S0DeckMetrics.stripDotCornerRadius,
                 style: .continuous
             )
-            .fill(S0DeckMetrics.cardColor(for: card.category))
+            .fill(S0DeckMetrics.categoryColor(for: card.category))
             .frame(
                 width: S0DeckMetrics.stripDotSide,
                 height: S0DeckMetrics.stripDotSide
@@ -807,8 +816,7 @@ struct S0DeckHomeView: View {
                 )
             Spacer(minLength: 0)
             stripValue(parts)
-            // 裁定 二：「其余照片」不可点，**不画右箭头**（与 `showsDisclosure` 同口径：
-            // 只有能进类别页的条才画）。
+            // 只有能进类别页的条才画右箭头（与 `showsDisclosure` 同口径；IC-166 起「其余照片」同制）。
             if card.isEnterable {
                 Image(systemName: S0DeckSymbol.chevron)
                     .foregroundStyle(
@@ -849,8 +857,11 @@ struct S0DeckHomeView: View {
 
     // MARK: - 空态与失败态（版式不作要求，文案与回调照 `S0View`）
 
+    /// IC-166 裁定 三：`subtitle` 只给 S0-3 的「已扫描 N 项」；字号与压暗借等待清空行两值，
+    /// 不加登记值。S0-4 两处不传、为 nil。
     private func centeredBlock(
         title: String,
+        subtitle: String? = nil,
         action: String,
         handler: @escaping () -> Void
     ) -> some View {
@@ -859,6 +870,17 @@ struct S0DeckHomeView: View {
                 .font(.system(size: S0DeckMetrics.heroUnitFontSize))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(S0DeckMetrics.text)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: S0DeckMetrics.pendingRowFontSize))
+                    .monospacedDigit()
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(
+                        S0DeckMetrics.dimmedText(
+                            opacity: S0DeckMetrics.pendingRowOpacity
+                        )
+                    )
+            }
             Button(action: handler) {
                 Text(action)
                     .font(.system(size: S1ChromeTypography.titleFontSize))
@@ -894,17 +916,8 @@ struct S0DeckHomeView: View {
     private var cards: [S0DeckHomeModel.Card] {
         S0DeckHomeModel.cards(
             categories: machine.orderedCategories,
-            restByteCount: restByteCount,
             libraryTotalByteCount: machine.snapshot.libraryTotalByteCount
         )
-    }
-
-    /// 「其余照片」的字节量取分段条模型 `.rest` 段的现成读数（不另算一份）。
-    private var restByteCount: Int64 {
-        for segment in segmentBarModel.segments where segment.kind == .rest {
-            return segment.byteCount
-        }
-        return 0
     }
 
     private var segmentBarModel: S0SegmentBarModel {
@@ -951,17 +964,11 @@ struct S0DeckHomeView: View {
     }
 
     private func coverAssetID(for card: S0DeckHomeModel.Card) -> String? {
-        guard let identifier = card.category else {
-            return nil
-        }
-        return machine.category(identifier)?.coverAssetID
+        machine.category(card.category)?.coverAssetID
     }
 
     private func candidateCount(for card: S0DeckHomeModel.Card) -> Int {
-        guard let identifier = card.category else {
-            return 0
-        }
-        return machine.category(identifier)?.candidateCount ?? 0
+        machine.category(card.category)?.candidateCount ?? 0
     }
 
     // MARK: - 交互（裁定 五）
@@ -972,12 +979,9 @@ struct S0DeckHomeView: View {
             expandCard(withID: card.id)
             return
         }
-        guard let identifier = card.category else {
-            return
-        }
         // 迁移由状态机判定；只有判定为「迁至类别页」才回调容器。
         if case let .categoryPage(target) =
-            machine.handle(.categoryRowTapped(identifier)) {
+            machine.handle(.categoryRowTapped(card.category)) {
             onEnterCategoryPage(target)
         }
     }
@@ -1034,9 +1038,8 @@ struct S0DeckHomeView: View {
         switch kind {
         case let .category(identifier):
             return identifier.rawValue
-        case .rest:
-            return S0DeckHomeModel.restCardID
-        case .unscanned:
+        case .rest, .unscanned:
+            // IC-166 裁定 四：`.rest` 只剩「`LIB ≤ 0`」兜底段，与未扫段一样没有对应的卡。
             return nil
         }
     }
@@ -1055,10 +1058,7 @@ struct S0DeckHomeView: View {
     }
 
     static func name(for card: S0DeckHomeModel.Card) -> String {
-        guard let identifier = card.category else {
-            return L10n.text("s0.category.rest")
-        }
-        return S0CategoryText.displayName(for: identifier)
+        S0CategoryText.displayName(for: card.category)
     }
 
     /// 占比的实参形如 `36%`：百分号在实参里拼，不进目录值以外的字面量。
