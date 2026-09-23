@@ -532,12 +532,8 @@ struct S0DeckHomeView: View {
         let visible = isOpen
             ? S0DeckMetrics.openCardVisibleHeight
             : S0DeckMetrics.stripVisibleHeight
-        let isTail = !isOpen && index == cards.count - 1
-        let height = visible + (
-            isTail
-                ? S0DeckMetrics.lastCardTailHeight
-                : S0DeckMetrics.cardOverhang
-        )
+        // IC-167 A（裁定 一）：末张不分展开／收起一律延伸 tail 高（SPEC-S0 v4 第三节第 2 部分）。
+        let height = visible + Self.cardExtension(index: index, count: cards.count)
         return Button {
             handleTap(on: card, isOpen: isOpen)
         } label: {
@@ -644,6 +640,13 @@ struct S0DeckHomeView: View {
                     .frame(height: visibleHeight)
             }
         }
+        // IC-167 A（裁定 一）：可见区之下保持渐变末档压暗至卡底；非末卡这一层被下一张卡盖住。
+        .overlay(alignment: .bottom) {
+            if isOpen {
+                Color.black.opacity(S0DeckMetrics.openShadeBottomOpacity)
+                    .frame(height: height - visibleHeight)
+            }
+        }
         .overlay(alignment: .topLeading) {
             if isOpen {
                 shareBadge(card)
@@ -657,7 +660,7 @@ struct S0DeckHomeView: View {
                     .padding(.leading, S0DeckMetrics.openTextLeadingInset)
                     .padding(
                         .bottom,
-                        S0DeckMetrics.cardOverhang
+                        (height - visibleHeight)
                             + S0DeckMetrics.openTextBottomInset
                     )
                     .transition(Self.openContentTransition)
@@ -672,7 +675,7 @@ struct S0DeckHomeView: View {
                     )
                     .padding(
                         .bottom,
-                        S0DeckMetrics.cardOverhang
+                        (height - visibleHeight)
                             + S0DeckMetrics.openActionBottomInset
                     )
                     .transition(Self.openContentTransition)
@@ -1032,6 +1035,14 @@ struct S0DeckHomeView: View {
         AnyTransition.opacity.combined(
             with: AnyTransition.offset(y: S0DeckMetrics.expandContentRise)
         )
+    }
+
+    /// IC-167 A（裁定 一）：一张卡在可见高之下再延伸多少。末张不分展开／收起一律取
+    /// `lastCardTailHeight`（SPEC-S0 v4 第三节第 2 部分「展开末卡」），其余取 `cardOverhang`。
+    static func cardExtension(index: Int, count: Int) -> CGFloat {
+        index == count - 1
+            ? S0DeckMetrics.lastCardTailHeight
+            : S0DeckMetrics.cardOverhang
     }
 
     static func cardID(for kind: S0SegmentBarModel.Kind) -> String? {
