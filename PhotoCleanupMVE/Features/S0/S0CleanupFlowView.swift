@@ -142,7 +142,8 @@ struct S0CleanupFlowView: View {
                     _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
                 },
                 toastDurationMilliseconds: toastDurationMilliseconds,
-                transitionNamespace: deckNamespace
+                transitionNamespace: deckNamespace,
+                onEnterConfirmation: onEnterConfirmation
             )
         }
     }

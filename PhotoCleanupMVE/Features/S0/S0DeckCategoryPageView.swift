@@ -8,6 +8,7 @@ import SwiftUI
 /// 版式与排序：
 /// - 页头 = 展开卡那张照片放大（262 高）+ 返回／排序／全选 + 名称、体积、副行、占比角标 + 总条，
 ///   随内容一起滚走；滚过阈值后顶上出现一条玻璃导航（返回 · 名称 体积 占比 · 排序 全选）。
+///   IC-167 D：页头与导航条的排序钮左侧各加一只待删篮入口（`S0BasketEntryView`）。
 /// - IC-163 C（裁定 三、四）：「最大的 N 个」「其余 M 个」两节撤销。排序钮三项——从大到小
 ///   （默认，整页一张网格）、最新在前、最旧在前（按月分节，无日期的归最后一节）。IC-167 C 加
 ///   「从小到大」（整页一张网格，按体积升序、同体积按标识升序），共四项。
@@ -33,6 +34,8 @@ struct S0DeckCategoryPageView: View {
     private let onLongPress: ([String], String) -> Void
     private let toastDurationMilliseconds: Double
     private let transitionNamespace: Namespace.ID
+    /// IC-167 D（裁定 五）：页头与收起导航条两只待删篮入口的回调（与首页入口同一回调）。
+    private let onEnterConfirmation: () -> Void
 
     @State private var selection: S0CategoryPageSelection
     /// 页头有没有滚走。**只在跨阈值时写**，静止不写（陷阱 5）。
@@ -52,7 +55,8 @@ struct S0DeckCategoryPageView: View {
         onBack: @escaping () -> Void,
         onLongPress: @escaping ([String], String) -> Void,
         toastDurationMilliseconds: Double,
-        transitionNamespace: Namespace.ID
+        transitionNamespace: Namespace.ID,
+        onEnterConfirmation: @escaping () -> Void = {}
     ) {
         self.machine = machine
         self.category = category
@@ -62,6 +66,7 @@ struct S0DeckCategoryPageView: View {
         self.onLongPress = onLongPress
         self.toastDurationMilliseconds = toastDurationMilliseconds
         self.transitionNamespace = transitionNamespace
+        self.onEnterConfirmation = onEnterConfirmation
         _selection = State(
             initialValue: S0CategoryPageSelection(
                 items: items,
@@ -187,6 +192,10 @@ struct S0DeckCategoryPageView: View {
             }
             .accessibilityLabel(L10n.text("s0.categoryPage.back"))
             Spacer(minLength: 0)
+            // IC-167 D（裁定 五）：待删篮入口在排序钮左侧，与首页同一只（SPEC-S0 v4 第六节）。
+            S0BasketEntryView(style: .glass,
+                              count: machine.mergedPendingDeletionCount,
+                              action: onEnterConfirmation)
             // IC-163 C：页头不在玻璃容器里，排序圆钮照返回钮的写法各自借 S1 玻璃。
             sortMenu {
                 Image(systemName: S0DeckSymbol.sort)
@@ -360,6 +369,10 @@ struct S0DeckCategoryPageView: View {
                 .accessibilityLabel(L10n.text("s0.categoryPage.back"))
                 compactNavTitle
                 HStack(spacing: S1ChromeLayout.itemSpacing) {
+                    // IC-167 D（裁定 五）：导航条本身是玻璃容器，入口用平涂圆钮 + 徽标。
+                    S0BasketEntryView(style: .flat,
+                                      count: machine.mergedPendingDeletionCount,
+                                      action: onEnterConfirmation)
                     compactNavSort
                     compactNavSelectAll
                 }
