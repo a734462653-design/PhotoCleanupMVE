@@ -117,7 +117,12 @@ struct PhotoCleanupMVEApp: App {
                                                             currentAssetID: currentAssetID) else {
                     return false
                 }
-                return coordinator.enterS2(from: handoff)
+                // IC-168 A（裁定 二）：进 S2 失败时撤销交接构造登记的在途范围（名字表留着）。
+                guard coordinator.enterS2(from: handoff) else {
+                    s1Machine.cancelS2Handoff(virtualRangeID: virtualRangeID)
+                    return false
+                }
+                return true
             },
             toastDurationMilliseconds: coordinator
                 .s2Calibration

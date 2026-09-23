@@ -241,7 +241,13 @@ final class CleanupCoordinator: ObservableObject {
     /// `M`、`K` 保持上一次有效值；但照常离开 S2 回到 S1 并对账一次，再发一条
     /// 一次性事件由 S1 以底部短 toast 呈现。不弹窗、不阻断：用户点了返回就该
     /// 回到 S1，原实装让 `route` 停在 `.s2` 且毫无反馈。
+    ///
+    /// IC-168 A（裁定 二）：虚拟范围写回失败时在途登记不再留着——先撤销，再清入口上下文
+    /// （撤销要读它的范围标识）。真实范围标识不在登记里，撤销是无操作。
     private func returnToS1AfterFailedWriteBack() {
+        if let entryContext = s2EntryContext {
+            s1Machine?.cancelS2Handoff(virtualRangeID: entryContext.rangeID)
+        }
         clearS2RouteState()
         reconcileS1WithPhotoLibrary()
         route = .s1
