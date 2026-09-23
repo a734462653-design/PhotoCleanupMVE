@@ -2,7 +2,7 @@ import SwiftUI
 
 /// IC-156 D：「空间清理」tab 的承载容器（裁定 二）。
 ///
-/// `S0View` 原样构造在这里——`S0View.swift`、`S0TabContainer.swift` 与 `Core/` 一字不动。
+/// IC-165 起首页是「卡片叠」`S0DeckHomeView`、类别页是 `S0DeckCategoryPageView`（旧首页与旧类别页退役）。
 /// 本容器只做三件事：给首页的 `onEnterCategoryPage` 一个真闭包；用 `NavigationStack` 的
 /// `navigationDestination(item:)` 推出类别页；在重算点把新快照喂给状态机。
 ///
@@ -87,30 +87,17 @@ struct S0CleanupFlowView: View {
 
     /// 首页构造点（陷阱 16：构造点外提）。
     ///
-    /// IC-162 A（裁定 一）：「卡片叠」预览与旧首页并存，由编译期常量二选一；
-    /// **旧构造的实参逐字不动**，两只回调外提成下面两个方法，新旧共用。
-    @ViewBuilder
+    /// IC-165 B：「卡片叠」首页为唯一首页（旧首页退役）；两只回调外提成下面两个方法。
     private var homeScreen: some View {
-        if S0DeckPreview.isEnabled {
-            S0DeckHomeView(
-                machine: machine,
-                dataProvider: dataProvider,
-                onEnterCategoryPage: { identifier in
-                    enterCategory(identifier)
-                },
-                onSwitchToOrganizeTab: onSwitchToOrganizeTab,
-                transitionNamespace: deckNamespace
-            )
-        } else {
-            S0View(
-                machine: machine,
-                dataProvider: dataProvider,
-                onEnterCategoryPage: { identifier in
-                    enterCategory(identifier)
-                },
-                onSwitchToOrganizeTab: onSwitchToOrganizeTab
-            )
-        }
+        S0DeckHomeView(
+            machine: machine,
+            dataProvider: dataProvider,
+            onEnterCategoryPage: { identifier in
+                enterCategory(identifier)
+            },
+            onSwitchToOrganizeTab: onSwitchToOrganizeTab,
+            transitionNamespace: deckNamespace
+        )
     }
 
     /// IC-160 B：从首页进任一类别都是新的一轮，保留集先清空（防御：从 S2 改走
@@ -129,51 +116,29 @@ struct S0CleanupFlowView: View {
     /// 类别页（陷阱 16：构造点外提）。数据取自状态机当前快照的该类别与数据源的有序列表；
     /// 快照里恒有三条元数据类别，点得进来的类别在此必非 nil（③，报告登记）。
     ///
-    /// IC-162 B（裁定 一）：新旧类别页并存，由同一个编译期常量二选一；**旧构造的实参
-    /// 逐字不动**。新类别页不经 `initialSelection:`／`onSelectionChange:` 形参拿保留集，
-    /// 而是直接收 `flowModel`，在自己的文件里按 IC-160 的口径读写；两层 `.toolbar` 也
-    /// 由它自己挂，流程文件里不为它再写。
+    /// IC-165 B：新类别页为唯一类别页（旧类别页退役）。它不经形参拿保留集，而是直接收
+    /// `flowModel`，在自己的文件里按 IC-160 的口径读写；两层 `.toolbar` 也由它自己挂，
+    /// 流程文件里不为它再写。
     @ViewBuilder
     private func page(for identifier: S0CategoryIdentifier) -> some View {
         if let category = machine.category(identifier) {
-            if S0DeckPreview.isEnabled {
-                S0DeckCategoryPageView(
-                    machine: machine,
-                    category: category,
-                    items: dataProvider.categoryAssets(identifier),
-                    flowModel: flowModel,
-                    onMoveToBasket: { assetIDs in
-                        moveToBasket(assetIDs, from: identifier)
-                    },
-                    onBack: {
-                        leaveCategory()
-                    },
-                    onLongPress: { orderedAssetIDs, currentAssetID in
-                        _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
-                    },
-                    toastDurationMilliseconds: toastDurationMilliseconds,
-                    transitionNamespace: deckNamespace
-                )
-            } else {
-                S0CategoryPageView(
-                    category: category,
-                    items: dataProvider.categoryAssets(identifier),
-                    onMoveToBasket: { assetIDs in
-                        moveToBasket(assetIDs, from: identifier)
-                    },
-                    onBack: {
-                        leaveCategory()
-                    },
-                    onLongPress: { orderedAssetIDs, currentAssetID in
-                        _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
-                    },
-                    initialSelection: flowModel.preservedSelection,
-                    onSelectionChange: { flowModel.preservedSelection = $0 },
-                    toastDurationMilliseconds: toastDurationMilliseconds
-                )
-                .toolbar(.hidden, for: .tabBar)
-                .toolbar(.hidden, for: .navigationBar)
-            }
+            S0DeckCategoryPageView(
+                machine: machine,
+                category: category,
+                items: dataProvider.categoryAssets(identifier),
+                flowModel: flowModel,
+                onMoveToBasket: { assetIDs in
+                    moveToBasket(assetIDs, from: identifier)
+                },
+                onBack: {
+                    leaveCategory()
+                },
+                onLongPress: { orderedAssetIDs, currentAssetID in
+                    _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
+                },
+                toastDurationMilliseconds: toastDurationMilliseconds,
+                transitionNamespace: deckNamespace
+            )
         }
     }
 

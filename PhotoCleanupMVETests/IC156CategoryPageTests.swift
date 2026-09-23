@@ -478,18 +478,19 @@ final class IC156CategoryPageTests: XCTestCase {
 
     func testIC156D_FlowHostsHomeAndPageAndAppOnlySwapsBuilder() throws {
         let flow = try XCTUnwrap(strippedSource(Self.flowPath))
-        XCTAssertEqual(occurrences(of: "S0View(", in: flow), 1)
+        // IC-165 B：旧首页退役，首页构造点只剩「卡片叠」首页。
+        XCTAssertEqual(occurrences(of: "S0DeckHomeView(", in: flow), 1)
         XCTAssertGreaterThanOrEqual(occurrences(of: "NavigationStack", in: flow), 1)
         XCTAssertEqual(occurrences(of: "navigationDestination(item:", in: flow), 1)
         XCTAssertEqual(occurrences(of: ".returnedFromCategoryPage", in: flow), 1)
         // 进篮成功后一处、返回首页一处、从 S2 回到类别页一处（IC-157 裁定 一）；首页自己的摄入
-        // 在 `S0View.swift`，不在此数。
+        // 在 `S0DeckHomeView.swift`，不在此数。
         XCTAssertEqual(occurrences(of: "machine.ingest(", in: flow), 3)
-        XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .tabBar)", in: flow), 1)
-        // 卡面写「恰 1」（类别页）。根页同样隐藏空导航栏：留着它会占去顶部安全区、把首页
-        // 整体下推一个导航栏高度（偏离登记于 IC-156 自验报告）。
-        XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .navigationBar)", in: flow), 2)
-        XCTAssertEqual(occurrences(of: "S0CategoryPageView(", in: flow), 1)
+        // IC-165 B：类别页的两层 `.toolbar` 由 `S0DeckCategoryPageView` 自己挂，流程文件只剩根页
+        // 隐藏空导航栏那一处（留着它会占去顶部安全区、把首页整体下推一个导航栏高度）。
+        XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .tabBar)", in: flow), 0)
+        XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .navigationBar)", in: flow), 1)
+        XCTAssertEqual(occurrences(of: "S0DeckCategoryPageView(", in: flow), 1)
         // 协调器与会话层只经 App 传闭包。
         for forbidden in ["CleanupCoordinator", "SessionStore", "S1StateMachine"] {
             XCTAssertEqual(occurrences(of: forbidden, in: flow), 0, forbidden)

@@ -2,17 +2,17 @@ import SwiftUI
 
 /// IC-162 A：「卡片叠」首页（画布 r7.py M1 + r8.py N2「总条联动」，交互 A）。
 ///
-/// **本文件是预览，不是实装**：`S0View.swift` 一字未动，两者由
-/// `S0DeckPreview.isEnabled` 在 `S0CleanupFlowView` 里二选一（裁定 一）。
+/// IC-165 B 起为正式首页（SPEC-S0 v3 第三节），旧首页退役；并补齐旧首页已有而预览缺的
+/// 三样：受限提示条、扫描首帧「正在扫描…」、等待清空行的 `VF` 三态读数（裁定 四）。
 ///
-/// 行为一律照旧（裁定 五）：
-/// - 启动摄入 `bootstrapIfNeeded()` 与 `S0View` 逐字同源（`hasBootstrapped` 闸 +
+/// 行为一律照旧（IC-162 裁定 五）：
+/// - 启动摄入 `bootstrapIfNeeded()` 与旧首页逐字同源（`hasBootstrapped` 闸 +
 ///   测试宿主守卫 + 摄入 + 按扫描回报发一次迁移事件）；
 /// - 进类别页只在状态机判定为「迁至类别页」时回调容器；
 /// - 「我已清空」= `machine.beginVerification()`。
 ///
-/// 恒深色：不读 `colorScheme`、不用系统材质，取值只经 `S0DeckMetrics`；顶排的
-/// 圆钮与胶囊仍借 S1 chrome 的登记常量与玻璃 helper（S0 不自造 chrome 语汇）。
+/// 恒深色：不读随外观解析的色源，取值只经 `S0DeckMetrics`；顶排的圆钮与胶囊、受限提示条
+/// 的玻璃一律借 S1 chrome 的登记常量与玻璃 helper（S0 不自造 chrome 语汇）。
 struct S0DeckHomeView: View {
     @ObservedObject var machine: S0StateMachine
 
@@ -89,6 +89,7 @@ struct S0DeckHomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 topRow
+                limitedBanner
                 heroBlock
                 pendingRow
                 totalBar
@@ -152,6 +153,35 @@ struct S0DeckHomeView: View {
         .accessibilityLabel(L10n.text("s0.account.title"))
     }
 
+    // MARK: - 受限提示条（IC-165 B，裁定 四：照旧首页的写法搬）
+
+    /// 几何取 `S1LimitedBannerStyle`、文案借「逐张整理」tab 的受限提示句（S0 不自造 chrome 语汇）；
+    /// 玻璃经 S1 helper。本页没有旧首页的 `homeState`，S0-4 不显示的守卫改读状态机四态。
+    /// 左右边距与距顶排的间隙沿用旧首页容器的 `S1ChromeLayout` 两值。
+    @ViewBuilder
+    private var limitedBanner: some View {
+        if machine.isLimitedAuthorization && machine.state != .failed {
+            Text(L10n.text("s1.limited.banner"))
+                .font(.system(size: S1LimitedBannerStyle.textFontSize))
+                .foregroundStyle(S0DeckMetrics.text)
+                .padding(.horizontal, S1LimitedBannerStyle.horizontalPadding)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: S1LimitedBannerStyle.height,
+                    alignment: .leading
+                )
+                .s1ChromeGlassBackground(
+                    in: RoundedRectangle(
+                        cornerRadius: S1LimitedBannerStyle.cornerRadius,
+                        style: .continuous
+                    ),
+                    interactive: false
+                )
+                .padding(.horizontal, S1ChromeLayout.horizontalMargin)
+                .padding(.top, S1ChromeLayout.chromeToOverlaySpacing)
+        }
+    }
+
     // MARK: - 大数字区
 
     private var heroBlock: some View {
@@ -180,34 +210,45 @@ struct S0DeckHomeView: View {
     }
 
     /// 大数字取**照片库总占用**（④ Decision_log 第 187 条：整库照片与视频占用都
-    /// 计为「可清理空间」）。`main` 的 `S0View` 用的是去重可清理量，本预览不同。
+    /// 计为「可清理空间」）。
+    ///
+    /// IC-165 B（裁定 四）：扫描中且首帧数据未到（`LIB` 仍为零）时显示「正在扫描…」，
+    /// 不显示零字节大数字（第 165 条第 3 条）。判据只看 `LIB`，不看可清理量。
+    /// v3 第十四节未登记该句字号，借 S1 标题字号（报告登记为 v3 订正候选）。
+    @ViewBuilder
     private var heroValue: some View {
-        let parts = S0ByteCountSplit.split(
-            S0ByteCountText.string(
-                forByteCount: machine.snapshot.libraryTotalByteCount
-            )
-        )
-        return HStack(
-            alignment: .lastTextBaseline,
-            spacing: S0DeckMetrics.heroUnitSpacing
-        ) {
-            Text(parts.value)
-                .font(
-                    .system(
-                        size: S0DeckMetrics.heroValueFontSize,
-                        weight: .heavy
-                    )
-                )
-                .tracking(S0DeckMetrics.heroValueLetterSpacing)
-                .monospacedDigit()
+        if machine.state == .scanning && machine.snapshot.libraryTotalByteCount == 0 {
+            Text(L10n.text("s0.home.hero.scanning"))
+                .font(.system(size: S1ChromeTypography.titleFontSize))
                 .foregroundStyle(S0DeckMetrics.text)
-            Text(parts.unit)
-                .font(.system(size: S0DeckMetrics.heroUnitFontSize))
-                .foregroundStyle(
-                    S0DeckMetrics.dimmedText(
-                        opacity: S0DeckMetrics.heroUnitOpacity
-                    )
+        } else {
+            let parts = S0ByteCountSplit.split(
+                S0ByteCountText.string(
+                    forByteCount: machine.snapshot.libraryTotalByteCount
                 )
+            )
+            HStack(
+                alignment: .lastTextBaseline,
+                spacing: S0DeckMetrics.heroUnitSpacing
+            ) {
+                Text(parts.value)
+                    .font(
+                        .system(
+                            size: S0DeckMetrics.heroValueFontSize,
+                            weight: .heavy
+                        )
+                    )
+                    .tracking(S0DeckMetrics.heroValueLetterSpacing)
+                    .monospacedDigit()
+                    .foregroundStyle(S0DeckMetrics.text)
+                Text(parts.unit)
+                    .font(.system(size: S0DeckMetrics.heroUnitFontSize))
+                    .foregroundStyle(
+                        S0DeckMetrics.dimmedText(
+                            opacity: S0DeckMetrics.heroUnitOpacity
+                        )
+                    )
+            }
         }
     }
 
@@ -309,6 +350,45 @@ struct S0DeckHomeView: View {
             .padding(.horizontal, S0DeckMetrics.totalBarHorizontalInset)
             .padding(.top, S0DeckMetrics.pendingRowTopSpacing)
         }
+        verificationRow
+    }
+
+    /// IC-165 B（裁定 四）：`VF` 三态读数，照旧首页 `verificationRow` 的写法搬。
+    ///
+    /// `VF` 的呈现**只反映状态机给出的值**。**不自造「已通过」读数的淡出、计时或自动
+    /// 清除**——第 170 条裁定 3：`VF=已通过` 的复位路径未定，归批次 5.3。本视图因此不含
+    /// 任何定时器、不含任何把 `VF` 推进或复位的调用；写入仍只在「我已清空」那一处。
+    @ViewBuilder
+    private var verificationRow: some View {
+        switch machine.verificationState {
+        case .none:
+            EmptyView()
+        case .checking:
+            pendingStatusText(L10n.text("s0.home.pending.checking"))
+        case .passed:
+            pendingStatusText(
+                L10n.text(
+                    "s0.home.pending.passed",
+                    replacing: [
+                        "released": S0ByteCountText.string(
+                            forByteCount: machine.lastVerifiedReleasedByteCount
+                        )
+                    ]
+                )
+            )
+        case .failed:
+            pendingStatusText(L10n.text("s0.home.pending.failed"))
+        }
+    }
+
+    /// 读数小字：与等待清空行同字号、同压暗（Deck 语汇，不加新登记值）。
+    private func pendingStatusText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: S0DeckMetrics.pendingRowFontSize))
+            .foregroundStyle(
+                S0DeckMetrics.text.opacity(S0DeckMetrics.pendingRowOpacity)
+            )
+            .padding(.horizontal, S0DeckMetrics.totalBarHorizontalInset)
     }
 
     private var pendingActionButton: some View {

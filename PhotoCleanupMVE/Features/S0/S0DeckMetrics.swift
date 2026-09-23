@@ -1,14 +1,5 @@
 import SwiftUI
 
-/// IC-162 A：「卡片叠」预览的开关（裁定 一）。
-///
-/// 本分支是**真机视觉预览**，不是实装：新旧首页与新旧类别页并存，旧的一字不动，
-/// 由这一个编译期常量在 `S0CleanupFlowView` 的两个构造点上切换。八份既有测试对
-/// 旧文件的逐字逐数断言因此全部原样通过。
-enum S0DeckPreview {
-    static let isEnabled = true
-}
-
 /// IC-162 A：两页用到的全部系统符号名与符号字面量，集中一处（陷阱 18：
 /// 展示 helper 不得 `return` 字面量，一律 `static let`）。
 enum S0DeckSymbol {
