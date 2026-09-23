@@ -17,9 +17,6 @@ final class IC153ScanServiceTests: XCTestCase {
 
     func testIC153A_ClassifierHitsAndPriority() {
         let megabyte: Int64 = 1_000_000
-        let threshold = S0ScanRules.bigVideoMinimumByteCount
-        // G874：裁定 一（④ Lynn 2026-09-16），执行端不得改动。
-        XCTAssertEqual(threshold, 100_000_000)
         XCTAssertEqual(
             S0ScanClassifier.attributionPriority,
             [.bigVideo, .screenRecording, .screenshot]
@@ -44,7 +41,7 @@ final class IC153ScanServiceTests: XCTestCase {
             hits: [.screenshot],
             primary: .screenshot
         )
-        // 小视频。
+        // 小视频：第 187 条取消门槛后同样进「视频」类（IC-163 裁定 五）。
         assertClassification(
             scannedAsset(
                 "small-video",
@@ -54,10 +51,10 @@ final class IC153ScanServiceTests: XCTestCase {
                 videoFilename: "IMG_0001.MOV",
                 byteCount: 20 * megabyte
             ),
-            hits: [],
-            primary: nil
+            hits: [.bigVideo],
+            primary: .bigVideo
         )
-        // 不低于门槛的普通视频。
+        // 大体积的普通视频。
         assertClassification(
             scannedAsset(
                 "big-video",
@@ -70,7 +67,7 @@ final class IC153ScanServiceTests: XCTestCase {
             hits: [.bigVideo],
             primary: .bigVideo
         )
-        // 不低于门槛且文件名前缀命中的录屏：两个类别都命中，去重归大视频。
+        // 大体积且文件名前缀命中的录屏：视频与录屏互斥，只归录屏（IC-163 裁定 五）。
         assertClassification(
             scannedAsset(
                 "prefix-recording",
@@ -80,8 +77,8 @@ final class IC153ScanServiceTests: XCTestCase {
                 videoFilename: "ScreenRecording_10-13-2025 15-42-39_1.mp4",
                 byteCount: 120 * megabyte
             ),
-            hits: [.bigVideo, .screenRecording],
-            primary: .bigVideo
+            hits: [.screenRecording],
+            primary: .screenRecording
         )
         // 像素 2622×1206（横放）且文件名不命中的录屏。
         assertClassification(
@@ -104,13 +101,13 @@ final class IC153ScanServiceTests: XCTestCase {
                 pixelWidth: 1_206,
                 pixelHeight: 2_622,
                 videoFilename: "ScreenRecording_09-01-2025 08-00-00_1.mp4",
-                byteCount: threshold,
+                byteCount: 100 * megabyte,
                 isUnresolved: true
             ),
             hits: [],
             primary: nil
         )
-        // 前缀判据大小写敏感：小写前缀不命中。
+        // 前缀判据大小写敏感：小写前缀不算录屏证据，归「视频」类。
         assertClassification(
             scannedAsset(
                 "lowercase-prefix",
@@ -120,10 +117,10 @@ final class IC153ScanServiceTests: XCTestCase {
                 videoFilename: "screenrecording_10-13-2025 15-42-39_1.mp4",
                 byteCount: 10 * megabyte
             ),
-            hits: [],
-            primary: nil
+            hits: [.bigVideo],
+            primary: .bigVideo
         )
-        // 门槛恰好相等时命中（大于等于）。
+        // 恰为原门槛（100 MB）：照样命中「视频」类。
         assertClassification(
             scannedAsset(
                 "at-threshold",
@@ -131,12 +128,12 @@ final class IC153ScanServiceTests: XCTestCase {
                 pixelWidth: 1_920,
                 pixelHeight: 1_080,
                 videoFilename: "IMG_0004.MOV",
-                byteCount: threshold
+                byteCount: 100 * megabyte
             ),
             hits: [.bigVideo],
             primary: .bigVideo
         )
-        // 差一个字节不命中。
+        // 比原门槛差一个字节：门槛已取消，小视频也命中「视频」类。
         assertClassification(
             scannedAsset(
                 "below-threshold",
@@ -144,10 +141,10 @@ final class IC153ScanServiceTests: XCTestCase {
                 pixelWidth: 1_920,
                 pixelHeight: 1_080,
                 videoFilename: "IMG_0005.MOV",
-                byteCount: threshold - 1
+                byteCount: 100 * megabyte - 1
             ),
-            hits: [],
-            primary: nil
+            hits: [.bigVideo],
+            primary: .bigVideo
         )
 
         // 两条录屏证据分开记（缓存只存这两个布尔）。
@@ -262,14 +259,15 @@ final class IC153ScanServiceTests: XCTestCase {
         )
         let snapshot = S0ScanAggregator.snapshot(of: assets, context: context)
 
-        // 类别全量：录屏同时计入大视频与屏幕录制两个类别。
+        // 类别全量：视频与录屏互斥（IC-163 裁定 五），录屏只计入屏幕录制；唯一的普通视频在账本内，
+        // 「视频」类此处无候选。
         let expectedCategories = [
             S0CategorySnapshot(
                 id: .bigVideo,
-                candidateCount: 1,
-                candidateByteCount: 150 * megabyte,
+                candidateCount: 0,
+                candidateByteCount: 0,
                 recognition: .counting,
-                coverAssetID: "recording"
+                coverAssetID: nil
             ),
             S0CategorySnapshot(
                 id: .screenRecording,
@@ -293,8 +291,9 @@ final class IC153ScanServiceTests: XCTestCase {
         let categorySum = snapshot.categories.reduce(Int64(0)) { total, category in
             total + category.candidateByteCount
         }
-        XCTAssertEqual(categorySum, 303 * megabyte)
-        XCTAssertGreaterThan(categorySum, snapshot.cleanableByteCount)
+        // 视频与录屏互斥后本夹具再无跨类资产：类别和恰等于 hero（IC-163 前为 303 MB、大于 hero）。
+        XCTAssertEqual(categorySum, 153 * megabyte)
+        XCTAssertEqual(categorySum, snapshot.cleanableByteCount)
 
         // LIB 含不属任何类别的照片、含待删篮与账本内的资产；未解析的不进。
         XCTAssertEqual(snapshot.libraryTotalByteCount, 359 * megabyte)
@@ -318,7 +317,7 @@ final class IC153ScanServiceTests: XCTestCase {
                 isLimitedAuthorization: false
             )
         )
-        XCTAssertEqual(unfiltered.categories.map { $0.candidateCount }, [2, 1, 2])
+        XCTAssertEqual(unfiltered.categories.map { $0.candidateCount }, [1, 1, 2])
         XCTAssertEqual(unfiltered.cleanableAssetCount, 4)
         XCTAssertEqual(unfiltered.cleanableByteCount, 355 * megabyte)
         XCTAssertEqual(unfiltered.libraryTotalByteCount, 359 * megabyte)
@@ -345,9 +344,9 @@ final class IC153ScanServiceTests: XCTestCase {
                 + literals.subtracting(allowed).sorted().joined(separator: ",")
         )
         // 正对照：分类器确实经登记表取值。
-        XCTAssertGreaterThanOrEqual(occurrences(of: "S0ScanRules.", in: classifier), 3)
+        XCTAssertGreaterThanOrEqual(occurrences(of: "S0ScanRules.", in: classifier), 2)
 
-        // 登记表：恰七个常量，每个定义处都注明出处。
+        // 登记表：恰六个常量，每个定义处都注明出处（IC-163 删去大视频门槛）。
         let rules = try XCTUnwrap(sourceText(Self.rulesPath))
         let lines = rules.components(separatedBy: Self.newline)
         var constantCount = 0
@@ -364,16 +363,15 @@ final class IC153ScanServiceTests: XCTestCase {
             }
             XCTAssertTrue(hasProvenance, "登记常量缺出处注释：" + line)
         }
-        XCTAssertEqual(constantCount, 7)
-        XCTAssertEqual(occurrences(of: "出处：", in: rules), 7)
+        XCTAssertEqual(constantCount, 6)
+        XCTAssertEqual(occurrences(of: "出处：", in: rules), 6)
 
         // 正对照：同一个数字扫描器在登记表上确实看得见数。
         let rulesStripped = try XCTUnwrap(strippedSource(Self.rulesPath))
-        let expectedRuleNumbers: Set<String> = ["100000000", "1206", "2622", "200"]
+        let expectedRuleNumbers: Set<String> = ["1206", "2622", "200"]
         XCTAssertTrue(numericLiterals(in: rulesStripped).isSuperset(of: expectedRuleNumbers))
 
-        // 七个取值逐个钉住（任务卡白名单）。
-        XCTAssertEqual(S0ScanRules.bigVideoMinimumByteCount, 100_000_000)
+        // 六个取值逐个钉住（任务卡白名单）。
         XCTAssertEqual(S0ScanRules.screenRecordingFilenamePrefix, "ScreenRecording_")
         XCTAssertEqual(
             S0ScanRules.screenRecordingPixelSize,

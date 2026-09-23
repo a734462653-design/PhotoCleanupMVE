@@ -167,7 +167,7 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
             isScreenshot: true,
             byteCount: 2 * megabyte
         )
-        // 账本内的视频比录屏大：它若没被排除，大视频的封面就会是它。
+        // 账本内的视频：它若没被排除，「视频」类的封面就会是它（录屏自 IC-163 起不计入视频类）。
         let ledgerVideo = scannedAsset(
             "ledger-video",
             mediaType: .video,
@@ -223,7 +223,8 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
             snapshot.categories.map { $0.id },
             [.bigVideo, .screenRecording, .screenshot]
         )
-        XCTAssertEqual(category(.bigVideo, in: snapshot)?.coverAssetID, "recording")
+        // 视频与录屏互斥（IC-163 裁定 五）：唯一的普通视频在账本内，「视频」类无候选、封面为 nil。
+        XCTAssertEqual(category(.bigVideo, in: snapshot)?.coverAssetID, nil)
         XCTAssertEqual(category(.screenRecording, in: snapshot)?.coverAssetID, "recording")
         XCTAssertEqual(category(.screenshot, in: snapshot)?.coverAssetID, "shot-a")
         // 候选集与 `candidateCount` 同源：截图三条（3 MB + 5 MB × 2）。
@@ -245,10 +246,10 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
         XCTAssertEqual(category(.screenshot, in: withShotAPending)?.candidateCount, 2)
         XCTAssertEqual(
             category(.bigVideo, in: withShotAPending)?.coverAssetID,
-            "recording"
+            nil
         )
 
-        // 正对照：账本清空后，更大的账本视频回到大视频类别并成为封面。
+        // 正对照：账本清空后，账本视频回到「视频」类别并成为封面。
         let withoutLedger = S0ScanAggregator.snapshot(
             of: assets,
             context: aggregationContext(pending: pending, ledger: [])
@@ -458,7 +459,7 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
             [.bigVideo, .screenRecording, .screenshot]
         )
         let expectedOrders: [S0CategoryIdentifier: [String]] = [
-            .bigVideo: ["v-big-1", "v-big-2", "v-big-3", "rec-big"],
+            .bigVideo: ["v-big-1", "v-big-2", "v-big-3", "video-small"],
             .screenRecording: ["rec-big", "rec-a", "rec-b"],
             .screenshot: ["shot-1", "shot-2", "shot-3"]
         ]
@@ -526,11 +527,11 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
         XCTAssertEqual(service.categoryAssets(.bigVideo).first?.id, "v-big-2")
         assertListsMatchSnapshot(service)
 
-        // 同属两个类别的资产进篮：两个列表一起少它。
+        // 录屏进篮：视频与录屏互斥（IC-163 裁定 五），只有录屏列表少它，「视频」列表不变。
         pending.insert("rec-big")
         XCTAssertEqual(
             service.categoryAssets(.bigVideo).map { $0.id },
-            ["v-big-2", "v-big-3"]
+            ["v-big-2", "v-big-3", "video-small"]
         )
         XCTAssertEqual(
             service.categoryAssets(.screenRecording).map { $0.id },
@@ -699,8 +700,8 @@ final class IC155CategoryDataAndCoverTests: XCTestCase {
         snapshot.categories.first { $0.id == identifier }
     }
 
-    /// 断言 4／5 的样本库：三个类别各有并列，含一条同属两类的录屏、一条未解析的截图、
-    /// 一条不属任何类别的小视频与一张普通照片。视频时长各不相同。
+    /// 断言 4／5 的样本库：三个类别各有并列，含一条大体积录屏（IC-163 起只归录屏）、一条未解析的
+    /// 截图、一条小视频（IC-163 起归「视频」类）与一张普通照片。视频时长各不相同。
     private func coverLibrary() -> IC155LibraryFixture {
         let megabyte: Int64 = 1_000_000
         var assets: [S0AssetMetadata] = []
