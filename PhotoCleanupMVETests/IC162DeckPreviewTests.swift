@@ -144,31 +144,8 @@ final class IC162DeckPreviewTests: XCTestCase {
         )
     }
 
-    // MARK: - 断言 4：「最大的 N 个」求和夹到实际项数（子项 A）
-
-    func testIC162A_TopSumClampsToCount() {
-        let three = Self.assets(count: 3)
-        let threeSum = S0DeckHomeModel.topSum(three, limit: 10)
-        XCTAssertEqual(threeSum.count, 3)
-        XCTAssertEqual(threeSum.byteCount, 300 + 299 + 298)
-
-        let twelve = Self.assets(count: 12)
-        let twelveSum = S0DeckHomeModel.topSum(twelve, limit: 10)
-        XCTAssertEqual(twelveSum.count, 10)
-        XCTAssertEqual(
-            twelveSum.byteCount,
-            twelve.prefix(10).reduce(into: Int64(0)) { $0 += $1.byteCount }
-        )
-        // 正对照：前 10 项之和确实小于全部 12 项之和，求和不是空转。
-        XCTAssertLessThan(
-            twelveSum.byteCount,
-            twelve.reduce(into: Int64(0)) { $0 += $1.byteCount }
-        )
-
-        let empty = S0DeckHomeModel.topSum([], limit: 10)
-        XCTAssertEqual(empty.count, 0)
-        XCTAssertEqual(empty.byteCount, 0)
-    }
+    // 断言 4（`testIC162A_TopSumClampsToCount`）随 IC-163 裁定 三删去：首页「建议先清」
+    // 角标整套撤销，`topSum` 由 IC-163 子项 C 随「最大的 N 个」一节一起删。
 
     // MARK: - 子项 B
 

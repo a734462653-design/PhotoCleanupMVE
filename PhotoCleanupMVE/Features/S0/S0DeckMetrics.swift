@@ -418,24 +418,6 @@ enum S0DeckMetrics {
     /// 取值出处：r7.py `.pct { font-size: 12px }`。
     static let shareBadgeFontSize: CGFloat = 12
 
-    /// 取值出处：r7.py `.chipk { height: 28px }`。
-    static let suggestBadgeHeight: CGFloat = 28
-
-    /// 取值出处：r7.py `.chipk { border-radius: 14px }`。
-    static let suggestBadgeCornerRadius: CGFloat = 14
-
-    /// 取值出处：r7.py `.chipk { padding: 0 10px 0 8px }` 的左内距。
-    static let suggestBadgeLeadingPadding: CGFloat = 8
-
-    /// 取值出处：同上右内距 `10px`。
-    static let suggestBadgeTrailingPadding: CGFloat = 10
-
-    /// 取值出处：r7.py `.chipk { gap: 4px }`。
-    static let suggestBadgeItemSpacing: CGFloat = 4
-
-    /// 取值出处：r7.py `.chipk { font-size: 12px }`。
-    static let suggestBadgeFontSize: CGFloat = 12
-
     /// 取值出处：r7.py `.dk.open .tx { left: 20px }`。
     static let openTextLeadingInset: CGFloat = 20
 
@@ -500,6 +482,10 @@ enum S0DeckMetrics {
 
     /// 取值出处：同上。
     static let expandAnimationDamping: Double = 0.86
+
+    /// 展开卡内容层（大字块、「去清理」、左上角标）出现时自下而上的位移。
+    /// 取值出处：IC-163 卡「视觉取值」第一条（`expandContentRise = 8`）。
+    static let expandContentRise: CGFloat = 8
 
     // MARK: - 类别页页头（r9.py `.hd` / `.ttl` / `.tbar`）
 

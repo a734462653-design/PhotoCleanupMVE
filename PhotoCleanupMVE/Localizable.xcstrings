@@ -177,17 +177,6 @@
         }
       }
     },
-    "deck.home.suggest" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "建议先清 · 最大 {count} 个 {bytes}"
-          }
-        }
-      }
-    },
     "deck.page.rest.title" : {
       "extractionState" : "manual",
       "localizations" : {

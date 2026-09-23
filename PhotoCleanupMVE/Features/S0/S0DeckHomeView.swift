@@ -22,9 +22,6 @@ struct S0DeckHomeView: View {
     /// 用户点开的那张卡。落地取值经 `S0DeckHomeModel.resolvedOpenID`——
     /// 那张卡消失或变得不可点时自动回落，不在这里写状态（陷阱 5）。
     @State private var openedCardID: String?
-    /// 「建议先清」角标。**不在 `body` 里算**：`categoryAssets(_:)` 每次调用都是
-    /// 全库过滤加排序且在锁内，扫描期首页每秒最多重绘四次（裁定 五）。
-    @State private var suggestion: S0DeckSuggestion?
 
     private let dataProvider: (any S0CleanupDataProviding)?
     private let onEnterCategoryPage: (S0CategoryIdentifier) -> Void
@@ -67,10 +64,6 @@ struct S0DeckHomeView: View {
         }
         .onAppear {
             bootstrapIfNeeded()
-            refreshSuggestion()
-        }
-        .onChange(of: suggestionKey) { _, _ in
-            refreshSuggestion()
         }
     }
 
@@ -498,6 +491,14 @@ struct S0DeckHomeView: View {
                 style: .continuous
             )
         )
+        // IC-163 B（裁定 二）：命中区 = 卡的圆角矩形。`clipShape` 同样只裁绘制，后画的
+        // 卡 `zIndex` 更高，溢出的命中区会盖住展开卡与总条。
+        .contentShape(
+            RoundedRectangle(
+                cornerRadius: S0DeckMetrics.cardCornerRadius,
+                style: .continuous
+            )
+        )
         // r7.py `.dk .edge` 是两道 inset 阴影：一圈 0.12 的描边，加上缘一道 0.34 的高光。
         .overlay {
             RoundedRectangle(
@@ -526,7 +527,10 @@ struct S0DeckHomeView: View {
         )
     }
 
-    @ViewBuilder
+    /// IC-163 B：展开／收起的切换过渡。每一层内容都是自己被插入／移除的那个视图
+    /// （条件写在各自的 `overlay` 里），过渡才会作用在它身上——整支 `if`／`else` 换掉时
+    /// 嵌在里面的 `.transition` 不保证生效（③）。封面仍随展开态换身份、按新尺寸重取，
+    /// 与改前的 `if`／`else` 两支各建一只封面同效。节奏跟随 `expandCard` 的 spring。
     private func cardContent(
         _ card: S0DeckHomeModel.Card,
         isOpen: Bool,
@@ -534,56 +538,64 @@ struct S0DeckHomeView: View {
         height: CGFloat,
         visibleHeight: CGFloat
     ) -> some View {
-        let cover = S0DeckCoverView(
+        S0DeckCoverView(
             assetIdentifier: coverAssetID(for: card),
             width: width,
             height: height
         )
         .id(coverAssetID(for: card))
-        if isOpen {
-            cover
-                .overlay(alignment: .top) {
-                    S0DeckShade.open
-                        .frame(height: visibleHeight)
-                }
-                .overlay(alignment: .topLeading) {
-                    shareBadge(card)
-                        .padding(S0DeckMetrics.openBadgeInset)
-                }
-                .overlay(alignment: .topTrailing) {
-                    suggestBadge
-                        .padding(S0DeckMetrics.openBadgeInset)
-                }
-                .overlay(alignment: .bottomLeading) {
-                    openTextBlock(card)
-                        .padding(.leading, S0DeckMetrics.openTextLeadingInset)
-                        .padding(
-                            .bottom,
-                            S0DeckMetrics.cardOverhang
-                                + S0DeckMetrics.openTextBottomInset
-                        )
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    openActionLabel
-                        .padding(
-                            .trailing,
-                            S0DeckMetrics.openActionTrailingInset
-                        )
-                        .padding(
-                            .bottom,
-                            S0DeckMetrics.cardOverhang
-                                + S0DeckMetrics.openActionBottomInset
-                        )
-                }
-        } else {
-            cover
-                .overlay {
-                    S0DeckShade.strip
-                }
-                .overlay(alignment: .top) {
-                    stripRow(card)
-                        .frame(height: visibleHeight)
-                }
+        .id(isOpen)
+        .overlay {
+            if !isOpen {
+                S0DeckShade.strip
+            }
+        }
+        .overlay(alignment: .top) {
+            if isOpen {
+                S0DeckShade.open
+                    .frame(height: visibleHeight)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if isOpen {
+                shareBadge(card)
+                    .padding(S0DeckMetrics.openBadgeInset)
+                    .transition(Self.openContentTransition)
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if isOpen {
+                openTextBlock(card)
+                    .padding(.leading, S0DeckMetrics.openTextLeadingInset)
+                    .padding(
+                        .bottom,
+                        S0DeckMetrics.cardOverhang
+                            + S0DeckMetrics.openTextBottomInset
+                    )
+                    .transition(Self.openContentTransition)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if isOpen {
+                openActionLabel
+                    .padding(
+                        .trailing,
+                        S0DeckMetrics.openActionTrailingInset
+                    )
+                    .padding(
+                        .bottom,
+                        S0DeckMetrics.cardOverhang
+                            + S0DeckMetrics.openActionBottomInset
+                    )
+                    .transition(Self.openContentTransition)
+            }
+        }
+        .overlay(alignment: .top) {
+            if !isOpen {
+                stripRow(card)
+                    .frame(height: visibleHeight)
+                    .transition(.opacity)
+            }
         }
     }
 
@@ -613,45 +625,6 @@ struct S0DeckHomeView: View {
                 style: .continuous
             )
         )
-    }
-
-    /// 「建议先清」角标：仅当该类 `categoryAssets` 首项是视频时出现（裁定 五）。
-    @ViewBuilder
-    private var suggestBadge: some View {
-        if let suggestion, suggestion.isVisible {
-            HStack(spacing: S0DeckMetrics.suggestBadgeItemSpacing) {
-                Image(systemName: S0DeckSymbol.sparkle)
-                Text(
-                    L10n.text(
-                        "deck.home.suggest",
-                        replacing: [
-                            "count": String(suggestion.count),
-                            "bytes": S0ByteCountText.string(
-                                forByteCount: suggestion.byteCount
-                            )
-                        ]
-                    )
-                )
-                .monospacedDigit()
-            }
-            .font(
-                .system(
-                    size: S0DeckMetrics.suggestBadgeFontSize,
-                    weight: .bold
-                )
-            )
-            .foregroundStyle(S0DeckMetrics.text)
-            .padding(.leading, S0DeckMetrics.suggestBadgeLeadingPadding)
-            .padding(.trailing, S0DeckMetrics.suggestBadgeTrailingPadding)
-            .frame(height: S0DeckMetrics.suggestBadgeHeight)
-            .background(
-                S0DeckMetrics.accent,
-                in: RoundedRectangle(
-                    cornerRadius: S0DeckMetrics.suggestBadgeCornerRadius,
-                    style: .continuous
-                )
-            )
-        }
     }
 
     private func openTextBlock(_ card: S0DeckHomeModel.Card) -> some View {
@@ -947,46 +920,6 @@ struct S0DeckHomeView: View {
         }
     }
 
-    // MARK: - 「建议先清」角标的取数（不在 body 里算）
-
-    private var suggestionKey: S0DeckSuggestionKey? {
-        guard let card = openCard,
-              let identifier = card.category,
-              let snapshot = machine.category(identifier) else {
-            return nil
-        }
-        return S0DeckSuggestionKey(
-            categoryID: identifier,
-            candidateCount: snapshot.candidateCount,
-            candidateByteCount: snapshot.candidateByteCount
-        )
-    }
-
-    private func refreshSuggestion() {
-        guard let key = suggestionKey else {
-            suggestion = nil
-            return
-        }
-        guard suggestion?.key != key else {
-            return
-        }
-        guard let provider = dataProvider else {
-            suggestion = nil
-            return
-        }
-        let items = provider.categoryAssets(key.categoryID)
-        let top = S0DeckHomeModel.topSum(
-            items,
-            limit: S0DeckMetrics.topSectionLimit
-        )
-        suggestion = S0DeckSuggestion(
-            key: key,
-            isVisible: items.first?.isVideo == true,
-            count: top.count,
-            byteCount: top.byteCount
-        )
-    }
-
     // MARK: - 取数（照 `S0View.bootstrapIfNeeded` 逐字）
 
     /// 遵循 E4 口径：测试宿主下不自动启动任何活动。真机与模拟器上首次出现时
@@ -1010,6 +943,13 @@ struct S0DeckHomeView: View {
     }
 
     // MARK: - 与视图状态无关的派生（静态，便于逐条核对）
+
+    /// IC-163 B：展开卡内容层的过渡——淡入并自下而上升 `expandContentRise`。
+    static var openContentTransition: AnyTransition {
+        AnyTransition.opacity.combined(
+            with: AnyTransition.offset(y: S0DeckMetrics.expandContentRise)
+        )
+    }
 
     static func cardID(for kind: S0SegmentBarModel.Kind) -> String? {
         switch kind {
@@ -1063,22 +1003,6 @@ struct S0DeckHomeView: View {
         }
         return S0DeckMetrics.stripAwaitingOpacity
     }
-}
-
-/// 「建议先清」角标的取数键：展开卡的类别、该类候选数与候选字节量。
-/// 键里带数量与字节量——进篮后角标才会跟着刷新。
-struct S0DeckSuggestionKey: Equatable {
-    let categoryID: S0CategoryIdentifier
-    let candidateCount: Int
-    let candidateByteCount: Int64
-}
-
-/// 「建议先清」角标的取数结果。`isVisible` 由该类候选首项是不是视频决定。
-struct S0DeckSuggestion: Equatable {
-    let key: S0DeckSuggestionKey
-    let isVisible: Bool
-    let count: Int
-    let byteCount: Int64
 }
 
 /// 顶缘高光：CSS 的 `inset 0 0.5px 0 rgba(255,255,255,0.34)` 只亮上缘，SwiftUI 侧

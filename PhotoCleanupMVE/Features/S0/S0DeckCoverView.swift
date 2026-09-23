@@ -52,6 +52,9 @@ struct S0DeckCoverView: View {
         }
         .frame(width: width, height: height)
         .clipped()
+        // IC-163 B（裁定 二）：`clipped` 只裁绘制、不裁命中区——竖幅封面填进宽幅框会上下
+        // 溢出可命中区，盖住相邻的卡与总条。命中区收回到框内。
+        .contentShape(Rectangle())
         .accessibilityHidden(true)
         .onAppear(perform: load)
         .onDisappear(perform: cancel)
