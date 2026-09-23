@@ -764,6 +764,8 @@ enum S0DeckMetrics {
             return colorDuplicate
         case .similar:
             return colorSimilar
+        case .rest:
+            return colorRest
         }
     }
 

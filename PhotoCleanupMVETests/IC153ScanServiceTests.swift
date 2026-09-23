@@ -190,7 +190,7 @@ final class IC153ScanServiceTests: XCTestCase {
         XCTAssertNil(S0ScanClassifier.primaryCategory(for: [.duplicate, .similar]))
     }
 
-    // MARK: - 断言 2：hero 去重、类别全量（子项 A）
+    // MARK: - 断言 2：hero 去重、类别按归属（子项 A；IC-166 起类别也按归属去重，函数名沿用）
 
     func testIC153A_AggregationDedupesHeroButNotCategories() {
         let megabyte: Int64 = 1_000_000
@@ -259,8 +259,8 @@ final class IC153ScanServiceTests: XCTestCase {
         )
         let snapshot = S0ScanAggregator.snapshot(of: assets, context: context)
 
-        // 类别全量：视频与录屏互斥（IC-163 裁定 五），录屏只计入屏幕录制；唯一的普通视频在账本内，
-        // 「视频」类此处无候选。
+        // 类别按归属：视频与录屏互斥（IC-163 裁定 五），录屏只计入屏幕录制；唯一的普通视频在账本内，
+        // 「视频」类此处无候选。IC-166 裁定 一：普通照片归「其余照片」，快照恒四条。
         let expectedCategories = [
             S0CategorySnapshot(
                 id: .bigVideo,
@@ -282,21 +282,29 @@ final class IC153ScanServiceTests: XCTestCase {
                 candidateByteCount: 3 * megabyte,
                 recognition: .counting,
                 coverAssetID: "screenshot"
+            ),
+            S0CategorySnapshot(
+                id: .rest,
+                candidateCount: 1,
+                candidateByteCount: 4 * megabyte,
+                recognition: .counting,
+                coverAssetID: "plain-photo"
             )
         ]
         XCTAssertEqual(snapshot.categories, expectedCategories)
-        // hero 去重：录屏只计一次。
-        XCTAssertEqual(snapshot.cleanableAssetCount, 2)
-        XCTAssertEqual(snapshot.cleanableByteCount, 153 * megabyte)
+        // hero 去重：录屏只计一次；IC-166 起普通照片（「其余照片」）一并计入，= `N_成员`。
+        XCTAssertEqual(snapshot.cleanableAssetCount, 3)
+        XCTAssertEqual(snapshot.cleanableByteCount, 157 * megabyte)
         let categorySum = snapshot.categories.reduce(Int64(0)) { total, category in
             total + category.candidateByteCount
         }
-        // 视频与录屏互斥后本夹具再无跨类资产：类别和恰等于 hero（IC-163 前为 303 MB、大于 hero）。
-        XCTAssertEqual(categorySum, 153 * megabyte)
+        // 归属去重且「其余照片」兜底：类别和 = hero = `LIB`（IC-163 前为 303 MB、IC-166 前为 153 MB）。
+        XCTAssertEqual(categorySum, 157 * megabyte)
         XCTAssertEqual(categorySum, snapshot.cleanableByteCount)
+        XCTAssertEqual(categorySum, snapshot.libraryTotalByteCount)
 
-        // LIB 含不属任何类别的照片、含待删篮与账本内的资产；未解析的不进。
-        XCTAssertEqual(snapshot.libraryTotalByteCount, 359 * megabyte)
+        // IC-166 裁定 二：LIB 含不属任何类别的照片，排除待删篮与账本内的资产；未解析的不进。
+        XCTAssertEqual(snapshot.libraryTotalByteCount, 157 * megabyte)
         // 待删篮体积：只算已扫到且已解析的那一条。
         XCTAssertEqual(snapshot.pendingDeletionByteCount, 2 * megabyte)
 
@@ -317,18 +325,18 @@ final class IC153ScanServiceTests: XCTestCase {
                 isLimitedAuthorization: false
             )
         )
-        XCTAssertEqual(unfiltered.categories.map { $0.candidateCount }, [1, 1, 2])
-        XCTAssertEqual(unfiltered.cleanableAssetCount, 4)
-        XCTAssertEqual(unfiltered.cleanableByteCount, 355 * megabyte)
+        XCTAssertEqual(unfiltered.categories.map { $0.candidateCount }, [1, 1, 2, 1])
+        XCTAssertEqual(unfiltered.cleanableAssetCount, 5)
+        XCTAssertEqual(unfiltered.cleanableByteCount, 359 * megabyte)
         XCTAssertEqual(unfiltered.libraryTotalByteCount, 359 * megabyte)
         XCTAssertEqual(unfiltered.pendingDeletionByteCount, 0)
         XCTAssertEqual(
             unfiltered.categories.map { $0.recognition },
-            [.settled, .settled, .settled]
+            [.settled, .settled, .settled, .settled]
         )
         XCTAssertEqual(
             unfiltered.categories.map { $0.id },
-            [.bigVideo, .screenRecording, .screenshot]
+            [.bigVideo, .screenRecording, .screenshot, .rest]
         )
     }
 
@@ -589,8 +597,12 @@ final class IC153ScanServiceTests: XCTestCase {
         )
         XCTAssertEqual(firstFixture.fetchCount, 12)
         let firstSnapshot = first.currentSnapshot()
-        // 前置：三个类别都有项目、hero 非零，否则下面的「相等」会在空数据上空转。
-        XCTAssertEqual(firstSnapshot.categories.map { $0.candidateCount > 0 }, [true, true, true])
+        // 前置：四个类别（IC-166 起含「其余照片」）都有项目、hero 非零，否则下面的「相等」会在
+        // 空数据上空转。
+        XCTAssertEqual(
+            firstSnapshot.categories.map { $0.candidateCount > 0 },
+            [true, true, true, true]
+        )
         XCTAssertGreaterThan(firstSnapshot.cleanableByteCount, 0)
 
         // 新实例、同一缓存目录、同样的元数据。
@@ -675,9 +687,10 @@ final class IC153ScanServiceTests: XCTestCase {
             XCTAssertEqual(service.currentScanOutcome(), .scanning)
             XCTAssertEqual(service.currentSnapshot().isLimitedAuthorization, expectedLimited)
             XCTAssertEqual(service.currentSnapshot().progress.totalAssetCount, 8)
+            // IC-166：快照恒四条（含「其余照片」），识别阶段同一取值。
             XCTAssertEqual(
                 service.currentSnapshot().categories.map { $0.recognition },
-                [.counting, .counting, .counting]
+                [.counting, .counting, .counting, .counting]
             )
 
             fixture.setBlockedAfterFetchCount(nil)
@@ -686,7 +699,7 @@ final class IC153ScanServiceTests: XCTestCase {
             XCTAssertEqual(service.currentSnapshot().isLimitedAuthorization, expectedLimited)
             XCTAssertEqual(
                 service.currentSnapshot().categories.map { $0.recognition },
-                [.settled, .settled, .settled]
+                [.settled, .settled, .settled, .settled]
             )
         }
 
@@ -1012,10 +1025,10 @@ final class IC153ScanServiceTests: XCTestCase {
         first.advanceScan()
         XCTAssertEqual(first.scanStep, S0CleanupDataStub.scanStepCount)
         XCTAssertEqual(first.currentScanOutcome(), .completed)
-        // 桩的剧本不动：就绪剧本仍给五个类别（真实服务只给三个，裁定 二）。
+        // 就绪剧本给六个类别：IC-166 裁定 三加「其余照片」一行（真实服务只给四个）。
         XCTAssertEqual(
             S0CleanupDataStub(scenario: .readyWithItems).currentSnapshot().categories.count,
-            5
+            6
         )
     }
 

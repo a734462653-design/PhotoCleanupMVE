@@ -94,7 +94,9 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
     // MARK: - 剧本
 
     /// 扫描中：已扫部分随步数线性增长；重复与相似要等全库扫完才起算，
-    /// 因而恒为 `awaitingScanCompletion` 且数值为零。
+    /// 因而恒为 `awaitingScanCompletion` 且数值为零。IC-166 裁定 三：「其余照片」随已扫部分
+    /// 出行（`.counting`）；`LIB`、hero 字节与成员数一律取当步全部类别之和（SPEC-S0 v3
+    /// `Σ c.bytes = LIB`、`N_成员 = Σ c.count`），第 4 步恰为 48 GB。
     private func scanningSnapshot() -> S0CleanupSnapshot {
         let step = Int64(scanStep)
         let scanned = Self.totalAssetCount * scanStep / Self.scanStepCount
@@ -133,6 +135,13 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
                 candidateByteCount: 0,
                 recognition: .awaitingScanCompletion,
                 coverAssetID: Self.coverAssetID(for: .similar, candidateCount: 0)
+            ),
+            S0CategorySnapshot(
+                id: .rest,
+                candidateCount: 250 * scanStep,
+                candidateByteCount: 10_180_000_000 * step,
+                recognition: .counting,
+                coverAssetID: Self.coverAssetID(for: .rest, candidateCount: 250 * scanStep)
             )
         ]
         return S0CleanupSnapshot(
@@ -140,10 +149,9 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
                 scannedAssetCount: scanned,
                 totalAssetCount: Self.totalAssetCount
             ),
-            cleanableAssetCount: 26 * scanStep,
-            // 去重求和：比各类别 `c.bytes` 之和少一截，正是重合项只计一次。
-            cleanableByteCount: 1_700_000_000 * step,
-            libraryTotalByteCount: 48_000_000_000,
+            cleanableAssetCount: Self.memberCount(of: categories),
+            cleanableByteCount: Self.byteCount(of: categories),
+            libraryTotalByteCount: Self.byteCount(of: categories),
             categories: categories,
             ledgerEntries: ledgerEntries(),
             pendingDeletionByteCount: pendingDeletionByteCount,
@@ -151,7 +159,9 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
         )
     }
 
-    /// 就绪：`hasItems` 为假时全部类别归零，四态判定因而落到 S0-3。
+    /// 就绪：`hasItems` 为假时全部类别归零，四态判定因而落到 S0-3。IC-166 裁定 三：加
+    /// 「其余照片」行（48 GB 减其余五类之和）；`LIB`、hero 字节与成员数取全部类别之和，
+    /// 守 `N_成员 = 0 ⟺ LIB = 0`。
     private func readySnapshot(hasItems: Bool) -> S0CleanupSnapshot {
         let categories = [
             S0CategorySnapshot(
@@ -188,6 +198,13 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
                 candidateByteCount: hasItems ? 1_150_000_000 : 0,
                 recognition: .settled,
                 coverAssetID: Self.coverAssetID(for: .similar, candidateCount: hasItems ? 118 : 0)
+            ),
+            S0CategorySnapshot(
+                id: .rest,
+                candidateCount: hasItems ? 731 : 0,
+                candidateByteCount: hasItems ? 38_840_000_000 : 0,
+                recognition: .settled,
+                coverAssetID: Self.coverAssetID(for: .rest, candidateCount: hasItems ? 731 : 0)
             )
         ]
         return S0CleanupSnapshot(
@@ -195,9 +212,9 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
                 scannedAssetCount: Self.totalAssetCount,
                 totalAssetCount: Self.totalAssetCount
             ),
-            cleanableAssetCount: hasItems ? 269 : 0,
-            cleanableByteCount: hasItems ? 7_900_000_000 : 0,
-            libraryTotalByteCount: 48_000_000_000,
+            cleanableAssetCount: Self.memberCount(of: categories),
+            cleanableByteCount: Self.byteCount(of: categories),
+            libraryTotalByteCount: Self.byteCount(of: categories),
             categories: categories,
             ledgerEntries: ledgerEntries(),
             pendingDeletionByteCount: pendingDeletionByteCount,
@@ -220,6 +237,20 @@ final class S0CleanupDataStub: S0CleanupDataProviding {
             pendingDeletionByteCount: 0,
             isLimitedAuthorization: false
         )
+    }
+
+    /// IC-166：`N_成员 = Σ c.count`。
+    private static func memberCount(of categories: [S0CategorySnapshot]) -> Int {
+        categories.reduce(into: 0) { total, category in
+            total += category.candidateCount
+        }
+    }
+
+    /// IC-166：`LIB = Σ c.bytes`（归属去重，各类别两两不交）。
+    private static func byteCount(of categories: [S0CategorySnapshot]) -> Int64 {
+        categories.reduce(into: 0) { total, category in
+            total += category.candidateByteCount
+        }
     }
 
     private func ledgerEntries() -> [S0LedgerEntry] {

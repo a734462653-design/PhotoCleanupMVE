@@ -58,6 +58,8 @@ enum S0CategoryIdentifier: String, CaseIterable, Equatable, Hashable, Sendable {
     case screenRecording
     case duplicate
     case similar
+    /// IC-166（SPEC-S0 v3 第二节第 2 部分）：「其余照片」。不是判据命中，是「一个都没命中」的归属。
+    case rest
 }
 
 /// 类别的识别进度。重复与相似需全库扫描完成后才起算，扫描中整行降透明、
@@ -79,8 +81,8 @@ struct S0ScanProgress: Equatable, Sendable {
     }
 }
 
-/// 单个类别的快照。`candidateByteCount` 是 `c.bytes`（全量，不去重）；
-/// 首页 hero 的可清理约另按去重口径给出，二者不可互推。
+/// 单个类别的快照。`candidateByteCount` 是 `c.bytes`：归属去重后各类别两两不交，
+/// 含「其余照片」在内各类之和 = `LIB`（SPEC-S0 v3 第二节第 2 部分）。
 struct S0CategorySnapshot: Equatable, Sendable, Identifiable {
     let id: S0CategoryIdentifier
     let candidateCount: Int
@@ -133,11 +135,10 @@ struct S0LedgerEntry: Equatable, Sendable {
 /// 数据源一次取数的全部结果。行为层只消费本结构，不认识扫描实现。
 struct S0CleanupSnapshot: Equatable, Sendable {
     let progress: S0ScanProgress
-    /// 去重后的可清理项数。SPEC-S0 v1 第二节第 1 部分把 S0-3 定义为
-    /// 「全部类别均无项目」，括注「可清理量为 0」；本实现按前者的字面口径
-    /// 取去重候选项数，二者在任何真实数据上同时为零。
+    /// `N_成员`：全部类别（含「其余照片」）的成员总数 = `Σ c.count`（SPEC-S0 v3 第二节
+    /// 第 2 部分）。S0-3 的判据即它为零；字段名沿用旧名（IC-166 裁定 三）。
     let cleanableAssetCount: Int
-    /// `可清理约 = Σ SZ(a), a ∈ (∪ c.assets 去重)`。去重求和，不是各类别求和。
+    /// = `LIB`，与 `libraryTotalByteCount` 恒等：归属去重且「其余照片」兜底（IC-166 裁定 一）。
     let cleanableByteCount: Int64
     /// `LIB`：照片库总占用。
     let libraryTotalByteCount: Int64
@@ -544,10 +545,13 @@ final class S0StateMachine: ObservableObject {
         orderedCategoryIDs = merged
     }
 
-    /// 一次性按 `c.bytes` 降序重排；无项目的类别沉底。
+    /// 一次性按 `c.bytes` 降序重排；无项目的类别沉底；「其余照片」恒垫底（IC-166）。
     private func reorderCategories() {
         categoryReorderCount += 1
         let ranked = snapshot.categories.sorted { lhs, rhs in
+            if (lhs.id == .rest) != (rhs.id == .rest) {
+                return rhs.id == .rest
+            }
             if lhs.hasItems != rhs.hasItems {
                 return lhs.hasItems
             }
