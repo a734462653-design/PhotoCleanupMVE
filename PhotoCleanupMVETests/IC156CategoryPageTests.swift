@@ -230,9 +230,9 @@ final class IC156CategoryPageTests: XCTestCase {
 
     func testIC156C_CatalogGainsFiveKeysAndBothGatesAreUpdated() throws {
         // IC-165 C（裁定 六）：`s0.` 38 → 39、`s0.categoryPage.` 6 → 9（删长按提示，加返回、
-        // 排序名、月份计数、未知日期；副行、已选、主按钮三条改值）。
+        // 排序名、月份计数、未知日期；副行、已选、主按钮三条改值）。IC-166 B：S0-3 副句一条，`s0.` → 40。
         let catalog = try loadCatalogValues()
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 39)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 40)
         XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 9)
 
         let expected: [String: String] = [

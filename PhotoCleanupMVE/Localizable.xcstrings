@@ -397,6 +397,17 @@
         }
       }
     },
+    "s0.home.hero.empty.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已扫描 {count} 项"
+          }
+        }
+      }
+    },
     "s0.home.hero.empty.title" : {
       "extractionState" : "manual",
       "localizations" : {

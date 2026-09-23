@@ -220,7 +220,8 @@ final class IC165DeckFormalTests: XCTestCase {
         XCTAssertEqual(occurrences(of: Self.newline + "    static let ", in: symbols), 8)
 
         let catalog = try loadCatalogValues()
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 39)
+        // IC-166 B：S0-3 副句 `s0.home.hero.empty.subtitle` 一条，39 → 40。
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 40)
         XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 9)
         XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("deck.") }.count, 0)
         for obsolete in [
