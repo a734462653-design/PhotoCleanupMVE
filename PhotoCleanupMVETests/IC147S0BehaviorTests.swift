@@ -548,13 +548,13 @@ final class IC147S0BehaviorTests: XCTestCase {
             failedExpectation: false
         )
 
-        // 行 3：点击待删篮胶囊——`D_全部` 非空时前三态有效，S0-4 失效。
+        // 行 3：点击待删篮入口——`D_全部` 非空时四态有效（IC-167 B：SPEC-S0 v4 起 S0-4 与 S1-4 对齐）。
         assertMatrixRow(
             input: .basketCapsule,
             scanningExpectation: true,
             readyExpectation: true,
             emptyExpectation: true,
-            failedExpectation: false,
+            failedExpectation: true,
             mergedPendingDeletionCount: 3
         )
         // `D_全部` 为空时四态全失效。
@@ -841,11 +841,13 @@ final class IC147S0BehaviorTests: XCTestCase {
         var referenced: Set<String> = []
         // IC-165 C：S0 的 key 引用点——两只「卡片叠」页面、tab 容器，以及 `s0.category.*`
         // 五条所在的文本 helper 文件；少扫一个「不多不少」那条就会假红。
+        // IC-167 B：加待删篮入口共享视图（它只借一条跨前缀 key，见下方借用集）。
         for relativePath in [
             "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
             "PhotoCleanupMVE/Features/S0/S0DeckCategoryPageView.swift",
             "PhotoCleanupMVE/Features/S0/S0TabContainer.swift",
-            "PhotoCleanupMVE/Features/S0/S0Text.swift"
+            "PhotoCleanupMVE/Features/S0/S0Text.swift",
+            "PhotoCleanupMVE/Features/S0/S0BasketEntryView.swift"
         ] {
             let source = try XCTUnwrap(sourceText(relativePath))
             referenced.formUnion(localizationKeys(in: source))
@@ -865,6 +867,7 @@ final class IC147S0BehaviorTests: XCTestCase {
         XCTAssertEqual(catalogS0Keys.count, 40)
         // 跨前缀引用恰为 SPEC-S0 v3 第十四节第 3 部分登记的四条借用：受限提示条一条、
         // 类别页排序三条（钮的无障碍标签与菜单后两项）。再多一条就是自造文案，判红。
+        // IC-167 B：SPEC-S0 v4 加待删篮入口的无障碍标签一条，四条 → 五条。
         // 期望值须显式写成 `Set`：对数组字面量比较时 `filter` 解析为返回数组的那个重载，
         // 结果按集合的迭代顺序排列，多于一条就随进程变（#331 实例）。
         XCTAssertEqual(
@@ -873,7 +876,8 @@ final class IC147S0BehaviorTests: XCTestCase {
                 "s1.limited.banner",
                 "s1.sort.accessibility",
                 "s1.sort.newest_first",
-                "s1.sort.oldest_first"
+                "s1.sort.oldest_first",
+                "s1.trash.accessibility"
             ])
         )
     }

@@ -69,6 +69,7 @@
 		20000000000000000000005F /* S0DeckMetrics.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000062 /* S0DeckMetrics.swift */; };
 		200000000000000000000060 /* S0DeckHomeModel.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000063 /* S0DeckHomeModel.swift */; };
 		200000000000000000000062 /* S0DeckHomeView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000065 /* S0DeckHomeView.swift */; };
+		20000000000000000000006D /* S0BasketEntryView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000070 /* S0BasketEntryView.swift */; };
 		200000000000000000000067 /* S0DeckZoomTransition.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000006A /* S0DeckZoomTransition.swift */; };
 		200000000000000000000061 /* S0DeckCoverView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000064 /* S0DeckCoverView.swift */; };
 		200000000000000000000066 /* S0DeckAssetDates.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000069 /* S0DeckAssetDates.swift */; };
@@ -80,6 +81,7 @@
 		200000000000000000000065 /* IC163DeckPreviewRoundTwoTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000068 /* IC163DeckPreviewRoundTwoTests.swift */; };
 		20000000000000000000006B /* IC165DeckFormalTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000006E /* IC165DeckFormalTests.swift */; };
 		20000000000000000000006C /* IC166RestCategoryTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000006F /* IC166RestCategoryTests.swift */; };
+		20000000000000000000006E /* IC167BasketEntryAndTailTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000071 /* IC167BasketEntryAndTailTests.swift */; };
 		20000000000000000000001F /* S1StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* S1StateMachine.swift */; };
 		200000000000000000000020 /* S1View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* S1View.swift */; };
 		200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* S1StateMachineTests.swift */; };
@@ -186,6 +188,7 @@
 		100000000000000000000062 /* S0DeckMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0DeckMetrics.swift; sourceTree = "<group>"; };
 		100000000000000000000063 /* S0DeckHomeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0DeckHomeModel.swift; sourceTree = "<group>"; };
 		100000000000000000000065 /* S0DeckHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0DeckHomeView.swift; sourceTree = "<group>"; };
+		100000000000000000000070 /* S0BasketEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0BasketEntryView.swift; sourceTree = "<group>"; };
 		10000000000000000000006A /* S0DeckZoomTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0DeckZoomTransition.swift; sourceTree = "<group>"; };
 		100000000000000000000064 /* S0DeckCoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0DeckCoverView.swift; sourceTree = "<group>"; };
 		100000000000000000000069 /* S0DeckAssetDates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0DeckAssetDates.swift; sourceTree = "<group>"; };
@@ -197,6 +200,7 @@
 		100000000000000000000068 /* IC163DeckPreviewRoundTwoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC163DeckPreviewRoundTwoTests.swift; sourceTree = "<group>"; };
 		10000000000000000000006E /* IC165DeckFormalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC165DeckFormalTests.swift; sourceTree = "<group>"; };
 		10000000000000000000006F /* IC166RestCategoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC166RestCategoryTests.swift; sourceTree = "<group>"; };
+		100000000000000000000071 /* IC167BasketEntryAndTailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC167BasketEntryAndTailTests.swift; sourceTree = "<group>"; };
 		100000000000000000000022 /* S1StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000023 /* S1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1View.swift; sourceTree = "<group>"; };
 		100000000000000000000024 /* S1StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachineTests.swift; sourceTree = "<group>"; };
@@ -340,6 +344,7 @@
 				100000000000000000000062 /* S0DeckMetrics.swift */,
 				100000000000000000000063 /* S0DeckHomeModel.swift */,
 				100000000000000000000065 /* S0DeckHomeView.swift */,
+				100000000000000000000070 /* S0BasketEntryView.swift */,
 				10000000000000000000006A /* S0DeckZoomTransition.swift */,
 			);
 			path = S0;
@@ -446,6 +451,7 @@
 				100000000000000000000068 /* IC163DeckPreviewRoundTwoTests.swift */,
 				10000000000000000000006E /* IC165DeckFormalTests.swift */,
 				10000000000000000000006F /* IC166RestCategoryTests.swift */,
+				100000000000000000000071 /* IC167BasketEntryAndTailTests.swift */,
 				100000000000000000000014 /* SnapshotInvariantTests.swift */,
 				100000000000000000000015 /* VolumeFormattingTests.swift */,
 				100000000000000000000016 /* S4StateMachineTests.swift */,
@@ -585,6 +591,7 @@
 				20000000000000000000005F /* S0DeckMetrics.swift（源码） */,
 				200000000000000000000060 /* S0DeckHomeModel.swift（源码） */,
 				200000000000000000000062 /* S0DeckHomeView.swift（源码） */,
+				20000000000000000000006D /* S0BasketEntryView.swift（源码） */,
 				200000000000000000000067 /* S0DeckZoomTransition.swift（源码） */,
 				200000000000000000000061 /* S0DeckCoverView.swift（源码） */,
 				200000000000000000000066 /* S0DeckAssetDates.swift（源码） */,
@@ -667,6 +674,7 @@
 				200000000000000000000065 /* IC163DeckPreviewRoundTwoTests.swift（测试源码） */,
 				20000000000000000000006B /* IC165DeckFormalTests.swift（测试源码） */,
 				20000000000000000000006C /* IC166RestCategoryTests.swift（测试源码） */,
+				20000000000000000000006E /* IC167BasketEntryAndTailTests.swift（测试源码） */,
 				200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */,
 				200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */,
 				200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */,

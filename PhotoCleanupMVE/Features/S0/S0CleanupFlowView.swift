@@ -29,6 +29,8 @@ struct S0CleanupFlowView: View {
     /// IC-157 C：长按进 S2。实参为类别、类别页当前顺序、被长按那张；返回是否进入成功。
     private let onEnterS2: (S0CategoryIdentifier, [String], String) -> Bool
     private let toastDurationMilliseconds: Double
+    /// IC-167 B（裁定 三）：待删篮入口 → S3。首页与类别页的入口同一回调，进 S3 的路径在 App 入口。
+    private let onEnterConfirmation: () -> Void
 
     /// 类别页身份的单一来源：推出与返回都只改它（不用系统返回栏、不用 `dismiss`）。
     /// IC-157 C：上提到 App 持有的模型，跨进出 S2 存活（裁定 一）。
@@ -46,7 +48,8 @@ struct S0CleanupFlowView: View {
         onSwitchToOrganizeTab: @escaping () -> Void,
         onMoveToBasket: @escaping (Set<String>, S0CategoryIdentifier) -> Bool,
         onEnterS2: @escaping (S0CategoryIdentifier, [String], String) -> Bool,
-        toastDurationMilliseconds: Double
+        toastDurationMilliseconds: Double,
+        onEnterConfirmation: @escaping () -> Void = {}
     ) {
         self.machine = machine
         self.dataProvider = dataProvider
@@ -55,6 +58,7 @@ struct S0CleanupFlowView: View {
         self.onMoveToBasket = onMoveToBasket
         self.onEnterS2 = onEnterS2
         self.toastDurationMilliseconds = toastDurationMilliseconds
+        self.onEnterConfirmation = onEnterConfirmation
     }
 
     /// IC-157 C：容器出现时是否重算——类别页在前（从 S2 回来重建、或切走再切回本 tab）即摄入一次。
@@ -95,6 +99,7 @@ struct S0CleanupFlowView: View {
             onEnterCategoryPage: { identifier in
                 enterCategory(identifier)
             },
+            onEnterConfirmation: onEnterConfirmation,
             onSwitchToOrganizeTab: onSwitchToOrganizeTab,
             transitionNamespace: deckNamespace
         )
@@ -137,7 +142,8 @@ struct S0CleanupFlowView: View {
                     _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
                 },
                 toastDurationMilliseconds: toastDurationMilliseconds,
-                transitionNamespace: deckNamespace
+                transitionNamespace: deckNamespace,
+                onEnterConfirmation: onEnterConfirmation
             )
         }
     }

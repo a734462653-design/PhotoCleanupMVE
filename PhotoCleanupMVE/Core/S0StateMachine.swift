@@ -382,7 +382,9 @@ final class S0StateMachine: ObservableObject {
                 return false
             }
         case .basketCapsule:
-            return currentState != .failed && mergedPendingDeletionCount > 0
+            // IC-167 B（裁定 三）：S0-4 与 S1-4 对齐——`D_全部` 来自会话档、不随读取失败失效，
+            // 四态都只看非空（SPEC-S0 v4 第三节第 4 部分、第四节）。
+            return mergedPendingDeletionCount > 0
         case .profileButton:
             return true
         case .ledgerCleared:

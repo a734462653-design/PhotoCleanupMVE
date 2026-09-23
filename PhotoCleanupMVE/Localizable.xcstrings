@@ -155,17 +155,6 @@
         }
       }
     },
-    "s0.basket.capsule" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "{count} · {volume}"
-          }
-        }
-      }
-    },
     "s0.category.bigVideo" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -283,6 +272,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从大到小"
+          }
+        }
+      }
+    },
+    "s0.categoryPage.sort.sizeAscending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从小到大"
           }
         }
       }

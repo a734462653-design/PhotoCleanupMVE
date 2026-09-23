@@ -355,14 +355,10 @@ final class IC166RestCategoryTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "hits.contains(", in: service), 0)
         XCTAssertEqual(occurrences(of: "attributedCategory(", in: service), 1)
 
-        // 协议文件与 App 入口与 `6bc51be` 逐字节相同（git blob 标识相同）。
+        // 协议文件与 `6bc51be` 逐字节相同（git blob 标识相同）；App 入口的 blob 钉自 IC-167 起按惯例 46 撤下。
         XCTAssertEqual(
             try gitBlobID(Self.providerPath),
             "b9e4a57c3133bf189ed3db21b1ff995547faa40f"
-        )
-        XCTAssertEqual(
-            try gitBlobID(Self.appPath),
-            "3d9fe61c5ad1d5be0f9e7f53baf58e3f02d45135"
         )
 
         let catalog = try loadCatalogValues()

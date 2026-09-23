@@ -221,8 +221,9 @@ final class IC165DeckFormalTests: XCTestCase {
 
         let catalog = try loadCatalogValues()
         // IC-166 B：S0-3 副句 `s0.home.hero.empty.subtitle` 一条，39 → 40。
+        // IC-167：B 删首页胶囊一条、C 加排序「从小到大」一条，`s0.` 仍 40；`s0.categoryPage.` 9 → 10。
         XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 40)
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 9)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 10)
         XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("deck.") }.count, 0)
         for obsolete in [
             "s0.home.hero.growing",
@@ -241,6 +242,7 @@ final class IC165DeckFormalTests: XCTestCase {
         XCTAssertEqual(catalog["s0.home.hero.label"], "可清理的空间")
 
         // 跨前缀借用恰为 SPEC-S0 v3 第十四节第 3 部分登记的四条。
+        // IC-167 B：SPEC-S0 v4 加待删篮入口的无障碍标签一条，四条 → 五条（目录级扫描自动含新文件）。
         var files = try swiftFiles(inDirectory: Self.s0Directory)
         files.append(Self.coverPath)
         files.append(Self.datesPath)
@@ -255,7 +257,8 @@ final class IC165DeckFormalTests: XCTestCase {
                 "s1.limited.banner",
                 "s1.sort.accessibility",
                 "s1.sort.newest_first",
-                "s1.sort.oldest_first"
+                "s1.sort.oldest_first",
+                "s1.trash.accessibility"
             ]
         )
     }

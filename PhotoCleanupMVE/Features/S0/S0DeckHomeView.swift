@@ -11,7 +11,7 @@ import SwiftUI
 /// - 进类别页只在状态机判定为「迁至类别页」时回调容器；
 /// - 「我已清空」= `machine.beginVerification()`。
 ///
-/// 恒深色：不读随外观解析的色源，取值只经 `S0DeckMetrics`；顶排的圆钮与胶囊、受限提示条
+/// 恒深色：不读随外观解析的色源，取值只经 `S0DeckMetrics`；顶排的圆钮、受限提示条
 /// 的玻璃一律借 S1 chrome 的登记常量与玻璃 helper（S0 不自造 chrome 语汇）。
 struct S0DeckHomeView: View {
     @ObservedObject var machine: S0StateMachine
@@ -74,21 +74,28 @@ struct S0DeckHomeView: View {
             deckScreen
         case .empty:
             // IC-166 裁定 三：副句「已扫描 N 项」取既有进度字段（扫描完成时 = 全库可见资产数）。
-            centeredBlock(
-                title: L10n.text("s0.home.hero.empty.title"),
-                subtitle: L10n.text(
-                    "s0.home.hero.empty.subtitle",
-                    replacing: [
-                        "count": String(
-                            machine.snapshot.progress.scannedAssetCount
-                        )
-                    ]
-                ),
-                action: L10n.text("s0.home.hero.empty.action"),
-                handler: onSwitchToOrganizeTab
-            )
+            // IC-167 B（裁定 三）：S0-3／S0-4 同样有顶排（待删篮入口与人像圆钮），居中块在其下的剩余区。
+            VStack(alignment: .leading, spacing: 0) {
+                topRow
+                centeredBlock(
+                    title: L10n.text("s0.home.hero.empty.title"),
+                    subtitle: L10n.text(
+                        "s0.home.hero.empty.subtitle",
+                        replacing: [
+                            "count": String(
+                                machine.snapshot.progress.scannedAssetCount
+                            )
+                        ]
+                    ),
+                    action: L10n.text("s0.home.hero.empty.action"),
+                    handler: onSwitchToOrganizeTab
+                )
+            }
         case .failed:
-            failureBlock
+            VStack(alignment: .leading, spacing: 0) {
+                topRow
+                failureBlock
+            }
         }
     }
 
@@ -122,35 +129,16 @@ struct S0DeckHomeView: View {
                 )
                 .foregroundStyle(S0DeckMetrics.text)
             Spacer(minLength: 0)
-            if machine.accepts(.basketCapsule) {
-                basketCapsule
-            }
+            // IC-167 B（裁定 二）：待删篮入口改圆钮 + 徽标、四态恒显示、不显示体积；
+            // 点击直接交给容器（与原胶囊同一回调，不经状态机的迁移事件）。
+            S0BasketEntryView(style: .glass,
+                              count: machine.mergedPendingDeletionCount,
+                              action: onEnterConfirmation)
             accountButton
         }
         .frame(height: S1ChromeLayout.rowHeight)
         .padding(.horizontal, S1ChromeLayout.horizontalMargin)
         .padding(.top, S1ChromeLayout.topRowTopInset)
-    }
-
-    private var basketCapsule: some View {
-        Button(action: onEnterConfirmation) {
-            Text(
-                L10n.text(
-                    "s0.basket.capsule",
-                    replacing: [
-                        "count": String(machine.mergedPendingDeletionCount),
-                        "volume": S0ByteCountText.string(
-                            forByteCount: machine.pendingDeletionByteCount
-                        )
-                    ]
-                )
-            )
-            .font(.system(size: S1ChromeTypography.titleFontSize))
-            .foregroundStyle(S0DeckMetrics.text)
-            .padding(.horizontal, S1ChromeLayout.itemSpacing)
-            .frame(height: S1ChromeLayout.rowHeight)
-            .s1ChromeGlassBackground(in: Capsule(), interactive: true)
-        }
     }
 
     private var accountButton: some View {
@@ -532,12 +520,8 @@ struct S0DeckHomeView: View {
         let visible = isOpen
             ? S0DeckMetrics.openCardVisibleHeight
             : S0DeckMetrics.stripVisibleHeight
-        let isTail = !isOpen && index == cards.count - 1
-        let height = visible + (
-            isTail
-                ? S0DeckMetrics.lastCardTailHeight
-                : S0DeckMetrics.cardOverhang
-        )
+        // IC-167 A（裁定 一）：末张不分展开／收起一律延伸 tail 高（SPEC-S0 v4 第三节第 2 部分）。
+        let height = visible + Self.cardExtension(index: index, count: cards.count)
         return Button {
             handleTap(on: card, isOpen: isOpen)
         } label: {
@@ -644,6 +628,13 @@ struct S0DeckHomeView: View {
                     .frame(height: visibleHeight)
             }
         }
+        // IC-167 A（裁定 一）：可见区之下保持渐变末档压暗至卡底；非末卡这一层被下一张卡盖住。
+        .overlay(alignment: .bottom) {
+            if isOpen {
+                Color.black.opacity(S0DeckMetrics.openShadeBottomOpacity)
+                    .frame(height: height - visibleHeight)
+            }
+        }
         .overlay(alignment: .topLeading) {
             if isOpen {
                 shareBadge(card)
@@ -657,7 +648,7 @@ struct S0DeckHomeView: View {
                     .padding(.leading, S0DeckMetrics.openTextLeadingInset)
                     .padding(
                         .bottom,
-                        S0DeckMetrics.cardOverhang
+                        (height - visibleHeight)
                             + S0DeckMetrics.openTextBottomInset
                     )
                     .transition(Self.openContentTransition)
@@ -672,7 +663,7 @@ struct S0DeckHomeView: View {
                     )
                     .padding(
                         .bottom,
-                        S0DeckMetrics.cardOverhang
+                        (height - visibleHeight)
                             + S0DeckMetrics.openActionBottomInset
                     )
                     .transition(Self.openContentTransition)
@@ -1032,6 +1023,14 @@ struct S0DeckHomeView: View {
         AnyTransition.opacity.combined(
             with: AnyTransition.offset(y: S0DeckMetrics.expandContentRise)
         )
+    }
+
+    /// IC-167 A（裁定 一）：一张卡在可见高之下再延伸多少。末张不分展开／收起一律取
+    /// `lastCardTailHeight`（SPEC-S0 v4 第三节第 2 部分「展开末卡」），其余取 `cardOverhang`。
+    static func cardExtension(index: Int, count: Int) -> CGFloat {
+        index == count - 1
+            ? S0DeckMetrics.lastCardTailHeight
+            : S0DeckMetrics.cardOverhang
     }
 
     static func cardID(for kind: S0SegmentBarModel.Kind) -> String? {
