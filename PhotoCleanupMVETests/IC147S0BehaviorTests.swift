@@ -864,14 +864,16 @@ final class IC147S0BehaviorTests: XCTestCase {
         XCTAssertEqual(catalogS0Keys.count, 39)
         // 跨前缀引用恰为 SPEC-S0 v3 第十四节第 3 部分登记的四条借用：受限提示条一条、
         // 类别页排序三条（钮的无障碍标签与菜单后两项）。再多一条就是自造文案，判红。
+        // 期望值须显式写成 `Set`：对数组字面量比较时 `filter` 解析为返回数组的那个重载，
+        // 结果按集合的迭代顺序排列，多于一条就随进程变（#331 实例）。
         XCTAssertEqual(
             referenced.filter { !$0.hasPrefix("s0.") },
-            [
+            Set([
                 "s1.limited.banner",
                 "s1.sort.accessibility",
                 "s1.sort.newest_first",
                 "s1.sort.oldest_first"
-            ]
+            ])
         )
     }
 
