@@ -780,6 +780,9 @@ struct S2View: View {
     private let assetSizeProber: S2AssetSizeProbing?
     /// IC-146 A：分享取项实现。默认走 PhotoKit；测试注入桩。
     private let shareItemResolver: any S2ShareItemResolving
+    /// IC-168 C（裁定 五）：上一次离开 S2 的诊断文本（协调器持有，本视图只读显示）。
+    /// nil = 本次启动尚未从 S2 退出过。
+    private let exitDiagnosticsText: String?
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
@@ -858,7 +861,8 @@ struct S2View: View {
             S2OnDeviceTransitionDiagnosticsCoordinator(),
         primaryMarkPresenter: S2PrimaryMarkPresenter = S2PrimaryMarkPresenter(),
         feedbackToastPresenter: S2FeedbackToastPresenter =
-            S2FeedbackToastPresenter()
+            S2FeedbackToastPresenter(),
+        exitDiagnosticsText: String? = nil
     ) {
         self.machine = machine
         self.calibration = calibration
@@ -881,6 +885,7 @@ struct S2View: View {
         self.assetVolumeProvider = assetVolumeProvider
         self.assetSizeProber = assetSizeProber
         self.shareItemResolver = shareItemResolver
+        self.exitDiagnosticsText = exitDiagnosticsText
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
             wrappedValue: transitionDiagnostics
@@ -2777,6 +2782,7 @@ struct S2View: View {
                 }
                 assetSizeProbeSection
                 doubleTapProbeSection
+                exitDiagnosticsSection
                 // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
                 // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
@@ -2858,6 +2864,25 @@ struct S2View: View {
             Text(verbatim: doubleTapProbe.reportText)
                 .font(.system(.caption2, design: .monospaced))
                 .textSelection(.enabled)
+        }
+    }
+
+    /// IC-168 C（裁定 五）：调试面板末段的退出诊断。只读区 + 复制入口，模式照上一段；
+    /// 文本是上一次离开 S2 时协调器写下的（进 S2 之前那一次），本视图不产生、不改写。
+    @ViewBuilder
+    private var exitDiagnosticsSection: some View {
+        Divider()
+        Text(L10n.text("s2.calibration.exit_diagnostics.title"))
+        if let exitDiagnosticsText {
+            ShareLink(item: exitDiagnosticsText) {
+                Text(L10n.text("s2.calibration.exit_diagnostics.share"))
+            }
+            .s2MinimumTouchTarget()
+            Text(verbatim: exitDiagnosticsText)
+                .font(.system(.caption2, design: .monospaced))
+                .textSelection(.enabled)
+        } else {
+            Text(L10n.text("s2.calibration.exit_diagnostics.empty"))
         }
     }
 

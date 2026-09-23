@@ -255,7 +255,9 @@ struct PhotoCleanupMVEApp: App {
                     request,
                     album: album
                 )
-            }
+            },
+            // IC-168 C（裁定 五）：上一次离开 S2 的诊断文本，面板末段显示；中间带默认值的形参照旧不传。
+            exitDiagnosticsText: coordinator.s2ExitDiagnosticsText
         )
     }
 
