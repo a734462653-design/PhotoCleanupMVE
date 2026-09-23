@@ -11,6 +11,9 @@ struct PhotoCleanupMVEApp: App {
     /// IC-157 C：类别页身份（裁定 一）。与 tab 选择态同层持有：进出 S2 时 tab 容器整棵重建而它不动，
     /// 回来时承载容器直接推出类别页。
     @StateObject private var s0FlowModel = S0CleanupFlowModel()
+    /// IC-168 D（裁定 四）：清理 tab 上呈现 S1 回落事件的呈现器。与 `S1View` 自己那只分开：
+    /// 回落后 tab 容器整棵重建，而清理 tab 恰是开屏落点。
+    @StateObject private var cleanupFeedbackToast = S1FeedbackToastPresenter()
     @Environment(\.scenePhase) private var scenePhase
     private let s2PhotoImageStrategy = S2TemporaryPhotoKitImageStrategy()
     /// IC-153 C：S0 数据源换成真实扫描服务（批次 5.1），替换 IC-147 的桩。
@@ -117,7 +120,12 @@ struct PhotoCleanupMVEApp: App {
                                                             currentAssetID: currentAssetID) else {
                     return false
                 }
-                return coordinator.enterS2(from: handoff)
+                // IC-168 A（裁定 二）：进 S2 失败时撤销交接构造登记的在途范围（名字表留着）。
+                guard coordinator.enterS2(from: handoff) else {
+                    s1Machine.cancelS2Handoff(virtualRangeID: virtualRangeID)
+                    return false
+                }
+                return true
             },
             toastDurationMilliseconds: coordinator
                 .s2Calibration
@@ -129,6 +137,52 @@ struct PhotoCleanupMVEApp: App {
                 _ = coordinator.enterConfirmationFromS1(submission)
             }
         )
+        // IC-168 D（裁定 四）：S1 回落事件（写回失败／提交形成不了）在清理 tab 当页也呈现——
+        // 挂在承载容器上（tab bar 之上、类别页底栏之上）；S1 通道本身不变。
+        .overlay(alignment: .bottom) {
+            cleanupFeedbackToastOverlay
+        }
+        .onAppear {
+            presentCleanupFeedbackEvent(coordinator.s1FeedbackEvent)
+        }
+        .onChange(of: coordinator.s1FeedbackEvent) { _, newValue in
+            presentCleanupFeedbackEvent(newValue)
+        }
+    }
+
+    /// IC-168 D（裁定 四）：清理 tab 的回落 toast。视图体与类别页自己的 toast 同一只；只在清理 tab
+    /// 选中时显示。
+    @ViewBuilder
+    private var cleanupFeedbackToastOverlay: some View {
+        if s0TabSelection.selectedTab == .cleanup,
+           let event = cleanupFeedbackToast.activeEvent {
+            S0FeedbackToastLabel(text: S1FeedbackToastPresenter.text(for: event.kind))
+                .padding(.bottom, cleanupFeedbackToastBottomInset)
+        }
+    }
+
+    /// 首页：tab 内容已在 tab bar 之上，只留底栏底距；类别页：底栏底距 + 底栏高 + toast 与底栏的间距，
+    /// 与页面自己的 toast 同一位置。三值都是既有登记值。
+    private var cleanupFeedbackToastBottomInset: CGFloat {
+        s0FlowModel.presentedCategory == nil
+            ? S0DeckMetrics.dockBottomInset
+            : S0DeckMetrics.dockBottomInset + S0DeckMetrics.dockHeight + S0DeckMetrics.toastToDockSpacing
+    }
+
+    /// 取走一条回落事件并在清理 tab 呈现。用传进来的值、不回读通道：`S1View` 若仍活在未选中的
+    /// tab 里，它的变更回调可能已先把通道置空。「逐张整理」tab 选中时不呈现、不消费。
+    private func presentCleanupFeedbackEvent(_ event: S1FeedbackEvent?) {
+        guard s0TabSelection.selectedTab == .cleanup, let event else {
+            return
+        }
+        cleanupFeedbackToast.present(
+            event,
+            durationMilliseconds: coordinator
+                .s2Calibration
+                .configuration
+                .feedbackToastDurationMilliseconds
+        )
+        coordinator.consumeS1FeedbackEvent()
     }
 
     /// IC-139：S2 视图构造抽成 builder（陷阱 16）。
@@ -250,7 +304,9 @@ struct PhotoCleanupMVEApp: App {
                     request,
                     album: album
                 )
-            }
+            },
+            // IC-168 C（裁定 五）：上一次离开 S2 的诊断文本，面板末段显示；中间带默认值的形参照旧不传。
+            exitDiagnosticsText: coordinator.s2ExitDiagnosticsText
         )
     }
 

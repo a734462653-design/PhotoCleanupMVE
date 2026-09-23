@@ -813,8 +813,8 @@ final class IC147S0BehaviorTests: XCTestCase {
         let s0Values = catalog.filter { $0.key.hasPrefix("s0.") }
         // IC-148 C 新增两条图例 key；IC-156 C 新增类别页五条 key（`s0.categoryPage.*`）：32 → 37；
         // IC-157 B 长按提示一条 → 38。IC-165 C：删作废八条与长按提示一条、加十条 → 39。
-        // IC-166 B：S0-3 副句一条 → 40。
-        XCTAssertEqual(s0Values.count, 40)
+        // IC-166 B：S0-3 副句一条 → 40。IC-168 E：类别页进入失败提示一条 → 41。
+        XCTAssertEqual(s0Values.count, 41)
         for (key, value) in s0Values {
             for wording in forbidden {
                 XCTAssertFalse(
@@ -863,8 +863,8 @@ final class IC147S0BehaviorTests: XCTestCase {
         XCTAssertGreaterThan(referenced.count, 20)
         // 不多不少：目录里的 s0. key 集合恰等于 S0 源码引用的 s0. 集合。
         XCTAssertEqual(referenced.filter { $0.hasPrefix("s0.") }, catalogS0Keys)
-        // IC-156 C：32 → 37；IC-157 B：→ 38；IC-165 C：→ 39；IC-166 B：→ 40。
-        XCTAssertEqual(catalogS0Keys.count, 40)
+        // IC-156 C：32 → 37；IC-157 B：→ 38；IC-165 C：→ 39；IC-166 B：→ 40；IC-168 E：→ 41。
+        XCTAssertEqual(catalogS0Keys.count, 41)
         // 跨前缀引用恰为 SPEC-S0 v3 第十四节第 3 部分登记的四条借用：受限提示条一条、
         // 类别页排序三条（钮的无障碍标签与菜单后两项）。再多一条就是自造文案，判红。
         // IC-167 B：SPEC-S0 v4 加待删篮入口的无障碍标签一条，四条 → 五条。

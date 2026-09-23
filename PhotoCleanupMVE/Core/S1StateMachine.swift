@@ -716,6 +716,15 @@ final class S1StateMachine: ObservableObject {
         )
     }
 
+    /// IC-168 A（裁定 二）：撤销上面交接构造登记的在途虚拟范围。进 S2 失败（App 的长按接线）
+    /// 与写回失败（协调器的回落收场）各调一次，是撤销登记的唯一入口。
+    ///
+    /// 只删内存态登记：名字表不动（名字留着无害，提交形成仍要靠它给组头取名）、不走快照写出口
+    /// （在途集合不在会话快照里）。真实范围标识从不进集合，传进来是无操作。
+    func cancelS2Handoff(virtualRangeID: String) {
+        activeVirtualRangeIDs.remove(virtualRangeID)
+    }
+
     func makeS3Submission() -> SessionStore.S3Submission? {
         guard !isObscured, state != .loading else {
             return nil

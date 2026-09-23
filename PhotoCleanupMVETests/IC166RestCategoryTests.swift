@@ -362,7 +362,8 @@ final class IC166RestCategoryTests: XCTestCase {
         )
 
         let catalog = try loadCatalogValues()
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 40)
+        // IC-168 E：类别页进入失败提示一条，`s0.` 40 → 41。
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 41)
         XCTAssertEqual(catalog["s0.home.hero.empty.subtitle"], "已扫描 {count} 项")
         XCTAssertEqual(catalog["s0.category.rest"], "其余照片")
     }

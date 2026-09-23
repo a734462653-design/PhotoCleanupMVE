@@ -48,6 +48,10 @@ final class CleanupCoordinator: ObservableObject {
     @Published private(set) var s1FeedbackEvent: S1FeedbackEvent?
     /// 已发出的写回失败事件总数（测试用；`id` 亦取此序号）。
     private(set) var s1FeedbackEventCount = 0
+    /// IC-168 B（裁定 一）：上一次离开 S2（返回键或右上垃圾桶）的诊断文本，全 ASCII、逐行
+    /// `key=value`。每次离开都覆写，成功也写。由协调器持有而不放进 S2 视图：回落恰发生在
+    /// 离开 S2 的那一刻，视图的状态对象随路由销毁；S2 标定面板末段显示并可复制。
+    @Published private(set) var s2ExitDiagnosticsText: String?
     private(set) var sessionStore: SessionStore?
     let s2Calibration: S2CalibrationModel
 
@@ -62,6 +66,8 @@ final class CleanupCoordinator: ObservableObject {
     private var loadedAssets: [String: PHAsset] = [:]
     private var sessionDescriptors: [String: AssetDescriptor] = [:]
     private var s2EntryContext: SessionStore.S2EntryContext?
+    /// IC-168 B：`enterConfirmationFromS1` 最近一次的拒绝点（成功为 nil），供垃圾桶路径 E3 定名。
+    private var lastS3EntryGuardFailure: S2ExitDiagnosticGuard?
     private var scanTasks: [String: Task<Void, Never>] = [:]
     private var s4TimerTask: Task<Void, Never>?
     private var s4LastUptime: TimeInterval?
@@ -220,15 +226,35 @@ final class CleanupCoordinator: ObservableObject {
 
     @discardableResult
     func leaveS2(with payload: S2ExitPayload) -> Bool {
+        // IC-168 B（裁定 一）：诊断字段在写回校验之前取样——写回成功后在途登记即被移除、
+        // 入口上下文随后被清空，回落之后再读活状态就读不到离开那一刻的样子了。
+        let sample = sampleS2Exit(payload)
         guard applyS2ExitPayload(payload) else {
-            returnToS1AfterFailedWriteBack()
+            let failure = sample.writeBackFailure
+            let reconciled = returnToS1AfterFailedWriteBack()
+            recordS2ExitDiagnostics(
+                entry: "back",
+                sample: sample,
+                payload: payload,
+                reconciled: reconciled,
+                outcome: "writeBackFailed",
+                failure: failure
+            )
             return false
         }
         clearS2RouteState()
         // IC-127 C：从 S2 返回时对账一次（静默）。
-        reconcileS1WithPhotoLibrary()
+        let reconciled = reconcileS1WithPhotoLibrary()
         route = .s1
         message = nil
+        recordS2ExitDiagnostics(
+            entry: "back",
+            sample: sample,
+            payload: payload,
+            reconciled: reconciled,
+            outcome: "ok",
+            failure: nil
+        )
         return true
     }
 
@@ -241,12 +267,22 @@ final class CleanupCoordinator: ObservableObject {
     /// `M`、`K` 保持上一次有效值；但照常离开 S2 回到 S1 并对账一次，再发一条
     /// 一次性事件由 S1 以底部短 toast 呈现。不弹窗、不阻断：用户点了返回就该
     /// 回到 S1，原实装让 `route` 停在 `.s2` 且毫无反馈。
-    private func returnToS1AfterFailedWriteBack() {
+    ///
+    /// IC-168 A（裁定 二）：虚拟范围写回失败时在途登记不再留着——先撤销，再清入口上下文
+    /// （撤销要读它的范围标识）。真实范围标识不在登记里，撤销是无操作。
+    ///
+    /// IC-168 B（裁定 一）：回传收场里那一次对账的结果，两条入口都记进诊断文本的
+    /// `reconciled`。步骤与先后不变。
+    private func returnToS1AfterFailedWriteBack() -> Bool {
+        if let entryContext = s2EntryContext {
+            s1Machine?.cancelS2Handoff(virtualRangeID: entryContext.rangeID)
+        }
         clearS2RouteState()
-        reconcileS1WithPhotoLibrary()
+        let reconciled = reconcileS1WithPhotoLibrary()
         route = .s1
         message = nil
         publishS1FeedbackEvent(.writeBackFailed)
+        return reconciled
     }
 
     /// IC-132 B：写回**已生效**、但提交形成不了时的收场。与
@@ -270,30 +306,65 @@ final class CleanupCoordinator: ObservableObject {
 
     @discardableResult
     func enterConfirmationFromS2(with payload: S2ExitPayload) -> Bool {
+        // IC-168 B（裁定 一）：取样在写回校验之前，理由同 `leaveS2(with:)`。
+        let sample = sampleS2Exit(payload)
         guard applyS2ExitPayload(payload) else {
             // IC-131 B：垃圾桶路径失败同样回到 S1 并发 toast，**不进入 S3**
             // （不形成提交）——④决策会话裁定，依据决策 29「不阻断」。
-            returnToS1AfterFailedWriteBack()
+            let failure = sample.writeBackFailure
+            let reconciled = returnToS1AfterFailedWriteBack()
+            recordS2ExitDiagnostics(
+                entry: "trash",
+                sample: sample,
+                payload: payload,
+                reconciled: reconciled,
+                outcome: "writeBackFailed",
+                failure: failure
+            )
             return false
         }
         clearS2RouteState()
         // IC-127 C：S2 经垃圾桶直入 S3 同样是「从 S2 返回」——先对账再形成提交，
         // 已被系统删除的资产不进入 D_全部。
-        reconcileS1WithPhotoLibrary()
+        let reconciled = reconcileS1WithPhotoLibrary()
         guard let submission = s1Machine?.makeS3Submission() else {
             // IC-132 B：写回已生效，只是提交形成不了（典型是恢复出的名字表为空）。
             // 原实装直接 return false，`route` 停在 `.s2` 而 `s2Machine` 已 nil，
             // 界面卡在退不出的转圈上。
+            recordS2ExitDiagnostics(
+                entry: "trash",
+                sample: sample,
+                payload: payload,
+                reconciled: reconciled,
+                outcome: "submissionUnavailable",
+                failure: sample.submissionFailure
+            )
             returnToS1AfterUnavailableSubmission()
             return false
         }
         guard enterConfirmationFromS1(submission) else {
             // IC-132 B：事件已由 `enterConfirmationFromS1` 发出，这里只补路由收口，
             // 不重复发第二条。
+            recordS2ExitDiagnostics(
+                entry: "trash",
+                sample: sample,
+                payload: payload,
+                reconciled: reconciled,
+                outcome: "confirmationRejected",
+                failure: lastS3EntryGuardFailure
+            )
             route = .s1
             message = nil
             return false
         }
+        recordS2ExitDiagnostics(
+            entry: "trash",
+            sample: sample,
+            payload: payload,
+            reconciled: reconciled,
+            outcome: "ok",
+            failure: nil
+        )
         return true
     }
 
@@ -303,6 +374,8 @@ final class CleanupCoordinator: ObservableObject {
     ) -> Bool {
         guard let s1Machine,
               submission == s1Machine.makeS3Submission() else {
+            // IC-168 B：诊断用的拒绝点（含 `s1Machine` 为 nil），不改原有收场。
+            lastS3EntryGuardFailure = .C2
             // IC-132 B：不再静默失败。S1 视图此刻已挂载，事件立即被取走显示。
             publishS1FeedbackEvent(.submissionUnavailable)
             return false
@@ -322,9 +395,16 @@ final class CleanupCoordinator: ObservableObject {
             descriptors: descriptors,
             cachedConclusions: cachedConclusions
         ) else {
+            // IC-168 B：确认页校验未过——同一份纯判定再取一次拒绝点（上面那次调用未写任何状态）。
+            lastS3EntryGuardFailure = Self.s3EntryGuardFailure(
+                submission: submission,
+                sessionStore: s1Machine.sessionStore,
+                descriptors: descriptors
+            )
             publishS1FeedbackEvent(.submissionUnavailable)
             return false
         }
+        lastS3EntryGuardFailure = nil
         return true
     }
 
@@ -606,28 +686,13 @@ final class CleanupCoordinator: ObservableObject {
         descriptors: [AssetDescriptor],
         cachedConclusions: [String: AssetScanConclusion] = [:]
     ) -> Bool {
-        let descriptorIDs = descriptors.map(\.identifier)
-        let groupRangeIDs = submission.groups.map(\.sourceRangeID)
-        let groupedAssetIDs = submission.groups.flatMap(\.orderedAssetIDs)
-        guard submission.sourceSessionID == sessionStore.sessionID,
-              Set(submission.orderedAssetIDs).count ==
-                  submission.orderedAssetIDs.count,
-              Set(submission.orderedAssetIDs) ==
-                  sessionStore.allPendingDeletionAssetIDs,
-              Set(descriptorIDs).count == descriptorIDs.count,
-              Set(descriptorIDs) == Set(submission.orderedAssetIDs),
-              Set(groupRangeIDs).count == groupRangeIDs.count,
-              submission.groups.allSatisfy({ group in
-                  !group.sourceRangeID.isEmpty &&
-                      !group.name.trimmingCharacters(
-                          in: .whitespacesAndNewlines
-                      ).isEmpty &&
-                      !group.orderedAssetIDs.isEmpty &&
-                      Set(group.orderedAssetIDs).count ==
-                          group.orderedAssetIDs.count
-              }),
-              groupedAssetIDs.count == submission.orderedAssetIDs.count,
-              Set(groupedAssetIDs) == Set(submission.orderedAssetIDs) else {
+        // IC-168 B（裁定 一）：九条子句顺序化搬进 `s3EntryGuardFailure`，任一不成立即拒绝；
+        // 判定在一切写入之前、无副作用，行为逐位不变。
+        guard Self.s3EntryGuardFailure(
+            submission: submission,
+            sessionStore: sessionStore,
+            descriptors: descriptors
+        ) == nil else {
             return false
         }
 
@@ -901,21 +966,17 @@ final class CleanupCoordinator: ObservableObject {
     }
 
     private func applyS2ExitPayload(_ payload: S2ExitPayload) -> Bool {
-        guard route == .s2,
+        // IC-168 B（裁定 一）：W1～W7 顺序化搬进 `s2ExitGuardFailure`（纯判定）；全过才调 W8
+        // 写回，短路顺序与原来的八子句 `guard` 相同。
+        guard s2ExitGuardFailure(payload) == nil,
               let s1Machine,
-              let entryContext = s2EntryContext,
-              payload.continuationSnapshot.orderedAssetIDs ==
-                  entryContext.orderedAssetIDs,
-              payload.continuationSnapshot.rangeDisplayInformation.rangeID ==
-                  entryContext.rangeID,
-              payload.continuationSnapshot.pendingDeletionAssetIDs ==
-                  payload.upstreamReturn.pendingDeletionAssetIDs,
-              payload.continuationSnapshot.currentAssetID ==
-                  payload.upstreamReturn.currentAssetID,
-              s1Machine.applyS2Return(
-                  payload.upstreamReturn,
-                  entryContext: entryContext
-              ) else {
+              let entryContext = s2EntryContext else {
+            return false
+        }
+        guard s1Machine.applyS2Return(
+            payload.upstreamReturn,
+            entryContext: entryContext
+        ) else {
             return false
         }
         sessionStore = s1Machine.sessionStore
@@ -925,6 +986,221 @@ final class CleanupCoordinator: ObservableObject {
     private func clearS2RouteState() {
         s2Machine = nil
         s2EntryContext = nil
+    }
+
+    // MARK: - IC-168 B：离开 S2 的诊断（裁定 一）
+
+    /// 回落守卫名。隐式原始值即 case 名（源码零字面量——扫描器把 `return` 后紧跟的字面量判残留）。
+    /// W1～W8b = 写回校验（E1）；M0～M3 = 提交形成（E2）；C2、V1～V9 = 确认页入口校验（E3）。
+    private enum S2ExitDiagnosticGuard: String {
+        case W1, W2, W3, W4, W5, W6, W7, W8a, W8b, M0, M1, M2, M3, C2, V1, V2, V3, V4, V5, V6, V7, V8, V9
+    }
+
+    /// 离开 S2 那一刻（写回校验之前）的取样。依赖 S1 状态机的项在它为 nil 时取 nil，文本里打 `na`。
+    private struct S2ExitSample {
+        let route: CleanupRoute
+        let loadingState: S1LoadingState?
+        let isObscured: Bool?
+        let stateIsReady: Bool?
+        let rangeID: String
+        let inflight: Bool?
+        let inflightCount: Int?
+        let ordered: Int
+        let currentInList: Bool
+        let snapshotPending: Int
+        let returnedPending: Int
+        let sessionMatch: Bool?
+        let dAll: Int?
+        let f: Int?
+        let rangesWithPending: Int?
+        /// W1～W7 第一个不成立的子句；全过为 nil。
+        let preApplyFailure: S2ExitDiagnosticGuard?
+
+        /// E1 定名：W1～W7 之一；全过而写回仍失败则是 W8——既不在途也不就绪为 W8a，
+        /// 否则会话档拒绝写回为 W8b。只从取样判，不重抄 S1 状态机的活谓词。
+        var writeBackFailure: S2ExitDiagnosticGuard {
+            if let preApplyFailure {
+                return preApplyFailure
+            }
+            let admitted = (inflight ?? false)
+                || (!(isObscured ?? true) && (stateIsReady ?? false))
+            return admitted ? .W8b : .W8a
+        }
+
+        /// E2 定名：S1 状态机缺失 M0、遮挡 M1、仍在加载 M2，其余是名字表缺名 M3。
+        var submissionFailure: S2ExitDiagnosticGuard {
+            if loadingState == nil {
+                return .M0
+            }
+            if isObscured == true {
+                return .M1
+            }
+            if loadingState == .loading {
+                return .M2
+            }
+            return .M3
+        }
+    }
+
+    /// 只读不写。在两条入口的第一句调用。
+    private func sampleS2Exit(_ payload: S2ExitPayload) -> S2ExitSample {
+        let snapshot = payload.continuationSnapshot
+        let rangeID = s2EntryContext?.rangeID
+            ?? snapshot.rangeDisplayInformation.rangeID
+        let store = s1Machine?.sessionStore
+        return S2ExitSample(
+            route: route,
+            loadingState: s1Machine?.loadingState,
+            isObscured: s1Machine?.isObscured,
+            stateIsReady: s1Machine.map { $0.state == .ready },
+            rangeID: rangeID,
+            inflight: s1Machine?.activeVirtualRangeIDs.contains(rangeID),
+            inflightCount: s1Machine?.activeVirtualRangeIDs.count,
+            ordered: snapshot.orderedAssetIDs.count,
+            currentInList: snapshot.orderedAssetIDs.contains(snapshot.currentAssetID),
+            snapshotPending: snapshot.pendingDeletionAssetIDs.count,
+            returnedPending: payload.upstreamReturn.pendingDeletionAssetIDs.count,
+            sessionMatch: store.map {
+                payload.upstreamReturn.sourceSessionID == $0.sessionID
+            },
+            dAll: store?.allPendingDeletionAssetIDs.count,
+            f: store?.firstMarkedRangeIDByAssetID.count,
+            rangesWithPending: store?.pendingDeletionAssetIDsByRangeID.values
+                .filter { !$0.isEmpty }
+                .count,
+            preApplyFailure: s2ExitGuardFailure(payload)
+        )
+    }
+
+    /// 写回校验 W1～W7 按原 `guard` 子句顺序逐条判定，第一个不成立即返回其名；全过返回 nil。
+    /// 纯判定、无副作用；W8（写回本身）不在这里。
+    private func s2ExitGuardFailure(
+        _ payload: S2ExitPayload
+    ) -> S2ExitDiagnosticGuard? {
+        if route != .s2 {
+            return .W1
+        }
+        if s1Machine == nil {
+            return .W2
+        }
+        guard let entryContext = s2EntryContext else {
+            return .W3
+        }
+        if payload.continuationSnapshot.orderedAssetIDs !=
+            entryContext.orderedAssetIDs {
+            return .W4
+        }
+        if payload.continuationSnapshot.rangeDisplayInformation.rangeID !=
+            entryContext.rangeID {
+            return .W5
+        }
+        if payload.continuationSnapshot.pendingDeletionAssetIDs !=
+            payload.upstreamReturn.pendingDeletionAssetIDs {
+            return .W6
+        }
+        if payload.continuationSnapshot.currentAssetID !=
+            payload.upstreamReturn.currentAssetID {
+            return .W7
+        }
+        return nil
+    }
+
+    /// 确认页入口校验 V1～V9 按原九子句 `guard` 的顺序逐条判定，第一个不成立即返回其名；
+    /// 全过返回 nil。纯判定、无副作用。返回类型是类内私有枚举，故本函数也必须私有。
+    private static func s3EntryGuardFailure(
+        submission: SessionStore.S3Submission,
+        sessionStore: SessionStore,
+        descriptors: [AssetDescriptor]
+    ) -> S2ExitDiagnosticGuard? {
+        let descriptorIDs = descriptors.map(\.identifier)
+        let groupRangeIDs = submission.groups.map(\.sourceRangeID)
+        let groupedAssetIDs = submission.groups.flatMap(\.orderedAssetIDs)
+        if submission.sourceSessionID != sessionStore.sessionID {
+            return .V1
+        }
+        if Set(submission.orderedAssetIDs).count !=
+            submission.orderedAssetIDs.count {
+            return .V2
+        }
+        if Set(submission.orderedAssetIDs) !=
+            sessionStore.allPendingDeletionAssetIDs {
+            return .V3
+        }
+        if Set(descriptorIDs).count != descriptorIDs.count {
+            return .V4
+        }
+        if Set(descriptorIDs) != Set(submission.orderedAssetIDs) {
+            return .V5
+        }
+        if Set(groupRangeIDs).count != groupRangeIDs.count {
+            return .V6
+        }
+        if !submission.groups.allSatisfy({ group in
+            !group.sourceRangeID.isEmpty &&
+                !group.name.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ).isEmpty &&
+                !group.orderedAssetIDs.isEmpty &&
+                Set(group.orderedAssetIDs).count ==
+                    group.orderedAssetIDs.count
+        }) {
+            return .V7
+        }
+        if groupedAssetIDs.count != submission.orderedAssetIDs.count {
+            return .V8
+        }
+        if Set(groupedAssetIDs) != Set(submission.orderedAssetIDs) {
+            return .V9
+        }
+        return nil
+    }
+
+    /// 组装并覆写 `s2ExitDiagnosticsText`。只读取样与实参，不读活状态；源码字面量全 ASCII。
+    private func recordS2ExitDiagnostics(
+        entry: String,
+        sample: S2ExitSample,
+        payload: S2ExitPayload,
+        reconciled: Bool,
+        outcome: String,
+        failure: S2ExitDiagnosticGuard?
+    ) {
+        let lineStart: [String] = [
+            "entry=" + entry,
+            "route=" + String(describing: sample.route),
+            "loadingState=" + (sample.loadingState.map { String(describing: $0) } ?? "na"),
+            "stateIsReady=" + (sample.stateIsReady.map { String($0) } ?? "na"),
+            "isObscured=" + (sample.isObscured.map { String($0) } ?? "na")
+        ]
+        let lineRange: [String] = [
+            "rangeID=" + sample.rangeID,
+            "inflight=" + (sample.inflight.map { String($0) } ?? "na"),
+            "inflightCount=" + (sample.inflightCount.map { String($0) } ?? "na")
+        ]
+        let lineSnapshot: [String] = [
+            "ordered=" + String(sample.ordered),
+            "currentInList=" + String(sample.currentInList),
+            "snapshotPending=" + String(sample.snapshotPending),
+            "returnedPending=" + String(sample.returnedPending)
+        ]
+        let lineSession: [String] = [
+            "sessionMatch=" + (sample.sessionMatch.map { String($0) } ?? "na"),
+            "dAll=" + (sample.dAll.map { String($0) } ?? "na"),
+            "f=" + (sample.f.map { String($0) } ?? "na"),
+            "rangesWithPending=" + (sample.rangesWithPending.map { String($0) } ?? "na")
+        ]
+        let lineOutcome: [String] = [
+            "outcome=" + outcome,
+            "guard=" + (failure?.rawValue ?? "none")
+        ]
+        var lines: [String] = []
+        lines.append("format=ic168-s2-exit-v1")
+        lines.append(lineStart.joined(separator: " "))
+        lines.append(lineRange.joined(separator: " "))
+        lines.append(lineSnapshot.joined(separator: " "))
+        lines.append(lineSession.joined(separator: " "))
+        lines.append("reconciled=" + String(reconciled))
+        lines.append(lineOutcome.joined(separator: " "))
+        s2ExitDiagnosticsText = lines.joined(separator: "\n")
     }
 
     private func descriptorsForS3(
