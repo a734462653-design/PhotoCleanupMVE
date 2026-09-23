@@ -5,10 +5,11 @@ import SwiftUI
 /// **本文件是预览，不是实装**：`S0CategoryPageView.swift` 一字未动，两者由
 /// `S0DeckPreview.isEnabled` 在 `S0CleanupFlowView.page(for:)` 里二选一（裁定 一）。
 ///
-/// 与旧类别页的差别只在版式与分节：
-/// - 页头 = 展开卡那张照片放大（262 高）+ 返回／全选 + 名称、体积、副行、占比角标 + 总条，
-///   随内容一起滚走；滚过阈值后顶上出现一条玻璃导航（返回 · 名称 体积 占比 · 全选）。
-/// - 网格分两节：`最大的 N 个`（右侧一键把这 N 个并入已选）与 `其余 M 个`；总数 ≤ N 时只有第一节。
+/// 与旧类别页的差别只在版式与排序：
+/// - 页头 = 展开卡那张照片放大（262 高）+ 返回／排序／全选 + 名称、体积、副行、占比角标 + 总条，
+///   随内容一起滚走；滚过阈值后顶上出现一条玻璃导航（返回 · 名称 体积 占比 · 排序 全选）。
+/// - IC-163 C（裁定 三、四）：「最大的 N 个」「其余 M 个」两节撤销。排序钮三项——从大到小
+///   （默认，整页一张网格）、最新在前、最旧在前（按月分节，无日期的归最后一节）。
 /// - 底栏是一条玻璃：左「已选 N 项」+ 体积，右「移入待删篮」。
 ///
 /// 行为逐条照 `S0CategoryPageView`（裁定 五）：勾选、全选、长按进 S2、进篮成功才从网格
@@ -16,8 +17,9 @@ import SwiftUI
 /// 按 IC-160 的口径读写 `S0CleanupFlowModel.preservedSelection`（`init` 按「保留集 ∩ 当前
 /// 列表」播种，根视图 `.onChange` 与 `.onAppear` 两处回报——`.onChange` 不对初值触发）。
 ///
-/// 恒深色：不读 `colorScheme`、不用系统材质；顶排借 S1 chrome 的登记常量与玻璃 helper，
-/// 页面其余取值只经 `S0DeckMetrics`。
+/// 恒深色：不读 `colorScheme`；顶排借 S1 chrome 的登记常量。IC-163 C（裁定 四）起四处玻璃
+/// （收起导航条、格底标签条、toast、底栏）一律经 S1 的玻璃 helper，玻璃容器里的钮不再各自
+/// 套玻璃（S1／S2 从不嵌套）。页面其余取值只经 `S0DeckMetrics`。
 struct S0DeckCategoryPageView: View {
     @ObservedObject var machine: S0StateMachine
 
@@ -35,6 +37,10 @@ struct S0DeckCategoryPageView: View {
     /// 页头有没有滚走。**只在跨阈值时写**，静止不写（陷阱 5）。
     @State private var isHeaderCollapsed = false
     @StateObject private var toast = S0FeedbackToastPresenter()
+    /// IC-163 C：排序态，页面自持、不持久化。
+    @State private var sortOrder: S0DeckHomeModel.SortOrder = .size
+    /// IC-163 C：网格项的拍摄日期，后台取回前为 nil（此时整只排序菜单禁用）。
+    @State private var dates: [String: Date]? = nil
 
     init(
         machine: S0StateMachine,
@@ -91,6 +97,18 @@ struct S0DeckCategoryPageView: View {
         .onAppear {
             flowModel.preservedSelection = selection.selected
         }
+        // IC-163 C：日期在后台取——`.task` 本身在主 actor 上，直接调同步取数仍在主线程。
+        // 网格项只会因进篮而减少，旧字典是新列表的超集，重取期间照旧可用。
+        .task(id: selection.items.map(\.id)) {
+            let ids = selection.items.map(\.id)
+            let loaded = await Task.detached(priority: .userInitiated) {
+                S0DeckAssetDates.creationDates(forLocalIdentifiers: ids)
+            }.value
+            guard !Task.isCancelled else {
+                return
+            }
+            dates = loaded
+        }
     }
 
     // MARK: - 滚动内容
@@ -100,7 +118,7 @@ struct S0DeckCategoryPageView: View {
             VStack(alignment: .leading, spacing: 0) {
                 scrollOffsetReader
                 header(width: width)
-                sectionsAndGrids(width: width)
+                gridContent(width: width)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(
@@ -167,6 +185,12 @@ struct S0DeckCategoryPageView: View {
                     .s1ChromeCircleGlass()
             }
             Spacer(minLength: 0)
+            // IC-163 C：页头不在玻璃容器里，排序圆钮照返回钮的写法各自借 S1 玻璃。
+            sortMenu {
+                Image(systemName: S0DeckSymbol.sort)
+                    .foregroundStyle(S0DeckMetrics.text)
+                    .s1ChromeCircleGlass()
+            }
             selectAllButton
         }
         .frame(height: S1ChromeLayout.rowHeight)
@@ -329,15 +353,20 @@ struct S0DeckCategoryPageView: View {
                         )
                 }
                 compactNavTitle
-                compactNavSelectAll
+                HStack(spacing: S1ChromeLayout.itemSpacing) {
+                    compactNavSort
+                    compactNavSelectAll
+                }
             }
             .padding(.leading, S0DeckMetrics.compactNavLeadingPadding)
             .padding(.trailing, S0DeckMetrics.compactNavTrailingPadding)
             .frame(height: S0DeckMetrics.compactNavHeight)
-            .modifier(
-                S0DeckGlassPanel(
-                    cornerRadius: S0DeckMetrics.compactNavCornerRadius
-                )
+            .s1ChromeGlassBackground(
+                in: RoundedRectangle(
+                    cornerRadius: S0DeckMetrics.compactNavCornerRadius,
+                    style: .continuous
+                ),
+                interactive: true
             )
             .padding(.horizontal, S0DeckMetrics.compactNavHorizontalInset)
             .padding(.top, S1ChromeLayout.topRowTopInset)
@@ -387,6 +416,51 @@ struct S0DeckCategoryPageView: View {
         }
     }
 
+    /// 收起导航条本身是玻璃容器：排序圆钮不再套玻璃，用与「全选」同一种平涂底。
+    private var compactNavSort: some View {
+        sortMenu {
+            Image(systemName: S0DeckSymbol.sort)
+                .font(
+                    .system(
+                        size: S1ChromeTypography.circleIconPointSize,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(S0DeckMetrics.text)
+                .frame(
+                    width: S1ChromeLayout.rowHeight,
+                    height: S1ChromeLayout.rowHeight
+                )
+                .background(
+                    S0DeckMetrics.text.opacity(
+                        S0DeckMetrics.compactNavActionFillOpacity
+                    ),
+                    in: Circle()
+                )
+        }
+    }
+
+    /// IC-163 C（裁定 四）：排序是系统 `Menu`，三项互斥。取回日期之前整只菜单禁用——
+    /// `Menu` 里逐项 `.disabled` 在 iOS 17 上不可靠，不用。
+    private func sortMenu<MenuLabel: View>(
+        @ViewBuilder label: () -> MenuLabel
+    ) -> some View {
+        Menu {
+            Picker(L10n.text("s1.sort.accessibility"), selection: $sortOrder) {
+                Text(L10n.text("deck.page.sort.size"))
+                    .tag(S0DeckHomeModel.SortOrder.size)
+                Text(L10n.text("s1.sort.newest_first"))
+                    .tag(S0DeckHomeModel.SortOrder.newestFirst)
+                Text(L10n.text("s1.sort.oldest_first"))
+                    .tag(S0DeckHomeModel.SortOrder.oldestFirst)
+            }
+        } label: {
+            label()
+        }
+        .disabled(dates == nil)
+        .accessibilityLabel(L10n.text("s1.sort.accessibility"))
+    }
+
     private var compactNavSelectAll: some View {
         Button {
             selection.selectAllOrNone()
@@ -417,73 +491,42 @@ struct S0DeckCategoryPageView: View {
         }
     }
 
-    // MARK: - 两节与网格
+    // MARK: - 网格（IC-163 C：从大到小整页一张；时间排序按月分节）
 
-    private func sectionsAndGrids(width: CGFloat) -> some View {
-        let split = S0DeckHomeModel.sections(
-            selection.items,
-            topLimit: S0DeckMetrics.topSectionLimit
-        )
+    @ViewBuilder
+    private func gridContent(width: CGFloat) -> some View {
         let side = cellWidth(forWidth: width)
-        return VStack(alignment: .leading, spacing: 0) {
-            topSectionHeader(split.top)
-            grid(split.top, width: side)
-            restSectionHeader(split.rest)
-            grid(split.rest, width: side)
+        let ordered = displayedItems
+        switch sortOrder {
+        case .size:
+            grid(ordered, width: side, topSpacing: S0DeckMetrics.monthSectionSpacing)
+        case .newestFirst, .oldestFirst:
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(
+                    S0DeckHomeModel.monthSections(
+                        ordered,
+                        dates: dates ?? [:],
+                        calendar: Calendar.current
+                    ),
+                    id: \.monthStart
+                ) { section in
+                    sectionHeader(
+                        title: monthTitle(for: section.monthStart),
+                        count: section.items.count
+                    )
+                    grid(
+                        section.items,
+                        width: side,
+                        topSpacing: S0DeckMetrics.sectionToGridSpacing
+                    )
+                }
+            }
         }
     }
 
-    /// 网格空了（整类都进了待删篮）时整节不画——否则会读出「最大的 0 个」与
-    /// 「全选这 0 个」。
-    @ViewBuilder
-    private func topSectionHeader(_ items: [S0CategoryAsset]) -> some View {
-        if !items.isEmpty {
-            sectionHeader(
-                title: L10n.text(
-                    "deck.page.top.title",
-                    replacing: ["count": String(items.count)]
-                ),
-                detail: S0ByteCountText.string(
-                    forByteCount: S0DeckHomeModel.topSum(
-                        items,
-                        limit: items.count
-                    ).byteCount
-                ),
-                action: L10n.text(
-                    "deck.page.top.action",
-                    replacing: ["count": String(items.count)]
-                ),
-                handler: { selectTopSection(items) }
-            )
-        }
-    }
-
-    @ViewBuilder
-    private func restSectionHeader(_ items: [S0CategoryAsset]) -> some View {
-        if !items.isEmpty {
-            sectionHeader(
-                title: L10n.text(
-                    "deck.page.rest.title",
-                    replacing: ["count": String(items.count)]
-                ),
-                detail: S0ByteCountText.string(
-                    forByteCount: S0DeckHomeModel.topSum(
-                        items,
-                        limit: items.count
-                    ).byteCount
-                ),
-                action: nil,
-                handler: nil
-            )
-        }
-    }
-
-    private func sectionHeader(
-        title: String,
-        detail: String,
-        action: String?,
-        handler: (() -> Void)?
-    ) -> some View {
+    /// 月份节标题：左节名（15／600），右计数（12.5，压暗 0.55）。版式沿用原分节标题，
+    /// 不带动作钮。
+    private func sectionHeader(title: String, count: Int) -> some View {
         HStack(spacing: S0DeckMetrics.sectionTitleItemSpacing) {
             Text(title)
                 .font(
@@ -493,69 +536,33 @@ struct S0DeckCategoryPageView: View {
                     )
                 )
                 .foregroundStyle(S0DeckMetrics.text)
-            Text(detail)
-                .font(
-                    .system(
-                        size: S0DeckMetrics.sectionTitleFontSize,
-                        weight: .medium
-                    )
-                )
-                .monospacedDigit()
-                .foregroundStyle(
-                    S0DeckMetrics.dimmedText(
-                        opacity: S0DeckMetrics.sectionTitleDimmedOpacity
-                    )
-                )
             Spacer(minLength: 0)
-            sectionAction(action, handler: handler)
+            Text(
+                L10n.text(
+                    "deck.page.month.count",
+                    replacing: ["count": String(count)]
+                )
+            )
+            .font(.system(size: S0DeckMetrics.monthSectionCountFontSize))
+            .monospacedDigit()
+            .foregroundStyle(
+                S0DeckMetrics.dimmedText(
+                    opacity: S0DeckMetrics.sectionTitleDimmedOpacity
+                )
+            )
         }
         .frame(height: S0DeckMetrics.sectionHeight)
         .padding(.leading, S0DeckMetrics.sectionLeadingInset)
         .padding(.trailing, S0DeckMetrics.sectionTrailingInset)
-        .padding(.top, S0DeckMetrics.sectionTopSpacing)
+        .padding(.top, S0DeckMetrics.monthSectionSpacing)
     }
 
     @ViewBuilder
-    private func sectionAction(
-        _ action: String?,
-        handler: (() -> Void)?
+    private func grid(
+        _ items: [S0CategoryAsset],
+        width: CGFloat,
+        topSpacing: CGFloat
     ) -> some View {
-        if let action, let handler {
-            Button(action: handler) {
-                HStack(spacing: S0DeckMetrics.sectionActionItemSpacing) {
-                    Image(systemName: S0DeckSymbol.sparkle)
-                    Text(action)
-                }
-                .font(
-                    .system(
-                        size: S0DeckMetrics.sectionActionFontSize,
-                        weight: .bold
-                    )
-                )
-                .foregroundStyle(S0DeckMetrics.sectionAction)
-                .padding(
-                    .horizontal,
-                    S0DeckMetrics.sectionActionHorizontalPadding
-                )
-                .frame(height: S0DeckMetrics.sectionActionHeight)
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: S0DeckMetrics.sectionActionCornerRadius,
-                        style: .continuous
-                    )
-                    .strokeBorder(
-                        S0DeckMetrics.sectionAction.opacity(
-                            S0DeckMetrics.sectionActionRingOpacity
-                        ),
-                        lineWidth: S0DeckMetrics.sectionActionRingWidth
-                    )
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func grid(_ items: [S0CategoryAsset], width: CGFloat) -> some View {
         if !items.isEmpty {
             LazyVGrid(
                 columns: gridColumns(width: width),
@@ -566,7 +573,7 @@ struct S0DeckCategoryPageView: View {
                 }
             }
             .padding(.horizontal, S0DeckMetrics.gridHorizontalInset)
-            .padding(.top, S0DeckMetrics.sectionToGridSpacing)
+            .padding(.top, topSpacing)
         }
     }
 
@@ -581,9 +588,10 @@ struct S0DeckCategoryPageView: View {
         }
         .buttonStyle(.plain)
         // IC-157 B：长按与按钮并存（按钮语义与点按反馈保留），时长取系统默认。
+        // IC-163 C：交接顺序 = 网格当前显示顺序（排序后）。
         .simultaneousGesture(
             LongPressGesture().onEnded { _ in
-                onLongPress(selection.items.map(\.id), item.id)
+                onLongPress(displayedItems.map(\.id), item.id)
             }
         )
     }
@@ -647,10 +655,12 @@ struct S0DeckCategoryPageView: View {
         }
         .padding(.horizontal, S0DeckMetrics.gridLabelHorizontalPadding)
         .frame(height: S0DeckMetrics.gridLabelHeight)
-        .modifier(
-            S0DeckGlassPanel(
-                cornerRadius: S0DeckMetrics.gridLabelCornerRadius
-            )
+        .s1ChromeGlassBackground(
+            in: RoundedRectangle(
+                cornerRadius: S0DeckMetrics.gridLabelCornerRadius,
+                style: .continuous
+            ),
+            interactive: false
         )
     }
 
@@ -731,10 +741,12 @@ struct S0DeckCategoryPageView: View {
                 .foregroundStyle(S0DeckMetrics.text)
                 .padding(.horizontal, S2OverlayLayout.minimumSpacing * 2)
                 .padding(.vertical, S2OverlayLayout.minimumSpacing)
-                .modifier(
-                    S0DeckGlassPanel(
-                        cornerRadius: S0DeckMetrics.compactNavCornerRadius
-                    )
+                .s1ChromeGlassBackground(
+                    in: RoundedRectangle(
+                        cornerRadius: S0DeckMetrics.compactNavCornerRadius,
+                        style: .continuous
+                    ),
+                    interactive: false
                 )
                 .allowsHitTesting(false)
                 .accessibilityAddTraits(.isStaticText)
@@ -750,8 +762,12 @@ struct S0DeckCategoryPageView: View {
         .padding(.leading, S0DeckMetrics.dockLeadingPadding)
         .padding(.trailing, S0DeckMetrics.dockTrailingPadding)
         .frame(height: S0DeckMetrics.dockHeight)
-        .modifier(
-            S0DeckGlassPanel(cornerRadius: S0DeckMetrics.dockCornerRadius)
+        .s1ChromeGlassBackground(
+            in: RoundedRectangle(
+                cornerRadius: S0DeckMetrics.dockCornerRadius,
+                style: .continuous
+            ),
+            interactive: true
         )
     }
 
@@ -823,14 +839,6 @@ struct S0DeckCategoryPageView: View {
 
     // MARK: - 动作
 
-    /// 「全选这 N 个」：把这一节并入已选。**幂等**——已选的不再 `toggle`，
-    /// 否则第二次点会把它们反选掉。
-    private func selectTopSection(_ items: [S0CategoryAsset]) {
-        for item in items where !selection.selected.contains(item.id) {
-            selection.toggle(item.id)
-        }
-    }
-
     private func submit() {
         let chosen = selection.selected
         guard !chosen.isEmpty, onMoveToBasket(chosen) else {
@@ -844,6 +852,27 @@ struct S0DeckCategoryPageView: View {
     }
 
     // MARK: - 派生
+
+    /// 网格当前显示顺序：勾选模型里的现存项按排序态排列（日期未取回时按空字典，
+    /// 此时菜单禁用、排序态恒为 `.size`）。
+    private var displayedItems: [S0CategoryAsset] {
+        S0DeckHomeModel.sorted(
+            selection.items,
+            by: sortOrder,
+            dates: dates ?? [:]
+        )
+    }
+
+    /// 月份节标题：有日期按系统语言环境的「年 月」模板（中文即 2026年3月），无日期取目录文案。
+    private func monthTitle(for monthStart: Date?) -> String {
+        guard let monthStart else {
+            return L10n.text("deck.page.undated")
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("yMMMM")
+        return formatter.string(from: monthStart)
+    }
 
     private var segmentBarModel: S0SegmentBarModel {
         let snapshot = machine.snapshot
@@ -922,29 +951,6 @@ enum S0DeckPageShade {
             startPoint: .top,
             endPoint: .bottom
         )
-    }
-}
-
-/// 玻璃面：半透明填充 + 顶缘一道高光。**不用系统材质**（两页恒深色，材质随 trait 变）。
-struct S0DeckGlassPanel: ViewModifier {
-    let cornerRadius: CGFloat
-
-    func body(content: Content) -> some View {
-        content
-            .background(
-                S0DeckMetrics.glassFill,
-                in: RoundedRectangle(
-                    cornerRadius: cornerRadius,
-                    style: .continuous
-                )
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        S0DeckTopHighlight.gradient,
-                        lineWidth: S0DeckMetrics.glassTopHighlightWidth
-                    )
-            }
     }
 }
 

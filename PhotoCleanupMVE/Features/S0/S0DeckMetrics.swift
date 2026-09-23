@@ -24,6 +24,8 @@ enum S0DeckSymbol {
     static let check = "checkmark"
     /// 底栏主按钮的垃圾桶。
     static let trash = "trash"
+    /// IC-163 C（裁定 四）：类别页排序钮。
+    static let sort = "arrow.up.arrow.down"
     /// 百分号。占比的实参形如 `36%`，百分号在实参里拼，不进目录值。
     static let percentSign = "%"
 }
@@ -34,8 +36,8 @@ enum S0DeckSymbol {
 /// `r7.py`（卡片叠 M1）、`r8.py`（N2 总条）、`r9.py`（O1／O2 类别页）。
 /// 三份都是生成器源码，CSS 里的 px 即 pt。每个常量的定义处注明取自哪一条 CSS。
 ///
-/// **两页恒深色**：不读 `colorScheme`、不用系统材质，色一律显式 sRGB 构造
-/// （与 `S0HomeMetrics` 的类别色同一理由）。
+/// **两页恒深色**：不读 `colorScheme`，色一律显式 sRGB 构造（与 `S0HomeMetrics` 的
+/// 类别色同一理由）。类别页的四处玻璃改经 S1 chrome 的玻璃 helper（IC-163 裁定 四）。
 ///
 /// 本族**不进** `S2CalibrationConfiguration`、不上标定面板，`schemaVersion` 不动。
 enum S0DeckMetrics {
@@ -141,24 +143,9 @@ enum S0DeckMetrics {
     )
 
     // MARK: - 玻璃（r7.py `.tabbar`、r9.py `.dock`／`.cnav`／`.cell .lb`）
-
-    /// 玻璃面的半透明填充色 `rgba(38,44,41,0.72)`。取值出处：r9.py `.cnav`。
-    static let glassFill = Color(
-        .sRGB,
-        red: 38.0 / 255,
-        green: 44.0 / 255,
-        blue: 41.0 / 255,
-        opacity: 0.72
-    )
-
-    /// 底栏玻璃 `rgba(38,44,41,0.70)`。取值出处：r9.py `.dock`。
-    static let dockFill = Color(
-        .sRGB,
-        red: 38.0 / 255,
-        green: 44.0 / 255,
-        blue: 41.0 / 255,
-        opacity: 0.70
-    )
+    //
+    // IC-163 C（裁定 四）：类别页四处玻璃改走 S1 chrome 的玻璃 helper，原先的两个平涂
+    // 填充色随之删去。
 
     /// 格底玻璃条 `rgba(20,22,21,0.52)`。取值出处：r9.py `.cell .lb`。
     static let cellLabelFill = Color(
@@ -603,6 +590,14 @@ enum S0DeckMetrics {
     /// `.grid { top: 362px }` 之差，减去节行高 32。
     static let sectionToGridSpacing: CGFloat = 6
 
+    /// 月份节标题右侧计数的字号（不透明度沿用 `sectionTitleDimmedOpacity`）。
+    /// 取值出处：IC-163 卡「视觉取值」第三条（`monthSectionCountFontSize = 12.5`）。
+    static let monthSectionCountFontSize: CGFloat = 12.5
+
+    /// 月份节之间、首节与页头之间的间距（从大到小时整页那张网格与页头之间同用此值）。
+    /// 取值出处：IC-163 卡「视觉取值」第三条（节间距 12，首节距页头 12）。
+    static let monthSectionSpacing: CGFloat = 12
+
     // MARK: - 类别页网格（r9.py `.grid` / `.cell`）
 
     /// 取值出处：r9.py `.grid { left: 6px; right: 6px }`。
@@ -775,12 +770,6 @@ enum S0DeckMetrics {
     /// 页头收成导航条的切换阈值（滚动偏移超过它即切）。取值出处：r9.py O2 的
     /// 页头已整段滚走，取页头高减导航条顶距与高。
     static let compactNavThreshold: CGFloat = 154
-
-    // MARK: - 分节与建议（裁定 五）
-
-    /// 「最大的 N 个」一节与「建议先清」角标共用的 N。取值出处：r9.py O1
-    /// 「最大的 10 个」与 r7.py `.chipk`「建议先清 · 最大 10 个」。
-    static let topSectionLimit = 10
 
     // MARK: - 派生（不是登记值）
 

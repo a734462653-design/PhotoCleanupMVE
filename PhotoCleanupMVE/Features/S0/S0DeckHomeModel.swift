@@ -85,27 +85,85 @@ enum S0DeckHomeModel {
         return defaultOpenID(cards)
     }
 
-    /// 前 `limit` 项的项数与字节和（不足 `limit` 时取全部）。供「建议先清」角标与
-    /// 类别页「最大的 N 个」一节共用。
-    static func topSum(
-        _ items: [S0CategoryAsset],
-        limit: Int
-    ) -> (count: Int, byteCount: Int64) {
-        let count = max(0, min(limit, items.count))
-        let total = items.prefix(count).reduce(into: Int64(0)) { sum, item in
-            sum += item.byteCount
-        }
-        return (count, total)
+    // MARK: - IC-163 C：类别页排序与按月分节（裁定 四）
+
+    /// 类别页的排序态。`size` 是入参顺序（数据源已按体积降序给出），另两个按拍摄日期。
+    enum SortOrder {
+        case size
+        case newestFirst
+        case oldestFirst
     }
 
-    /// IC-162 B：类别页的两节切分。前 `topLimit` 项为「最大的 N 个」，其余为「其余 M 个」；
-    /// 总数 ≤ `topLimit` 时第二节为空（页面据此不画第二节）。两节都保持入参顺序。
-    static func sections(
+    /// 时间排序下的一节：某年某月的全部项，`monthStart` 为该月 1 日 0 点；无日期的一节为 nil。
+    struct MonthSection: Equatable {
+        let monthStart: Date?
+        let items: [S0CategoryAsset]
+    }
+
+    /// 按排序态排列网格项。
+    ///
+    /// - `.size`：原样返回入参顺序；
+    /// - `.newestFirst`／`.oldestFirst`：有日期的按日期降序／升序，同日期按标识升序；
+    ///   **无日期的一律排最后**，相互之间保持入参顺序。
+    static func sorted(
         _ items: [S0CategoryAsset],
-        topLimit: Int
-    ) -> (top: [S0CategoryAsset], rest: [S0CategoryAsset]) {
-        let count = max(0, min(topLimit, items.count))
-        return (Array(items.prefix(count)), Array(items.dropFirst(count)))
+        by order: SortOrder,
+        dates: [String: Date]
+    ) -> [S0CategoryAsset] {
+        guard order != .size else {
+            return items
+        }
+        var dated: [(item: S0CategoryAsset, date: Date)] = []
+        var undated: [S0CategoryAsset] = []
+        for item in items {
+            if let date = dates[item.id] {
+                dated.append((item: item, date: date))
+            } else {
+                undated.append(item)
+            }
+        }
+        dated.sort { lhs, rhs in
+            guard lhs.date != rhs.date else {
+                return lhs.item.id < rhs.item.id
+            }
+            return order == .newestFirst
+                ? lhs.date > rhs.date
+                : lhs.date < rhs.date
+        }
+        return dated.map { $0.item } + undated
+    }
+
+    /// 把排好的网格项按年月归节。节的次序与节内次序都随入参（各节按首次出现排）；
+    /// 无日期的项归最后一节，`monthStart = nil`。空入参得空数组。
+    static func monthSections(
+        _ sorted: [S0CategoryAsset],
+        dates: [String: Date],
+        calendar: Calendar
+    ) -> [MonthSection] {
+        var monthOrder: [DateComponents] = []
+        var itemsByMonth: [DateComponents: [S0CategoryAsset]] = [:]
+        var undated: [S0CategoryAsset] = []
+        for item in sorted {
+            guard let date = dates[item.id] else {
+                undated.append(item)
+                continue
+            }
+            let month = calendar.dateComponents([.year, .month], from: date)
+            if itemsByMonth[month] == nil {
+                monthOrder.append(month)
+            }
+            itemsByMonth[month, default: []].append(item)
+        }
+        var result = monthOrder.map { month in
+            MonthSection(
+                monthStart: calendar.date(from: month),
+                items: itemsByMonth[month] ?? []
+            )
+        }
+        if !undated.isEmpty {
+            result.append(MonthSection(monthStart: nil, items: undated))
+        }
+        return result
     }
 
     // MARK: - 私有

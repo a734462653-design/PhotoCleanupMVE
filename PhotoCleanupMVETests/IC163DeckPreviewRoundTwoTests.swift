@@ -247,4 +247,124 @@ final class IC163DeckPreviewRoundTwoTests: XCTestCase {
         }
         return machine
     }
+
+    // MARK: - 子项 C：类别页排序与按月分节（只测纯函数，不构造视图、不碰 PhotoKit）
+
+    /// 五项（入参即数据源给的体积降序），其中 d2、d4 无日期。
+    func testIC163C_SortedBySizeKeepsOrderAndTimeOrdersPutUndatedLast() throws {
+        let calendar = try Self.utcCalendar()
+        let items = Self.categoryAssets(["d0", "d1", "d2", "d3", "d4"])
+        let dates: [String: Date] = try [
+            "d0": Self.noon(2026, 3, 2, in: calendar),
+            "d1": Self.noon(2026, 3, 30, in: calendar),
+            "d3": Self.noon(2026, 2, 11, in: calendar)
+        ]
+
+        XCTAssertEqual(
+            S0DeckHomeModel.sorted(items, by: .size, dates: dates).map { $0.id },
+            ["d0", "d1", "d2", "d3", "d4"]
+        )
+        // 最新在前：有日期的按日期降序；无日期的两项在末尾，保持入参相对序。
+        XCTAssertEqual(
+            S0DeckHomeModel.sorted(items, by: .newestFirst, dates: dates).map { $0.id },
+            ["d1", "d0", "d3", "d2", "d4"]
+        )
+        // 最旧在前：有日期的升序；无日期的仍在末尾。
+        XCTAssertEqual(
+            S0DeckHomeModel.sorted(items, by: .oldestFirst, dates: dates).map { $0.id },
+            ["d3", "d0", "d1", "d2", "d4"]
+        )
+        // 没有任何日期：两种时间排序都等于入参顺序（全部归「无日期」）。
+        XCTAssertEqual(
+            S0DeckHomeModel.sorted(items, by: .newestFirst, dates: [:]).map { $0.id },
+            ["d0", "d1", "d2", "d3", "d4"]
+        )
+
+        // 同日期按标识升序（两种方向都是）。
+        let tied = Self.categoryAssets(["t-z", "t-a"])
+        let sameDay = try Self.noon(2026, 1, 5, in: calendar)
+        let tiedDates = ["t-z": sameDay, "t-a": sameDay]
+        XCTAssertEqual(
+            S0DeckHomeModel.sorted(tied, by: .newestFirst, dates: tiedDates).map { $0.id },
+            ["t-a", "t-z"]
+        )
+        XCTAssertEqual(
+            S0DeckHomeModel.sorted(tied, by: .oldestFirst, dates: tiedDates).map { $0.id },
+            ["t-a", "t-z"]
+        )
+    }
+
+    /// 最新在前排好后传入：3 月两项、2 月一项、无日期两项 → 三节，节序与节内序随入参。
+    func testIC163C_MonthSectionsGroupByYearMonthInInputOrder() throws {
+        let calendar = try Self.utcCalendar()
+        let sorted = Self.categoryAssets(["m1", "m2", "m3", "u1", "u2"])
+        let dates: [String: Date] = try [
+            "m1": Self.noon(2026, 3, 30, in: calendar),
+            "m2": Self.noon(2026, 3, 2, in: calendar),
+            "m3": Self.noon(2026, 2, 11, in: calendar)
+        ]
+
+        let sections = S0DeckHomeModel.monthSections(sorted, dates: dates, calendar: calendar)
+        XCTAssertEqual(sections.count, 3)
+        XCTAssertEqual(sections.map { $0.items.map { $0.id } }, [["m1", "m2"], ["m3"], ["u1", "u2"]])
+
+        // `monthStart` = 该月 1 日 0 点，用同一 `Calendar` 反算。
+        let march = try XCTUnwrap(
+            calendar.date(from: DateComponents(year: 2026, month: 3, day: 1))
+        )
+        let february = try XCTUnwrap(
+            calendar.date(from: DateComponents(year: 2026, month: 2, day: 1))
+        )
+        XCTAssertEqual(sections[0].monthStart, march)
+        XCTAssertEqual(sections[1].monthStart, february)
+        XCTAssertNil(sections[2].monthStart)
+        let marchParts = calendar.dateComponents([.day, .hour, .minute, .second], from: march)
+        XCTAssertEqual(marchParts.day, 1)
+        XCTAssertEqual(marchParts.hour, 0)
+        XCTAssertEqual(marchParts.minute, 0)
+        XCTAssertEqual(marchParts.second, 0)
+    }
+
+    func testIC163C_MonthSectionsEmptyInputGivesNoSections() throws {
+        let calendar = try Self.utcCalendar()
+        XCTAssertEqual(
+            S0DeckHomeModel.monthSections([], dates: [:], calendar: calendar),
+            []
+        )
+    }
+
+    // MARK: - 子项 C 的夹具
+
+    /// 固定公历、UTC，不用 `Calendar.current`。
+    private static func utcCalendar() throws -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        return calendar
+    }
+
+    /// 某日正午（UTC），离月界足够远。
+    private static func noon(
+        _ year: Int,
+        _ month: Int,
+        _ day: Int,
+        in calendar: Calendar
+    ) throws -> Date {
+        try XCTUnwrap(
+            calendar.date(
+                from: DateComponents(year: year, month: month, day: day, hour: 12)
+            )
+        )
+    }
+
+    /// 体积严格递减的若干项，顺序即入参（类别页数据源给的体积降序）。
+    private static func categoryAssets(_ ids: [String]) -> [S0CategoryAsset] {
+        ids.enumerated().map { pair in
+            S0CategoryAsset(
+                id: pair.element,
+                byteCount: Int64(1_000 - pair.offset),
+                isVideo: false,
+                duration: 0
+            )
+        }
+    }
 }
