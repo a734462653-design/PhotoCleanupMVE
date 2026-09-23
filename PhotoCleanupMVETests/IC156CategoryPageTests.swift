@@ -541,7 +541,8 @@ final class IC156CategoryPageTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "S0CategoryPageRange.prefix", in: app), 2) // IC-157：进 S2 闭包一处
         XCTAssertGreaterThanOrEqual(occurrences(of: "S0CategoryText.displayName(for:", in: app), 1)
         // `cc686d9` 为 2（S1 接线的形参标签与实参各一处），本卡加一处实参。
-        XCTAssertEqual(occurrences(of: "feedbackToastDurationMilliseconds", in: app), 3)
+        // IC-168 D：清理 tab 回落 toast 的呈现器再读一处，3 → 4。
+        XCTAssertEqual(occurrences(of: "feedbackToastDurationMilliseconds", in: app), 4)
         XCTAssertEqual(occurrences(of: "s0Screen(s1Machine: s1Machine)", in: app), 1)
         // IC-147 断言 2／3 与 IC-153 断言 11 钉住的接线照旧。
         XCTAssertEqual(occurrences(of: "advanceScan()", in: app), 2)

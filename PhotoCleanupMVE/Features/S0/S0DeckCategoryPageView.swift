@@ -757,20 +757,7 @@ struct S0DeckCategoryPageView: View {
     @ViewBuilder
     private var toastView: some View {
         if let text = toast.activeText {
-            Text(text)
-                .font(.system(size: S0DeckMetrics.toastFontSize))
-                .foregroundStyle(S0DeckMetrics.text)
-                .padding(.horizontal, S0DeckMetrics.toastHorizontalPadding)
-                .padding(.vertical, S0DeckMetrics.toastVerticalPadding)
-                .s1ChromeGlassBackground(
-                    in: RoundedRectangle(
-                        cornerRadius: S0DeckMetrics.toastCornerRadius,
-                        style: .continuous
-                    ),
-                    interactive: false
-                )
-                .allowsHitTesting(false)
-                .accessibilityAddTraits(.isStaticText)
+            S0FeedbackToastLabel(text: text)
         }
     }
 
@@ -985,5 +972,29 @@ enum S0DeckPageShade {
             startPoint: .top,
             endPoint: .bottom
         )
+    }
+}
+
+/// IC-168 D（裁定 四）：类别页底部短 toast 的视图体，从 `toastView` 原样抽出。类别页自己的
+/// 提示与 App 在清理 tab 上呈现的 S1 回落提示共用这一只（同字号、同玻璃、不接收点击）。
+/// 留在本文件：页面的登记值与玻璃计数都钉在这里。
+struct S0FeedbackToastLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: S0DeckMetrics.toastFontSize))
+            .foregroundStyle(S0DeckMetrics.text)
+            .padding(.horizontal, S0DeckMetrics.toastHorizontalPadding)
+            .padding(.vertical, S0DeckMetrics.toastVerticalPadding)
+            .s1ChromeGlassBackground(
+                in: RoundedRectangle(
+                    cornerRadius: S0DeckMetrics.toastCornerRadius,
+                    style: .continuous
+                ),
+                interactive: false
+            )
+            .allowsHitTesting(false)
+            .accessibilityAddTraits(.isStaticText)
     }
 }
