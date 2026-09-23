@@ -486,12 +486,29 @@ final class IC147S0BehaviorTests: XCTestCase {
         XCTAssertTrue(machine.showsCategoryRows)
         XCTAssertTrue(machine.showsPendingClearanceRow)
 
-        // 视图层确实经这两道判定，不自行看 `ledgerState` 或数据是否为空。
+        // 视图层确实经状态机的判定，不自行看 `ledgerState` 或数据是否为空。
+        // IC-165 C：首页改为「卡片叠」`S0DeckHomeView`。四态分派读状态机发布的四态本身
+        // （`switch machine.state`，IC-165 裁定 五）；`showsCategoryRows` 的语义是
+        // `state != .failed`，`.empty` 也为真，不能拿来门控整套卡片叠。
         let view = try XCTUnwrap(
-            strippedSource("PhotoCleanupMVE/Features/S0/S0View.swift")
+            strippedSource("PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift")
         )
         XCTAssertEqual(occurrences(of: "machine.showsPendingClearanceRow", in: view), 1)
-        XCTAssertEqual(occurrences(of: "machine.showsCategoryRows", in: view), 1)
+        XCTAssertEqual(occurrences(of: "switch machine.state {", in: view), 1)
+        // 三个分支按四态分派那一段计数：同文件里 `VF` 三态读数另有一只
+        // `switch machine.verificationState`，它也有 `case .failed:`（IC-165 定：钉在分派段内）。
+        let dispatch = try XCTUnwrap(
+            slice(
+                view,
+                from: "private var content: some View {",
+                to: Self.newline + "    }" + Self.newline
+            ),
+            "首页四态分派 `content` 没切到"
+        )
+        XCTAssertEqual(occurrences(of: "switch machine.state {", in: dispatch), 1)
+        XCTAssertEqual(occurrences(of: "case .scanning, .ready:", in: dispatch), 1)
+        XCTAssertEqual(occurrences(of: "case .empty:", in: dispatch), 1)
+        XCTAssertEqual(occurrences(of: "case .failed:", in: dispatch), 1)
         // tab 反复选中不得重复摄入并重发 `.applicationOpened`（H70 第 2 条切十次）。
         XCTAssertEqual(occurrences(of: "hasBootstrapped", in: view), 3)
     }
@@ -666,7 +683,7 @@ final class IC147S0BehaviorTests: XCTestCase {
 
         // 视图层与容器层一处都不许直写这三个状态量。
         for relativePath in [
-            "PhotoCleanupMVE/Features/S0/S0View.swift",
+            "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
             "PhotoCleanupMVE/Features/S0/S0TabContainer.swift",
             "PhotoCleanupMVE/Services/S0CleanupDataStub.swift",
             "PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift"
@@ -727,7 +744,7 @@ final class IC147S0BehaviorTests: XCTestCase {
             "PHPhotoLibrary"
         ]
         for relativePath in [
-            "PhotoCleanupMVE/Features/S0/S0View.swift",
+            "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
             "PhotoCleanupMVE/Features/S0/S0TabContainer.swift",
             // 正对照口径：桩实现同样零命中；真实现才会有，而真实现不在本卡。
             "PhotoCleanupMVE/Services/S0CleanupDataStub.swift"
@@ -751,9 +768,10 @@ final class IC147S0BehaviorTests: XCTestCase {
         XCTAssertGreaterThan(occurrences(of: "PHAsset", in: scanner), 0)
         XCTAssertGreaterThan(occurrences(of: "import Photos", in: scanner), 0)
 
-        // 协议在消费侧定义、实现在 Services（照 `S2AssetSizeProbing` 样板）。
+        // 协议在消费侧定义、实现在 Services（照 `S2AssetSizeProbing` 样板）。IC-165 C：协议从
+        // 退役的旧首页原样搬进自己的文件。
         let view = try XCTUnwrap(
-            sourceText("PhotoCleanupMVE/Features/S0/S0View.swift")
+            sourceText("PhotoCleanupMVE/Features/S0/S0CleanupDataProviding.swift")
         )
         XCTAssertEqual(
             occurrences(of: "protocol S0CleanupDataProviding: AnyObject {", in: view),
@@ -776,7 +794,7 @@ final class IC147S0BehaviorTests: XCTestCase {
 
         // (a) Features/S0 源码（**不剔注释**：措辞漂移常先出现在注释里）。
         for relativePath in [
-            "PhotoCleanupMVE/Features/S0/S0View.swift",
+            "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
             "PhotoCleanupMVE/Features/S0/S0TabContainer.swift"
         ] {
             let source = try XCTUnwrap(sourceText(relativePath))
@@ -793,9 +811,9 @@ final class IC147S0BehaviorTests: XCTestCase {
         // (b) 目录里 `s0.` 全部条目的取值同样零命中。
         let catalog = try loadCatalogValues()
         let s0Values = catalog.filter { $0.key.hasPrefix("s0.") }
-        // IC-148 C 新增两条图例 key（`s0.home.legend.rest`／`.unscanned`）。
-        // IC-156 C 新增类别页五条 key（`s0.categoryPage.*`）：32 → 37。
-        XCTAssertEqual(s0Values.count, 38) // IC-157 B：长按提示一条，37 → 38。
+        // IC-148 C 新增两条图例 key；IC-156 C 新增类别页五条 key（`s0.categoryPage.*`）：32 → 37；
+        // IC-157 B 长按提示一条 → 38。IC-165 C：删作废八条与长按提示一条、加十条 → 39。
+        XCTAssertEqual(s0Values.count, 39)
         for (key, value) in s0Values {
             for wording in forbidden {
                 XCTAssertFalse(
@@ -806,7 +824,7 @@ final class IC147S0BehaviorTests: XCTestCase {
         }
 
         // 正对照：已登记的两句措辞确实在目录里，扫描不是空转。
-        XCTAssertEqual(catalog["s0.home.hero.label"], "可清理约")
+        XCTAssertEqual(catalog["s0.home.hero.label"], "可清理的空间")
         XCTAssertEqual(
             catalog["s0.home.pending.label"],
             "在「最近删除」中等待清空 {total}"
@@ -820,14 +838,13 @@ final class IC147S0BehaviorTests: XCTestCase {
         let catalogS0Keys = Set(catalog.keys.filter { $0.hasPrefix("s0.") })
 
         var referenced: Set<String> = []
+        // IC-165 C：S0 的 key 引用点——两只「卡片叠」页面、tab 容器，以及 `s0.category.*`
+        // 五条所在的文本 helper 文件；少扫一个「不多不少」那条就会假红。
         for relativePath in [
-            "PhotoCleanupMVE/Features/S0/S0View.swift",
+            "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
+            "PhotoCleanupMVE/Features/S0/S0DeckCategoryPageView.swift",
             "PhotoCleanupMVE/Features/S0/S0TabContainer.swift",
-            // IC-148 C：两条图例 key 的引用点在分段条文件里，不加进来
-            // 「不多不少」那条会因为少扫一个文件而假红。
-            "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift",
-            // IC-156 C：类别页五条 key 的引用点在类别页文件里，理由同上。
-            "PhotoCleanupMVE/Features/S0/S0CategoryPageView.swift"
+            "PhotoCleanupMVE/Features/S0/S0Text.swift"
         ] {
             let source = try XCTUnwrap(sourceText(relativePath))
             referenced.formUnion(localizationKeys(in: source))
@@ -843,18 +860,20 @@ final class IC147S0BehaviorTests: XCTestCase {
         XCTAssertGreaterThan(referenced.count, 20)
         // 不多不少：目录里的 s0. key 集合恰等于 S0 源码引用的 s0. 集合。
         XCTAssertEqual(referenced.filter { $0.hasPrefix("s0.") }, catalogS0Keys)
-        // IC-156 C：类别页五条 key，32 → 37。
-        XCTAssertEqual(catalogS0Keys.count, 38) // IC-157 B：长按提示一条，37 → 38。
-        // 跨前缀引用只允许一条：受限提示条。
-        //
-        // IC-148 B 第 6 条要求 S0 画受限提示条，而 SPEC-S0 v1 第十四节第 3 部分
-        // **没有登记任何 `s0.` 受限提示条文案**（该缺口 IC-147 报告已登记）。
-        // 「未登记的文案不得出现」与「必须画这条」二者只能取其一，取了复用
-        // SPEC-S1 v9 已登记的同义文案，并在此把这唯一一条跨前缀引用钉死——
-        // 再多一条就是自造文案，判红。
+        // IC-156 C：32 → 37；IC-157 B：→ 38；IC-165 C：→ 39。
+        XCTAssertEqual(catalogS0Keys.count, 39)
+        // 跨前缀引用恰为 SPEC-S0 v3 第十四节第 3 部分登记的四条借用：受限提示条一条、
+        // 类别页排序三条（钮的无障碍标签与菜单后两项）。再多一条就是自造文案，判红。
+        // 期望值须显式写成 `Set`：对数组字面量比较时 `filter` 解析为返回数组的那个重载，
+        // 结果按集合的迭代顺序排列，多于一条就随进程变（#331 实例）。
         XCTAssertEqual(
             referenced.filter { !$0.hasPrefix("s0.") },
-            ["s1.limited.banner"]
+            Set([
+                "s1.limited.banner",
+                "s1.sort.accessibility",
+                "s1.sort.newest_first",
+                "s1.sort.oldest_first"
+            ])
         )
     }
 
@@ -1204,6 +1223,25 @@ final class IC147S0BehaviorTests: XCTestCase {
     }
 
     // MARK: - 源码与目录读取
+
+    /// 换行符用 `UnicodeScalar` 拼、不写转义字面量（IC-148 #294 的 heredoc 教训）。
+    private static let newline = String(Character(UnicodeScalar(UInt8(10))))
+
+    /// 从 `start` 起、到其后第一处 `end` 之前的切片（照 `IC157LongPressIntoS2Tests` 同名 helper）。
+    private func slice(
+        _ source: String,
+        from start: String,
+        to end: String
+    ) -> String? {
+        guard let startRange = source.range(of: start),
+              let endRange = source.range(
+                  of: end,
+                  range: startRange.upperBound..<source.endIndex
+              ) else {
+            return nil
+        }
+        return String(source[startRange.lowerBound..<endRange.lowerBound])
+    }
 
     private func repoRoot() -> URL {
         URL(fileURLWithPath: #filePath)

@@ -350,11 +350,8 @@ final class IC151AmbientFixedColorTests: XCTestCase {
                 "S0View 仍引用图源链的 " + retired
             )
         }
-        XCTAssertEqual(
-            occurrences(of: "S2AmbientBackdropView()", in: view),
-            1,
-            "氛围底视图的构造点不是恰一处"
-        )
+        // 原「氛围底视图构造点恰一处」随 IC-165 C 删去：SPEC-S0 v3 首页底色为平涂 `#0B0F0D`，
+        // 「卡片叠」首页不用氛围底（S2 侧的氛围底视图不受影响）。
 
         let app = try XCTUnwrap(strippedSource(Self.appPath))
         XCTAssertGreaterThan(app.count, 0)
@@ -378,59 +375,8 @@ final class IC151AmbientFixedColorTests: XCTestCase {
         )
     }
 
-    // MARK: - 断言 12：玻璃卡是半透明填充，卡下不铺幕底色
-
-    /// 卡下**不得**再铺 `S2AmbientMetrics.baseColor`：卡是半透明的，页面的
-    /// 光晕要透过卡面才能给卡一个「坐」的明度梯度（Decision_log 第 176 条
-    /// 选中档光晕的理由就是这个）；铺了底色，光晕在卡上就被挡死。
-    ///
-    /// 投影仍在（裁定 二：已登记的取值不随画布微调）。
-    func testIC151D_GlassSurfaceIsTranslucentFillWithoutBaseColor() throws {
-        let view = try XCTUnwrap(strippedSource(Self.s0ViewPath))
-        let body = try XCTUnwrap(
-            slice(
-                view,
-                from: "struct S0GlassSurface<S: InsettableShape>: ViewModifier {",
-                to: Self.topLevelClose
-            ),
-            "S0GlassSurface 视图体没切到——声明文本变了，断言会静默放空"
-        )
-        XCTAssertEqual(
-            occurrences(of: "S2AmbientMetrics.baseColor", in: body),
-            0,
-            "卡下仍铺着幕底色，光晕在卡上会被挡死"
-        )
-        XCTAssertGreaterThan(
-            occurrences(of: "cardFillTopOpacity", in: body),
-            0
-        )
-        XCTAssertGreaterThan(
-            occurrences(of: "cardFillBottomOpacity", in: body),
-            0
-        )
-        XCTAssertGreaterThan(
-            occurrences(of: "cardShadowRadius", in: body),
-            0,
-            "投影被一并删了——裁定 二：已登记的取值原样保留"
-        )
-
-        // 两个新常量与 trait 无关（裁定 甲：首页恒为深色配方）。
-        for opacity in [
-            S0HomeMetrics.cardFillTopOpacity,
-            S0HomeMetrics.cardFillBottomOpacity
-        ] {
-            let resolved = UIColor(Color.white.opacity(opacity))
-            XCTAssertEqual(
-                resolved.resolvedColor(
-                    with: UITraitCollection(userInterfaceStyle: .dark)
-                ),
-                resolved.resolvedColor(
-                    with: UITraitCollection(userInterfaceStyle: .light)
-                ),
-                "卡面填充随外观解析出了两个值"
-            )
-        }
-    }
+    // 断言 12（`testIC151D_GlassSurfaceIsTranslucentFillWithoutBaseColor`）随 IC-165 C 删去：
+    // v2 的玻璃卡 `S0GlassSurface` 随旧首页退役；卡片叠的玻璃一律经 S1 helper。
 
     // MARK: - 断言 14：S0 行为一行未改
 
@@ -462,8 +408,9 @@ final class IC151AmbientFixedColorTests: XCTestCase {
 
     private static let ambientPath =
         "PhotoCleanupMVE/Features/S2/S2AmbientBackdrop.swift"
+    /// IC-165 C：首页改为「卡片叠」`S0DeckHomeView`（旧首页退役）。
     private static let s0ViewPath =
-        "PhotoCleanupMVE/Features/S0/S0View.swift"
+        "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift"
     private static let s2ViewPath =
         "PhotoCleanupMVE/Features/S2/S2View.swift"
     private static let appPath =

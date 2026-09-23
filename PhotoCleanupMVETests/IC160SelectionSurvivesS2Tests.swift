@@ -117,37 +117,39 @@ final class IC160SelectionSurvivesS2Tests: XCTestCase {
     // MARK: - 断言 4：页面回报与流程接线，既有钉子照旧（子项 B）
 
     func testIC160B_WiringAndExistingPinsHold() throws {
-        let pagePath = "PhotoCleanupMVE/Features/S0/S0CategoryPageView.swift"
+        // IC-165 B：旧类别页退役，改扫「卡片叠」类别页。它直接收 `flowModel`，在自己的文件里
+        // 播种与回报，不再经 `initialSelection:`／`onSelectionChange:` 两个形参。
+        let pagePath = "PhotoCleanupMVE/Features/S0/S0DeckCategoryPageView.swift"
         let page = try XCTUnwrap(strippedSource(pagePath))
         // 回报口：变化时一处、出现时一处（`.onChange` 不对初值触发）。
         XCTAssertEqual(occurrences(of: ".onChange(of: selection.selected)", in: page), 1)
         XCTAssertEqual(occurrences(of: ".onAppear", in: page), 1)
-        XCTAssertEqual(occurrences(of: "onSelectionChange(", in: page), 2)
-        XCTAssertEqual(occurrences(of: "onSelectionChange(selection.selected)", in: page), 1)
-        // 播种口：两个新形参都带默认值，既有构造点不改即编译。
-        XCTAssertEqual(occurrences(of: "initialSelection: Set<String> = []", in: page), 1)
-        XCTAssertEqual(occurrences(of: "preselected: initialSelection", in: page), 1)
-        // IC-157 断言 4 的计数原样重申：长按处一字未动。
+        XCTAssertEqual(occurrences(of: "onSelectionChange(", in: page), 0)
+        XCTAssertEqual(occurrences(of: "onSelectionChange(selection.selected)", in: page), 0)
+        // 播种口：按「保留集 ∩ 当前列表」播种，直接读模型。
+        XCTAssertEqual(occurrences(of: "initialSelection: Set<String> = []", in: page), 0)
+        XCTAssertEqual(occurrences(of: "preselected: flowModel.preservedSelection", in: page), 1)
+        // IC-157 断言 4 的计数原样重申：长按处一处。
         XCTAssertEqual(occurrences(of: "onLongPress(", in: page), 1)
         XCTAssertEqual(occurrences(of: "LongPressGesture()", in: page), 1)
         XCTAssertEqual(occurrences(of: ".simultaneousGesture(", in: page), 1)
-        XCTAssertEqual(occurrences(of: "Button {", in: page), 2)
+        // 页头「全选」、收起导航「全选」与格各一处尾随闭包写法。
+        XCTAssertEqual(occurrences(of: "Button {", in: page), 3)
 
         let flowPath = "PhotoCleanupMVE/Features/S0/S0CleanupFlowView.swift"
         let flow = try XCTUnwrap(strippedSource(flowPath))
-        // 进首页清空、返回首页清空、播种、回报，恰四处。
-        XCTAssertEqual(occurrences(of: "flowModel.preservedSelection", in: flow), 4)
+        // IC-165 B：播种与回报搬进类别页后，容器只剩进类别清空、返回首页清空两处。
+        XCTAssertEqual(occurrences(of: "flowModel.preservedSelection", in: flow), 2)
         XCTAssertEqual(
             occurrences(of: "initialSelection: flowModel.preservedSelection", in: flow),
-            1
+            0
         )
-        // 只数「恰四处」会被「第四处也写成清空」的错误实装满足，故单钉回报那一处。
-        XCTAssertEqual(occurrences(of: "flowModel.preservedSelection = $0", in: flow), 1)
+        XCTAssertEqual(occurrences(of: "flowModel.preservedSelection = $0", in: flow), 0)
         XCTAssertEqual(occurrences(of: "flowModel.preservedSelection = []", in: flow), 2)
         // IC-157 断言 6 的计数原样重申：容器不加状态、重算点仍三处。
         XCTAssertEqual(occurrences(of: "@State ", in: flow), 0)
         XCTAssertEqual(occurrences(of: "machine.ingest(", in: flow), 3)
-        XCTAssertEqual(occurrences(of: "S0CategoryPageView(", in: flow), 1)
+        XCTAssertEqual(occurrences(of: "S0DeckCategoryPageView(", in: flow), 1)
         XCTAssertGreaterThanOrEqual(occurrences(of: "flowModel.presentedCategory", in: flow), 3)
     }
 

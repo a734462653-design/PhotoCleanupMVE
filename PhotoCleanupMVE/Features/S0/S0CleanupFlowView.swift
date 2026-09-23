@@ -2,7 +2,7 @@ import SwiftUI
 
 /// IC-156 D：「空间清理」tab 的承载容器（裁定 二）。
 ///
-/// `S0View` 原样构造在这里——`S0View.swift`、`S0TabContainer.swift` 与 `Core/` 一字不动。
+/// IC-165 起首页是「卡片叠」`S0DeckHomeView`、类别页是 `S0DeckCategoryPageView`（旧首页与旧类别页退役）。
 /// 本容器只做三件事：给首页的 `onEnterCategoryPage` 一个真闭包；用 `NavigationStack` 的
 /// `navigationDestination(item:)` 推出类别页；在重算点把新快照喂给状态机。
 ///
@@ -33,6 +33,11 @@ struct S0CleanupFlowView: View {
     /// 类别页身份的单一来源：推出与返回都只改它（不用系统返回栏、不用 `dismiss`）。
     /// IC-157 C：上提到 App 持有的模型，跨进出 S2 存活（裁定 一）。
     @ObservedObject var flowModel: S0CleanupFlowModel
+
+    /// IC-162 B：「卡片叠」预览里首页展开卡 → 类别页页头的 zoom 过渡命名空间。
+    /// 两只新视图各收一个形参；系统版本判定与两只过渡修饰符只出现在新视图文件里
+    /// （本文件的数字字面量被钉在 0／1／2 之内，写版本号进来必红）。
+    @Namespace private var deckNamespace
 
     init(
         machine: S0StateMachine,
@@ -80,46 +85,60 @@ struct S0CleanupFlowView: View {
         }
     }
 
-    /// 首页原样构造（陷阱 16：构造点外提）。
+    /// 首页构造点（陷阱 16：构造点外提）。
+    ///
+    /// IC-165 B：「卡片叠」首页为唯一首页（旧首页退役）；两只回调外提成下面两个方法。
     private var homeScreen: some View {
-        S0View(
+        S0DeckHomeView(
             machine: machine,
             dataProvider: dataProvider,
             onEnterCategoryPage: { identifier in
-                // IC-160 B：从首页进任一类别都是新的一轮，保留集先清空（防御：从 S2 改走
-                // 待删篮路径回到首页时，模型里可能还留着上一个类别的保留集）。
-                flowModel.preservedSelection = []
-                flowModel.presentedCategory = identifier
+                enterCategory(identifier)
             },
-            onSwitchToOrganizeTab: onSwitchToOrganizeTab
+            onSwitchToOrganizeTab: onSwitchToOrganizeTab,
+            transitionNamespace: deckNamespace
         )
+    }
+
+    /// IC-160 B：从首页进任一类别都是新的一轮，保留集先清空（防御：从 S2 改走
+    /// 待删篮路径回到首页时，模型里可能还留着上一个类别的保留集）。
+    private func enterCategory(_ identifier: S0CategoryIdentifier) {
+        flowModel.preservedSelection = []
+        flowModel.presentedCategory = identifier
+    }
+
+    /// 返回首页即一轮结束：勾选不跨类别、不跨进出首页保留（IC-160 裁定 一）。
+    private func leaveCategory() {
+        flowModel.preservedSelection = []
+        flowModel.presentedCategory = nil
     }
 
     /// 类别页（陷阱 16：构造点外提）。数据取自状态机当前快照的该类别与数据源的有序列表；
     /// 快照里恒有三条元数据类别，点得进来的类别在此必非 nil（③，报告登记）。
+    ///
+    /// IC-165 B：新类别页为唯一类别页（旧类别页退役）。它不经形参拿保留集，而是直接收
+    /// `flowModel`，在自己的文件里按 IC-160 的口径读写；两层 `.toolbar` 也由它自己挂，
+    /// 流程文件里不为它再写。
     @ViewBuilder
     private func page(for identifier: S0CategoryIdentifier) -> some View {
         if let category = machine.category(identifier) {
-            S0CategoryPageView(
+            S0DeckCategoryPageView(
+                machine: machine,
                 category: category,
                 items: dataProvider.categoryAssets(identifier),
+                flowModel: flowModel,
                 onMoveToBasket: { assetIDs in
                     moveToBasket(assetIDs, from: identifier)
                 },
                 onBack: {
-                    // 返回首页即一轮结束：勾选不跨类别、不跨进出首页保留（裁定 一）。
-                    flowModel.preservedSelection = []
-                    flowModel.presentedCategory = nil
+                    leaveCategory()
                 },
                 onLongPress: { orderedAssetIDs, currentAssetID in
                     _ = onEnterS2(identifier, orderedAssetIDs, currentAssetID)
                 },
-                initialSelection: flowModel.preservedSelection,
-                onSelectionChange: { flowModel.preservedSelection = $0 },
-                toastDurationMilliseconds: toastDurationMilliseconds
+                toastDurationMilliseconds: toastDurationMilliseconds,
+                transitionNamespace: deckNamespace
             )
-            .toolbar(.hidden, for: .tabBar)
-            .toolbar(.hidden, for: .navigationBar)
         }
     }
 

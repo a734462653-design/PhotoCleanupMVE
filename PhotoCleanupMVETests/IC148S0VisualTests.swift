@@ -17,23 +17,26 @@ import XCTest
 ///
 /// 断言编号与任务卡一一对应，共十四条：1～4 属子项 A，5～7 属子项 B，
 /// 8～11 属子项 C，12～14 属子项 D。
+///
+/// IC-165 C：v2 的首页三族登记（`S0HomeMetrics`／`S0SegmentBar` 视图层／`S0CategoryRow`）随旧首页
+/// 退役，断言 1 与 12 随之删去；其余各条改扫「卡片叠」两页与 SPEC-S0 v3 的对应物。
 final class IC148S0VisualTests: XCTestCase {
 
-    /// IC-148 新增的产品文件。第四个 `Services/S0RecentPhotoAmbientLoader.swift`
-    /// 随 IC-151 裁定 五 整条删除（氛围底改固定色，不再取图），从名单移除——
-    /// 文件不存在则 `strippedSource` 解不开，断言 2 的循环会直接失败。
+    /// S0 的**非视图**产品文件（IC-165 C：登记表、卡片叠呈现口径、分段条模型、zoom 过渡）。
+    /// 两只视图不在此列——类别页收起导航的排序圆钮借 S1 的圆钮图标字号（断言 7 的名单）。
     private static let newProductFiles = [
-        "PhotoCleanupMVE/Features/S0/S0HomeMetrics.swift",
-        "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift",
-        "PhotoCleanupMVE/Features/S0/S0CategoryRow.swift"
+        "PhotoCleanupMVE/Features/S0/S0DeckMetrics.swift",
+        "PhotoCleanupMVE/Features/S0/S0DeckHomeModel.swift",
+        "PhotoCleanupMVE/Features/S0/S0SegmentBarModel.swift",
+        "PhotoCleanupMVE/Features/S0/S0DeckZoomTransition.swift"
     ]
 
-    /// 三个**视图**文件（PhotoKit／造假／文案扫描的扫描面）。`S0View.swift` 是
-    /// IC-147 建的、本卡改版式的那一个，也算在内。
+    /// **视图**文件（PhotoKit／造假／文案扫描的扫描面）：「卡片叠」两页与 zoom 过渡。取图的
+    /// `S0DeckCoverView` 与取日期的 `S0DeckAssetDates` 在 `Features/Shared/`，不在此列。
     private static let viewFiles = [
-        "PhotoCleanupMVE/Features/S0/S0View.swift",
-        "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift",
-        "PhotoCleanupMVE/Features/S0/S0CategoryRow.swift"
+        "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
+        "PhotoCleanupMVE/Features/S0/S0DeckCategoryPageView.swift",
+        "PhotoCleanupMVE/Features/S0/S0DeckZoomTransition.swift"
     ]
 
     /// 顶层类型的收口：换行 + 右花括号 + 换行。
@@ -50,298 +53,24 @@ final class IC148S0VisualTests: XCTestCase {
         String(Character(UnicodeScalar(UInt8(10)))) + "    }"
 
     /// 零裸数断言的扫描面是**视图体**，不是整个文件（任务卡断言 3 原文：
-    /// 「三个视图体内」）。逐个列出六个视图／布局类型的声明锚点。
+    /// 「三个视图体内」）。IC-165 C：逐个列出「卡片叠」两页与宽幅封面的声明锚点。
     private static let viewBodyAnchors: [(path: String, anchor: String)] = [
         (
-            "PhotoCleanupMVE/Features/S0/S0View.swift",
-            "struct S0View: View {"
+            "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
+            "struct S0DeckHomeView: View {"
         ),
         (
-            "PhotoCleanupMVE/Features/S0/S0View.swift",
-            "struct S0GlassSurface<S: InsettableShape>: ViewModifier {"
+            "PhotoCleanupMVE/Features/S0/S0DeckCategoryPageView.swift",
+            "struct S0DeckCategoryPageView: View {"
         ),
         (
-            "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift",
-            "struct S0SegmentBarView: View {"
-        ),
-        (
-            "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift",
-            "struct S0SegmentHatch: View {"
-        ),
-        (
-            "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift",
-            "struct S0SegmentLegendView: View {"
-        ),
-        (
-            "PhotoCleanupMVE/Features/S0/S0CategoryRow.swift",
-            "struct S0CategoryRowView: View {"
+            "PhotoCleanupMVE/Features/Shared/S0DeckCoverView.swift",
+            "struct S0DeckCoverView: View {"
         )
     ]
 
-    // MARK: - 断言 1：52 个登记常量与 SPEC-S0 第十四节第 2 部分逐条对账
-
-    func testIC148AAssertion01RegistryMatchesSpecSection14() throws {
-        // 玻璃卡（8）。IC-151 裁定 三：`cardBlurRadius` 30 与 `cardSaturation`
-        // 1.70 两个磨砂值随氛围底改固定色作废（卡后面没有可折射的对象了），
-        // 换成 `cardFillTopOpacity` 0.10 与 `cardFillBottomOpacity` 0.045
-        // 两个填充值；段内仍 8 个、全表仍 52 个。
-        XCTAssertEqual(
-            S0HomeMetrics.cardFillTopOpacity,
-            0.10,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.cardFillBottomOpacity,
-            0.045,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.cardInnerTopOpacity,
-            0.42,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.cardInnerBottomOpacity,
-            0.06,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.cardOuterRingOpacity,
-            0.10,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.cardShadowOpacity,
-            0.42,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(S0HomeMetrics.cardShadowRadius, 40, accuracy: 0.000_001)
-        XCTAssertEqual(S0HomeMetrics.cardShadowYOffset, 14, accuracy: 0.000_001)
-
-        // 分段条（14）
-        XCTAssertEqual(S0HomeMetrics.segmentBarHeight, 8, accuracy: 0.000_001)
-        XCTAssertEqual(
-            S0HomeMetrics.segmentBarCornerRadius,
-            4,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.segmentBarItemSpacing,
-            3,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.segmentBarInnerHighlightOpacity,
-            0.35,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.segmentHatchAngleDegrees,
-            135,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.segmentHatchStripeWidth,
-            3,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.segmentHatchGapWidth,
-            3,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.segmentRestOpacity,
-            0.22,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.segmentUnscannedOpacity,
-            0.10,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(S0HomeMetrics.legendDotSide, 8, accuracy: 0.000_001)
-        XCTAssertEqual(
-            S0HomeMetrics.legendDotCornerRadius,
-            2.5,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(S0HomeMetrics.legendFontSize, 12, accuracy: 0.000_001)
-        XCTAssertEqual(
-            S0HomeMetrics.legendItemSpacingH,
-            14,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.legendItemSpacingV,
-            6,
-            accuracy: 0.000_001
-        )
-
-        // 等待清空行（7）
-        XCTAssertEqual(S0HomeMetrics.pendingRowHeight, 40, accuracy: 0.000_001)
-        XCTAssertEqual(
-            S0HomeMetrics.pendingRowCornerRadius,
-            20,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.pendingRowLeadingInset,
-            14,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.pendingRowFontSize,
-            13,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.pendingButtonHeight,
-            28,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.pendingButtonCornerRadius,
-            14,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.pendingButtonFontSize,
-            12.5,
-            accuracy: 0.000_001
-        )
-
-        // 类别行（12）
-        XCTAssertEqual(
-            S0HomeMetrics.categoryRowHeight,
-            78,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categoryRowCornerRadius,
-            24,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categoryRowSpacing,
-            8,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categoryCoverSide,
-            60,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categoryCoverCornerRadius,
-            16,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categoryColorDotSide,
-            8,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categoryNameFontSize,
-            17,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categorySubFontSize,
-            12.5,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categorySubOpacity,
-            0.52,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categoryValueFontSize,
-            24,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categoryValueUnitFontSize,
-            12,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.categoryDisabledOpacity,
-            0.45,
-            accuracy: 0.000_001
-        )
-
-        // hero（6）
-        XCTAssertEqual(
-            S0HomeMetrics.heroLabelFontSize,
-            15,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.heroValueFontSize,
-            96,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0HomeMetrics.heroValueLetterSpacing,
-            -5.5,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(S0HomeMetrics.heroUnitFontSize, 26, accuracy: 0.000_001)
-        XCTAssertEqual(S0HomeMetrics.heroSubFontSize, 14, accuracy: 0.000_001)
-        XCTAssertEqual(S0HomeMetrics.heroSubOpacity, 0.50, accuracy: 0.000_001)
-
-        // 类别色（5）：逐个解析 RGB 与规格的十六进制比对。
-        assertColor(S0HomeMetrics.colorBigVideo, red: 110, green: 155, blue: 255)
-        assertColor(S0HomeMetrics.colorSimilar, red: 63, green: 209, blue: 176)
-        assertColor(S0HomeMetrics.colorScreenshot, red: 255, green: 181, blue: 74)
-        assertColor(
-            S0HomeMetrics.colorScreenRecording,
-            red: 200,
-            green: 155,
-            blue: 255
-        )
-        assertColor(S0HomeMetrics.colorDuplicate, red: 255, green: 143, blue: 163)
-
-        // 恰 52 个常量，且每个定义处都写明出处。
-        let metrics = try XCTUnwrap(
-            sourceText("PhotoCleanupMVE/Features/S0/S0HomeMetrics.swift")
-        )
-        let body = try XCTUnwrap(
-            slice(metrics, from: "enum S0HomeMetrics {", to: "\n}\n")
-        )
-        XCTAssertEqual(
-            occurrences(of: "\n    static let ", in: body),
-            52,
-            "S0HomeMetrics 的登记常量不是恰 52 个"
-        )
-        XCTAssertGreaterThanOrEqual(
-            occurrences(of: "取值出处：", in: body),
-            52
-        )
-        // IC-151：只有玻璃卡那两个新值改指 Decision_log 与 IC-151 卡
-        // （裁定 四：SPEC-S0 v2 未晋级，新值不得冒充 v1 的登记值），
-        // 其余 50 个仍指 v1 第十四节。
-        XCTAssertEqual(
-            occurrences(of: "取值出处：SPEC-S0 v1 第十四节", in: body),
-            50
-        )
-        XCTAssertEqual(
-            occurrences(of: "取值出处：Decision_log 第 175／176 条", in: body),
-            2
-        )
-        // 两个磨砂值删干净，不留死值（陷阱 12 的同类）。
-        XCTAssertEqual(occurrences(of: "cardBlurRadius", in: body), 0)
-        XCTAssertEqual(occurrences(of: "cardSaturation", in: body), 0)
-        // `S0Ambient` 的十个值不在此登记（裁定 丙：引用 S2AmbientMetrics）。
-        XCTAssertEqual(occurrences(of: "ambientBlurRadius", in: body), 0)
-        XCTAssertEqual(occurrences(of: "ambientBaseColor", in: body), 0)
-        // 类别页网格与组视图（批次 5.2）同样不在此登记。
-        XCTAssertEqual(occurrences(of: "gridColumns", in: body), 0)
-        XCTAssertEqual(occurrences(of: "groupCardCornerRadius", in: body), 0)
-    }
+    // 断言 1（`testIC148AAssertion01RegistryMatchesSpecSection14`）随 IC-165 C 删去：v2 的 52 个
+    // 首页登记值随旧首页退役；卡片叠一族的 198 值由 IC-165 断言 6 与 IC-156 断言 6 钉住。
 
     // MARK: - 断言 2：恒深色（裁定 甲，源码扫描带正对照）
 
@@ -357,9 +86,7 @@ final class IC148S0VisualTests: XCTestCase {
             "Material",
             "ultraThin"
         ]
-        for relativePath in Self.newProductFiles + [
-            "PhotoCleanupMVE/Features/S0/S0View.swift"
-        ] {
+        for relativePath in Self.newProductFiles + Self.viewFiles {
             let source = try XCTUnwrap(strippedSource(relativePath))
             XCTAssertGreaterThan(source.count, 0)
             for dynamic in forbidden {
@@ -373,10 +100,10 @@ final class IC148S0VisualTests: XCTestCase {
 
         // 正对照其一：扫描不是空转——登记表文件里确实读到了自己的定义。
         let metrics = try XCTUnwrap(
-            strippedSource("PhotoCleanupMVE/Features/S0/S0HomeMetrics.swift")
+            strippedSource("PhotoCleanupMVE/Features/S0/S0DeckMetrics.swift")
         )
         XCTAssertGreaterThanOrEqual(
-            occurrences(of: "enum S0HomeMetrics", in: metrics),
+            occurrences(of: "enum S0DeckMetrics", in: metrics),
             1
         )
 
@@ -398,13 +125,14 @@ final class IC148S0VisualTests: XCTestCase {
             base.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)),
             "幕底色随外观解析出了两个值"
         )
-        // 五个类别色同样与 trait 无关。
+        // 类别色同样与 trait 无关（IC-165 C：v3 的卡片叠类别色，含「其余照片」）。
         for color in [
-            S0HomeMetrics.colorBigVideo,
-            S0HomeMetrics.colorSimilar,
-            S0HomeMetrics.colorScreenshot,
-            S0HomeMetrics.colorScreenRecording,
-            S0HomeMetrics.colorDuplicate
+            S0DeckMetrics.colorVideo,
+            S0DeckMetrics.colorSimilar,
+            S0DeckMetrics.colorScreenshot,
+            S0DeckMetrics.colorScreenRecording,
+            S0DeckMetrics.colorDuplicate,
+            S0DeckMetrics.colorRest
         ] {
             let resolved = UIColor(color)
             XCTAssertEqual(
@@ -427,7 +155,7 @@ final class IC148S0VisualTests: XCTestCase {
     /// `Color.white.opacity(0)`（渐变收零）；`1` 用于 `lineWidth: 1` 与
     /// `count - 1`；`2` 用于 `size.width / 2` 与 `span * 2`（斜纹画布的对中与
     /// 跨度加倍）。这三个都是 SwiftUI 结构性参数或纯几何推导，**不是任何登记
-    /// 取值**；登记取值一律经 `S0HomeMetrics`。
+    /// 取值**；登记取值一律经 `S0DeckMetrics`。
     func testIC148AAssertion03NoBareNumbersInViewBodies() throws {
         let allowed: Set<String> = ["0", "1", "2"]
         for (relativePath, anchor) in Self.viewBodyAnchors {
@@ -446,31 +174,16 @@ final class IC148S0VisualTests: XCTestCase {
             )
             // 正对照：该视图体确实在经登记表取值。
             XCTAssertGreaterThan(
-                occurrences(of: "S0HomeMetrics.", in: body),
+                occurrences(of: "S0DeckMetrics.", in: body),
                 0,
                 anchor + " 一处登记值都没引用，扫描口径可疑"
             )
         }
 
-        // 视图体之外唯一的非允许字面量是「写在规格正文而非登记表」的那一个
-        // （`S0CategoryRowProse.awaitingRecognitionOpacity` = 0.55，
-        // SPEC-S0 v1 第三节第 1 部分「整行降为 55% 不透明」）。钉死它只有这一个，
-        // 再多一个就是实现自填。
-        let rowFile = try XCTUnwrap(
-            strippedSource("PhotoCleanupMVE/Features/S0/S0CategoryRow.swift")
-        )
-        XCTAssertEqual(
-            numericLiterals(in: rowFile).subtracting(allowed),
-            ["0.55"]
-        )
-        XCTAssertEqual(
-            S0CategoryRowProse.awaitingRecognitionOpacity,
-            0.55,
-            accuracy: 0.000_001
-        )
+        // 两只页面文件级同样只有 0／1／2（IC-165 C：系统版本判定抽到 zoom 过渡文件后成立）。
         for relativePath in [
-            "PhotoCleanupMVE/Features/S0/S0View.swift",
-            "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift"
+            "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
+            "PhotoCleanupMVE/Features/S0/S0DeckCategoryPageView.swift"
         ] {
             let source = try XCTUnwrap(strippedSource(relativePath))
             XCTAssertTrue(
@@ -492,9 +205,9 @@ final class IC148S0VisualTests: XCTestCase {
             "PHCachingImageManager",
             "PHAssetResource"
         ]
-        // `Features/S0/` 四个文件 + 登记表：PhotoKit 零命中。
+        // 视图文件 + 登记表 + tab 容器：PhotoKit 零命中（取图与取日期的两只在 `Features/Shared/`）。
         for relativePath in Self.viewFiles + [
-            "PhotoCleanupMVE/Features/S0/S0HomeMetrics.swift",
+            "PhotoCleanupMVE/Features/S0/S0DeckMetrics.swift",
             "PhotoCleanupMVE/Features/S0/S0TabContainer.swift"
         ] {
             let source = try XCTUnwrap(strippedSource(relativePath))
@@ -515,26 +228,8 @@ final class IC148S0VisualTests: XCTestCase {
         XCTAssertGreaterThan(occurrences(of: "PHAsset", in: scanner), 0)
         XCTAssertGreaterThan(occurrences(of: "import Photos", in: scanner), 0)
 
-        // 复用：S0 视图引用 S2 侧的氛围底视图，且不自造配方。
-        let view = try XCTUnwrap(
-            strippedSource("PhotoCleanupMVE/Features/S0/S0View.swift")
-        )
-        // IC-151 子项 C／D：氛围底视图改无参，读数类型随取图链整条删除。
-        XCTAssertGreaterThan(
-            occurrences(of: "S2AmbientBackdropView()", in: view),
-            0
-        )
-        XCTAssertEqual(
-            occurrences(of: "S2AmbientBackdropReadout", in: view),
-            0
-        )
-        // 原有的「`S2AmbientMetrics.` ≥ 1」一条随子项 D 删除：卡下不再铺幕底色
-        // 是本卡要达成的结果之一（断言 12），该条在正确实现后必然失效
-        // ——「某计数不变」类断言先核可用性（惯例 37）。
-        XCTAssertEqual(
-            occurrences(of: "S2AmbientBackdropStore", in: view),
-            0
-        )
+        // 原「复用 S2 氛围底视图」一段随 IC-165 C 删去：SPEC-S0 v3 首页底色为平涂 `#0B0F0D`，
+        // 不用氛围底（`S2AmbientBackdropView` 在两只视图里 0 处由 IC-165 断言 4 钉住）。
     }
 
     // MARK: - 断言 5：四态显示元素清单逐条（源码扫描 + 夹具）
@@ -543,51 +238,39 @@ final class IC148S0VisualTests: XCTestCase {
     /// 在单元测试里渲染比对，故此处钉的是「显隐判据写对了没有」加上机器侧的
     /// 显隐谓词。真机逐条看由 H71 第 3 条兜底。
     func testIC148BAssertion05FourStateElementLists() throws {
+        // IC-165 C：首页改为「卡片叠」。四态由 `switch machine.state` 分派（IC-147 断言 C 钉）：
+        // 就绪／扫描中走整套版式，S0-3 与 S0-4 走同一只居中块。
         let view = try XCTUnwrap(
-            strippedSource("PhotoCleanupMVE/Features/S0/S0View.swift")
+            strippedSource("PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift")
         )
-
-        // S0-4：hero 数值、分段条、类别行三不显示。
-        let hero = try XCTUnwrap(
-            slice(view, from: "private var heroCard: some View {", to: "\n    }")
-        )
-        XCTAssertGreaterThan(occurrences(of: "case .failed:", in: hero), 0)
-        XCTAssertGreaterThan(occurrences(of: "EmptyView()", in: hero), 0)
-        XCTAssertGreaterThan(
-            occurrences(of: "if homeState != .failed {", in: view),
-            0,
-            "分段条没有按 S0-4 收起"
-        )
-        XCTAssertGreaterThan(
-            occurrences(of: "if machine.showsCategoryRows {", in: view),
-            0,
-            "类别行没有走机器侧的显隐谓词"
-        )
-        XCTAssertGreaterThan(
-            occurrences(of: "if homeState == .failed {", in: view),
-            0,
-            "失败说明没有只在 S0-4 出现"
-        )
+        XCTAssertEqual(occurrences(of: "private var deckScreen: some View {", in: view), 1)
+        XCTAssertEqual(occurrences(of: "private var failureBlock: some View {", in: view), 1)
+        XCTAssertEqual(occurrences(of: "private func centeredBlock(", in: view), 1)
+        // 总条（含扫描中「未扫描」段）只在整套版式里画，取同一份段模型。
+        XCTAssertEqual(occurrences(of: "S0SegmentBarModel.make", in: view), 1)
 
         // 机器侧谓词（IC-147 交付，本卡只复核口径没被改坏）。
         let failed = machineInFailedState()
         XCTAssertFalse(failed.showsCategoryRows)
         XCTAssertFalse(failed.showsPendingClearanceRow)
 
-        // S0-3：没有类别段可进，但有「去逐张整理」入口。
-        //
-        // **文案 key 一律扫原文**：key 写在字符串字面量里，而 `strippedSource`
-        // 把字面量内容整个剔掉，拿剔过的源码找 key 恒为 0——#295 就是这样
-        // 假红的。凡 needle 本身是 key 或中文措辞，一律用 `sourceText`。
+        // S0-3 与 S0-4 的文案。**文案 key 一律扫原文**：key 写在字符串字面量里，而
+        // `strippedSource` 把字面量内容整个剔掉，拿剔过的源码找 key 恒为 0。
         let rawView = try XCTUnwrap(
-            sourceText("PhotoCleanupMVE/Features/S0/S0View.swift")
+            sourceText("PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift")
         )
-        XCTAssertGreaterThan(
-            occurrences(of: "s0.home.hero.empty.action", in: rawView),
-            0
-        )
+        for key in [
+            "s0.home.failed.auth.title",
+            "s0.home.failed.auth.action",
+            "s0.home.failed.read.title",
+            "s0.home.failed.read.action",
+            "s0.home.hero.empty.title",
+            "s0.home.hero.empty.action"
+        ] {
+            XCTAssertEqual(occurrences(of: key, in: rawView), 1, key)
+        }
 
-        // S0-1：未扫描段 + 统计中副行。
+        // S0-1：未扫描段。
         let scanning = S0SegmentBarModel.make(
             categories: [countingCategory(bytes: 1_000)],
             ledgerEntries: [],
@@ -598,10 +281,6 @@ final class IC148S0VisualTests: XCTestCase {
         XCTAssertTrue(
             scanning.segments.contains { $0.kind == .unscanned },
             "S0-1 的分段条没有未扫描段"
-        )
-        XCTAssertGreaterThan(
-            occurrences(of: "s0.home.category.counting", in: rawView),
-            0
         )
         // S0-2／S0-3 不画未扫描段。
         let settled = S0SegmentBarModel.make(
@@ -617,42 +296,42 @@ final class IC148S0VisualTests: XCTestCase {
     // MARK: - 断言 6：首帧口径
 
     func testIC148BAssertion06ScanningHeroHidesZeroByteValue() throws {
+        // IC-165 C（裁定 四）：hero 是照片库总占用 `LIB`，首帧判据改为「扫描中且 `LIB` 为零」，
+        // 不再看可清理字节。
         let view = try XCTUnwrap(
-            strippedSource("PhotoCleanupMVE/Features/S0/S0View.swift")
+            strippedSource("PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift")
         )
         let hero = try XCTUnwrap(
             slice(
                 view,
-                from: "private var scanningHero: some View {",
-                to: "\n    }"
+                from: "private var heroValue: some View {",
+                to: Self.memberClose
             )
         )
-        // 判据是**可清理字节为零**，不是已扫张数。
-        XCTAssertGreaterThan(
-            occurrences(of: "machine.snapshot.cleanableByteCount == 0", in: hero),
-            0
+        XCTAssertGreaterThanOrEqual(
+            occurrences(of: "libraryTotalByteCount == 0", in: hero),
+            1
         )
+        XCTAssertEqual(occurrences(of: "cleanableByteCount", in: view), 0)
         XCTAssertEqual(
             occurrences(of: "progress.scannedAssetCount == 0", in: hero),
             0,
             "首帧判据退回了按张数判"
         )
-        // 首帧未到走「正在扫描…」；到了才走字节量大字。
-        // key 扫**原文**切片（理由同断言 5）。
+        // 首帧未到走「正在扫描…」；key 扫**原文**切片（理由同断言 5）。
         let rawHero = try XCTUnwrap(
             slice(
                 try XCTUnwrap(
-                    sourceText("PhotoCleanupMVE/Features/S0/S0View.swift")
+                    sourceText("PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift")
                 ),
-                from: "private var scanningHero: some View {",
+                from: "private var heroValue: some View {",
                 to: Self.memberClose
             )
         )
-        XCTAssertGreaterThan(
+        XCTAssertGreaterThanOrEqual(
             occurrences(of: "s0.home.hero.scanning", in: rawHero),
-            0
+            1
         )
-        XCTAssertGreaterThan(occurrences(of: "heroValue(", in: hero), 0)
 
         // 正对照：字节量文本本身是活的。
         XCTAssertFalse(S0ByteCountText.string(forByteCount: 7_900_000_000).isEmpty)
@@ -662,7 +341,7 @@ final class IC148S0VisualTests: XCTestCase {
 
     func testIC148BAssertion07DoesNotInventChromeVocabulary() throws {
         let view = try XCTUnwrap(
-            strippedSource("PhotoCleanupMVE/Features/S0/S0View.swift")
+            strippedSource("PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift")
         )
         // 圆钮与胶囊各自命中 S1 的 helper。
         XCTAssertGreaterThan(
@@ -684,7 +363,7 @@ final class IC148S0VisualTests: XCTestCase {
             "受限提示条没有引用 S1 的登记几何"
         )
 
-        // 本卡四个新文件内**不定义**任何新的 chrome 常量族。
+        // S0 的非视图文件内**不定义**任何新的 chrome 常量族。
         for relativePath in Self.newProductFiles {
             let source = try XCTUnwrap(strippedSource(relativePath))
             for invented in [
@@ -837,14 +516,16 @@ final class IC148S0VisualTests: XCTestCase {
     func testIC148CAssertion10CatalogHasExactlyThirtyTwoS0Keys() throws {
         let catalog = try loadCatalogValues()
         let catalogS0Keys = Set(catalog.keys.filter { $0.hasPrefix("s0.") })
-        // IC-156 C：类别页五条 key，32 → 37。
-        XCTAssertEqual(catalogS0Keys.count, 38) // IC-157 B：长按提示一条，37 → 38。
+        // IC-156 C：32 → 37；IC-157 B：→ 38；IC-165 C：→ 39。
+        XCTAssertEqual(catalogS0Keys.count, 39)
 
+        // IC-165 C：与 IC-147 断言 11 同一份四文件名单（`s0.category.*` 五条在文本 helper 里）。
         var referenced: Set<String> = []
-        for relativePath in Self.viewFiles + [
+        for relativePath in [
+            "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
+            "PhotoCleanupMVE/Features/S0/S0DeckCategoryPageView.swift",
             "PhotoCleanupMVE/Features/S0/S0TabContainer.swift",
-            // IC-156 C：类别页五条 key 的引用点在类别页文件里，不加进来「互为子集」假红。
-            "PhotoCleanupMVE/Features/S0/S0CategoryPageView.swift"
+            "PhotoCleanupMVE/Features/S0/S0Text.swift"
         ] {
             let source = try XCTUnwrap(sourceText(relativePath))
             referenced.formUnion(localizationKeys(in: source))
@@ -852,31 +533,15 @@ final class IC148S0VisualTests: XCTestCase {
         // 互为子集（s0. 部分）。
         XCTAssertEqual(referenced.filter { $0.hasPrefix("s0.") }, catalogS0Keys)
 
-        // 新增两条各被引用 ≥ 1 次，且取值与 SPEC-S0 第十四节第 3 部分一致。
-        let legend = try XCTUnwrap(
-            sourceText("PhotoCleanupMVE/Features/S0/S0SegmentBar.swift")
-        )
-        XCTAssertGreaterThanOrEqual(
-            occurrences(of: "s0.home.legend.rest", in: legend),
-            1
-        )
-        XCTAssertGreaterThanOrEqual(
-            occurrences(of: "s0.home.legend.unscanned", in: legend),
-            1
-        )
-        XCTAssertEqual(catalog["s0.home.legend.rest"], "其余照片")
-        XCTAssertEqual(catalog["s0.home.legend.unscanned"], "未扫描")
+        // 原「两条图例 key」一段随 IC-165 C 删去：SPEC-S0 v3 作废两条图例 key（「其余照片」改
+        // `s0.category.rest`，未扫段无图例）。
     }
 
     // MARK: - 断言 11：`VF` 不自造（裁定 3）
 
     func testIC148CAssertion11NeverAdvancesOrResetsVerification() throws {
-        // 本卡三个**新**文件内不出现任何推进或复位 `VF` 的调用。
-        for relativePath in [
-            "PhotoCleanupMVE/Features/S0/S0HomeMetrics.swift",
-            "PhotoCleanupMVE/Features/S0/S0SegmentBar.swift",
-            "PhotoCleanupMVE/Features/S0/S0CategoryRow.swift"
-        ] {
+        // S0 的非视图文件内不出现任何推进或复位 `VF` 的调用。
+        for relativePath in Self.newProductFiles {
             let source = try XCTUnwrap(strippedSource(relativePath))
             for call in [
                 "beginVerification",
@@ -893,7 +558,7 @@ final class IC148S0VisualTests: XCTestCase {
             }
         }
 
-        // `S0View` 的**行为**调用点与 IC-147 交付时完全相同：
+        // 首页的**行为**调用点与 IC-147 交付时完全相同（IC-165 C：首页为 `S0DeckHomeView`）：
         // `handle(` 4 处 + `beginVerification` 1 处 + `ingest` 1 处 = 6。
         //
         // 任务卡断言 11 原文要求「`machine.` 调用点数量完全相同」，但同一张卡的
@@ -901,79 +566,40 @@ final class IC148S0VisualTests: XCTestCase {
         // （必须读账本与照片库总占用）。两条不可同时满足，故此处钉**行为**调用点
         // 不变，并在自验报告逐项列出只读访问的增减。
         let view = try XCTUnwrap(
-            strippedSource("PhotoCleanupMVE/Features/S0/S0View.swift")
+            strippedSource("PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift")
         )
         XCTAssertEqual(occurrences(of: "machine.handle(", in: view), 4)
         XCTAssertEqual(occurrences(of: "machine.beginVerification", in: view), 1)
         XCTAssertEqual(occurrences(of: "machine.ingest", in: view), 1)
         // 不含任何定时器／延时——「已通过」读数不许自己消失。
-        for timer in ["Timer", "asyncAfter", "sleep(", "withAnimation("] {
+        for timer in ["Timer", "asyncAfter", "sleep("] {
             XCTAssertEqual(
                 occurrences(of: timer, in: view),
                 0,
                 "视图里出现了可能让 VF 读数自行消失的 " + timer
             )
         }
-    }
-
-    // MARK: - 断言 12：排序与沉底
-
-    func testIC148DAssertion12SortsByBytesAndSinksEmptyCategories() {
-        let shuffled = [
-            settledCategory(id: .screenshot, bytes: 560_000_000),
-            settledCategory(id: .duplicate, bytes: 0),
-            settledCategory(id: .bigVideo, bytes: 4_800_000_000),
-            settledCategory(id: .similar, bytes: 0),
-            settledCategory(id: .screenRecording, bytes: 1_920_000_000)
-        ]
-        let sorted = S0CategoryRowPresentation.sorted(shuffled)
-        XCTAssertEqual(
-            sorted.map(\.id),
-            [.bigVideo, .screenRecording, .screenshot, .duplicate, .similar]
+        // IC-165 C（裁定 五）：`withAnimation(` 恰一处，且是展开／收起那一次 spring——
+        // 实参取登记的两值，不是核对流程的动画。
+        XCTAssertEqual(occurrences(of: "withAnimation(", in: view), 1)
+        let animation = try XCTUnwrap(
+            slice(view, from: "withAnimation(", to: ") {")
         )
-        // 全部无项目的沉在末尾。
-        let tail = sorted.suffix(2)
-        XCTAssertTrue(tail.allSatisfy { !$0.hasItems })
-        XCTAssertTrue(sorted.prefix(3).allSatisfy(\.hasItems))
+        XCTAssertGreaterThan(occurrences(of: "expandAnimationResponse", in: animation), 0)
+        XCTAssertGreaterThan(occurrences(of: "expandAnimationDamping", in: animation), 0)
     }
+
+    // 断言 12（`testIC148DAssertion12SortsByBytesAndSinksEmptyCategories`）随 IC-165 C 删去：
+    // v2 类别行的排序口径随旧首页退役；卡片叠的出卡与次序由 IC162 与 IC147 断言 8 钉住。
 
     // MARK: - 断言 13：可点外观与第 170 条裁定 1 一致
 
     func testIC148DAssertion13TappableAppearanceMatchesClickMatrix() {
         let counting = countingCategory(bytes: 1_000)
         let awaiting = awaitingCategory()
-        let empty = settledCategory(bytes: 0)
 
-        // 裁定 1：S0-1 下 `.counting` 可点 ⟹ 不压暗、有进入指示。
-        XCTAssertEqual(
-            S0CategoryRowPresentation.rowOpacity(for: counting),
-            1,
-            accuracy: 0.000_001
-        )
-        XCTAssertTrue(S0CategoryRowPresentation.showsDisclosure(for: counting))
-        XCTAssertFalse(
-            S0CategoryRowPresentation.showsUnavailableValue(for: counting)
-        )
-
-        // `.awaitingScanCompletion` 不可点 ⟹ 55% 暗、数值「—」、无进入指示。
-        XCTAssertEqual(
-            S0CategoryRowPresentation.rowOpacity(for: awaiting),
-            0.55,
-            accuracy: 0.000_001
-        )
-        XCTAssertFalse(S0CategoryRowPresentation.showsDisclosure(for: awaiting))
-        XCTAssertTrue(
-            S0CategoryRowPresentation.showsUnavailableValue(for: awaiting)
-        )
-
-        // 「无项目」⟹ 灰显 0.45、无进入指示。
-        XCTAssertEqual(
-            S0CategoryRowPresentation.rowOpacity(for: empty),
-            0.45,
-            accuracy: 0.000_001
-        )
-        XCTAssertFalse(S0CategoryRowPresentation.showsDisclosure(for: empty))
-
+        // IC-165 C：v2 类别行的外观口径（压暗、「—」、进入指示）随旧首页退役，只留行为层一半。
+        // 裁定 1：S0-1 下 `.counting` 可点。
         // 与行为层同口径：S0-1 下机器侧也是 counting 可点、awaiting 不可点。
         let machine = S0StateMachine()
         machine.handle(.applicationOpened)
@@ -997,7 +623,7 @@ final class IC148S0VisualTests: XCTestCase {
     // MARK: - 断言 14：占位不造假
 
     func testIC148DAssertion14CoverSlotIsEmptyNotFaked() throws {
-        // 三个视图文件内不出现任何图片资源名或取图调用。
+        // 视图文件内不出现任何图片资源名或取图调用（取图只在 `Features/Shared/`）。
         //
         // 扫的是**原文**不是剔过的源码：资源名与扩展名都写在字符串字面量里，
         // 而 `strippedSource` 会把字面量内容连同引号一起剔掉——拿剔过的源码去找
@@ -1041,23 +667,8 @@ final class IC148S0VisualTests: XCTestCase {
             1
         )
 
-        // 封面位是几何 + 空槽：引用了登记的边长与圆角，且只描边不填色。
-        let row = try XCTUnwrap(
-            strippedSource("PhotoCleanupMVE/Features/S0/S0CategoryRow.swift")
-        )
-        let cover = try XCTUnwrap(
-            slice(row, from: "private var cover: some View {", to: "\n    }")
-        )
-        XCTAssertGreaterThan(
-            occurrences(of: "S0HomeMetrics.categoryCoverSide", in: cover),
-            0
-        )
-        XCTAssertGreaterThan(
-            occurrences(of: "S0HomeMetrics.categoryCoverCornerRadius", in: cover),
-            0
-        )
-        XCTAssertGreaterThan(occurrences(of: "strokeBorder", in: cover), 0)
-        XCTAssertEqual(occurrences(of: ".fill(", in: cover), 0)
+        // 原「类别行封面位空槽」一段随 IC-165 C 删去（类别行退役）；卡片叠封面在
+        // `Features/Shared/S0DeckCoverView.swift`，由 IC-165 断言 3 钉「先框后裁、命中区」。
     }
 
     // MARK: - 夹具

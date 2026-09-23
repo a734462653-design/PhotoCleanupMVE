@@ -18,12 +18,14 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
     // MARK: - 断言 4：长按手势与提示行守页面纪律（子项 B）
 
     func testIC157B_LongPressGestureAndHintKeepDiscipline() throws {
-        let pagePath = "PhotoCleanupMVE/Features/S0/S0CategoryPageView.swift"
+        // IC-165 C：类别页改为「卡片叠」`S0DeckCategoryPageView`（旧类别页退役）。
+        let pagePath = "PhotoCleanupMVE/Features/S0/S0DeckCategoryPageView.swift"
         let page = try XCTUnwrap(strippedSource(pagePath))
         XCTAssertEqual(occurrences(of: "LongPressGesture()", in: page), 1)
         XCTAssertEqual(occurrences(of: ".simultaneousGesture(", in: page), 1)
-        // 格仍是按钮：「全选」与格各一处尾随闭包写法（返回钮与主按钮是 `action:` 写法）。
-        XCTAssertEqual(occurrences(of: "Button {", in: page), 2)
+        // 格仍是按钮：页头「全选」、收起导航「全选」与格各一处尾随闭包写法（返回钮与主按钮是
+        // `action:` 写法）。
+        XCTAssertEqual(occurrences(of: "Button {", in: page), 3)
         XCTAssertEqual(occurrences(of: "onTapGesture", in: page), 0)
         // `onLongPressGesture` 含子串 `onLongPress`，故调用与形参各按带标点的写法计数。
         XCTAssertEqual(occurrences(of: "onLongPressGesture", in: page), 0)
@@ -33,37 +35,14 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
         XCTAssertGreaterThanOrEqual(occurrences(of: "onLongPress:", in: page), 1)
         XCTAssertGreaterThanOrEqual(occurrences(of: "selection.items.map(", in: page), 1)
 
+        // 「长按任一格逐张看」提示行：SPEC-S0 v3 第六节位置未定、未定前不显示（第十二节第 16 条），
+        // IC-165 C 目录删条目、页面不引用；原常驻行切片一段随旧类别页退役。
         let pageRaw = try XCTUnwrap(sourceText(pagePath))
-        XCTAssertEqual(
-            occurrences(of: "L10n.text(\"s0.categoryPage.longPressHint\"", in: pageRaw),
-            1
-        )
-
-        // 提示行与左文同一字号与明度：两处明度写法都在常驻行切片里。
-        let pinnedRow = try XCTUnwrap(
-            slice(
-                page,
-                from: "private var pinnedRow: some View {",
-                to: "private var gridScroll: some View {"
-            ),
-            "常驻行切片没切到——声明文本变了"
-        )
-        XCTAssertGreaterThanOrEqual(occurrences(of: "HStack", in: pinnedRow), 1)
-        XCTAssertEqual(
-            occurrences(
-                of: "dimmedText(opacity: S0CategoryPageMetrics.pinnedRowOpacity)",
-                in: pinnedRow
-            ),
-            2
-        )
-        XCTAssertEqual(
-            occurrences(of: "S0CategoryPageMetrics.pinnedRowFontSize", in: pinnedRow),
-            2
-        )
+        XCTAssertEqual(occurrences(of: "s0.categoryPage.longPressHint", in: pageRaw), 0)
 
         // IC-156 断言 6 钉住的几处照旧。
         XCTAssertEqual(occurrences(of: "S1ChromeTypography.titleFontSize", in: page), 1)
-        XCTAssertEqual(occurrences(of: "Image(systemName: ", in: page), 3)
+        XCTAssertEqual(occurrences(of: "Image(systemName: ", in: page), 7)
         let allowed: Set<String> = ["0", "1", "2"]
         let literals = numericLiterals(in: page)
         XCTAssertTrue(
@@ -79,25 +58,35 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
     // MARK: - 断言 5：目录加长按提示一条，四处既有计数同步（子项 B）
 
     func testIC157B_CatalogGainsLongPressHint() throws {
+        // IC-165 C（裁定 六）：长按提示条目删去（位置未定、未定前不显示），类别页新增返回、
+        // 排序名、月份计数、未知日期四条：`s0.` 38 → 39、`s0.categoryPage.` 6 → 9。
         let catalog = try loadCatalogValues()
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 38)
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 6)
-        let hint = try XCTUnwrap(catalog["s0.categoryPage.longPressHint"])
-        XCTAssertEqual(hint, "长按任一格逐张看")
-        XCTAssertFalse(hint.contains("{"))
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 39)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 9)
+        XCTAssertNil(catalog["s0.categoryPage.longPressHint"])
+        let expected = [
+            "s0.categoryPage.back": "返回",
+            "s0.categoryPage.sort.size": "从大到小",
+            "s0.categoryPage.undated": "未知日期"
+        ]
+        for (key, value) in expected {
+            let actual = try XCTUnwrap(catalog[key], key)
+            XCTAssertEqual(actual, value, key)
+            XCTAssertFalse(actual.contains("{"), key)
+        }
 
         // 既有测试的整句 needle（不写死行号）。IC-156 文件另有一处与文案无关的 `37)`，
-        // 故不拿裸 `37)`／`38)` 计数。
+        // 故不拿裸 `38)`／`39)` 计数。
         let behavior = try XCTUnwrap(sourceText("PhotoCleanupMVETests/IC147S0BehaviorTests.swift"))
-        XCTAssertEqual(occurrences(of: "s0Values.count, 38)", in: behavior), 1)
-        XCTAssertEqual(occurrences(of: "catalogS0Keys.count, 38)", in: behavior), 1)
+        XCTAssertEqual(occurrences(of: "s0Values.count, 39)", in: behavior), 1)
+        XCTAssertEqual(occurrences(of: "catalogS0Keys.count, 39)", in: behavior), 1)
         let visual = try XCTUnwrap(sourceText("PhotoCleanupMVETests/IC148S0VisualTests.swift"))
-        XCTAssertEqual(occurrences(of: "catalogS0Keys.count, 38)", in: visual), 1)
+        XCTAssertEqual(occurrences(of: "catalogS0Keys.count, 39)", in: visual), 1)
         let categoryPage = try XCTUnwrap(
             sourceText("PhotoCleanupMVETests/IC156CategoryPageTests.swift")
         )
         XCTAssertEqual(
-            occurrences(of: "hasPrefix(\"s0.\") }.count, 38)", in: categoryPage),
+            occurrences(of: "hasPrefix(\"s0.\") }.count, 39)", in: categoryPage),
             1
         )
     }

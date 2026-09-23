@@ -166,12 +166,14 @@ final class IC156CategoryPageTests: XCTestCase {
             occurrences(of: "S1ChromeTypography.circleIconPointSize", in: circleHelper),
             1
         )
-        // 登记表引用：卡面下限 ≥ 20 为③估计，按实装数写死（IC-156 为 57；IC-157 常驻行右侧
-        // 提示与左文同一字号与明度，加两处 → 59）。42 个登记值逐个被引用。
-        XCTAssertEqual(occurrences(of: "S0CategoryPageMetrics.", in: page), 59)
+        // 登记表引用：按实装数写死（IC-165 C：类别页改为「卡片叠」，取值只经 `S0DeckMetrics`）。
+        XCTAssertEqual(occurrences(of: "S0DeckMetrics.", in: page), 153)
+        // SPEC-S0 v3 第十四节第 2 部分的卡片叠一族逐个有人用：在两只页面、zoom 过渡与宽幅封面里
+        // 以 `S0DeckMetrics.<名>` 出现，或在登记表文件内被别的登记值／派生函数以裸名引用
+        // （定义之外至少再一次——五个类别色走这条）。只有两个 v3 登记而现行无人用的值豁免。
         let metrics = try XCTUnwrap(strippedSource(Self.metricsPath))
         let metricsBody = try XCTUnwrap(
-            slice(metrics, from: "enum S0CategoryPageMetrics {", to: Self.topLevelClose)
+            slice(metrics, from: "enum S0DeckMetrics {", to: Self.topLevelClose)
         )
         let registeredNames = metricsBody
             .components(separatedBy: Self.newline)
@@ -179,27 +181,42 @@ final class IC156CategoryPageTests: XCTestCase {
                 guard let declaration = line.range(of: "    static let ") else {
                     return nil
                 }
-                return line[declaration.upperBound...]
-                    .components(separatedBy: ":")
-                    .first
+                let name = String(
+                    line[declaration.upperBound...].prefix {
+                        $0.isLetter || $0.isNumber || $0 == "_"
+                    }
+                )
+                return name.isEmpty ? nil : name
             }
-        XCTAssertEqual(registeredNames.count, 42)
-        for name in registeredNames {
-            XCTAssertGreaterThanOrEqual(
-                occurrences(of: "S0CategoryPageMetrics." + name, in: page),
-                1,
-                name + " 登记了但页面没用"
-            )
+        XCTAssertEqual(registeredNames.count, 198)
+        var usageScope = String()
+        for relativePath in [
+            Self.pagePath,
+            "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
+            "PhotoCleanupMVE/Features/S0/S0DeckZoomTransition.swift",
+            "PhotoCleanupMVE/Features/Shared/S0DeckCoverView.swift"
+        ] {
+            usageScope += try XCTUnwrap(strippedSource(relativePath), relativePath)
         }
-        XCTAssertEqual(occurrences(of: "ThumbnailView(", in: page), 1)
-        XCTAssertEqual(occurrences(of: "showsPlaceholderGlyph: false", in: page), 1)
-        XCTAssertEqual(occurrences(of: "S2AmbientBackdropView()", in: page), 1)
-        XCTAssertGreaterThanOrEqual(occurrences(of: "DateComponentsFormatter", in: page), 1)
-        // 符号名只从 `S0CategoryPageSymbol` 取（陷阱 18：不写返回字符串的 helper）。
-        XCTAssertEqual(occurrences(of: "Image(systemName: ", in: page), 3)
+        var unused: Set<String> = []
+        for name in registeredNames
+        where occurrences(of: "S0DeckMetrics." + name, in: usageScope) == 0
+            && occurrences(of: name, in: metrics) < 2 {
+            unused.insert(name)
+        }
+        XCTAssertEqual(unused, ["cellLabelFill", "pageTitleTopSpacing"])
+        // 封面在 `Features/Shared/S0DeckCoverView.swift` 里取（`ThumbnailView` 是正方形取图）。
+        XCTAssertEqual(occurrences(of: "ThumbnailView(", in: page), 0)
+        XCTAssertEqual(occurrences(of: "showsPlaceholderGlyph: false", in: page), 0)
+        XCTAssertEqual(occurrences(of: "S2AmbientBackdropView()", in: page), 0)
+        // 时长格式化器在文本 helper 文件里（IC-165 C 从退役的旧类别页原样搬出）。
+        let texts = try XCTUnwrap(strippedSource("PhotoCleanupMVE/Features/S0/S0Text.swift"))
+        XCTAssertGreaterThanOrEqual(occurrences(of: "DateComponentsFormatter", in: texts), 1)
+        // 符号名只从 `S0DeckSymbol` 取（陷阱 18：不写返回字符串的 helper）。
+        XCTAssertEqual(occurrences(of: "Image(systemName: ", in: page), 7)
         XCTAssertEqual(
-            occurrences(of: "Image(systemName: S0CategoryPageSymbol.", in: page),
-            3
+            occurrences(of: "Image(systemName: S0DeckSymbol.", in: page),
+            7
         )
 
         // 正对照：同一套剥离口径与 needle 在既有文件上确实命中，上面各为 0 不是空转。
@@ -212,41 +229,61 @@ final class IC156CategoryPageTests: XCTestCase {
     // MARK: - 断言 7：目录加五条 key，两处既有门禁的名单已更新（子项 C）
 
     func testIC156C_CatalogGainsFiveKeysAndBothGatesAreUpdated() throws {
+        // IC-165 C（裁定 六）：`s0.` 38 → 39、`s0.categoryPage.` 6 → 9（删长按提示，加返回、
+        // 排序名、月份计数、未知日期；副行、已选、主按钮三条改值）。
         let catalog = try loadCatalogValues()
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 38)
-        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 6)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.") }.count, 39)
+        XCTAssertEqual(catalog.keys.filter { $0.hasPrefix("s0.categoryPage.") }.count, 9)
 
         let expected: [String: String] = [
-            "s0.categoryPage.subtitle": "{count} 个 · {bytes} · 按体积从大到小",
+            "s0.categoryPage.back": "返回",
+            "s0.categoryPage.subtitle": "{count} 项 · {order}",
+            "s0.categoryPage.sort.size": "从大到小",
             "s0.categoryPage.selectAll": "全选",
-            "s0.categoryPage.selected": "已选 {count} 项 · {bytes}",
-            "s0.categoryPage.longPressHint": "长按任一格逐张看",
-            "s0.categoryPage.submit": "移入待删篮 · {count} 项 {bytes}",
-            "s0.categoryPage.toast": "已移入待删篮"
+            "s0.categoryPage.selected": "已选 {count} 项",
+            "s0.categoryPage.submit": "移入待删篮",
+            "s0.categoryPage.toast": "已移入待删篮",
+            "s0.categoryPage.month.count": "{count} 项",
+            "s0.categoryPage.undated": "未知日期"
         ]
         let pageRaw = try XCTUnwrap(sourceText(Self.pagePath))
+        // 按 key 提取器取（多行 `L10n.text(` 调用的 key 写在下一行，连写的 needle 会空转）。
+        let pageKeys = localizationKeys(in: pageRaw)
         for (key, value) in expected {
             XCTAssertEqual(catalog[key], value, key)
-            XCTAssertGreaterThanOrEqual(
-                occurrences(of: "L10n.text(\"" + key + "\"", in: pageRaw),
-                1,
-                key
-            )
+            XCTAssertTrue(pageKeys.contains(key), key)
         }
-        // 页面只引用这六条，一条不多（`longPressHint` IC-157 已登记）。
-        XCTAssertEqual(localizationKeys(in: pageRaw), Set(expected.keys))
+        // 页面引用的 `s0.categoryPage.` 恰这九条；全部 key 另有占比角标一条与借用的排序三条。
+        XCTAssertEqual(
+            pageKeys.filter { $0.hasPrefix("s0.categoryPage.") },
+            Set(expected.keys)
+        )
+        XCTAssertEqual(
+            pageKeys,
+            Set(expected.keys).union([
+                "s0.home.share",
+                "s1.sort.accessibility",
+                "s1.sort.newest_first",
+                "s1.sort.oldest_first"
+            ])
+        )
 
-        // 占位符：项数与字节量只出现在副行、常驻行、主按钮三条里，各一次。
-        let withPlaceholders: Set<String> = [
+        // 占位符：项数在副行、已选、月份计数三条；排序名只在副行；字节量不进任何一条
+        // （体积由格式化器单独排）。
+        let withCount: Set<String> = [
             "s0.categoryPage.subtitle",
             "s0.categoryPage.selected",
-            "s0.categoryPage.submit"
+            "s0.categoryPage.month.count"
         ]
         for key in expected.keys {
             let value = try XCTUnwrap(catalog[key], key)
-            let count = withPlaceholders.contains(key) ? 1 : 0
-            XCTAssertEqual(occurrences(of: "{count}", in: value), count, key)
-            XCTAssertEqual(occurrences(of: "{bytes}", in: value), count, key)
+            XCTAssertEqual(occurrences(of: "{count}", in: value), withCount.contains(key) ? 1 : 0, key)
+            XCTAssertEqual(
+                occurrences(of: "{order}", in: value),
+                key == "s0.categoryPage.subtitle" ? 1 : 0,
+                key
+            )
+            XCTAssertEqual(occurrences(of: "{bytes}", in: value), 0, key)
         }
 
         // 裁定 六：IC-147 断言 11 与 IC-148 断言 10 的文件名单已加类别页。
@@ -256,7 +293,7 @@ final class IC156CategoryPageTests: XCTestCase {
         ] {
             let source = try XCTUnwrap(sourceText(gate), gate)
             XCTAssertGreaterThanOrEqual(
-                occurrences(of: "S0CategoryPageView.swift", in: source),
+                occurrences(of: "S0DeckCategoryPageView.swift", in: source),
                 1,
                 gate
             )
@@ -316,20 +353,19 @@ final class IC156CategoryPageTests: XCTestCase {
         for spliced in ["\" GB\"", "\" MB\"", "\":\""] {
             XCTAssertEqual(occurrences(of: spliced, in: pageRaw), 0, spliced)
         }
-        let page = try XCTUnwrap(strippedSource(Self.pagePath))
-        XCTAssertGreaterThanOrEqual(
-            occurrences(of: "S0ByteCountText.string(forByteCount:", in: page),
-            1
-        )
-        XCTAssertGreaterThanOrEqual(
-            occurrences(of: "S0CategoryPageDurationText.string(for:", in: page),
+        // IC-165 C：「卡片叠」类别页的字节量调用是多行写法（`forByteCount:` 在下一行），按调用名
+        // 计：副行体积、收起导航体积、格底体积、底栏已选体积四处。
+        XCTAssertEqual(occurrences(of: "S0ByteCountText.string(", in: pageRaw), 4)
+        XCTAssertEqual(
+            occurrences(of: "S0CategoryPageDurationText.string(for:", in: pageRaw),
             1
         )
     }
 
     // MARK: - 子项 C 的夹具与 helper
 
-    private static let pagePath = "PhotoCleanupMVE/Features/S0/S0CategoryPageView.swift"
+    /// IC-165 C：类别页改为「卡片叠」`S0DeckCategoryPageView`（旧类别页退役）。
+    private static let pagePath = "PhotoCleanupMVE/Features/S0/S0DeckCategoryPageView.swift"
     private static let s1ViewPath = "PhotoCleanupMVE/Features/S1/S1View.swift"
     private static let thumbnailPath = "PhotoCleanupMVE/Features/Shared/ThumbnailView.swift"
 
@@ -478,18 +514,19 @@ final class IC156CategoryPageTests: XCTestCase {
 
     func testIC156D_FlowHostsHomeAndPageAndAppOnlySwapsBuilder() throws {
         let flow = try XCTUnwrap(strippedSource(Self.flowPath))
-        XCTAssertEqual(occurrences(of: "S0View(", in: flow), 1)
+        // IC-165 B：旧首页退役，首页构造点只剩「卡片叠」首页。
+        XCTAssertEqual(occurrences(of: "S0DeckHomeView(", in: flow), 1)
         XCTAssertGreaterThanOrEqual(occurrences(of: "NavigationStack", in: flow), 1)
         XCTAssertEqual(occurrences(of: "navigationDestination(item:", in: flow), 1)
         XCTAssertEqual(occurrences(of: ".returnedFromCategoryPage", in: flow), 1)
         // 进篮成功后一处、返回首页一处、从 S2 回到类别页一处（IC-157 裁定 一）；首页自己的摄入
-        // 在 `S0View.swift`，不在此数。
+        // 在 `S0DeckHomeView.swift`，不在此数。
         XCTAssertEqual(occurrences(of: "machine.ingest(", in: flow), 3)
-        XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .tabBar)", in: flow), 1)
-        // 卡面写「恰 1」（类别页）。根页同样隐藏空导航栏：留着它会占去顶部安全区、把首页
-        // 整体下推一个导航栏高度（偏离登记于 IC-156 自验报告）。
-        XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .navigationBar)", in: flow), 2)
-        XCTAssertEqual(occurrences(of: "S0CategoryPageView(", in: flow), 1)
+        // IC-165 B：类别页的两层 `.toolbar` 由 `S0DeckCategoryPageView` 自己挂，流程文件只剩根页
+        // 隐藏空导航栏那一处（留着它会占去顶部安全区、把首页整体下推一个导航栏高度）。
+        XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .tabBar)", in: flow), 0)
+        XCTAssertEqual(occurrences(of: ".toolbar(.hidden, for: .navigationBar)", in: flow), 1)
+        XCTAssertEqual(occurrences(of: "S0DeckCategoryPageView(", in: flow), 1)
         // 协调器与会话层只经 App 传闭包。
         for forbidden in ["CleanupCoordinator", "SessionStore", "S1StateMachine"] {
             XCTAssertEqual(occurrences(of: forbidden, in: flow), 0, forbidden)
@@ -569,147 +606,14 @@ final class IC156CategoryPageTests: XCTestCase {
     private static let flowPath = "PhotoCleanupMVE/Features/S0/S0CleanupFlowView.swift"
     private static let appPath = "PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift"
 
-    // MARK: - 断言 1：登记表恰 42 个常量、每个带出处（子项 A）
-
-    func testIC156A_RegistryHasFortyTwoConstantsWithProvenance() throws {
-        let raw = try XCTUnwrap(sourceText(Self.metricsPath))
-        let body = try XCTUnwrap(
-            slice(raw, from: "enum S0CategoryPageMetrics {", to: Self.topLevelClose),
-            "登记表切片没切到——声明文本变了，下面的计数会静默放空"
-        )
-        XCTAssertEqual(occurrences(of: Self.newline + "    static let ", in: body), 42)
-        XCTAssertGreaterThanOrEqual(occurrences(of: "取值出处：", in: body), 42)
-        XCTAssertEqual(occurrences(of: "取值出处：SPEC-S0 v2 第十四节第 2 部分", in: body), 5)
-        XCTAssertEqual(occurrences(of: "取值出处：画布 dark.py", in: body), 37)
-
-        // 顶排不在此登记（借 S1 chrome）。扫剔过注释的源码：注释里解释这条规则不算。
-        let stripped = try XCTUnwrap(strippedSource(Self.metricsPath))
-        let strippedBody = try XCTUnwrap(
-            slice(stripped, from: "enum S0CategoryPageMetrics {", to: Self.topLevelClose)
-        )
-        for chrome in ["S1ChromeLayout", "rowHeight", "horizontalMargin"] {
-            XCTAssertEqual(occurrences(of: chrome, in: strippedBody), 0, chrome)
-        }
-        // 正对照：剔过的切片里常量声明仍是 42 个，扫描不是空转。
-        XCTAssertEqual(
-            occurrences(of: Self.newline + "    static let ", in: strippedBody),
-            42
-        )
-
-        // 首页登记表一字不动：仍 52 个，且不含类别页网格。
-        let home = try XCTUnwrap(sourceText(Self.homeMetricsPath))
-        let homeBody = try XCTUnwrap(
-            slice(home, from: "enum S0HomeMetrics {", to: Self.topLevelClose)
-        )
-        XCTAssertEqual(occurrences(of: Self.newline + "    static let ", in: homeBody), 52)
-        XCTAssertEqual(occurrences(of: "gridColumns", in: homeBody), 0)
-    }
-
-    // MARK: - 断言 2：42 个值与画布最终稿、v2 登记值逐个相等（子项 A）
-
-    func testIC156A_MetricsValuesMatchCanvas() {
-        // v2 已登记 5（SPEC-S0 v2 第十四节第 2 部分）。列数是整数，精确比较。
-        XCTAssertEqual(S0CategoryPageMetrics.gridColumns, 3)
-        XCTAssertEqual(S0CategoryPageMetrics.gridItemSpacing, 4, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.gridCellCornerRadius, 10, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.gridSizeLabelFontSize, 11, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.gridCheckSide, 22, accuracy: 0.000_001)
-
-        // 页面边距 2
-        XCTAssertEqual(S0CategoryPageMetrics.pageHorizontalInset, 20, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.textHorizontalInset, 24, accuracy: 0.000_001)
-
-        // 大标题 6
-        XCTAssertEqual(S0CategoryPageMetrics.titleTopSpacing, 12, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.titleFontSize, 30, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.titleLetterSpacing, -0.7, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.titleLineHeight, 34, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.titleDotSide, 10, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.titleDotSpacing, 10, accuracy: 0.000_001)
-
-        // 副行 3
-        XCTAssertEqual(S0CategoryPageMetrics.subtitleFontSize, 14, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.subtitleOpacity, 0.55, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.subtitleTopSpacing, 4, accuracy: 0.000_001)
-
-        // 常驻行 3
-        XCTAssertEqual(S0CategoryPageMetrics.pinnedRowTopSpacing, 12, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.pinnedRowFontSize, 13, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.pinnedRowOpacity, 0.60, accuracy: 0.000_001)
-
-        // 网格位置 2
-        XCTAssertEqual(S0CategoryPageMetrics.gridTopSpacing, 12, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.gridBadgeInset, 6, accuracy: 0.000_001)
-
-        // 体积标签 4
-        XCTAssertEqual(
-            S0CategoryPageMetrics.gridSizeLabelBackgroundOpacity,
-            0.50,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(S0CategoryPageMetrics.gridSizeLabelCornerRadius, 7, accuracy: 0.000_001)
-        XCTAssertEqual(
-            S0CategoryPageMetrics.gridSizeLabelPaddingHorizontal,
-            6,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            S0CategoryPageMetrics.gridSizeLabelPaddingVertical,
-            2,
-            accuracy: 0.000_001
-        )
-
-        // 时长角标 4
-        XCTAssertEqual(S0CategoryPageMetrics.gridDurationFontSize, 11, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.gridDurationGlyphSpacing, 3, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.gridDurationShadowRadius, 4, accuracy: 0.000_001)
-        XCTAssertEqual(
-            S0CategoryPageMetrics.gridDurationShadowOpacity,
-            0.70,
-            accuracy: 0.000_001
-        )
-
-        // 勾 3 + 选中外圈 1
-        XCTAssertEqual(S0CategoryPageMetrics.gridCheckRingWidth, 1.5, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.gridCheckRingOpacity, 0.90, accuracy: 0.000_001)
-        XCTAssertEqual(
-            S0CategoryPageMetrics.gridCheckUnselectedFillOpacity,
-            0.25,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(S0CategoryPageMetrics.gridSelectedRingWidth, 2, accuracy: 0.000_001)
-
-        // 主按钮 8
-        XCTAssertEqual(S0CategoryPageMetrics.ctaBottomInset, 42, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.ctaHeight, 52, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.ctaCornerRadius, 26, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.ctaFontSize, 17, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.ctaShadowYOffset, 10, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.ctaShadowRadius, 30, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.ctaShadowOpacity, 0.45, accuracy: 0.000_001)
-        XCTAssertEqual(S0CategoryPageMetrics.ctaDisabledOpacity, 0.35, accuracy: 0.000_001)
-
-        // 渐隐 1
-        XCTAssertEqual(S0CategoryPageMetrics.fadeHeight, 190, accuracy: 0.000_001)
-
-        // 前缀与三枚符号名。
-        XCTAssertEqual(S0CategoryPageRange.prefix, "cat:")
-        let symbols = [
-            S0CategoryPageSymbol.back,
-            S0CategoryPageSymbol.play,
-            S0CategoryPageSymbol.check
-        ]
-        XCTAssertEqual(symbols, ["chevron.left", "play.fill", "checkmark"])
-        for symbol in symbols {
-            XCTAssertFalse(symbol.isEmpty)
-            XCTAssertTrue(symbol.unicodeScalars.allSatisfy { $0.isASCII }, symbol)
-        }
-    }
+    // 断言 1（`testIC156A_RegistryHasFortyTwoConstantsWithProvenance`）与断言 2
+    // （`testIC156A_MetricsValuesMatchCanvas`）随 IC-165 C 删去：v2 的 42 值类别页登记表随旧类别页
+    // 退役；卡片叠一族的 198 值由 IC-165 断言 6 与本文件断言 6 钉住。
 
     // MARK: - 源码扫描 helper（口径与 IC-147／IC-148／IC-155 一致）
 
-    private static let metricsPath = "PhotoCleanupMVE/Features/S0/S0CategoryPageMetrics.swift"
-    private static let homeMetricsPath = "PhotoCleanupMVE/Features/S0/S0HomeMetrics.swift"
+    /// IC-165 C：类别页与首页共用卡片叠一族登记表（v2 的两份登记表随旧页退役）。
+    private static let metricsPath = "PhotoCleanupMVE/Features/S0/S0DeckMetrics.swift"
     /// 换行符用 `UnicodeScalar` 拼、不写转义字面量（IC-148 #294 的 heredoc 教训）。
     private static let newline = String(Character(UnicodeScalar(UInt8(10))))
     /// 顶层类型的收口：换行 + 右花括号 + 换行。
