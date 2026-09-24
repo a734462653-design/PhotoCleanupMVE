@@ -630,6 +630,8 @@ extension View {
             GlassEffectContainer {
                 self
             }
+            // IC-172：容器恒深；徽标在容器之外，不受覆盖。
+            .environment(\.colorScheme, .dark)
             .overlay(alignment: .topTrailing) {
                 badge()
             }
@@ -651,6 +653,8 @@ extension View {
             GlassEffectContainer {
                 self
             }
+            // IC-172：容器恒深；徽标层在容器之外，不受覆盖。
+            .environment(\.colorScheme, .dark)
             .overlayPreferenceValue(S1GlassBadgeAnchorKey.self) { anchor in
                 S1GlassBadgeLayer(anchor: anchor, badge: badge)
             }
@@ -1021,6 +1025,8 @@ struct S1View: View {
             GlassEffectContainer {
                 chromeItems(model)
             }
+            // IC-172：容器内三件都是玻璃件；徽标在容器之外，不受覆盖。
+            .environment(\.colorScheme, .dark)
             .overlay(alignment: .topTrailing) {
                 trashBadge(model)
             }

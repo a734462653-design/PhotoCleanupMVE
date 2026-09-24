@@ -1923,6 +1923,8 @@ struct S2View: View {
             GlassEffectContainer {
                 topBarRow
             }
+            // IC-172：容器内三件都是玻璃件；角标在容器之外，不受覆盖。
+            .environment(\.colorScheme, .dark)
             .overlay(alignment: .topTrailing) {
                 confirmationBadge
             }
@@ -2144,6 +2146,8 @@ struct S2View: View {
             GlassEffectContainer {
                 actionBarRow
             }
+            // IC-172：容器内三件都是玻璃件。
+            .environment(\.colorScheme, .dark)
         } else {
             actionBarRow
         }
