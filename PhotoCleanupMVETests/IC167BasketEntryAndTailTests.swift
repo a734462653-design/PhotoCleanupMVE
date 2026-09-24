@@ -232,7 +232,7 @@ final class IC167BasketEntryAndTailTests: XCTestCase {
         // 按钮、图标、登记值与玻璃都在共享视图里，页面被钉死的计数一个不动。
         XCTAssertEqual(occurrences(of: "Button {", in: page), 3)
         XCTAssertEqual(occurrences(of: "Image(systemName: ", in: page), 7)
-        XCTAssertEqual(occurrences(of: "S0DeckMetrics.", in: page), 153)
+        XCTAssertEqual(occurrences(of: "S0DeckMetrics.", in: page), 147)
         XCTAssertEqual(occurrences(of: "s1ChromeGlassBackground(", in: page), 5)
 
         // 页头：待删篮入口 · 排序 · 「全选」自左至右。

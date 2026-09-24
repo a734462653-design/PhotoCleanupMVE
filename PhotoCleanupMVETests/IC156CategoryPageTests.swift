@@ -167,7 +167,7 @@ final class IC156CategoryPageTests: XCTestCase {
             1
         )
         // 登记表引用：按实装数写死（IC-165 C：类别页改为「卡片叠」，取值只经 `S0DeckMetrics`）。
-        XCTAssertEqual(occurrences(of: "S0DeckMetrics.", in: page), 153)
+        XCTAssertEqual(occurrences(of: "S0DeckMetrics.", in: page), 147)
         // SPEC-S0 v3 第十四节第 2 部分的卡片叠一族逐个有人用：在两只页面、zoom 过渡与宽幅封面里
         // 以 `S0DeckMetrics.<名>` 出现，或在登记表文件内被别的登记值／派生函数以裸名引用
         // （定义之外至少再一次——五个类别色走这条）。只有两个 v3 登记而现行无人用的值豁免。
@@ -188,7 +188,7 @@ final class IC156CategoryPageTests: XCTestCase {
                 )
                 return name.isEmpty ? nil : name
             }
-        XCTAssertEqual(registeredNames.count, 198)
+        XCTAssertEqual(registeredNames.count, 195)
         var usageScope = String()
         for relativePath in [
             Self.pagePath,
@@ -358,8 +358,8 @@ final class IC156CategoryPageTests: XCTestCase {
             XCTAssertEqual(occurrences(of: spliced, in: pageRaw), 0, spliced)
         }
         // IC-165 C：「卡片叠」类别页的字节量调用是多行写法（`forByteCount:` 在下一行），按调用名
-        // 计：副行体积、收起导航体积、格底体积、底栏已选体积四处。
-        XCTAssertEqual(occurrences(of: "S0ByteCountText.string(", in: pageRaw), 4)
+        // 计：页头体积、格底体积、底栏已选体积三处（IC-171 A 起收起导航条不显示体积）。
+        XCTAssertEqual(occurrences(of: "S0ByteCountText.string(", in: pageRaw), 3)
         XCTAssertEqual(
             occurrences(of: "S0CategoryPageDurationText.string(for:", in: pageRaw),
             1

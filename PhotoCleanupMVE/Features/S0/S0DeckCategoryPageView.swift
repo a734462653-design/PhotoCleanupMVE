@@ -393,6 +393,8 @@ struct S0DeckCategoryPageView: View {
         }
     }
 
+    /// IC-171 A（④ 第 200 条第三节第 2 条）：只留类别名、单行（超宽截断）；体积与占比不上导航条——
+    /// 右侧已有待删篮、排序、「全选」三只，标题位不够，避免文字上下分栏。
     private var compactNavTitle: some View {
         HStack(spacing: S0DeckMetrics.compactNavTitleItemSpacing) {
             Spacer(minLength: 0)
@@ -404,33 +406,7 @@ struct S0DeckCategoryPageView: View {
                     )
                 )
                 .foregroundStyle(S0DeckMetrics.text)
-            Text(
-                S0ByteCountText.string(
-                    forByteCount: category.candidateByteCount
-                )
-            )
-            .font(
-                .system(
-                    size: S0DeckMetrics.compactNavTitleFontSize,
-                    weight: .heavy
-                )
-            )
-            .tracking(S0DeckMetrics.compactNavValueLetterSpacing)
-            .monospacedDigit()
-            .foregroundStyle(S0DeckMetrics.text)
-            Text(
-                L10n.text(
-                    "s0.home.share",
-                    replacing: ["percent": sharePercentText]
-                )
-            )
-            .font(.system(size: S0DeckMetrics.compactNavShareFontSize))
-            .monospacedDigit()
-            .foregroundStyle(
-                S0DeckMetrics.dimmedText(
-                    opacity: S0DeckMetrics.compactNavShareOpacity
-                )
-            )
+                .lineLimit(1)
             Spacer(minLength: 0)
         }
     }

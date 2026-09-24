@@ -719,15 +719,6 @@ enum S0DeckMetrics {
     /// 取值出处：r9.py `.cnav .t b { margin-left: 8px }`。
     static let compactNavTitleItemSpacing: CGFloat = 8
 
-    /// 取值出处：r9.py `.cnav .t b { letter-spacing: -0.3px }`。
-    static let compactNavValueLetterSpacing: CGFloat = -0.3
-
-    /// 取值出处：r9.py `.cnav .t i { font-size: 12.5px }`。
-    static let compactNavShareFontSize: CGFloat = 12.5
-
-    /// 取值出处：r9.py `.cnav .t i { color: rgba(255,251,245,0.55) }`。
-    static let compactNavShareOpacity: Double = 0.55
-
     /// 取值出处：r9.py `.cnav .all { height: 38px }`。
     static let compactNavActionHeight: CGFloat = 38
 
