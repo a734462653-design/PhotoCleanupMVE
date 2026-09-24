@@ -11,6 +11,9 @@ import SwiftUI
 ///   登记值，描边色取 S0 底色（S0 恒深色，不用 S1 随外观解析的系统色）。
 /// - 无障碍标签挂在按钮上、徽标叠在按钮之外且不接收点击（与「逐张整理」tab 的入口同序）。
 /// - 恒深色：前景只经 `S0DeckMetrics`；不碰 PhotoKit。
+/// - IC-171 B：徽标不再直接叠在钮上（iOS 26 玻璃会把它合成进玻璃层而发虚）。页头样式借 S1 的
+///   `s1GlassBadgeOverlay` 叠在玻璃合成边界之外（照 S1／S2 既有写法）；收起导航条样式只报出钮的
+///   边界，由导航条在它自己的玻璃边界之外叠。两处用同一只 `S0BasketBadge`。
 struct S0BasketEntryView: View {
     enum Style {
         /// 页头：S1 圆钮玻璃。
@@ -23,7 +26,29 @@ struct S0BasketEntryView: View {
     let count: Int
     let action: () -> Void
 
+    @ViewBuilder
     var body: some View {
+        switch style {
+        case .glass:
+            button
+                .s1GlassBadgeOverlay {
+                    if showsBadge {
+                        S0BasketBadge(count: count)
+                    }
+                }
+        case .flat:
+            button
+                .anchorPreference(key: S1GlassBadgeAnchorKey.self, value: .bounds) { anchor in
+                    showsBadge ? anchor : nil
+                }
+        }
+    }
+
+    private var showsBadge: Bool {
+        count > 0
+    }
+
+    private var button: some View {
         Button(action: action) {
             icon
         }
@@ -34,11 +59,6 @@ struct S0BasketEntryView: View {
                 replacing: ["count": String(count)]
             )
         )
-        .overlay(alignment: .topTrailing) {
-            if count > 0 {
-                badge
-            }
-        }
     }
 
     @ViewBuilder
@@ -69,9 +89,14 @@ struct S0BasketEntryView: View {
                 )
         }
     }
+}
 
-    /// 照「逐张整理」tab 的徽标逐行搬，只把描边色换成 S0 底色。
-    private var badge: some View {
+/// 待删篮徽标：照「逐张整理」tab 的徽标逐行搬，只把描边色换成 S0 底色。页头入口与收起导航条
+/// 两处同用（IC-171 B）。
+struct S0BasketBadge: View {
+    let count: Int
+
+    var body: some View {
         Text(String(count))
             .font(
                 .system(

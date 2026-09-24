@@ -72,7 +72,8 @@ final class IC167BasketEntryAndTailTests: XCTestCase {
             ("count > 0", 1),
             (".allowsHitTesting(false)", 1),
             (".monospacedDigit()", 1),
-            ("overlay(alignment: .topTrailing)", 1),
+            // IC-171 B：徽标改由 S1 的 helper 叠在玻璃之外，入口自己不再 overlay。
+            ("overlay(alignment: .topTrailing)", 0),
             ("offset(", 0)
         ] {
             XCTAssertEqual(occurrences(of: needle, in: entry), expected, needle)
@@ -228,7 +229,8 @@ final class IC167BasketEntryAndTailTests: XCTestCase {
         let page = try XCTUnwrap(strippedSource(Self.pagePath))
         XCTAssertEqual(occurrences(of: "S0BasketEntryView(style: .glass", in: page), 1)
         XCTAssertEqual(occurrences(of: "S0BasketEntryView(style: .flat", in: page), 1)
-        XCTAssertEqual(occurrences(of: "machine.mergedPendingDeletionCount", in: page), 2)
+        // IC-171 B：收起导航条在自己的玻璃之外叠徽标，多取一次篮内张数。
+        XCTAssertEqual(occurrences(of: "machine.mergedPendingDeletionCount", in: page), 3)
         // 按钮、图标、登记值与玻璃都在共享视图里，页面被钉死的计数一个不动。
         XCTAssertEqual(occurrences(of: "Button {", in: page), 3)
         XCTAssertEqual(occurrences(of: "Image(systemName: ", in: page), 7)

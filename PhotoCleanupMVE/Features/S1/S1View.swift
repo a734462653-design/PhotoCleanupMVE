@@ -597,6 +597,88 @@ extension View {
     }
 }
 
+// MARK: - IC-171 B：徽标叠在玻璃合成边界之外
+
+/// 玻璃钮报出自己的边界，供玻璃合成边界之外的一层叠徽标（S0 待删篮入口借用）。
+struct S1GlassBadgeAnchorKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? {
+        nil
+    }
+
+    static func reduce(
+        value: inout Anchor<CGRect>?,
+        nextValue: () -> Anchor<CGRect>?
+    ) {
+        value = value ?? nextValue()
+    }
+}
+
+extension View {
+    /// IC-120 B 同教训（S1 `chromeBar`、S2 `topBar` 两处先例）：iOS 26 玻璃会把叠在玻璃上的普通
+    /// overlay 合成进玻璃层，徽标因此发虚。本视图包进一个玻璃合成边界，徽标叠在边界之外、右上
+    /// 对齐；iOS 17～25 没有合成边界，直接叠。单只玻璃钮（S0 页头与首页的待删篮入口）用这个。
+    @ViewBuilder
+    func s1GlassBadgeOverlay<Badge: View>(
+        @ViewBuilder badge: () -> Badge
+    ) -> some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer {
+                self
+            }
+            .overlay(alignment: .topTrailing) {
+                badge()
+            }
+        } else {
+            overlay(alignment: .topTrailing) {
+                badge()
+            }
+        }
+    }
+
+    /// 同一原理，用于徽标所在的钮不在本视图边缘的情形（S0 类别页收起导航条：整条是一层玻璃，
+    /// 垃圾桶右边还有排序与「全选」）：徽标叠在边界之外、子视图经 `S1GlassBadgeAnchorKey` 报出的
+    /// 边界上（右上对齐，与直接叠在钮上同一位置）。
+    @ViewBuilder
+    func s1GlassBadgeHost<Badge: View>(
+        @ViewBuilder badge: @escaping () -> Badge
+    ) -> some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer {
+                self
+            }
+            .overlayPreferenceValue(S1GlassBadgeAnchorKey.self) { anchor in
+                S1GlassBadgeLayer(anchor: anchor, badge: badge)
+            }
+        } else {
+            overlayPreferenceValue(S1GlassBadgeAnchorKey.self) { anchor in
+                S1GlassBadgeLayer(anchor: anchor, badge: badge)
+            }
+        }
+    }
+}
+
+/// 徽标层：徽标放进与报出边界同尺寸、同中心的框里右上对齐。不接收点击。
+struct S1GlassBadgeLayer<Badge: View>: View {
+    let anchor: Anchor<CGRect>?
+    let badge: () -> Badge
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let anchor {
+                let rect = proxy[anchor]
+                badge()
+                    .frame(
+                        width: rect.width,
+                        height: rect.height,
+                        alignment: .topTrailing
+                    )
+                    .position(x: rect.midX, y: rect.midY)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 // MARK: - IC-128 B：封面缩略图
 
 /// 56×56 圆角 12 封面：降质先上、最终图原位替换（只升不降）；取不到图显示

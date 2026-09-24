@@ -387,6 +387,10 @@ struct S0DeckCategoryPageView: View {
                 ),
                 interactive: true
             )
+            // IC-171 B：导航条自己是玻璃，徽标叠在它的玻璃合成边界之外（入口只报位置）。
+            .s1GlassBadgeHost {
+                S0BasketBadge(count: machine.mergedPendingDeletionCount)
+            }
             .padding(.horizontal, S0DeckMetrics.compactNavHorizontalInset)
             .padding(.top, S1ChromeLayout.topRowTopInset)
             .transition(.opacity)
