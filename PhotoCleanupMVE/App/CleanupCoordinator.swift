@@ -158,6 +158,10 @@ final class CleanupCoordinator: ObservableObject {
     /// IC-127 C（未定项 13）：从 S2 返回时的对账——重读 `R(T)`，交给状态机的
     /// 单一对账入口；静默完成，不改 `message`。进入 S1 那一次对账由首次读取
     /// （`S1StateMachine.completeRangeRead`）内的同一入口完成。
+    ///
+    /// IC-170 A（裁定 一）：首次读取还没发生（「逐张整理」tab 从未出现、状态机仍在加载态）时，
+    /// 这次读到的 `R(T)` 交给首次读取入口，由它兼任对账；返回值只在落到就绪态时为真。
+    /// 读取次数不变，首读与对账谁先发生都由状态机自己的请求比对去重。
     @discardableResult
     func reconcileS1WithPhotoLibrary() -> Bool {
         guard let s1Machine else {
@@ -166,10 +170,19 @@ final class CleanupCoordinator: ObservableObject {
         let response = photoLibrary.s1RangeRead(
             groupedBy: s1Machine.groupingDimension
         )
-        let reconciled = s1Machine.reconcile(
-            with: response.result,
-            isLimitedAuthorization: response.isLimitedAuthorization
-        )
+        let reconciled: Bool
+        if let request = s1Machine.currentReadRequest {
+            reconciled = s1Machine.completeRangeRead(
+                response.result,
+                for: request,
+                isLimitedAuthorization: response.isLimitedAuthorization
+            ) && s1Machine.loadingState == .ready
+        } else {
+            reconciled = s1Machine.reconcile(
+                with: response.result,
+                isLimitedAuthorization: response.isLimitedAuthorization
+            )
+        }
         sessionStore = s1Machine.sessionStore
         return reconciled
     }
@@ -406,6 +419,19 @@ final class CleanupCoordinator: ObservableObject {
         }
         lastS3EntryGuardFailure = nil
         return true
+    }
+
+    /// IC-170 B（裁定 二）：「空间清理」tab 两处待删篮入口（首页与类别页）进 S3。与 S1 页同一条
+    /// 提交路径：先对账（首读未发生时兼任首读），再形成提交交给 `enterConfirmationFromS1`。
+    /// 提交形成不了时发一条回落事件（清理 tab 当页呈现），不改路由；后者自己的失败已发事件，不重复发。
+    @discardableResult
+    func enterConfirmationFromS0() -> Bool {
+        reconcileS1WithPhotoLibrary()
+        guard let submission = s1Machine?.makeS3Submission() else {
+            publishS1FeedbackEvent(.submissionUnavailable)
+            return false
+        }
+        return enterConfirmationFromS1(submission)
     }
 
     func s2AssetAspectRatio(for assetID: String) -> CGFloat {

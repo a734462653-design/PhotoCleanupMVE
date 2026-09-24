@@ -139,17 +139,30 @@ final class IC168FallbackDiagnosticsTests: XCTestCase {
         }
     }
 
-    // MARK: - 断言 4：冷启动 S1 仍在加载时垃圾桶回落，定名 M2（子项 B；第 195 条 ③ 的 CI 复现）
+    // MARK: - 断言 4：冷启动 S1 仍在加载时，垃圾桶路径由协调器完成首读后进入 S3（IC-170 A 改写为回归形态）
 
-    /// 开屏落在清理 tab、从没切过「逐张整理」时，S1 状态机一直停在加载态（`completeRangeRead`
-    /// 只由 S1 视图出现时触发）。虚拟范围交接、进 S2、在途豁免都不看加载态，写回照常生效；
-    /// 对账在加载态下静默返回假，提交形成因「仍在加载」为 nil → 回落。
-    func testIC168B_ColdStartLoadingS1MakesTrashPathFallBackWithM2() async {
+    /// IC-168 时这条用例在 CI 上复现了第 195 条的回落（`guard=M2`，第 200 条真机证实）。IC-170 A 起
+    /// 协调器的对账在首读未发生时兼任首读，同一条路径改为进入 S3。注入授权桩让首读落就绪态（贴近
+    /// 真机）。诊断取样在写回与对账之前，所以同一份文本里既是加载态又已对上账，就是修法生效的签名。
+    func testIC168B_ColdStartLoadingS1TrashPathCompletesFirstReadAndEntersConfirmation() async {
         await MainActor.run {
-            let coordinator = CleanupCoordinator()
+            let box = IC127LibraryBox(
+                assets: [
+                    S1PhotoAssetSnapshot(identifier: "资产-3",
+                                         creationDate: Date(timeIntervalSince1970: 1_786_000_000)),
+                    S1PhotoAssetSnapshot(identifier: "资产-2",
+                                         creationDate: Date(timeIntervalSince1970: 1_785_000_000)),
+                    S1PhotoAssetSnapshot(identifier: "资产-1",
+                                         creationDate: Date(timeIntervalSince1970: 1_784_000_000))
+                ]
+            )
+            let coordinator = CleanupCoordinator(
+                photoLibrary: PhotoLibraryService(s1Source: box.source)
+            )
             XCTAssertTrue(coordinator.enterS1(sessionID: "会话-168B-冷启动"))
             let machine = unwrap(coordinator.s1Machine)
             XCTAssertEqual(machine.state, .loading)
+            XCTAssertEqual(machine.reconciliationCount, 0)
 
             let assets = ["截图-大", "截图-中", "截图-小"]
             let handoff = unwrap(
@@ -163,31 +176,35 @@ final class IC168FallbackDiagnosticsTests: XCTestCase {
             XCTAssertTrue(s2Machine.handleSwipeUp())
             let payload = unwrap(s2Machine.makeExitPayload())
 
-            XCTAssertFalse(coordinator.enterConfirmationFromS2(with: payload))
-            XCTAssertEqual(coordinator.route, .s1)
+            XCTAssertTrue(coordinator.enterConfirmationFromS2(with: payload))
+            XCTAssertEqual(coordinator.route, .confirmation)
             XCTAssertNil(coordinator.s2Machine)
-            XCTAssertNil(coordinator.s3Machine)
-            XCTAssertEqual(coordinator.s1FeedbackEventCount, 1)
-            XCTAssertEqual(coordinator.s1FeedbackEvent?.kind, .submissionUnavailable)
-            XCTAssertEqual(machine.state, .loading)
+            XCTAssertNotNil(coordinator.s3Machine)
+            XCTAssertEqual(coordinator.s1FeedbackEventCount, 0)
+            XCTAssertNil(coordinator.s1FeedbackEvent)
+            XCTAssertEqual(coordinator.s3Groups.map(\.name), ["屏幕截图"])
+            XCTAssertEqual(machine.state, .ready)
+            XCTAssertNil(machine.currentReadRequest)
+            XCTAssertEqual(machine.reconciliationCount, 1)
 
             let text = unwrap(coordinator.s2ExitDiagnosticsText)
             printDiagnostics(text, label: "A4")
             for needle in [
                 "entry=trash",
                 "loadingState=loading",
-                "outcome=submissionUnavailable",
-                "guard=M2",
-                "reconciled=false",
+                "reconciled=true",
+                "outcome=ok",
+                "guard=none",
                 "inflight=true"
             ] {
                 XCTAssertTrue(text.contains(needle), needle)
             }
+            XCTAssertFalse(text.contains("guard=M2"))
 
-            // 写回已生效（W8 成功），在途登记随之移除。
-            XCTAssertFalse(
-                (machine.sessionStore.pendingDeletionAssetIDsByRangeID["cat:screenshot"] ?? [])
-                    .isEmpty
+            // 写回已生效（在途豁免），在途登记随之移除。
+            XCTAssertEqual(
+                machine.sessionStore.pendingDeletionAssetIDsByRangeID["cat:screenshot"],
+                Set([assets[0]])
             )
             XCTAssertTrue(machine.activeVirtualRangeIDs.isEmpty)
         }

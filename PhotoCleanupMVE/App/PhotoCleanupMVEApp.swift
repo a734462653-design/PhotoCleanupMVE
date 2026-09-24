@@ -132,9 +132,8 @@ struct PhotoCleanupMVEApp: App {
                 .configuration
                 .feedbackToastDurationMilliseconds,
             onEnterConfirmation: {
-                coordinator.reconcileS1WithPhotoLibrary()
-                guard let submission = s1Machine.makeS3Submission() else { return }
-                _ = coordinator.enterConfirmationFromS1(submission)
+                // IC-170 B（裁定 二）：对账、提交形成与失败事件都收进协调器。
+                _ = coordinator.enterConfirmationFromS0()
             }
         )
         // IC-168 D（裁定 四）：S1 回落事件（写回失败／提交形成不了）在清理 tab 当页也呈现——

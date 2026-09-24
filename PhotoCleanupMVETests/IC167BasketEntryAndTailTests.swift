@@ -174,10 +174,11 @@ final class IC167BasketEntryAndTailTests: XCTestCase {
 
         let app = try XCTUnwrap(strippedSource(Self.appPath))
         XCTAssertEqual(occurrences(of: "onEnterConfirmation: {", in: app), 1)
-        XCTAssertEqual(occurrences(of: "reconcileS1WithPhotoLibrary()", in: app), 1)
-        XCTAssertEqual(occurrences(of: "makeS3Submission()", in: app), 1)
-        // 「逐张整理」tab 的既有一处 + 本卡一处。
-        XCTAssertEqual(occurrences(of: "enterConfirmationFromS1(", in: app), 2)
+        // IC-170 B：对账与提交形成收进协调器，App 闭包只调协调器入口。
+        XCTAssertEqual(occurrences(of: "reconcileS1WithPhotoLibrary()", in: app), 0)
+        XCTAssertEqual(occurrences(of: "makeS3Submission()", in: app), 0)
+        // 只剩「逐张整理」tab 的既有一处。
+        XCTAssertEqual(occurrences(of: "enterConfirmationFromS1(", in: app), 1)
     }
 
     // MARK: - 断言 4：「从小到大」按字节升序、同体积按标识升序（裁定 四）
