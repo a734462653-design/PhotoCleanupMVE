@@ -158,6 +158,10 @@ final class CleanupCoordinator: ObservableObject {
     /// IC-127 C（未定项 13）：从 S2 返回时的对账——重读 `R(T)`，交给状态机的
     /// 单一对账入口；静默完成，不改 `message`。进入 S1 那一次对账由首次读取
     /// （`S1StateMachine.completeRangeRead`）内的同一入口完成。
+    ///
+    /// IC-170 A（裁定 一）：首次读取还没发生（「逐张整理」tab 从未出现、状态机仍在加载态）时，
+    /// 这次读到的 `R(T)` 交给首次读取入口，由它兼任对账；返回值只在落到就绪态时为真。
+    /// 读取次数不变，首读与对账谁先发生都由状态机自己的请求比对去重。
     @discardableResult
     func reconcileS1WithPhotoLibrary() -> Bool {
         guard let s1Machine else {
@@ -166,10 +170,19 @@ final class CleanupCoordinator: ObservableObject {
         let response = photoLibrary.s1RangeRead(
             groupedBy: s1Machine.groupingDimension
         )
-        let reconciled = s1Machine.reconcile(
-            with: response.result,
-            isLimitedAuthorization: response.isLimitedAuthorization
-        )
+        let reconciled: Bool
+        if let request = s1Machine.currentReadRequest {
+            reconciled = s1Machine.completeRangeRead(
+                response.result,
+                for: request,
+                isLimitedAuthorization: response.isLimitedAuthorization
+            ) && s1Machine.loadingState == .ready
+        } else {
+            reconciled = s1Machine.reconcile(
+                with: response.result,
+                isLimitedAuthorization: response.isLimitedAuthorization
+            )
+        }
         sessionStore = s1Machine.sessionStore
         return reconciled
     }
