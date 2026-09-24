@@ -548,6 +548,9 @@ extension View {
                 interactive ? .regular.interactive() : .regular,
                 in: shape
             )
+            // IC-172（④ 第 200 条第三节第 1 条）：玻璃一律按系统深色模式的效果、不随浅／深色变。
+            // 覆盖只包住本 helper 返回的子树，内容的动态前景色随之解析到深色分支。
+            .environment(\.colorScheme, .dark)
         } else {
             s1LegacyChromeGlassBackground(in: shape)
         }
@@ -579,6 +582,8 @@ extension View {
                 lineWidth: S1ChromeGlass.outerStrokeWidth
             )
         }
+        // IC-172：回落配方同样恒深（系统材质随外观变，#289 实证）。
+        .environment(\.colorScheme, .dark)
     }
 
     /// 玻璃圆钮：定尺 Ø44 + 玻璃底（圆钮走交互变体）。
@@ -625,6 +630,8 @@ extension View {
             GlassEffectContainer {
                 self
             }
+            // IC-172：容器恒深；徽标在容器之外，不受覆盖。
+            .environment(\.colorScheme, .dark)
             .overlay(alignment: .topTrailing) {
                 badge()
             }
@@ -646,6 +653,8 @@ extension View {
             GlassEffectContainer {
                 self
             }
+            // IC-172：容器恒深；徽标层在容器之外，不受覆盖。
+            .environment(\.colorScheme, .dark)
             .overlayPreferenceValue(S1GlassBadgeAnchorKey.self) { anchor in
                 S1GlassBadgeLayer(anchor: anchor, badge: badge)
             }
@@ -952,6 +961,8 @@ struct S1View: View {
                 .padding(.horizontal, S2OverlayLayout.minimumSpacing * 2)
                 .padding(.vertical, S2OverlayLayout.minimumSpacing)
                 .background(.regularMaterial, in: Capsule())
+                // IC-172：toast 的材质与文字同样恒深。
+                .environment(\.colorScheme, .dark)
                 .padding(.bottom, S2OverlayLayout.bottomRowBottomInset)
                 .allowsHitTesting(false)
                 .accessibilityAddTraits(.isStaticText)
@@ -1016,6 +1027,8 @@ struct S1View: View {
             GlassEffectContainer {
                 chromeItems(model)
             }
+            // IC-172：容器内三件都是玻璃件；徽标在容器之外，不受覆盖。
+            .environment(\.colorScheme, .dark)
             .overlay(alignment: .topTrailing) {
                 trashBadge(model)
             }
@@ -1339,6 +1352,9 @@ struct S1View: View {
                 x: 0,
                 y: S1MenuStyle.shadowYOffset
             )
+            // IC-172（④ 第 201 条 Lynn 答复第 4 条）：排序／分组下拉菜单纳入玻璃恒深——
+            // 底层系统材质与「近白」叠层随之解析到深色分支（v10 `:709` 按欠账登记）。
+            .environment(\.colorScheme, .dark)
     }
 
     private var menuSeparator: some View {
