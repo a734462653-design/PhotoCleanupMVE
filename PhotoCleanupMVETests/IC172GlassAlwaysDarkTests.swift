@@ -93,15 +93,26 @@ final class IC172GlassAlwaysDarkTests: XCTestCase {
             Self.sameAccuracy,
             "回落配方随系统外观变了"
         )
-        let material = grayPair("materialReference") {
+        // 对照：回落配方中心那一层的原样拷贝（同一种 `Capsule().fill` 写法、不加覆盖），深浅由系统外观决定。
+        // #350 实测：裸 `.background(.ultraThinMaterial, in:)` 深色 99，而回落配方深色 149——两种写法渲染不同，
+        // 不能拿前者当参照。
+        let reference = grayPair("legacyCenterReference") {
             Color.clear
                 .frame(width: Self.glassSize.width, height: Self.glassSize.height)
-                .background(.ultraThinMaterial, in: Capsule())
+                .background {
+                    Capsule().fill(.ultraThinMaterial)
+                    Capsule().fill(Color.white.opacity(S1ChromeGlass.tintOpacity))
+                }
         }
-        XCTAssertLessThan(
-            abs(legacy.light - material.dark),
-            abs(legacy.light - material.light),
-            "浅色外观下回落配方更接近浅色材质"
+        XCTAssertGreaterThanOrEqual(
+            abs(reference.light - reference.dark),
+            Self.materialMinimumDifference,
+            "回落配方中心层两侧几乎相同：对照无判别力"
+        )
+        XCTAssertLessThanOrEqual(
+            abs(legacy.light - reference.dark),
+            Self.sameAccuracy,
+            "浅色外观下回落配方不是深色模式的效果"
         )
     }
 
