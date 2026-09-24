@@ -421,6 +421,19 @@ final class CleanupCoordinator: ObservableObject {
         return true
     }
 
+    /// IC-170 B（裁定 二）：「空间清理」tab 两处待删篮入口（首页与类别页）进 S3。与 S1 页同一条
+    /// 提交路径：先对账（首读未发生时兼任首读），再形成提交交给 `enterConfirmationFromS1`。
+    /// 提交形成不了时发一条回落事件（清理 tab 当页呈现），不改路由；后者自己的失败已发事件，不重复发。
+    @discardableResult
+    func enterConfirmationFromS0() -> Bool {
+        reconcileS1WithPhotoLibrary()
+        guard let submission = s1Machine?.makeS3Submission() else {
+            publishS1FeedbackEvent(.submissionUnavailable)
+            return false
+        }
+        return enterConfirmationFromS1(submission)
+    }
+
     func s2AssetAspectRatio(for assetID: String) -> CGFloat {
         guard let asset = loadedAssets[assetID],
               asset.pixelWidth > 0,
