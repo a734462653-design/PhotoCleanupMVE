@@ -961,6 +961,8 @@ struct S1View: View {
                 .padding(.horizontal, S2OverlayLayout.minimumSpacing * 2)
                 .padding(.vertical, S2OverlayLayout.minimumSpacing)
                 .background(.regularMaterial, in: Capsule())
+                // IC-172：toast 的材质与文字同样恒深。
+                .environment(\.colorScheme, .dark)
                 .padding(.bottom, S2OverlayLayout.bottomRowBottomInset)
                 .allowsHitTesting(false)
                 .accessibilityAddTraits(.isStaticText)
@@ -1350,6 +1352,9 @@ struct S1View: View {
                 x: 0,
                 y: S1MenuStyle.shadowYOffset
             )
+            // IC-172（④ 第 201 条 Lynn 答复第 4 条）：排序／分组下拉菜单纳入玻璃恒深——
+            // 底层系统材质与「近白」叠层随之解析到深色分支（v10 `:709` 按欠账登记）。
+            .environment(\.colorScheme, .dark)
     }
 
     private var menuSeparator: some View {
