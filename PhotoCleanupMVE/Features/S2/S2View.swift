@@ -1179,6 +1179,8 @@ struct S2View: View {
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
                             .background(.ultraThinMaterial, in: Capsule())
+                            // IC-172：教程提示条的材质与文字同样恒深。
+                            .environment(\.colorScheme, .dark)
                             .padding(.top, 10)
                             .allowsHitTesting(false)
                     }
@@ -1211,6 +1213,8 @@ struct S2View: View {
                 .padding(.horizontal, S2OverlayLayout.minimumSpacing * 2)
                 .padding(.vertical, S2OverlayLayout.minimumSpacing)
                 .background(.regularMaterial, in: Capsule())
+                // IC-172：toast 的材质与文字同样恒深。
+                .environment(\.colorScheme, .dark)
                 .padding(.bottom, bottomInset)
                 .frame(
                     maxWidth: .infinity,
