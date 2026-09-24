@@ -3763,6 +3763,9 @@ private extension View {
                 interactive ? .regular.interactive() : .regular,
                 in: shape
             )
+            // IC-172（④ 第 200 条第三节第 1 条）：玻璃一律按系统深色模式的效果、不随浅／深色变。
+            // 覆盖只包住本 helper 返回的子树，内容的动态前景色随之解析到深色分支。
+            .environment(\.colorScheme, .dark)
         } else {
             s2LegacyChromeGlassBackground(in: shape)
         }
@@ -3798,6 +3801,8 @@ private extension View {
                 lineWidth: S2ChromeGlass.outerStrokeWidth
             )
         }
+        // IC-172：回落配方同样恒深（系统材质随外观变，#289 实证）。
+        .environment(\.colorScheme, .dark)
     }
 
     /// 玻璃圆钮：定尺 Ø44 + 玻璃底。IC-117：圆钮走交互变体（iOS 26）。
