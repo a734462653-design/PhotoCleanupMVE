@@ -2,13 +2,17 @@
 
 ## 一、结论（先行）
 
-- **停卡上报，未合并。** 按任务卡「模型阶梯补偿」条款：子项 A→B→C 推送后 CI **#349 一次绿（892／0）**；子项 D 推送后 CI **#350 一次红（898／1，1 处失败）**，失败用例为卡内新增测试 `testIC172A_S1LegacyRecipeIsDarkInBothStyles`。**执行端未自行改代码重推**，按要求在此报告红的运行编号、失败用例名、注解原文、整包日志里全部 `IC172_PROBE` 行原文与初步归因后停下，等待决策会话读日志后给下一步指示。
-- **四个子项代码均已交付并推送到 `feature/ic-172-glass-always-dark`**：A `6308693920a4e180f74559549c2606b8539d1ba0`、B `e89b95a248e6bc47224c4c7c3929b196b3219794`、C `df10428b74d3e0547dcbe4a30a8623dd14cc236b`、D `a01ffe616396750a091c8d22dd8497d9f4983922`。
-- **子项 A、B、C 的产品改动逐字节核验与卡面代码块一致**：用 `Tasks/decision-tools/check_ic172.py` 对三个阶段分别做「实际 blob == 对基线程序化应用卡面 old→new 替换后的 blob」比对，全部相符（详见第四节）；`Tasks/decision-tools/sim_ic172.py`/自写计数脚本核对的剔注释计数表逐条与卡面「改后（剔注释，预演值）」一致，无一处不符。
-- **子项 D 的测试文件按要求用 `cp` 逐字节拷入**，`git hash-object` = `b49a40de20a2790da747428bce3ae423d316e20d`，与卡面要求值完全一致，未改动其中任何一行。pbxproj 登记新增 `fileRef 100000000000000000000075`／`buildFile 200000000000000000000072`，撞号扫描（定义行 `uniq -d`）为空。
-- **裁定二·预定的红与含义**：本次红命中卡面预先列出的六种归因之一——**「legacy 红 → 系统材质不随 SwiftUI 环境」**。但像素探针原始数据显示一个卡面未预判的细节：`s1Legacy` 在 `overrideUserInterfaceStyle = .light` 与 `.dark` 两次渲染下取值完全相同（149/149，满足第一条断言的"两侧不变"要求），说明 `.environment(\.colorScheme, .dark)` 确实让该组合视图的渲染结果不再随外层 trait 变化；但这个恒定值（149）比起"纯 `.ultraThinMaterial` 深色态"（`materialReference.dark=99`）更接近"纯 `.ultraThinMaterial` 浅色态"（`materialReference.light=169`，|149-169|=20 < |149-99|=50），导致第二条断言（应更接近深色）判红。这与卡面归因描述的字面情形（材质完全不随 SwiftUI 环境、应像正对照一样两侧仍有大差异）不完全一致——**本次观察到的是"两侧变得一致，但一致后的落点没有落到预期的深色一侧"，而不是"两侧仍然不一致"**。这一细节差异标记为③，具体分析见第七节，留给决策会话判断根因与下一步（例如：legacy 配方叠加的白色描边/淡染层是否把中心像素拉向浅色、或该恒定行为其实来自渲染时序而非环境覆盖本身）。
-- **`testIC172A_S1GlassHelperIsDarkInBothStyles`（iOS 26 `glassEffect()` helper）与 `testIC172B_GlassContainerPathIsDarkInBothStyles`（容器路径）均通过**——898 项中只有 1 项失败，其余 897 项（含两条正对照、`testIC172ABC_SourceWiring`、IC148/IC156 正对照、`testIC063` 等既有测试）全部通过，白名单外零改动（G966）确认无回归。
-- **G963 不满足**（helper 与 legacy 两条被测中 legacy 未通过）；**G964、G965、G966 满足**；**G967 不满足**（要求两次 CI 均绿，本次 898／1）——**未触发合并**，`main` 未变。
+- **停卡上报，未合并，CI 预算三次用尽。** 分支 `feature/ic-172-glass-always-dark`：子项 A→B→C 推送 CI **#349 一次绿（892／0）**；子项 D 推送 CI **#350 一次红（898／1）**；追加子项 D′（决策会话下发，改用与产品代码同构的参照写法）推送 CI **#351 一次红（898／1，同一用例）**。三次 CI 已用尽（纪律 2），按 D′ 节第 5 条与模型阶梯补偿条款，**执行端不再推、不合并、不自行修改代码或测试**，就此停卡上报。
+- **五个提交交付到分支**：A `6308693920a4e180f74559549c2606b8539d1ba0`、B `e89b95a248e6bc47224c4c7c3929b196b3219794`、C `df10428b74d3e0547dcbe4a30a8623dd14cc236b`、D `a01ffe616396750a091c8d22dd8497d9f4983922`、D′ `c1ca74f6ceeb8bda2bc31d32b66df0ba759913d3`。另有一份中途停卡报告提交 `5d581608e94e313230020f959ed172f8f792db51`（已被本次完整版报告替换，纪律 6）。
+- **A、B、C 的产品改动逐字节核验与卡面代码块一致**（详见第四节），**未受本次 D′ 事件影响**——两次红均落在测试断言本身，产品代码（`S1View.swift`／`S2View.swift`）自子项 C 提交后再未改动。
+- **D′ 的新发现比"写法不同"假说更复杂，如实记录，不代为下结论**：
+  - #350 用裸 `.background(.ultraThinMaterial, in: Capsule())` 做参照（无覆盖），测得 `light=169 dark=99`；`s1Legacy`（fill 写法 + `.environment(.dark)` 覆盖）两侧恒为 `149`。决策会话的假说是"两种写法（`.background(_:in:)` vs `.background{fill}`）本身渲染不同，不能拿前者当参照"。
+  - D′ 把参照换成与产品 `s1LegacyChromeGlassBackground` **同构的 `.background{ Capsule().fill(...) }` 写法、不加覆盖**（`legacyCenterReference`），实测 `light=172 dark=104`。
+  - **这组新数据没有支持"写法不同导致数值差异"的假说，反而推翻了它**：`legacyCenterReference`（fill 写法，无覆盖，真实深色 trait）= **104**，与 `material`（`.background(_:in:)` 写法，无覆盖，真实深色 trait）= **99** 非常接近（差 5）——**两种写法在真实深浅色 trait 驱动下渲染结果几乎相同**，并不存在假说所说的"两种写法渲染不同"。真正的差异在别处：`s1Legacy`（fill 写法 + `.environment(\.colorScheme, .dark)` 覆盖）= **149**，既不接近 `material.dark`(99) 也不接近 `legacyCenterReference.dark`(104)，而是明显偏向浅色一侧（`material.light=169`、`legacyCenterReference.light=172`）。
+  - 换言之：**`.environment(\.colorScheme, .dark)` 确实让 legacy 组合视图的渲染在两种 `overrideUserInterfaceStyle` 下变得一致（149/149，不再随外层 trait 变化），但这个一致后的取值并不等于"真实深色 trait 下同一份 fill 写法"应有的取值（104）**，反而更接近"真实浅色 trait"的取值。第二条断言 `abs(legacy.light - reference.dark) ≤ 3` 因此仍然判红（`|149-104|=45`）。
+  - **本卡截至预算用尽，未能确定这一差距（149 vs 104，约 45 个灰度单位）的根因**——可能候选包括（③，均未验证）：`.environment(\.colorScheme, .dark)` 对 `Material`/`UIVisualEffectView` 桥接只起到部分作用（例如只影响 SwiftUI 侧颜色解析，不完全等价于让底层 `UITraitCollection` 认为自己处于 dark）；或该覆盖对 `Material` 根本不生效、149/149 的"恒定"只是巧合或测试时序artefact；或 legacy recipe 里 `Color.white.opacity(S1ChromeGlass.tintOpacity)` 等叠层与 Material 合成的方式在"环境覆盖下的深色"与"真实深色 trait"之间存在非线性差异。**执行端不具备进一步验证手段（本机无 Xcode、CI 预算已尽），如实登记为③，留给决策会队判断。**
+- **iOS 26 `glassEffect()`（helper 与容器路径）两次红都未受影响、持续通过**：`s1Helper`／`s1GlassBadgeOverlay` 在 #350、#351 两次运行中均为 `78/78`，与真实深色 trait 下裸 `glassEffect(.regular)`（`rawGlassReference.dark=78`）逐像素相等。**这部分结论保持稳固：候选 (a) 对 iOS 26 Liquid Glass 成立，可信度①**。存疑的只是候选 (a) 对 iOS 17-25 回落材质（`Material`/`.ultraThinMaterial`）路径是否真正达到「渲染上等价于深色」，而不只是「不再随外层 trait 变化」。
+- **G967 两次均不满足**（#350 898／1、#351 898／1）——**未触发合并**，`main` 保持 `467fe74a0323c98e938142a2107f16843d21cc96` 不变。
 
 ---
 
@@ -16,40 +20,43 @@
 
 | 项 | 值 |
 |---|---|
-| 任务卡 | `<top>/Tasks/IC-20260924-172-glass-always-dark.md` |
+| 任务卡 | `<top>/Tasks/IC-20260924-172-glass-always-dark.md`（含决策会话追加的「## 追加 · 子项 D′」一节） |
 | 调研 | `<top>/Tasks/RESEARCH-IC-171-glass-facts.md` |
-| 复核 | `<top>/Tasks/REVIEW-IC-172-findings.md`（两轮，第二轮结论「可以下发」） |
-| 基线 `main`（本地与远端一致） | `467fe74a0323c98e938142a2107f16843d21cc96` |
+| 复核 | `<top>/Tasks/REVIEW-IC-172-findings.md`（主卡，两轮）、`<top>/Tasks/REVIEW-IC-172-dprime.md`（D′，一轮，结论「可以下发」） |
+| 基线 `main`（本地与远端一致，全程未变） | `467fe74a0323c98e938142a2107f16843d21cc96` |
 | 开工核对 1 | `git status --porcelain` 空（纪律 8） |
-| 开工核对 2 | `git merge-base --is-ancestor e356aeda17da53a064892e04f39bea1032f5bf8d main` 退出码 **0** |
+| 开工核对 2 | `git merge-base --is-ancestor e356aeda17da53a064892e04f39bea1032f5bf8d main` 退出码 0 |
 | 开工核对 3 | `git ls-remote origin refs/heads/main` = `467fe74a0323c98e938142a2107f16843d21cc96` = 本地 |
 | 分支 | `feature/ic-172-glass-always-dark`（自上述基线 `git switch -c` 切出） |
-| 分支 tip（当前，未合并） | `a01ffe616396750a091c8d22dd8497d9f4983922` |
+| 分支 tip（当前，未合并） | `c1ca74f6ceeb8bda2bc31d32b66df0ba759913d3` |
 | `schemaVersion` | 7（未动） |
 | `cacheSchemaVersion` | 1（未动） |
 | `S0DeckMetrics` 登记值 | 195（未动） |
 | 文案目录 | 259（`s0.` 41，未动） |
-| **是否合并** | **否——G967 不满足，`main` 保持 `467fe74a0323c98e938142a2107f16843d21cc96`** |
-| **docs 提交** | 无（未合并，不适用惯例 44 的合并后落点） |
+| **是否合并** | **否——G967 两次均不满足，`main` 保持 `467fe74a…` 不变** |
+| **docs 提交（合并后惯例 44）** | 不适用（未合并） |
+| **CI 预算** | 3／3 已用尽（#349、#350、#351） |
 
 ---
 
-## 三、子项 A～D 逐条交付
+## 三、提交列表
 
-| 子项 | 提交 SHA | 内容 |
+| 序 | 提交 SHA | 内容 |
 |---|---|---|
-| A | `6308693920a4e180f74559549c2606b8539d1ba0` | 两个玻璃 helper（`s1/s2ChromeGlassBackground` 的 iOS 26 分支、`s1/s2LegacyChromeGlassBackground` 回落分支收尾）各追加 `.environment(\.colorScheme, .dark)` |
+| A | `6308693920a4e180f74559549c2606b8539d1ba0` | 两个玻璃 helper（`s1/s2ChromeGlassBackground` 与 `s1/s2LegacyChromeGlassBackground`）各在返回子树链尾追加 `.environment(\.colorScheme, .dark)` |
 | B | `e89b95a248e6bc47224c4c7c3929b196b3219794` | 五个玻璃容器（S1 `chromeBar`／`s1GlassBadgeOverlay`／`s1GlassBadgeHost`，S2 `topBar`／`actionBar`）容器链尾各加同一覆盖 |
-| C | `df10428b74d3e0547dcbe4a30a8623dd14cc236b` | 四处系统材质（S1 写回失败 toast、S1 排序／分组菜单 `menuContainer`，S2 写回失败 toast、S2 相簿 sheet 教程提示条）材质之后加覆盖；S2 标定面板三处不纳入 |
-| D | `a01ffe616396750a091c8d22dd8497d9f4983922` | 新增 `IC172GlassAlwaysDarkTests.swift`（逐字节拷入）+ pbxproj 登记 |
+| C | `df10428b74d3e0547dcbe4a30a8623dd14cc236b` | 四处系统材质（S1 写回失败 toast、S1 排序／分组菜单 `menuContainer`；S2 写回失败 toast、S2 相簿 sheet 教程提示条）材质之后加同一覆盖 |
+| D | `a01ffe616396750a091c8d22dd8497d9f4983922` | 新增 `IC172GlassAlwaysDarkTests.swift`（决策会话生成，逐字节拷入，旧版 hash `b49a40de20a2790da747428bce3ae423d316e20d`）+ pbxproj 登记 |
+| D′ | `c1ca74f6ceeb8bda2bc31d32b66df0ba759913d3` | `testIC172A_S1LegacyRecipeIsDarkInBothStyles` 参照改为与产品代码同构的 `.background{ Capsule().fill(...) }` 写法（新版 hash `2c119e174af05d1da15b234720ebbc6e8f205586`）；产品代码、pbxproj、其余五条测试一字不动 |
+| （已作废） | `5d581608e94e313230020f959ed172f8f792db51` | 中途停卡报告提交（#350 红后所写），内容已被本报告完整替换 |
 
-四个提交均可用 `git cat-file -e` 核验存在（见第十节）。
+四个产品/测试子项提交与 D′ 均已用 `git cat-file -e` 核验存在（第十四节）。
 
 ---
 
 ## 四、子项 A～C 计数实测表（卡面值 / 实测值逐条对读）
 
-方法：`Tasks/decision-tools/scan.py`（`git show <rev>:<path>` 只读）+ `strip.py`（`strippedSource` 同口径）对各子项提交做剔注释计数；另用 `Tasks/decision-tools/check_ic172.py <commit> <stage>` 做「产品文件 blob == 对基线程序化套用卡面 `ic172_edits.py` 中 old→new 替换后的 blob」强校验（该脚本与生成卡面代码块的脚本同源，等价于把卡面 26 处代码块用文本替换的方式逐一核对）。
+方法：`Tasks/decision-tools/scan.py`（`git show <rev>:<path>` 只读）+ `strip.py`（`strippedSource` 同口径）对各子项提交做剔注释计数；另用 `Tasks/decision-tools/check_ic172.py <commit> <stage>` 做「产品文件 blob == 对基线程序化套用卡面 `ic172_edits.py` 中 old→new 替换后的 blob」强校验。**D′ 只改测试文件，不影响本节结果**（第四节数据在 D′ 之前已核验，产品代码自 C 之后未再改动）。
 
 ### 子项 A（commit `6308693`）—— `check_ic172.py 6308693 A`：26 项 PASS / 26
 
@@ -57,12 +64,9 @@
 |---|---|---|---|
 | `.environment(\.colorScheme, .dark)` / `colorScheme` | S1View.swift | 0→2 | 2 |
 | `.environment(\.colorScheme, .dark)` / `colorScheme` | S2View.swift | 0→2 | 2 |
-| `GlassEffectContainer {` | S1View.swift | 3（不变） | 3 |
-| `GlassEffectContainer {` | S2View.swift | 2（不变） | 2 |
-| `#available` | S1View.swift | 4（不变） | 4 |
-| `#available` | S2View.swift | 3（不变） | 3 |
-| `Material` | S1View.swift | 3（不变） | 3 |
-| `Material` | S2View.swift | 6（不变） | 6 |
+| `GlassEffectContainer {` | S1/S2View.swift | 3／2（不变） | 3／2 |
+| `#available` | S1/S2View.swift | 4／3（不变） | 4／3 |
+| `Material` | S1/S2View.swift | 3／6（不变） | 3／6 |
 | `ultraThin` | S1/S2View.swift | 2／2（不变） | 2／2 |
 | `.primary` | S1/S2View.swift | 12／8（不变） | 12／8 |
 | `glassEffect(` | S1/S2View.swift | 1／1（不变） | 1／1 |
@@ -77,7 +81,7 @@
 |---|---|---|---|
 | `colorScheme, .dark)` | S1View.swift | 2→5 | 5 |
 | `colorScheme, .dark)` | S2View.swift | 2→4 | 4 |
-| 子项 A 其余全部 needle | 两文件 | 不变 | 不变（逐项核对，与上表相同） |
+| 子项 A 其余全部 needle | 两文件 | 不变 | 不变 |
 
 ### 子项 C（commit `df10428`）—— `check_ic172.py df10428 C`：30 项 PASS / 30（含两处 blob 强校验）
 
@@ -85,61 +89,52 @@
 |---|---|---|
 | blob S1View.swift == 卡面 A/B/C 编辑累积套用基线后的 blob | 相等 | **相等**（`99dd6a9ba1170c3b3dcedc26fec2e22850912eb3`） |
 | blob S2View.swift == 同上 | 相等 | **相等**（`bea3bf09887428db76827877408a27b09ecf0bb3`） |
-| `colorScheme, .dark)` | S1 5→7 | 7 |
-| `colorScheme, .dark)` | S2 4→6 | 6 |
-| `.background(.regularMaterial)`（无 `in:`，S2 标定面板，无 IC-172 修改） | 3（不变） | 3 |
+| `colorScheme, .dark)` | S1 5→7、S2 4→6 | 7／6 |
+| `.background(.regularMaterial)`（无 `in:`，S2 标定面板，不纳入） | 3（不变） | 3 |
 | 其余全部 needle | 不变 | 不变 |
 
-**结论：子项 A、B、C 三个提交的产品文件（`S1View.swift`、`S2View.swift`）与卡面 26 处代码块逐字节等价，无一处偏离。**
+**结论：子项 A、B、C 三个提交的产品文件与卡面 26 处代码块逐字节等价，无一处偏离；D、D′ 均未再改动产品代码。**
 
 ---
 
 ## 五、测试文件与 pbxproj 校验
 
-- `PhotoCleanupMVETests/IC172GlassAlwaysDarkTests.swift`：`git hash-object` = `b49a40de20a2790da747428bce3ae423d316e20d`，与卡面要求值**完全一致**；`cp` 拷入，未改任何一行；无 CRLF（`\r\n` 计数为 0）；364 行；`grep -c "func test"` = 6，与卡面六条测试名一致：`testIC172A_MaterialControlFollowsInterfaceStyle`、`testIC172A_RawGlassControlFollowsInterfaceStyle`、`testIC172A_S1GlassHelperIsDarkInBothStyles`、`testIC172A_S1LegacyRecipeIsDarkInBothStyles`、`testIC172B_GlassContainerPathIsDarkInBothStyles`、`testIC172ABC_SourceWiring`。
-- pbxproj：新增 `100000000000000000000075`（fileRef，占 3 处：BuildFile 引用、FileReference 定义、Group 列表）、`200000000000000000000072`（buildFile，占 2 处：BuildFile 定义、Sources 构建阶段列表）——`check_ic172.py` 断言「pbx fileRef 75 occ=3」「pbx buildFile 72 occ=2」均 PASS；定义行（`isa = PBXFileReference`／`isa = PBXBuildFile` 的定义行）按 id 分组 `uniq -d` 为空，无撞号。
-- `changed paths outside whitelist` = `[]`；`changed product/test/pbx path count` = 4（`PhotoCleanupMVE.xcodeproj/project.pbxproj`、`Features/S1/S1View.swift`、`Features/S2/S2View.swift`、`PhotoCleanupMVETests/IC172GlassAlwaysDarkTests.swift`），与白名单表完全一致。
+- **D（旧版）**：`git hash-object` = `b49a40de20a2790da747428bce3ae423d316e20d`，与卡面要求值一致；`cp` 拷入未改任何一行；无 CRLF；364 行；6 个 `func test`。
+- **D′（新版，覆盖同一文件）**：`git hash-object` = `2c119e174af05d1da15b234720ebbc6e8f205586`，与决策会话指定值一致；`cp` 覆盖未手工改动任何一行；`git diff --name-only 5d58160..c1ca74f` 恰 1 路径（仅测试文件）。diff 范围核对与 `REVIEW-IC-172-dprime.md` 第一节描述完全一致：只改 `testIC172A_S1LegacyRecipeIsDarkInBothStyles` 后半段（参照变量 `material`→`reference`、构造改为 fill 写法、断言从 1 条改 2 条），前半段与其余五条测试逐字节未动。
+- pbxproj：新增 `fileRef 100000000000000000000075`（占 3 处）、`buildFile 200000000000000000000072`（占 2 处），定义行 `uniq -d` 为空，无撞号（D′ 未再改动 pbxproj）。
+- 白名单路径核对：`git diff --name-only 467fe74a..c1ca74f` = `PhotoCleanupMVE.xcodeproj/project.pbxproj`、`PhotoCleanupMVE/Features/S1/S1View.swift`、`PhotoCleanupMVE/Features/S2/S2View.swift`、`PhotoCleanupMVETests/IC172GlassAlwaysDarkTests.swift`、`Reports/IC-172/change-list.md`、`Reports/IC-172/self-check.md` —— 恰 4 产品/测试路径 + `Reports/IC-172/` 目录 2 个文件，与 D′ 节第 6 条改读的 G966 口径（「恰 4 路径 + `Reports/IC-172/`」）一致。
 
 ---
 
-## 六、摘取关系实测（惯例 40，克隆内验证）
+## 六、摘取关系实测（惯例 40，克隆内验证，A/B/C，D′ 前完成）
 
-在临时克隆（`ic172-exec/clone172`，源为本地 `PhotoCleanupMVE` 工作副本）内，从基线 `467fe74a` 分别单独 cherry-pick：
-
-- `git cherry-pick 6308693`（A 单独）→ **成功**，`2 files changed, 10 insertions(+)`。
-- `git cherry-pick e89b95a`（B 单独）→ **成功**（`Auto-merging` 两文件，无冲突），`2 files changed, 10 insertions(+)`。
-- `git cherry-pick df10428`（C 单独）→ **成功**（`Auto-merging` 两文件，无冲突），`2 files changed, 9 insertions(+)`。
-
-三者均可独立、干净地摘到基线上，验证卡面「A、B、C 任意组合可摘」的说法成立。
+在临时克隆内，从基线 `467fe74a` 分别单独 cherry-pick：`6308693`（A 单独，成功，`2 files changed, 10 insertions(+)`）、`e89b95a`（B 单独，成功，`Auto-merging` 无冲突）、`df10428`（C 单独，成功，`Auto-merging` 无冲突）。三者均可独立、干净地摘到基线上。
 
 ---
 
-## 七、CI 结果
+## 七、CI 结果（三次，预算用尽）
 
-### 运行一：`feature/ic-172-glass-always-dark` push（A→B→C），commit `df10428b74d3e0547dcbe4a30a8623dd14cc236b`
+### 运行一：#349（run id `35986967001`），commit `df10428b74d3e0547dcbe4a30a8623dd14cc236b`（A→B→C）
 
-- 运行编号 **#349**（run id `35986967001`），`https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/35986967001`
-- 结论：`completed` / `success`，全部 12 个步骤 `success`
-- **XCTest 执行摘要**（notice 原文）：`Executed 892 tests, 0 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 892 tests / 0 failures`
-- **XCTest 分段耗时**（notice 原文）：`模拟器启动 80 s；xcodebuild test 335 s；总 416 s`
-- **未签名 IPA 校验**（notice 原文）：`文件=PhotoCleanupMVE-unsigned.ipa，字节数=1862103，SHA-256=ca665a10f5963c3d0ff06164c18c33773be6600f18176a369e2ac95e55218c10`
+- 结论：`completed` / `success`，全部 12 步骤 `success`
+- **XCTest 执行摘要**：`Executed 892 tests, 0 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 892 tests / 0 failures`
+- **XCTest 分段耗时**：`模拟器启动 80 s；xcodebuild test 335 s；总 416 s`
+- **未签名 IPA 校验**：`文件=PhotoCleanupMVE-unsigned.ipa，字节数=1862103，SHA-256=ca665a10f5963c3d0ff06164c18c33773be6600f18176a369e2ac95e55218c10`
 - artifact：`PhotoCleanupMVE-unsigned-df10428b74d3`，id `10803095716`，`1862273` 字节，有效期至 `2026-12-23T10:23:48Z`
-- **`IC172_PROBE` 行**：0 行——`IC172GlassAlwaysDarkTests.swift` 在此提交尚未加入仓库（该文件由子项 D 引入），此次 892 项不含新测试，故整包日志内无 `IC172_PROBE` 字样，已用 Python `zipfile` 读取全部步骤日志逐行搜索确认为 0（预期结果，非缺陷）。
+- `IC172_PROBE` 行：0（该提交尚未含新测试文件，预期结果）
 
-### 运行二：`feature/ic-172-glass-always-dark` push（D），commit `a01ffe616396750a091c8d22dd8497d9f4983922`
+### 运行二：#350（run id `35988265755`），commit `a01ffe616396750a091c8d22dd8497d9f4983922`（D，旧版测试）
 
-- 运行编号 **#350**（run id `35988265755`），`https://github.com/a734462653-design/PhotoCleanupMVE/actions/runs/35988265755`
-- 结论：`completed` / `failure`。步骤 1-8、12 均 `success`；**步骤 9「运行 XCTest」`failure`**；步骤 10「构建未签名应用」、步骤 11「上传可下载的未签名 IPA」均 `skipped`（因步骤 9 失败）——**本次运行无 IPA 产物**。
-- **真实退出码**：`Process completed with exit code 65`（步骤 9 注解原文）
-- **XCTest 执行摘要**（notice 原文）：`Executed 898 tests, 1 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 898 tests / 1 failures`
-- **XCTest 分段耗时**（notice 原文）：`模拟器启动 68 s；xcodebuild test 336 s；总 405 s`
-- **失败注解原文**（`annotation_level=failure`，共 3 条，均来自「运行 XCTest」步骤）：
+- 结论：`completed` / `failure`；步骤 9「运行 XCTest」`failure`，步骤 10/11 `skipped`（无 IPA）
+- 真实退出码：`Process completed with exit code 65`
+- **XCTest 执行摘要**：`Executed 898 tests, 1 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 898 tests / 1 failures`
+- **XCTest 分段耗时**：`模拟器启动 68 s；xcodebuild test 336 s；总 405 s`
+- **失败注解原文**：
   1. `Process completed with exit code 65.`
   2. `XCTest 失败 | ** TEST FAILED **`
   3. `XCTest 失败 | /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/IC172GlassAlwaysDarkTests.swift:101: error: -[PhotoCleanupMVETests.IC172GlassAlwaysDarkTests testIC172A_S1LegacyRecipeIsDarkInBothStyles] : XCTAssertLessThan failed: ("50") is not less than ("20") - 浅色外观下回落配方更接近浅色材质`
   4. `XCTest 失败 | Test Case '-[PhotoCleanupMVETests.IC172GlassAlwaysDarkTests testIC172A_S1LegacyRecipeIsDarkInBothStyles]' failed (0.983 seconds).`
-- **失败用例**：`testIC172A_S1LegacyRecipeIsDarkInBothStyles`（唯一失败项，898 项中 897 项通过）。
-- **全部 `IC172_PROBE` 行原文**（下载整包日志 `run350_logs.zip`，用 Python `zipfile` 读取 `构建、XCTest 与未签名产物/9_运行 XCTest.txt`，逐行搜索 `IC172_PROBE`，共 7 行，按日志出现顺序）：
+- **全部 `IC172_PROBE` 行原文**（下载整包日志、Python `zipfile` 读取 `9_运行 XCTest.txt`，共 7 行）：
 
 ```
 2026-09-24T10:43:08.2412210Z IC172_PROBE arm=material light=169 dark=99
@@ -151,80 +146,103 @@
 2026-09-24T10:43:11.1915700Z IC172_PROBE arm=s1GlassBadgeOverlay light=78 dark=78
 ```
 
-### 归因（初步，③，按卡内裁定二「预定的红与含义」映射）
+### 运行三：#351（run id `35991746708`），commit `c1ca74f6ceeb8bda2bc31d32b66df0ba759913d3`（D′，新版测试，本卡第 3 次也是最后一次 CI）
 
-逐条核对六种预定归因：
+- 结论：`completed` / `failure`；步骤 9「运行 XCTest」`failure`，步骤 10/11 `skipped`（无 IPA）
+- 真实退出码：`Process completed with exit code 65`
+- **XCTest 执行摘要**：`Executed 898 tests, 1 failing test case(s), across 1 launch(es); xcodebuild last-chunk subtotal: 898 tests / 1 failures`
+- **XCTest 分段耗时**：`模拟器启动 91 s；xcodebuild test 341 s；总 433 s`
+- **失败注解原文**：
+  1. `Process completed with exit code 65.`
+  2. `XCTest 失败 | ** TEST FAILED **`
+  3. `XCTest 失败 | /Users/runner/work/PhotoCleanupMVE/PhotoCleanupMVE/PhotoCleanupMVETests/IC172GlassAlwaysDarkTests.swift:112: error: -[PhotoCleanupMVETests.IC172GlassAlwaysDarkTests testIC172A_S1LegacyRecipeIsDarkInBothStyles] : XCTAssertLessThanOrEqual failed: ("45") is greater than ("3") - 浅色外观下回落配方不是深色模式的效果`
+  4. `XCTest 失败 | Test Case '-[PhotoCleanupMVETests.IC172GlassAlwaysDarkTests testIC172A_S1LegacyRecipeIsDarkInBothStyles]' failed (1.020 seconds).`
+- **全部 `IC172_PROBE` 行原文**（同上方法，共 7 行，含新增 `legacyCenterReference`）：
 
-| 预定情形 | 是否命中 | 依据 |
-|---|---|---|
-| 正对照 material 红（夹具看不见外观差） | 否 | `material`：`|169-99|=70 ≥ 12`，正对照通过 |
-| 正对照 rawGlass 红（截屏看不见玻璃外观差） | 否 | `rawGlass`：`|246-78|=168 ≥ 6`，正对照通过 |
-| helper 红而两条正对照绿（候选 (a) 对 iOS 26 玻璃不成立） | 否 | `s1Helper`：`|78-78|=0 ≤ 3` 且 `|78(helper.light) - 78(rawGlassReference.dark)|=0 ≤ 3`，两条子断言均通过——iOS 26 `glassEffect()` 对 `.environment(\.colorScheme, .dark)` 的响应**与真实深色 trait 下的裸玻璃像素完全相等**，候选 (a) 对 iOS 26 玻璃成立，未被推翻 |
-| **legacy 红（系统材质不随 SwiftUI 环境）** | **是——最接近的预定命中项** | `testIC172A_S1LegacyRecipeIsDarkInBothStyles` 判红，唯一失败项 |
-| 容器路径红而 helper 绿（容器层覆盖不够） | 否 | `s1GlassBadgeOverlay`：`|78-78|=0 ≤ 3`，通过 |
-
-**归因细节（③，超出卡面预定描述的部分，如实记录不代为下结论）**：
-
-- `testIC172A_S1LegacyRecipeIsDarkInBothStyles` 内有两条子断言。**第一条**（`abs(legacy.light - legacy.dark) ≤ 3`）：`|149-149|=0`，**通过**——`s1LegacyChromeGlassBackground` 加了 `.environment(\.colorScheme, .dark)` 之后，`overrideUserInterfaceStyle` 在 `.light`／`.dark` 两次渲染下取得的中心像素灰度**确实变成了同一个值（149）**，即覆盖确实生效、切断了该组合视图与外层 trait 的联系。**第二条**（`abs(legacy.light - material.dark) < abs(legacy.light - material.light)`，即"这个恒定值应更接近纯材质的深色态"）：`|149-99|=50` 不小于 `|149-169|=20`——恒定值 149 反而**更接近材质的浅色态**，判红。
-- 卡面裁定二把"legacy 红"的含义写作「系统材质不随 SwiftUI 环境」，字面上暗示的失败形态是"两侧仍然不同、覆盖没生效"（类似正对照那种大差异）；但本次实测是"两侧变成同一个值（覆盖确实生效），只是这个值没有落在预期的深色区间"。这是否仍属于"系统材质不随 SwiftUI 环境"这一类别，还是应归为另一种此前未列出的情形（例如：`environment` 覆盖对 `Material` 起了作用，但 `s1LegacyChromeGlassBackground` 自身叠加的白色描边／淡染层（`Color.white.opacity(S1ChromeGlass.tintOpacity)` 与两层白色描边）把中心像素结果拉向了浅色区间，与"材质本身是否读到深色"是两回事），执行端不代为判断，标记为③，留给决策会话核实。
-- 供决策会话核对用的原始配方常量（本次未改动，仅供归因参考）：`S1ChromeGlass.tintOpacity`、`innerHighlightTop`／`innerHighlightBottom`、`outerRingOpacity` 等六个常量的取值，若需要复算中心像素合成结果，应从 `S1View.swift` 现读，本报告不重复列出以免与实际代码脱节。
+```
+2026-09-24T11:20:31.6568170Z IC172_PROBE arm=material light=169 dark=99
+2026-09-24T11:20:32.2172720Z IC172_PROBE arm=rawGlass light=246 dark=78
+2026-09-24T11:20:32.6901990Z IC172_PROBE arm=s1Helper light=78 dark=78
+2026-09-24T11:20:33.2014730Z IC172_PROBE arm=rawGlassReference light=246 dark=78
+2026-09-24T11:20:33.7072720Z IC172_PROBE arm=s1Legacy light=149 dark=149
+2026-09-24T11:20:34.2257460Z IC172_PROBE arm=legacyCenterReference light=172 dark=104
+2026-09-24T11:20:34.7850840Z IC172_PROBE arm=s1GlassBadgeOverlay light=78 dark=78
+```
 
 ---
 
-## 八、本地门禁（四个提交各一次，均为工作树内真实执行）
+## 八、归因（③，三次运行数据合并对读，不代为下结论）
 
-| 子项 | `selfcheck.ps1` 退出码 | `scan-hardcoded-user-visible-strings.ps1` 退出码 | `git diff --check` 退出码 |
+| 探针 | #350 值 | #351 值 | 说明 |
+|---|---|---|---|
+| `material`（`.background(_:in:)`，无覆盖） | light=169 dark=99 | light=169 dark=99 | 正对照，两次一致 |
+| `rawGlass`／`rawGlassReference`（裸 `glassEffect`，无覆盖） | light=246 dark=78 | light=246 dark=78 | 正对照，两次一致 |
+| `s1Helper`（`glassEffect` + `.environment(.dark)`） | light=78 dark=78 | light=78 dark=78 | **稳定通过**：与 `rawGlassReference.dark` 逐像素相等 |
+| `s1GlassBadgeOverlay`（容器路径，含 `glassEffect`） | light=78 dark=78 | light=78 dark=78 | **稳定通过**：与 helper 单独测得的结果一致 |
+| `s1Legacy`（fill 写法 + `.environment(.dark)`） | light=149 dark=149 | light=149 dark=149 | 两次一致：覆盖使其不再随 `overrideUserInterfaceStyle` 变化，但取值恒为 149 |
+| `materialReference`（#350，`.background(_:in:)`，无覆盖，与 `material` 同构写法） | light=169 dark=99 | — | 用于 #350 判断"legacy 更接近浅色/深色材质" |
+| `legacyCenterReference`（#351，fill 写法，无覆盖） | — | light=172 dark=104 | 用于 #351 判断"legacy 是否落在深色 fill 写法附近" |
+
+**关键结论（①，两轮数据交叉验证）**：
+
+1. **`material`（169/99）与 `legacyCenterReference`（172/104）高度接近**（差 3、差 5）——证明**"两种写法（`.background(_:in:)` vs `.background{fill}`）本身渲染不同"这一假说不成立**，在真实系统 trait 驱动、不加任何 SwiftUI 环境覆盖的前提下，两种写法的中心像素值几乎一样。D′ 节给出的"唯一的红是参照写法不同"这一归因，**被本次实测数据推翻**。
+2. **`s1Legacy`（恒 149）既不接近 `material.dark`(99)，也不接近 `legacyCenterReference.dark`(104)，而是介于两者的浅色端与深色端之间、更偏向浅色一侧**（`material.light=169`、`legacyCenterReference.light=172`，与 149 的差距 20/23，小于与深色端的差距 50/45）。
+3. iOS 26 `glassEffect()` 路径（`s1Helper`、`s1GlassBadgeOverlay`）在两次运行中都精确复现「与真实深色 trait 完全相等」，候选 (a) 对该路径**成立，可信度①**。
+4. iOS 17-25 回落路径（`Material`/`.ultraThinMaterial`）的行为**仍是③、未闭合**：`.environment(\.colorScheme, .dark)` 确实让其渲染不再随外层 `overrideUserInterfaceStyle` 变化（两次都验证到 149/149 恒定），但恒定后的取值既不是"真实深色 trait 下同一份代码"的取值（104），也不是"真实浅色 trait 下同一份代码"的取值（172），而是介于两者之间、偏浅色一侧的第三个值。**执行端未能在预算内确定这第三个值的成因**——候选解释（均未验证，仅供决策会话参考）：
+   - `.environment(\.colorScheme, .dark)` 对 SwiftUI `Material` 类型的桥接可能只部分生效（例如影响某些子组件的颜色解析，但 `UIVisualEffectView` 自身的模糊/色调仍部分依赖独立的 trait 解析路径，产生一个"半深半浅"的混合渲染）；
+   - 149 这个值也可能和 `Color.white.opacity(S1ChromeGlass.tintOpacity)`（legacy 配方在 material 之上叠加的白色调层）与"部分生效的深色材质"混合后的合成结果有关，但两次探针都没有单独测试"仅 `.ultraThinMaterial` + `.environment(.dark)`、不叠加白色调层"这一隔离变量，无法证实或证伪；
+   - 也可能与 SwiftUI 对 `.environment()` 覆盖在 `background{ }` 多层闭包内的传播时序、或本测试夹具（`UIHostingController` + `RunLoop.main.run(until:)` 等待 0.2 秒）与实际渲染管线的同步问题有关。
+5. **本卡的产品结论（写在第一节）保持有效范围仅限于 iOS 26 `glassEffect()` 路径**；iOS 17-25 回落路径（`Material`）「是否真正达到深色效果、还是只是不再变化」尚待确认，是否影响卡内裁定 一/二/三/四的产品判断（例如是否需要给 legacy 路径换一种实现方式，而非仅追加 `.environment()`），留给决策会话判断。
+
+---
+
+## 九、本地门禁（五个提交各一次，均为工作树内真实执行，退出码均为 0）
+
+| 子项 | `selfcheck.ps1` | `scan-hardcoded-user-visible-strings.ps1` | `git diff --check` |
 |---|---|---|---|
 | A | 0 | 0 | 0 |
 | B | 0 | 0 | 0 |
 | C | 0 | 0 | 0 |
 | D | 0 | 0 | 0 |
-
-D 提交后 `selfcheck.ps1` 扫描文件数从 103→104 个 `.swift`、测试源文件从 51→52 个，均因新增 `IC172GlassAlwaysDarkTests.swift` 一个文件，符合预期。四次运行「用户可见硬编码残留」均为 0。
+| D′ | 0 | 0 | 0 |
 
 ---
 
-## 九、闸门结果
+## 十、闸门结果
 
 | 闸门 | 结果 | 依据 |
 |---|---|---|
-| **G963**（helper） | **不满足** | 子项 A 计数相符（第四节）；像素三条被测中 helper（`testIC172A_S1GlassHelperIsDarkInBothStyles`）通过，**legacy（`testIC172A_S1LegacyRecipeIsDarkInBothStyles`）未通过** |
-| **G964**（容器） | 满足 | 子项 B 计数相符；`testIC172B_GlassContainerPathIsDarkInBothStyles` 通过（898 项中仅 1 项失败，且该失败非此测试） |
-| **G965**（材质） | 满足 | 子项 C 计数相符；`testIC172ABC_SourceWiring` 通过（源码扫描，未在失败列表中）；IC148/IC156 正对照未见失败（897 项通过中含这些既有测试） |
-| **G966**（白名单外零改动） | 满足 | `git diff --name-only 467fe74a..a01ffe6` 恰 4 路径，与白名单一致；十八条被保护分支 tip 经 `git ls-remote origin` 现取核对未变（第十一节） |
-| **G967**（合并前置） | **不满足** | 要求两次 CI 均绿（892／0、898／0），实测 892／0 与 898／1——**第二次不满足，不触发合并** |
+| **G963**（helper） | **不满足** | helper（`testIC172A_S1GlassHelperIsDarkInBothStyles`）两次运行均通过；legacy（`testIC172A_S1LegacyRecipeIsDarkInBothStyles`）两次运行均未通过（#350 旧参照红、#351 新参照仍红） |
+| **G964**（容器） | 满足 | `testIC172B_GlassContainerPathIsDarkInBothStyles` 两次运行均通过 |
+| **G965**（材质） | 满足 | `testIC172ABC_SourceWiring` 两次运行均未在失败列表中；IC148/IC156 正对照未见失败 |
+| **G966**（白名单外零改动） | 满足 | `git diff --name-only 467fe74a..c1ca74f` 恰 4 产品/测试路径 + `Reports/IC-172/` 2 文件，与 D′ 节改读口径一致；十八条被保护分支 tip 未变（第十一节） |
+| **G967**（合并前置，D′ 节改读） | **不满足** | 要求「#349 绿 892／0 + D′ 那次绿 898／0」，实测 D′ 那次（#351）为 898／1——不满足 |
 | **G968**（合并后运行） | 不适用 | 未合并 |
 
 ---
 
-## 十、十八条被保护分支 tip（`git ls-remote origin` 现取核对，全部未变）
+## 十一、十八条被保护分支 tip（`git ls-remote origin` 现取核对，全部未变）
 
 `feature/ic-089-nx-edge-bounce` `b368a6caee846e664391b0620350395bfe6fbc7f`、`feature/ic-091-nx-midgesture-handoff` `6736f1e3ebf2a3fd9a0c00f1bcd2c83f81dec74d`、`feature/ic-092-nx-window-follow` `a7cc1ec727a3a493f5263e688a316cbf4c743562`、`feature/ic-158-diagnostic-progress-clamp` `5cb67332437a446d98733ddc942e2905392d2891`、`feature/ic-164-pick-ic163-a-d` `cc85fa4a7cfa272092a3acfade432d13de7e4e0b`、`feature/ic-165-deck-formal` `dc7e49459f15fb6227c3f34903357ae490aaa7ed`、`feature/ic-166-rest-category-and-lib` `2734ccd0ef2f12fa4ce115f0136777321a96c548`、`feature/ic-167-s0-basket-entry-tail-sort` `fc6dd1436fa25b8298caca2f3d2266024859df4e`、`feature/ic-168-s2-exit-diagnostics` `e7c1be085102b5d9685b0863f29feb6bfa006a38`、`feature/ic-170-s1-first-read` `800791020a8923e44043fea49c9d766a7edcd307`、`feature/ic-171-category-page-trio` `0134c84cb52aea523410ee2f9e05ddd0f54f5d14`、`probe/ic-067-screenshot-subtype` `9db02b93eccbb87d126602901807e70823535111`、`probe/ic-125-sentinel-negative` `402cb6e52a11dc89ce2a8351b47314a5fe9185b8`、`probe/ic-137-media-playback` `486bcb769b59eb1146c5a231c7998847206777cc`、`probe/ic-145-scan-service` `d373afc7125104c01acfc296829229090e6871ce`、`probe/ic-161-similar-photos` `1f8ff9248e312cd4a04faec559ea9f34540b1379`、`probe/ic-162-deck-home-preview` `180b052edf24f168712c6e58754c60b88b342175`、`probe/ic-163-deck-home-preview-r2` `562f8b7afa14508e3efebbd57e980e275946ab95`。
 
 ---
 
-## 十一、规格欠账（四条，按卡面第二节照抄，未处理，等决策会话核可后回填 SPEC-S2 v23／S1 v11／S0 v5）
+## 十二、规格欠账（四条，按卡面第二节照抄，未处理，未回填 SPEC）
 
 1. SPEC-S2 v22 决策 24（`:81`）与第二节 `:283`——玻璃恒深是新例外，v23 仿决策 61 句式补一条。
 2. SPEC-S2 v22 决策 42（`:129`）——改为「玻璃及其前景恒取深色分支（白）」，`:415` 指针随之。
 3. SPEC-S1 v10 `:709`——排序／分组菜单改恒深，v11 改注释口径（取值 0.93 不变）。
 4. SPEC-S0 v4 `:118`／`:336`——改为「玻璃恒深」。
 
----
-
-## 十二、③ 登记
-
-- **iOS 26 玻璃（`glassEffect()`）读 SwiftUI 环境还是 UIKit trait**：本次实测**可改记为①**——`s1Helper`（加了 `.environment(\.colorScheme,.dark)` 的 `glassEffect()`）在 `overrideUserInterfaceStyle=.light` 下取得的像素值（78）与真实 `.dark` trait 下裸 `glassEffect(.regular)` 的像素值（`rawGlassReference.dark=78`）**完全相等**，且 `s1Helper` 自身 light/dark 两次也完全相等（78/78）。这是干净的一致证据：**iOS 26 `glassEffect()` 确实读取 SwiftUI 的 `colorScheme` 环境值**（至少在这个最小夹具下如此），候选 (a) 对 iOS 26 玻璃成立。
-- **容器层覆盖是否必要**：`s1GlassBadgeOverlay`（容器路径）测得 78/78，与 helper 单独测得的结果一致，本次夹具未设置"不加容器覆盖"的对照，因此仍只能证明"加了之后恒深"，不能排除"不加容器覆盖、只加 helper 覆盖"是否已经够用——**仍为③**，待决策会话判断是否需要额外探针。
-- **系统材质（`.ultraThinMaterial`）在 legacy 配方中的行为**：**新增③**（本次红的核心）——`.environment(\.colorScheme, .dark)` 确实让 `s1LegacyChromeGlassBackground` 的渲染结果不再随 `overrideUserInterfaceStyle` 变化（149/149 一致），但该恒定值没有落在"接近深色材质"一侧，而是更接近浅色材质参照值。是否属于"材质不响应 SwiftUI 环境"、还是"材质响应了但被同一视图内的白色叠层层拉偏"，未定，见第七节归因细节。
-- **深色玻璃在浅色页面上的观感**：待 H91（本卡未产出可装的 IPA 产物——运行 #350 因 XCTest 红导致构建未签名应用与上传均被跳过；运行 #349 虽有 IPA，但那次提交里新玻璃恒深逻辑尚未包含测试验证且四个子项均已推送完毕，工程上不建议单独拿 #349 的 IPA 做人工判定，是否使用由决策会话定）。
+**未合并，以上四条暂不回填（回填只在合并且决策会队核可产品结论闭合之后进行）。**
 
 ---
 
 ## 十三、发现但未处理的问题（按纪律只报告不修）
 
-1. 卡面裁定二的"legacy 红"归因描述与本次实测的具体失败形态（"两侧变一致但落点偏"而非"两侧仍不一致"）有出入，已在第七节详细记录原始数据，未擅自扩展或改写归因结论。
-2. `s1LegacyChromeGlassBackground` 内除 `.ultraThinMaterial` 外还叠加了 `Color.white.opacity(S1ChromeGlass.tintOpacity)` 填充与两层白色描边（`innerHighlightTop/Bottom`、`outerRingOpacity`）——这些叠层是否会在任何"材质已读到深色"的情形下仍把中心像素拉向浅色区间，本卡未做拆分验证（例如单独测"裸 `.ultraThinMaterial` + `.environment(.dark)`，不叠加白色层"这一路径），发现但未处理，留待决策会话决定是否需要更细粒度的探针。
+1. **D′ 节的产品结论（"覆盖对系统材质同样生效"）与 #351 实测数据不完全吻合**：D′ 节判断依据的两个数字（`s1Legacy=149` 恒定、旧参照 `material.dark=99`）只能说明"149 与 99 不同"，但不能反推"149 就是覆盖正确生效后的深色值"——需要一个"真实深色 trait + 同构写法"的第三方数据点（即 D′ 自己新增的 `legacyCenterReference`）才能验证，而这个数据点（104）恰恰显示 149 离深色更远、离浅色更近。这一点在 D′ 节下发时（依据 #350 单次数据做归因）尚不可见，**是本卡执行过程中随新证据出现而产生的新发现，不是决策会话或执行端任何一方在下发/执行当时能够预判的**，如实记录。
+2. **legacy 恒定值（149）与真实深浅色 trait 值（104/172）之间约 45～23 个灰度单位差距的根因未查明**——需要进一步的隔离变量探针（例如单独测"裸 `.ultraThinMaterial` + `.environment(.dark)`，不叠加白色调层"）才能定位，本卡 CI 预算已尽，未做。
+3. CI 预算用尽前的探索路径（先怀疑写法差异，验证后被推翻）已经消耗了全部三次 CI 机会；如果决策会队希望继续排查，需要开一张新卡而非在本卡内继续尝试（纪律 2）。
 
 ---
 
@@ -240,18 +258,21 @@ D 提交后 `selfcheck.ps1` 扫描文件数从 103→104 个 `.swift`、测试�
 
 ---
 
-## 十五、40 位 SHA 核验（`git cat-file -e <sha>^{<类型>}`）
+## 十五、40 位 SHA 核验（`git cat-file -e <sha>^{<类型>}`，全部执行、全部退出码 0）
 
-| SHA | 类型 | 核验结果 |
-|---|---|---|
-| `467fe74a0323c98e938142a2107f16843d21cc96` | commit | 见下方命令输出 |
-| `e356aeda17da53a064892e04f39bea1032f5bf8d` | commit | 同上 |
-| `6308693920a4e180f74559549c2606b8539d1ba0` | commit | 同上 |
-| `e89b95a248e6bc47224c4c7c3929b196b3219794` | commit | 同上 |
-| `df10428b74d3e0547dcbe4a30a8623dd14cc236b` | commit | 同上 |
-| `a01ffe616396750a091c8d22dd8497d9f4983922` | commit | 同上 |
-| `b49a40de20a2790da747428bce3ae423d316e20d` | blob | 同上 |
-| `99dd6a9ba1170c3b3dcedc26fec2e22850912eb3` | blob | 同上 |
-| `bea3bf09887428db76827877408a27b09ecf0bb3` | blob | 同上 |
+| SHA | 类型 |
+|---|---|
+| `467fe74a0323c98e938142a2107f16843d21cc96` | commit |
+| `e356aeda17da53a064892e04f39bea1032f5bf8d` | commit |
+| `6308693920a4e180f74559549c2606b8539d1ba0` | commit |
+| `e89b95a248e6bc47224c4c7c3929b196b3219794` | commit |
+| `df10428b74d3e0547dcbe4a30a8623dd14cc236b` | commit |
+| `a01ffe616396750a091c8d22dd8497d9f4983922` | commit |
+| `5d581608e94e313230020f959ed172f8f792db51` | commit |
+| `c1ca74f6ceeb8bda2bc31d32b66df0ba759913d3` | commit |
+| `b49a40de20a2790da747428bce3ae423d316e20d` | blob |
+| `2c119e174af05d1da15b234720ebbc6e8f205586` | blob |
+| `99dd6a9ba1170c3b3dcedc26fec2e22850912eb3` | blob |
+| `bea3bf09887428db76827877408a27b09ecf0bb3` | blob |
 
-（命令输出见 `change-list.md` 末尾附録；本报告写完后已逐一执行 `git cat-file -e`，全部返回退出码 0。）
+命令与结果见 `change-list.md` 末尾。
