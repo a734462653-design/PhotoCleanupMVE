@@ -333,7 +333,7 @@ final class IC166RestCategoryTests: XCTestCase {
             slice(metrics, from: "enum S0DeckMetrics {", to: Self.topLevelClose),
             "登记表切片没切到"
         )
-        XCTAssertEqual(occurrences(of: Self.newline + "    static let ", in: registry), 198)
+        XCTAssertEqual(occurrences(of: Self.newline + "    static let ", in: registry), 195)
 
         let segment = try XCTUnwrap(strippedSource(Self.segmentPath))
         XCTAssertEqual(occurrences(of: "kind: .rest", in: segment), 1)

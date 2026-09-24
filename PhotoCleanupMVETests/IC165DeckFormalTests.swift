@@ -212,7 +212,7 @@ final class IC165DeckFormalTests: XCTestCase {
             slice(metrics, from: "enum S0DeckMetrics {", to: Self.topLevelClose),
             "登记表切片没切到"
         )
-        XCTAssertEqual(occurrences(of: Self.newline + "    static let ", in: registry), 198)
+        XCTAssertEqual(occurrences(of: Self.newline + "    static let ", in: registry), 195)
         let symbols = try XCTUnwrap(
             slice(metrics, from: "enum S0DeckSymbol {", to: Self.topLevelClose),
             "符号表切片没切到"

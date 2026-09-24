@@ -80,7 +80,13 @@ struct S0DeckCategoryPageView: View {
             ZStack(alignment: .top) {
                 S0DeckMetrics.background
                     .ignoresSafeArea()
-                scrollContent(width: geometry.size.width)
+                // IC-171 C：出现时回到长按进 S2 前那一格（一次性滚动，不跟踪滚动位置）。
+                ScrollViewReader { proxy in
+                    scrollContent(width: geometry.size.width)
+                        .task {
+                            restoreScrollAnchor(using: proxy)
+                        }
+                }
                 compactNav
             }
             .overlay(alignment: .bottom) {
@@ -133,6 +139,17 @@ struct S0DeckCategoryPageView: View {
             )
         }
         .coordinateSpace(.named(Self.scrollSpaceName))
+    }
+
+    /// IC-171 C（④ 第 200 条第三节第 5 条）：长按进 S2 往返后回到被长按的那一格（居中）。锚点在长按
+    /// 那一刻记进 `flowModel`（页头未收起时记 nil——回来从顶部开始、不把页头滚走）；锚点已不在网格
+    /// 里（写回后被移走）就不动。
+    private func restoreScrollAnchor(using proxy: ScrollViewProxy) {
+        guard let anchor = flowModel.preservedScrollAnchor,
+              selection.items.contains(where: { $0.id == anchor }) else {
+            return
+        }
+        proxy.scrollTo(anchor, anchor: .center)
     }
 
     /// 零高的偏移读数器。只读不画，**过阈值才写状态**。
@@ -387,12 +404,18 @@ struct S0DeckCategoryPageView: View {
                 ),
                 interactive: true
             )
+            // IC-171 B：导航条自己是玻璃，徽标叠在它的玻璃合成边界之外（入口只报位置）。
+            .s1GlassBadgeHost {
+                S0BasketBadge(count: machine.mergedPendingDeletionCount)
+            }
             .padding(.horizontal, S0DeckMetrics.compactNavHorizontalInset)
             .padding(.top, S1ChromeLayout.topRowTopInset)
             .transition(.opacity)
         }
     }
 
+    /// IC-171 A（④ 第 200 条第三节第 2 条）：只留类别名、单行（超宽截断）；体积与占比不上导航条——
+    /// 右侧已有待删篮、排序、「全选」三只，标题位不够，避免文字上下分栏。
     private var compactNavTitle: some View {
         HStack(spacing: S0DeckMetrics.compactNavTitleItemSpacing) {
             Spacer(minLength: 0)
@@ -404,33 +427,7 @@ struct S0DeckCategoryPageView: View {
                     )
                 )
                 .foregroundStyle(S0DeckMetrics.text)
-            Text(
-                S0ByteCountText.string(
-                    forByteCount: category.candidateByteCount
-                )
-            )
-            .font(
-                .system(
-                    size: S0DeckMetrics.compactNavTitleFontSize,
-                    weight: .heavy
-                )
-            )
-            .tracking(S0DeckMetrics.compactNavValueLetterSpacing)
-            .monospacedDigit()
-            .foregroundStyle(S0DeckMetrics.text)
-            Text(
-                L10n.text(
-                    "s0.home.share",
-                    replacing: ["percent": sharePercentText]
-                )
-            )
-            .font(.system(size: S0DeckMetrics.compactNavShareFontSize))
-            .monospacedDigit()
-            .foregroundStyle(
-                S0DeckMetrics.dimmedText(
-                    opacity: S0DeckMetrics.compactNavShareOpacity
-                )
-            )
+                .lineLimit(1)
             Spacer(minLength: 0)
         }
     }
@@ -612,6 +609,8 @@ struct S0DeckCategoryPageView: View {
         // IC-163 C：交接顺序 = 网格当前显示顺序（排序后）。
         .simultaneousGesture(
             LongPressGesture().onEnded { _ in
+                // IC-171 C：记下被长按的这一格，往返后回到这里（页头未收起时不记）。
+                flowModel.preservedScrollAnchor = isHeaderCollapsed ? item.id : nil
                 // IC-168 E（裁定 三）：进 S2 失败（交接构造或协调器入口拒绝）时本页出一条短提示。
                 if !onLongPress(displayedItems.map(\.id), item.id) {
                     toast.present(

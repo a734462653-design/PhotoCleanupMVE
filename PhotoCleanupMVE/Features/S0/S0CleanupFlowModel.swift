@@ -11,6 +11,11 @@ final class S0CleanupFlowModel: ObservableObject {
     /// IC-160 A（裁定 二）：类别页勾选跨 S2 往返的保留集。**不发布**——它只在类别页
     /// 重建时被读一次用于播种，发布变化只会引发多余的重绘。返回首页时由容器清空。
     var preservedSelection: Set<String> = []
+
+    /// IC-171 C（④ 第 200 条第三节第 5 条）：长按进 S2 往返后类别页回到哪一格——长按那一刻记下
+    /// 被长按的那一格的资产标识（页头未收起时记 nil，回来从顶部开始）。**不发布**，理由同上；
+    /// 进类别与返回首页时由容器清空。
+    var preservedScrollAnchor: String? = nil
 }
 
 /// 类别页「移入待删篮」写入会话层时的虚拟范围标识前缀：范围标识为前缀加类别标识。
