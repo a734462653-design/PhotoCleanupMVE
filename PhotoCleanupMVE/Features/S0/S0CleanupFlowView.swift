@@ -109,12 +109,14 @@ struct S0CleanupFlowView: View {
     /// 待删篮路径回到首页时，模型里可能还留着上一个类别的保留集）。
     private func enterCategory(_ identifier: S0CategoryIdentifier) {
         flowModel.preservedSelection = []
+        flowModel.preservedScrollAnchor = nil
         flowModel.presentedCategory = identifier
     }
 
     /// 返回首页即一轮结束：勾选不跨类别、不跨进出首页保留（IC-160 裁定 一）。
     private func leaveCategory() {
         flowModel.preservedSelection = []
+        flowModel.preservedScrollAnchor = nil
         flowModel.presentedCategory = nil
     }
 
