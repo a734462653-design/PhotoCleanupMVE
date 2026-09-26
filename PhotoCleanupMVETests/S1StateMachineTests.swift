@@ -690,7 +690,7 @@ final class S1DateTreeTests: XCTestCase {
         )
     }
 
-    // 年节点与月节点各自可进入 S2，交接数据正确且互不串味。
+    // 年节点与月节点各自可进入 S2，交接数据正确；D 初值按合并待删集合取（IC-169，决策 42／63）。
     func testIC127A_YearAndMonthNodesEachFormValidS2Handoff() {
         let machine = makeTreeMachine()
 
@@ -705,7 +705,7 @@ final class S1DateTreeTests: XCTestCase {
         XCTAssertEqual(monthHandoff.rangeDisplayInformation.totalAssetCount, 2)
         XCTAssertEqual(monthHandoff.orderedAssetIDs, ["a3b", "a3a"])
 
-        // 在年范围内标记一张，月范围的 D 不受影响（范围级 D 各自记录）。
+        // 在年范围内标记一张：IC-169 起月范围的交接初值 = 合并待删集合 ∩ 月列表，同样含这张。
         XCTAssertTrue(
             machine.applyS2PendingDeletionChange(
                 ["a3a"],
@@ -722,7 +722,7 @@ final class S1DateTreeTests: XCTestCase {
         )
         XCTAssertEqual(
             machine.makeS2Handoff(for: "m2026-03")?.pendingDeletionAssetIDs,
-            []
+            Set(["a3a"])
         )
         XCTAssertEqual(machine.badgeCount, 1)
     }

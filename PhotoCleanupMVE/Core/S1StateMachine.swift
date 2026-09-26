@@ -635,6 +635,8 @@ final class S1StateMachine: ObservableObject {
         isObscured = false
     }
 
+    /// IC-169（决策 42／63）：`D` 初值 = 合并待删集合 ∩ 本范围列表——篮里属于本范围的照片在 S2 里
+    /// 都显示为已标记，不论在哪个范围标的。
     func makeS2Handoff(for rangeID: String) -> S1ToS2Handoff? {
         guard !isObscured,
               state == .ready,
@@ -645,7 +647,7 @@ final class S1StateMachine: ObservableObject {
         let orderedAssetIDs = range.orderedAssetIDs(for: sortOrder)
         let assetIDSet = Set(orderedAssetIDs)
         let pendingDeletionAssetIDs =
-            sessionStore.pendingDeletionAssetIDsByRangeID[range.id] ?? []
+            sessionStore.allPendingDeletionAssetIDs.intersection(assetIDSet)
         let currentAssetID = sessionStore.continuationsByRangeID[range.id]?
             .currentAssetID ?? orderedAssetIDs.first
 
@@ -675,7 +677,7 @@ final class S1StateMachine: ObservableObject {
     ///
     /// 虚拟范围 `virtualRangeID`（形如 `cat:<类别标识>`）不在 `R(T)` 里，上面的真实范围入口必然
     /// 拒绝，故另开本入口。顺序与起点由类别页给出（体积降序、被长按那张）；既有待删集合取
-    /// `M[virtualRangeID]` 与列表的交集。`totalAssetCount` 取列表长度——S2 入口守卫要求两者相等。
+    /// 合并待删集合与列表的交集（IC-169，决策 42／63）。`totalAssetCount` 取列表长度——S2 入口守卫要求两者相等。
     /// 不设加载态与遮挡门槛，理由同 `markPendingDeletion`。
     ///
     /// 成功时登记显示名并显式走一次快照写出口：名字表不是 `@Published`、没有 didSet，S2 往返
@@ -698,9 +700,8 @@ final class S1StateMachine: ObservableObject {
         knownRangeNamesByID[virtualRangeID] = displayName
         publishSnapshotIfChanged()
         activeVirtualRangeIDs.insert(virtualRangeID)
-        let pendingDeletionAssetIDs = (
-            sessionStore.pendingDeletionAssetIDsByRangeID[virtualRangeID] ?? []
-        ).intersection(assetIDSet)
+        let pendingDeletionAssetIDs =
+            sessionStore.allPendingDeletionAssetIDs.intersection(assetIDSet)
 
         return S1ToS2Handoff(
             sessionID: sessionStore.sessionID,
