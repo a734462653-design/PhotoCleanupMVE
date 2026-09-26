@@ -67,12 +67,12 @@ struct S4View: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color(uiColor: .systemGroupedBackground)
+            S1ChromeForeground.pageBackground
                 .ignoresSafeArea()
             if let machine = coordinator.s4Machine {
                 content(machine)
             } else {
-                ProgressView()
+                ProgressView().tint(S1ChromeForeground.secondary)
                     .id("s4-loading")
             }
         }
@@ -118,7 +118,7 @@ struct S4View: View {
         _ presentation: S4StatusPresentation
     ) -> some View {
         VStack(spacing: 0) {
-            ProgressView()
+            ProgressView().tint(S1ChromeForeground.secondary)
                 .controlSize(.large)
                 .frame(
                     width: S4StatusMetrics.indicatorPointSize,
