@@ -438,16 +438,19 @@ final class S1StateMachine: ObservableObject {
         return visible
     }
 
+    /// IC-169（④ 第 200 条第五节 (c)）：范围封面红角标 = 合并待删集合与本范围资产的交集张数，
+    /// 与该范围 S2 里显示为已标记的张数一致；不读 `M[r]`（`SessionStore.pendingDeletionCount(for:)` 不动）。
     var rangeRows: [S1RangeRow] {
-        visibleRanges.map { range in
+        let basket = sessionStore.allPendingDeletionAssetIDs
+        return visibleRanges.map { range in
             let childCount = childRanges(of: range.id).count
             return S1RangeRow(
                 id: range.id,
                 displayName: range.displayName,
                 totalAssetCount: range.totalAssetCount,
-                pendingDeletionCount: sessionStore.pendingDeletionCount(
-                    for: range.id
-                ),
+                pendingDeletionCount: basket
+                    .intersection(range.assetIDsNewestFirst)
+                    .count,
                 processedAssetCount: processedAssetIDs(for: range.id).count,
                 parentRangeID: range.parentRangeID,
                 childCount: childCount,
@@ -635,6 +638,8 @@ final class S1StateMachine: ObservableObject {
         isObscured = false
     }
 
+    /// IC-169（决策 42／63）：`D` 初值 = 合并待删集合 ∩ 本范围列表——篮里属于本范围的照片在 S2 里
+    /// 都显示为已标记，不论在哪个范围标的。
     func makeS2Handoff(for rangeID: String) -> S1ToS2Handoff? {
         guard !isObscured,
               state == .ready,
@@ -645,7 +650,7 @@ final class S1StateMachine: ObservableObject {
         let orderedAssetIDs = range.orderedAssetIDs(for: sortOrder)
         let assetIDSet = Set(orderedAssetIDs)
         let pendingDeletionAssetIDs =
-            sessionStore.pendingDeletionAssetIDsByRangeID[range.id] ?? []
+            sessionStore.allPendingDeletionAssetIDs.intersection(assetIDSet)
         let currentAssetID = sessionStore.continuationsByRangeID[range.id]?
             .currentAssetID ?? orderedAssetIDs.first
 
@@ -675,7 +680,7 @@ final class S1StateMachine: ObservableObject {
     ///
     /// 虚拟范围 `virtualRangeID`（形如 `cat:<类别标识>`）不在 `R(T)` 里，上面的真实范围入口必然
     /// 拒绝，故另开本入口。顺序与起点由类别页给出（体积降序、被长按那张）；既有待删集合取
-    /// `M[virtualRangeID]` 与列表的交集。`totalAssetCount` 取列表长度——S2 入口守卫要求两者相等。
+    /// 合并待删集合与列表的交集（IC-169，决策 42／63）。`totalAssetCount` 取列表长度——S2 入口守卫要求两者相等。
     /// 不设加载态与遮挡门槛，理由同 `markPendingDeletion`。
     ///
     /// 成功时登记显示名并显式走一次快照写出口：名字表不是 `@Published`、没有 didSet，S2 往返
@@ -698,9 +703,8 @@ final class S1StateMachine: ObservableObject {
         knownRangeNamesByID[virtualRangeID] = displayName
         publishSnapshotIfChanged()
         activeVirtualRangeIDs.insert(virtualRangeID)
-        let pendingDeletionAssetIDs = (
-            sessionStore.pendingDeletionAssetIDsByRangeID[virtualRangeID] ?? []
-        ).intersection(assetIDSet)
+        let pendingDeletionAssetIDs =
+            sessionStore.allPendingDeletionAssetIDs.intersection(assetIDSet)
 
         return S1ToS2Handoff(
             sessionID: sessionStore.sessionID,
@@ -840,17 +844,25 @@ final class S1StateMachine: ObservableObject {
         scope: Set<String>
     ) {
         var nextStore = sessionStore
-        let previous = nextStore.pendingDeletionAssetIDsByRangeID[
-            rangeID
-        ] ?? []
-        for assetID in previous.intersection(scope).subtracting(pendingDeletionAssetIDs).sorted() {
-            nextStore.setMarked(
-                false,
-                assetID: assetID,
-                rangeID: rangeID
-            )
+        // IC-169（决策 42 + ④ 第 201 条 (b)）：两条规则都以**此刻**的合并待删集合为基准（每次现取、
+        // 不缓存进入时的值——同一会话里撤标后再标回，要按「此刻不在篮」算新标）。
+        let basket = nextStore.allPendingDeletionAssetIDs
+        // 撤标全局：列表内在篮、却不在 D 的，从含它的每个范围移除（`F` 随最后一处移除删掉）。
+        for assetID in basket.intersection(scope).subtracting(pendingDeletionAssetIDs).sorted() {
+            let markedRangeIDs = nextStore.pendingDeletionAssetIDsByRangeID
+                .filter { $0.value.contains(assetID) }
+                .keys
+                .sorted()
+            for markedRangeID in markedRangeIDs {
+                nextStore.setMarked(
+                    false,
+                    assetID: assetID,
+                    rangeID: markedRangeID
+                )
+            }
         }
-        for assetID in pendingDeletionAssetIDs.subtracting(previous).sorted() {
+        // 加标只写本范围、只写新标：D 里此刻不在篮的才写（已在篮的不因「看过」写进本范围）。
+        for assetID in pendingDeletionAssetIDs.subtracting(basket).sorted() {
             nextStore.setMarked(
                 true,
                 assetID: assetID,

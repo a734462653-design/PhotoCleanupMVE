@@ -127,9 +127,10 @@ final class IC129ExistenceReconciliationTests: XCTestCase {
                 machine.sessionStore.pendingDeletionAssetIDsByRangeID[yearID],
                 ["资产-1"]
             )
+            // IC-169 B（④ 第 201 条 (b)）：资产-1 已在篮里，在相册-1 里再回报它不算新标、不写进相册-1。
             XCTAssertEqual(
-                machine.sessionStore.pendingDeletionAssetIDsByRangeID["相册-1"],
-                ["资产-1"]
+                machine.sessionStore.pendingDeletionAssetIDsByRangeID["相册-1"] ?? [],
+                []
             )
             XCTAssertEqual(machine.badgeCount, 1)
 

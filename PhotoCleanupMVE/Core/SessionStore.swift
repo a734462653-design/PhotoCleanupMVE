@@ -275,10 +275,16 @@ struct SessionStore: Equatable, Sendable {
         }
 
         var nextState = state
-        // IC-163 A：只覆盖交接列表内的标记；列表外的既有标记（类别页已进篮、不在网格里的项）原样保留。
-        let previous = nextState.pendingDeletionAssetIDsByRangeID[entryContext.rangeID] ?? []
-        nextState.pendingDeletionAssetIDsByRangeID[entryContext.rangeID] =
-            previous.subtracting(assetIDSet).union(returned.pendingDeletionAssetIDs)
+        // IC-169（决策 42 + ④ 第 201 条 (b)）：逐资产两条规则，列表外的标记一律不动（IC-163 A 精神保留）。
+        // 列表内不在 D 的从全部范围移除；D 里写回前不在篮的才写进本范围。`F` 不在这里补写——
+        // 下面的守卫要求新标已经经逐张镜像写过 `F`。
+        let basket = Self.allPendingDeletionAssetIDs(in: nextState)
+        let unmarked = assetIDSet.subtracting(returned.pendingDeletionAssetIDs)
+        for rangeID in Array(nextState.pendingDeletionAssetIDsByRangeID.keys) {
+            nextState.pendingDeletionAssetIDsByRangeID[rangeID]?.subtract(unmarked)
+        }
+        nextState.pendingDeletionAssetIDsByRangeID[entryContext.rangeID, default: []]
+            .formUnion(returned.pendingDeletionAssetIDs.subtracting(basket))
 
         let remainingAssetIDs = Self.allPendingDeletionAssetIDs(in: nextState)
         nextState.firstMarkedRangeIDByAssetID =
