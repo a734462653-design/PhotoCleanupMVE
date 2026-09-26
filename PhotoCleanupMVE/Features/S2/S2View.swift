@@ -783,6 +783,8 @@ struct S2View: View {
     /// IC-168 C（裁定 五）：上一次离开 S2 的诊断文本（协调器持有，本视图只读显示）。
     /// nil = 本次启动尚未从 S2 退出过。
     private let exitDiagnosticsText: String?
+    /// IC-175：相似识别诊断文本（扫描服务持有，本视图只读显示）。nil = 调用方未接线（测试宿主）。
+    private let similarDiagnosticsText: String?
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
@@ -862,7 +864,8 @@ struct S2View: View {
         primaryMarkPresenter: S2PrimaryMarkPresenter = S2PrimaryMarkPresenter(),
         feedbackToastPresenter: S2FeedbackToastPresenter =
             S2FeedbackToastPresenter(),
-        exitDiagnosticsText: String? = nil
+        exitDiagnosticsText: String? = nil,
+        similarDiagnosticsText: String? = nil
     ) {
         self.machine = machine
         self.calibration = calibration
@@ -886,6 +889,7 @@ struct S2View: View {
         self.assetSizeProber = assetSizeProber
         self.shareItemResolver = shareItemResolver
         self.exitDiagnosticsText = exitDiagnosticsText
+        self.similarDiagnosticsText = similarDiagnosticsText
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
             wrappedValue: transitionDiagnostics
@@ -2791,6 +2795,7 @@ struct S2View: View {
                 assetSizeProbeSection
                 doubleTapProbeSection
                 exitDiagnosticsSection
+                similarDiagnosticsSection
                 // IC-087：恢复出厂值——重置配置并删除 Keychain 条目；经 onChange(of: calibration.configuration)
                 // → machine.applyCalibration → pager.apply 对当前页即时生效。
                 Button(L10n.text("s2.calibration.restore_factory")) {
@@ -2891,6 +2896,24 @@ struct S2View: View {
                 .textSelection(.enabled)
         } else {
             Text(L10n.text("s2.calibration.exit_diagnostics.empty"))
+        }
+    }
+
+    /// IC-175：面板末段的相似识别诊断。形状照上一段；文本由扫描服务在识别结束时写下，本视图不产生。
+    @ViewBuilder
+    private var similarDiagnosticsSection: some View {
+        Divider()
+        Text(L10n.text("s2.calibration.similar_diagnostics.title"))
+        if let similarDiagnosticsText {
+            ShareLink(item: similarDiagnosticsText) {
+                Text(L10n.text("s2.calibration.similar_diagnostics.share"))
+            }
+            .s2MinimumTouchTarget()
+            Text(verbatim: similarDiagnosticsText)
+                .font(.system(.caption2, design: .monospaced))
+                .textSelection(.enabled)
+        } else {
+            Text(L10n.text("s2.calibration.similar_diagnostics.empty"))
         }
     }
 

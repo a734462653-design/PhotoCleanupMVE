@@ -305,7 +305,9 @@ struct PhotoCleanupMVEApp: App {
                 )
             },
             // IC-168 C（裁定 五）：上一次离开 S2 的诊断文本，面板末段显示；中间带默认值的形参照旧不传。
-            exitDiagnosticsText: coordinator.s2ExitDiagnosticsText
+            exitDiagnosticsText: coordinator.s2ExitDiagnosticsText,
+            // IC-175：相似识别诊断文本（扫描服务持有，进 S2 那一刻取一次）。
+            similarDiagnosticsText: s0DataProvider.similarDiagnosticsReport()
         )
     }
 

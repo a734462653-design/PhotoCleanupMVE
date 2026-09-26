@@ -56,6 +56,7 @@
 		200000000000000000000050 /* IC151AmbientFixedColorTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000053 /* IC151AmbientFixedColorTests.swift */; };
 		200000000000000000000051 /* IC152DiagnosticPathTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000054 /* IC152DiagnosticPathTests.swift */; };
 		200000000000000000000052 /* S0ScanRules.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000055 /* S0ScanRules.swift */; };
+		200000000000000000000074 /* S0SimilarPhotosRecognizer.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000077 /* S0SimilarPhotosRecognizer.swift */; };
 		200000000000000000000053 /* S0ScanClassifier.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000056 /* S0ScanClassifier.swift */; };
 		200000000000000000000054 /* IC153ScanServiceTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000057 /* IC153ScanServiceTests.swift */; };
 		200000000000000000000055 /* S0ScanCache.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000058 /* S0ScanCache.swift */; };
@@ -87,6 +88,7 @@
 		200000000000000000000071 /* IC171CategoryPageTrioTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000074 /* IC171CategoryPageTrioTests.swift */; };
 		200000000000000000000072 /* IC172GlassAlwaysDarkTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000075 /* IC172GlassAlwaysDarkTests.swift */; };
 		200000000000000000000073 /* IC169MarkedStateFollowsBasketTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000076 /* IC169MarkedStateFollowsBasketTests.swift */; };
+		200000000000000000000075 /* IC175SimilarRecognizerTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000078 /* IC175SimilarRecognizerTests.swift */; };
 		20000000000000000000001F /* S1StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* S1StateMachine.swift */; };
 		200000000000000000000020 /* S1View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* S1View.swift */; };
 		200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* S1StateMachineTests.swift */; };
@@ -180,6 +182,7 @@
 		100000000000000000000053 /* IC151AmbientFixedColorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC151AmbientFixedColorTests.swift; sourceTree = "<group>"; };
 		100000000000000000000054 /* IC152DiagnosticPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC152DiagnosticPathTests.swift; sourceTree = "<group>"; };
 		100000000000000000000055 /* S0ScanRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0ScanRules.swift; sourceTree = "<group>"; };
+		100000000000000000000077 /* S0SimilarPhotosRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0SimilarPhotosRecognizer.swift; sourceTree = "<group>"; };
 		100000000000000000000056 /* S0ScanClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0ScanClassifier.swift; sourceTree = "<group>"; };
 		100000000000000000000057 /* IC153ScanServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC153ScanServiceTests.swift; sourceTree = "<group>"; };
 		100000000000000000000058 /* S0ScanCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0ScanCache.swift; sourceTree = "<group>"; };
@@ -211,6 +214,7 @@
 		100000000000000000000074 /* IC171CategoryPageTrioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC171CategoryPageTrioTests.swift; sourceTree = "<group>"; };
 		100000000000000000000075 /* IC172GlassAlwaysDarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC172GlassAlwaysDarkTests.swift; sourceTree = "<group>"; };
 		100000000000000000000076 /* IC169MarkedStateFollowsBasketTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC169MarkedStateFollowsBasketTests.swift; sourceTree = "<group>"; };
+		100000000000000000000078 /* IC175SimilarRecognizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC175SimilarRecognizerTests.swift; sourceTree = "<group>"; };
 		100000000000000000000022 /* S1StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000023 /* S1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1View.swift; sourceTree = "<group>"; };
 		100000000000000000000024 /* S1StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachineTests.swift; sourceTree = "<group>"; };
@@ -319,6 +323,7 @@
 				10000000000000000000002F /* PhotoAssetActionService.swift */,
 				10000000000000000000004A /* S0CleanupDataStub.swift */,
 				100000000000000000000055 /* S0ScanRules.swift */,
+				100000000000000000000077 /* S0SimilarPhotosRecognizer.swift */,
 				100000000000000000000056 /* S0ScanClassifier.swift */,
 				100000000000000000000058 /* S0ScanCache.swift */,
 				100000000000000000000059 /* S0LibraryScanService.swift */,
@@ -467,6 +472,7 @@
 				100000000000000000000074 /* IC171CategoryPageTrioTests.swift */,
 				100000000000000000000075 /* IC172GlassAlwaysDarkTests.swift */,
 				100000000000000000000076 /* IC169MarkedStateFollowsBasketTests.swift */,
+				100000000000000000000078 /* IC175SimilarRecognizerTests.swift */,
 				100000000000000000000014 /* SnapshotInvariantTests.swift */,
 				100000000000000000000015 /* VolumeFormattingTests.swift */,
 				100000000000000000000016 /* S4StateMachineTests.swift */,
@@ -612,6 +618,7 @@
 				200000000000000000000066 /* S0DeckAssetDates.swift（源码） */,
 				200000000000000000000047 /* S0CleanupDataStub.swift（源码） */,
 				200000000000000000000052 /* S0ScanRules.swift（源码） */,
+				200000000000000000000074 /* S0SimilarPhotosRecognizer.swift（源码） */,
 				200000000000000000000053 /* S0ScanClassifier.swift（源码） */,
 				200000000000000000000055 /* S0ScanCache.swift（源码） */,
 				200000000000000000000056 /* S0LibraryScanService.swift（源码） */,
@@ -695,6 +702,7 @@
 				200000000000000000000071 /* IC171CategoryPageTrioTests.swift（测试源码） */,
 				200000000000000000000072 /* IC172GlassAlwaysDarkTests.swift（测试源码） */,
 				200000000000000000000073 /* IC169MarkedStateFollowsBasketTests.swift（测试源码） */,
+				200000000000000000000075 /* IC175SimilarRecognizerTests.swift（测试源码） */,
 				200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */,
 				200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */,
 				200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */,

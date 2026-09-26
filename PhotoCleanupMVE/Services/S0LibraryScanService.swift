@@ -15,13 +15,16 @@ struct S0AssetMetadata: Equatable, Sendable {
 
 /// IC-153：扫描服务的闭包式源（照 `S1PhotoLibrarySource` 的样板）。
 ///
-/// 三个闭包**只在非主线程被调用**（C2）。测试注入夹具。
+/// 四个闭包**只在非主线程被调用**（C2；IC-175 的第四个在识别器自己的 GCD 队列上）。测试注入夹具。
 struct S0LibraryScanSource {
     let authorizationState: () -> S1AuthorizationState
     /// 一遍元数据。取数范围不含隐藏与「最近删除」的资产。
     let enumerateAssets: () throws -> [S0AssetMetadata]
     /// 一次资源枚举同时取视频文件名与字节；字节取不到为 nil（裁定 三）。
     let fetchResourcesAndBytes: (String) async -> (videoFilename: String?, byteCount: Int64?)
+    /// IC-175：一张照片的特征印象（同步取图 + Vision）。只在识别器自己的 GCD 队列上被调用，
+    /// 不进 Swift 协作线程池。带默认值：既有夹具的三参构造照旧；默认「失败」即不产出印象、不分组。
+    var extractFeaturePrint: (String) -> S0FeaturePrintOutcome = { _ in .failed }
 }
 
 /// 一次字节取数的结果（任务组的子任务返回值）。
@@ -81,6 +84,11 @@ final class S0LibraryScanService {
     private var hasUnpersistedChanges = false
     private var persistenceFailures = 0
     private var memoizedSnapshot: MemoizedSnapshot?
+    /// IC-175：最近一次相似识别的阶段与结果。只进诊断文本，不进快照、不改修订号——本卡 `similar`
+    /// 不进 `CAT`，归属与组视图归 IC-176。
+    private var similarRecognitionState = S0SimilarRecognitionState.idle
+    private var similarRecognition = S0SimilarRecognitionResult.idle
+    private let similarRecognizer: S0SimilarPhotosRecognizer
 
     private struct MemoizedSnapshot {
         let revision: Int
@@ -88,15 +96,26 @@ final class S0LibraryScanService {
         let snapshot: S0CleanupSnapshot
     }
 
-    init(source: S0LibraryScanSource, cacheStore: S0ScanCacheStore) {
+    /// IC-175：识别器带默认值（不持久化），既有夹具的两参构造照旧；产品构造另给带特征缓存文件的识别器。
+    init(
+        source: S0LibraryScanSource,
+        cacheStore: S0ScanCacheStore,
+        similarRecognizer: S0SimilarPhotosRecognizer = S0SimilarPhotosRecognizer(cacheStore: nil)
+    ) {
         self.source = source
         self.cacheStore = cacheStore
+        self.similarRecognizer = similarRecognizer
     }
 
     /// 产品构造：PhotoKit 源 + Application Support 下的缓存文件。构造本身不发
     /// PhotoKit 请求、不读缓存文件（C4）；第一次 `advanceScan()` 才开始。
+    /// IC-175：特征缓存文件与扫描缓存同目录，同样只在第一次识别时才读写。
     convenience init() {
-        self.init(source: .production, cacheStore: S0ScanCacheStore())
+        self.init(
+            source: .production,
+            cacheStore: S0ScanCacheStore(),
+            similarRecognizer: S0SimilarPhotosRecognizer(cacheStore: S0SimilarFeatureCacheStore())
+        )
     }
 
     // MARK: - 回报（主线程可随时读，不阻塞）
@@ -219,6 +238,63 @@ final class S0LibraryScanService {
         withState { persistenceFailures }
     }
 
+    // MARK: - 相似识别（IC-175）
+
+    /// 最近一次相似识别的结果（测试读；产品只经诊断文本）。
+    var similarRecognitionResult: S0SimilarRecognitionResult {
+        withState { similarRecognition }
+    }
+
+    /// 全 ASCII 诊断文本，S2 标定面板末段显示与复制（照 IC-168 的形状）。
+    func similarDiagnosticsReport() -> String {
+        let (state, result) = withState { (similarRecognitionState, similarRecognition) }
+        return S0SimilarDiagnosticsText.text(state: state.rawValue, result: result)
+    }
+
+    /// 扫描一遍末尾跑相似识别：候选 = 库内已解析的非截图照片（元数据全在缓存条目里，不再碰
+    /// PhotoKit 元数据）；特征经源闭包取；识别器在自己的 GCD 队列上跑，本任务只等完成回调
+    /// （探针裁定 一：同步取图不进协作线程池）。任务被取消时令牌随之取消，识别器仍必回调一次。
+    /// 结果只进 `similarRecognition`：不改快照、不改修订号、不发回报。
+    private func recognizeSimilarPhotos() async {
+        let candidates = withState { () -> [S0SimilarCandidate] in
+            similarRecognitionState = .running
+            return records.compactMap { element -> S0SimilarCandidate? in
+                guard libraryIdentifiers.contains(element.key),
+                      element.value.mediaType == .photo,
+                      !element.value.isScreenshot,
+                      !element.value.isUnresolved else {
+                    return nil
+                }
+                return S0SimilarCandidate(
+                    id: element.key,
+                    modificationDate: element.value.modificationDate,
+                    creationTime: element.value.creationDate?.timeIntervalSince1970 ?? 0
+                )
+            }
+        }
+        let token = S0SimilarCancellationToken()
+        let extract = source.extractFeaturePrint
+        let recognizer = similarRecognizer
+        let result = await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<S0SimilarRecognitionResult, Never>) in
+                recognizer.recognize(
+                    candidates: candidates,
+                    revision: S0SimilarPhotosRecognizer.currentRevision(),
+                    extract: extract,
+                    cancellation: token
+                ) { result in
+                    continuation.resume(returning: result)
+                }
+            }
+        } onCancel: {
+            token.cancel()
+        }
+        withState { () -> Void in
+            similarRecognition = result
+            similarRecognitionState = .done
+        }
+    }
+
     /// 取字节的顺序：拍摄时间新的在前（最近的先出数），同刻按标识排，结果确定。
     static func newestFirst(
         _ identifiers: Set<String>,
@@ -308,6 +384,11 @@ final class S0LibraryScanService {
         )
         persistPendingChanges()
         notifyChange()
+        // IC-175：字节与回报都收口之后才跑相似识别，首页数据不等它。
+        guard !Task.isCancelled else {
+            return
+        }
+        await recognizeSimilarPhotos()
     }
 
     private func applyPlan(
@@ -580,6 +661,9 @@ extension S0LibraryScanSource {
             },
             fetchResourcesAndBytes: { identifier in
                 await library.resourcesAndBytes(for: identifier)
+            },
+            extractFeaturePrint: { identifier in
+                library.extractFeaturePrint(for: identifier)
             }
         )
     }
@@ -672,7 +756,9 @@ final class S0PhotoKitScanLibrary {
         assetsByIdentifier = assets
     }
 
-    private func cachedAsset(for identifier: String) -> PHAsset? {
+    /// IC-175 起 internal：相似识别的生产取图（`extractFeaturePrint(for:)`，另一文件的扩展）复用同一份
+    /// 留存对象，不按标识再查库。
+    func cachedAsset(for identifier: String) -> PHAsset? {
         lock.lock()
         defer {
             lock.unlock()
