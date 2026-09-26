@@ -1024,6 +1024,83 @@
         }
       }
     },
+    "s2.hint.confirm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "攒了 {count} 张，点这里一起确认"
+          }
+        }
+      }
+    },
+    "s2.hint.confirm.sub" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认页可以再看一遍、再取消。"
+          }
+        }
+      }
+    },
+    "s2.hint.dismiss" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "知道了"
+          }
+        }
+      }
+    },
+    "s2.hint.marked" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有删除，只是放进了待删篮"
+          }
+        }
+      }
+    },
+    "s2.hint.marked.sub" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标错了？下滑放回来。"
+          }
+        }
+      }
+    },
+    "s2.hint.swipe_up" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上滑，放进待删篮"
+          }
+        }
+      }
+    },
+    "s2.hint.swipe_up.sub" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不会删除照片。攒好了在确认页一起处理。"
+          }
+        }
+      }
+    },
     "s2.image.load_failed" : {
       "extractionState" : "manual",
       "localizations" : {
