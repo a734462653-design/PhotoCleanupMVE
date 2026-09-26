@@ -69,13 +69,12 @@ enum S5ButtonMetrics {
 
 /// hero 图标用色。
 ///
-/// ④取定：卡给的是 `#34C759` 与 `#FF9F0A` 两个十六进制值——前者是 systemGreen 的
-/// 浅色取值，后者是 systemOrange 的**深色**取值。此处取系统动态色而不是把某一侧的
-/// 字面值钉死，以保证明暗两套都正确；H60 第 5／6 项按观感复核。
+/// IC-177（Decision_log 第 205 条）：全屏恒深后不再取系统动态色——成功取「空间清理」薄荷绿
+/// `#6FD6BE`，警告取原深色侧 `#FF9F0A` 钉死，中性取前景表的三级色。
 enum S5HeroPalette {
-    static var success: Color { Color(uiColor: .systemGreen) }
-    static var warning: Color { Color(uiColor: .systemOrange) }
-    static var neutral: Color { Color(uiColor: .tertiaryLabel) }
+    static let success = S0DeckMetrics.mint
+    static let warning = Color(.sRGB, red: 0xFF / 255.0, green: 0x9F / 255.0, blue: 0x0A / 255.0, opacity: 1)
+    static let neutral = S1ChromeForeground.tertiary
 }
 
 // MARK: - IC-134 G：四态展示口径（测试钉住）
@@ -316,12 +315,12 @@ struct S5View: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color(uiColor: .systemGroupedBackground)
+            S1ChromeForeground.pageBackground
                 .ignoresSafeArea()
             if let machine = coordinator.s5Machine {
                 content(machine)
             } else {
-                ProgressView()
+                ProgressView().tint(S1ChromeForeground.secondary)
                     .id("s5-loading")
             }
         }
@@ -459,7 +458,7 @@ struct S5View: View {
                 value: counts.failure,
                 label: L10n.text("s5.tile.failure"),
                 color: counts.failure > 0
-                    ? Color(uiColor: .systemRed)
+                    ? S1ChromeForeground.accent
                     : S1ChromeForeground.primary
             )
             tile(
@@ -557,7 +556,7 @@ struct S5View: View {
 
     private func cardBackground(cornerRadius: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            .fill(S1ChromeForeground.cardBackground)
     }
 
     private func primaryButton(
@@ -595,8 +594,8 @@ struct S5View: View {
         .frame(maxHeight: .infinity, alignment: .bottom)
     }
 
-    /// T0「离开」与 U「完成」黑底白字（深色自动反转为白底黑字，取 primary 与页面底色）；
-    /// C／F「返回确认页」tint 底白字。
+    /// T0「离开」与 U「完成」暖白底深字（IC-177 恒定：取前景主色与页面底色）；
+    /// C／F「返回确认页」强调色底白字。
     private func primaryButtonFill(
         _ presentation: S5StatePresentation
     ) -> Color {
@@ -604,7 +603,7 @@ struct S5View: View {
         case .leaveCompletion:
             return S1ChromeForeground.primary
         case .returnToConfirmation:
-            return Color.accentColor
+            return S1ChromeForeground.accent
         }
     }
 
@@ -613,7 +612,7 @@ struct S5View: View {
     ) -> Color {
         switch presentation.primaryAction {
         case .leaveCompletion:
-            return Color(uiColor: .systemGroupedBackground)
+            return S1ChromeForeground.pageBackground
         case .returnToConfirmation:
             return Color.white
         }

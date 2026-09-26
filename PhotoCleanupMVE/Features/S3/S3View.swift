@@ -426,12 +426,12 @@ struct S3View: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color(uiColor: .systemGroupedBackground)
+            S1ChromeForeground.pageBackground
                 .ignoresSafeArea()
             if let machine = coordinator.s3Machine {
                 content(machine)
             } else {
-                ProgressView()
+                ProgressView().tint(S1ChromeForeground.secondary)
                     .id("s3-loading")
             }
         }
@@ -532,7 +532,7 @@ struct S3View: View {
             switch model.volume {
             case let .scanning(primary, knownSoFar):
                 HStack(spacing: S3ActionBarMetrics.scanningPairSpacing) {
-                    ProgressView()
+                    ProgressView().tint(S1ChromeForeground.secondary)
                         .controlSize(.mini)
                         .frame(
                             width: S3ActionBarMetrics.scanningIndicatorSize,
@@ -602,7 +602,7 @@ struct S3View: View {
                         cornerRadius: S3ActionBarMetrics.submitCornerRadius,
                         style: .continuous
                     )
-                    .fill(Color(uiColor: .systemRed))
+                    .fill(S1ChromeForeground.accent)
                 )
         }
         .buttonStyle(.plain)
@@ -718,7 +718,7 @@ struct S3View: View {
                 cornerRadius: S3GroupCardMetrics.cornerRadius,
                 style: .continuous
             )
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            .fill(S1ChromeForeground.cardBackground)
         )
     }
 
@@ -894,7 +894,7 @@ struct S3View: View {
         VStack(spacing: S3EmptyStateMetrics.contentSpacing) {
             Image(systemName: "trash")
                 .font(.system(size: S3EmptyStateMetrics.iconPointSize))
-                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                .foregroundStyle(S1ChromeForeground.tertiary)
             Text(L10n.text("s3.state.empty"))
                 .font(.system(size: S3EmptyStateMetrics.titleFontSize))
                 .foregroundStyle(S1ChromeForeground.secondary)

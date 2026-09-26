@@ -12,17 +12,18 @@ import UIKit
 ///
 /// 不进 `S2CalibrationConfiguration`、不上标定面板，因此 `schemaVersion` 不动。
 enum S2AmbientMetrics {
-    /// 幕底色 `#0B1A13`，恒定，不随系统外观。
+    /// 幕底色 `#0B0F0D`，恒定，不随系统外观。
     /// 取值出处：Decision_log 第 175／176 条、IC-151 卡
-    /// （SPEC-S0 v2 晋级后改指第十四节第 2 部分）。
+    /// （SPEC-S0 v2 晋级后改指第十四节第 2 部分）；IC-177 按 Decision_log 第 205 条
+    /// 统一为「空间清理」幕底（原 `#0B1A13`，SPEC-S2 v22 决策 61 归 v23 回填）。
     ///
     /// 用 `sRGB` 显式构造而不是 asset 目录色：氛围底**恒为深色配方、
     /// 不随系统外观切换**，asset 色会跟着 trait 走。
     static let baseColor = Color(
         .sRGB,
         red: 11.0 / 255,
-        green: 26.0 / 255,
-        blue: 19.0 / 255,
+        green: 15.0 / 255,
+        blue: 13.0 / 255,
         opacity: 1
     )
 

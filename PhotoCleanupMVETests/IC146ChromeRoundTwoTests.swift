@@ -470,7 +470,7 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         XCTAssertEqual(S2AmbientMetrics.glowOpacity, 0.10, accuracy: 0.000_001)
         XCTAssertEqual(S2AmbientMetrics.glowFadeStop, 0.72, accuracy: 0.000_001)
         XCTAssertEqual(S2AmbientMetrics.grainOpacity, 0.90, accuracy: 0.000_001)
-        // ambientBaseColor = #0B1A13。
+        // ambientBaseColor = #0B0F0D（IC-177 起，Decision_log 第 205 条；原 #0B1A13）。
         let base = UIColor(S2AmbientMetrics.baseColor)
         var red: CGFloat = 0
         var green: CGFloat = 0
@@ -478,8 +478,8 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
         var alpha: CGFloat = 0
         XCTAssertTrue(base.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
         XCTAssertEqual(red * 255, 11, accuracy: 0.6)
-        XCTAssertEqual(green * 255, 26, accuracy: 0.6)
-        XCTAssertEqual(blue * 255, 19, accuracy: 0.6)
+        XCTAssertEqual(green * 255, 15, accuracy: 0.6)
+        XCTAssertEqual(blue * 255, 13, accuracy: 0.6)
         XCTAssertEqual(alpha, 1, accuracy: 0.000_001)
         // ambientTintColor = #7AC49E。
         let tint = UIColor(S2AmbientMetrics.tintColor)

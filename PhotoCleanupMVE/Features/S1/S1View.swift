@@ -44,12 +44,25 @@ enum S1ChromeGlass {
     static let outerStrokeWidth: CGFloat = 0.5
 }
 
-/// chrome 前景（v18 回写决策 42）：必须用**具体动态色**——层级样式在启用态
-/// Button 内会解析成 tint 蓝（IC-121 实证），`Color.primary/.secondary` 不参与
-/// tint／层级解析。
+/// chrome 与页面体前景（v18 回写决策 42 → IC-177 改恒定色）：全部屏统一「空间清理」的色板、
+/// 不随系统外观（Decision_log 第 205 条第二节第 1 条）；仍是具体颜色值、不是层级样式——层级样式
+/// 在启用态 Button 内会解析成 tint 蓝（IC-121 实证）。S3／S4／S5 引用本表；色板本身登记在
+/// `S0DeckMetrics`（幕底 #0B0F0D、卡底 #161B18、文字 #FFFBF5、强调 #F26B4E）。三个不透明度取自
+/// R2 画布 `.dim`／`.dim2`／`.edge`（卡内暂登，SPEC-S1 v11 回填）。
 enum S1ChromeForeground {
-    static let primary = Color.primary
-    static let secondary = Color.secondary
+    static let primary = S0DeckMetrics.text
+    static let secondary = S0DeckMetrics.text.opacity(secondaryOpacity)
+    /// 占位图标、空态与失败态图标（原 `.tertiaryLabel`）。
+    static let tertiary = S0DeckMetrics.text.opacity(tertiaryOpacity)
+    /// 分隔线：年卡展开区右缘、菜单行之间（原 `.separator`）。
+    static let separator = S0DeckMetrics.text.opacity(separatorOpacity)
+    /// 选中态、「管理」与重试、S3 提交、S5 失败数与「返回确认页」（原系统 tint 蓝与系统红）。
+    static let accent = S0DeckMetrics.accent
+    static let pageBackground = S0DeckMetrics.background
+    static let cardBackground = S0DeckMetrics.cardBase
+    static let secondaryOpacity: Double = 0.62
+    static let tertiaryOpacity: Double = 0.45
+    static let separatorOpacity: Double = 0.14
 }
 
 /// chrome 文字与图标字号（v18 §11.2；capsuleChevronPointSize 为 ④取定）。
@@ -65,7 +78,7 @@ enum S1ChromeTypography {
 }
 
 /// 通知徽标样式（v18 §11.2 badge*，与 S2 确认入口徽标同族）。垃圾桶徽标描边取
-/// 系统底色（v18 回写决策 43）；范围卡待删红点描边取卡片底色（④卡）。
+/// 页面底色（v18 回写决策 43；IC-177 起为恒定色）；范围卡待删红点描边取卡片底色（④卡）。
 enum S1NotificationBadgeStyle {
     static let fontSize: CGFloat = 12
     static let minDiameter: CGFloat = 18
@@ -74,10 +87,10 @@ enum S1NotificationBadgeStyle {
     static let fill = Color.red
     static let digitColor = Color.white
     static var chromeRing: Color {
-        Color(uiColor: .systemBackground)
+        S1ChromeForeground.pageBackground
     }
     static var cardRing: Color {
-        Color(uiColor: .secondarySystemGroupedBackground)
+        S1ChromeForeground.cardBackground
     }
 }
 
@@ -228,38 +241,11 @@ enum S1YearStackStyle {
     static let layerTwoSize = CGSize(width: 56, height: 50)
     static let layerTwoOffset = CGSize(width: 4, height: 2)
 
-    /// 浅色 #D8D8DE、深色 #3A3A3C。
-    static var layerOneColor: Color {
-        dynamicColor(
-            light: (0xD8, 0xD8, 0xDE),
-            dark: (0x3A, 0x3A, 0x3C)
-        )
-    }
+    /// IC-177：恒定 #3A3A3C（原深色侧；浅色侧 #D8D8DE 随全屏恒深退役，SPEC-S1 v10 `:704-705` 归 v11 回填）。
+    static let layerOneColor = Color(.sRGB, red: 0x3A / 255.0, green: 0x3A / 255.0, blue: 0x3C / 255.0, opacity: 1)
 
-    /// 浅色 #CACAD1、深色 #2F2F31。
-    static var layerTwoColor: Color {
-        dynamicColor(
-            light: (0xCA, 0xCA, 0xD1),
-            dark: (0x2F, 0x2F, 0x31)
-        )
-    }
-
-    private static func dynamicColor(
-        light: (Int, Int, Int),
-        dark: (Int, Int, Int)
-    ) -> Color {
-        Color(
-            uiColor: UIColor { traits in
-                let rgb = traits.userInterfaceStyle == .dark ? dark : light
-                return UIColor(
-                    red: CGFloat(rgb.0) / 255,
-                    green: CGFloat(rgb.1) / 255,
-                    blue: CGFloat(rgb.2) / 255,
-                    alpha: 1
-                )
-            }
-        )
-    }
+    /// IC-177：恒定 #2F2F31（原深色侧；浅色侧 #CACAD1 退役）。
+    static let layerTwoColor = Color(.sRGB, red: 0x2F / 255.0, green: 0x2F / 255.0, blue: 0x31 / 255.0, opacity: 1)
 }
 
 /// IC-128 B：范围封面取图策略（Decision_log 第 140 条挂给本卡的定案）。
@@ -707,7 +693,7 @@ private struct S1RangeCoverThumbnail: View {
             RoundedRectangle(
                 cornerRadius: S1RangeCardMetrics.thumbnailCornerRadius
             )
-            .fill(Color(uiColor: .secondarySystemFill))
+            .fill(S1ChromeForeground.cardBackground)
             if let image {
                 Image(uiImage: image)
                     .resizable()
@@ -917,7 +903,7 @@ struct S1View: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color(uiColor: .systemGroupedBackground)
+            S1ChromeForeground.pageBackground
                 .ignoresSafeArea()
             stateContent
                 .padding(
@@ -1240,7 +1226,7 @@ struct S1View: View {
                 Spacer(minLength: 0)
             }
             .foregroundStyle(
-                isSelected ? Color.accentColor : S1ChromeForeground.primary
+                isSelected ? S1ChromeForeground.accent : S1ChromeForeground.primary
             )
             .padding(.horizontal, S1MenuStyle.rowHorizontalPadding)
             .frame(height: S1MenuStyle.sortRowHeight)
@@ -1277,7 +1263,7 @@ struct S1View: View {
                     )
                     .foregroundStyle(
                         isSelected
-                            ? Color.accentColor
+                            ? S1ChromeForeground.accent
                             : S1ChromeForeground.primary
                     )
                 if let hint = dimensionHintText(dimension) {
@@ -1332,7 +1318,7 @@ struct S1View: View {
                     .fill(.ultraThinMaterial)
                 RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
                     .fill(
-                        Color(uiColor: .systemBackground)
+                        S1ChromeForeground.cardBackground
                             .opacity(S1MenuStyle.backgroundOpacity)
                     )
             }
@@ -1359,7 +1345,7 @@ struct S1View: View {
 
     private var menuSeparator: some View {
         Rectangle()
-            .fill(Color(uiColor: .separator))
+            .fill(S1ChromeForeground.separator)
             .frame(height: S1MenuStyle.separatorWidth)
     }
 
@@ -1417,14 +1403,14 @@ struct S1View: View {
                         weight: .semibold
                     )
                 )
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(S1ChromeForeground.accent)
                 .padding(
                     .horizontal,
                     S1LimitedBannerStyle.manageHorizontalPadding
                 )
                 .frame(height: S1LimitedBannerStyle.manageHeight)
                 .background(
-                    Color.accentColor.opacity(
+                    S1ChromeForeground.accent.opacity(
                         S1LimitedBannerStyle.manageTintBackgroundOpacity
                     ),
                     in: Capsule()
@@ -1464,7 +1450,7 @@ struct S1View: View {
     /// S1-1：中央系统 ProgressView + 一行文案，不显示进度、不显示预计数量。
     private var loadingState: some View {
         VStack(spacing: S1StatePlaceholderStyle.contentSpacing) {
-            ProgressView()
+            ProgressView().tint(S1ChromeForeground.secondary)
             Text(L10n.text("s1.state.loading"))
                 .font(
                     .system(
@@ -1482,7 +1468,7 @@ struct S1View: View {
         VStack(spacing: S1StatePlaceholderStyle.contentSpacing) {
             Image(systemName: "photo.on.rectangle")
                 .font(.system(size: S1StatePlaceholderStyle.iconPointSize))
-                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                .foregroundStyle(S1ChromeForeground.tertiary)
             Text(L10n.text("s1.state.empty"))
                 .font(
                     .system(
@@ -1511,7 +1497,7 @@ struct S1View: View {
         VStack(spacing: S1StatePlaceholderStyle.contentSpacing) {
             Image(systemName: "lock")
                 .font(.system(size: S1StatePlaceholderStyle.iconPointSize))
-                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                .foregroundStyle(S1ChromeForeground.tertiary)
             Text(L10n.text("s1.state.auth_failure.title"))
                 .font(
                     .system(
@@ -1543,7 +1529,7 @@ struct S1View: View {
         VStack(spacing: S1StatePlaceholderStyle.contentSpacing) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: S1StatePlaceholderStyle.iconPointSize))
-                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                .foregroundStyle(S1ChromeForeground.tertiary)
             Text(L10n.text("s1.state.read_failure.title"))
                 .font(
                     .system(
@@ -1585,7 +1571,7 @@ struct S1View: View {
                         weight: .semibold
                     )
                 )
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(S1ChromeForeground.accent)
                 .padding(
                     .horizontal,
                     S1StatePlaceholderStyle.buttonHorizontalPadding
@@ -1650,7 +1636,7 @@ struct S1View: View {
         HStack(spacing: 0) {
             expandZone(row)
             Rectangle()
-                .fill(Color(uiColor: .separator))
+                .fill(S1ChromeForeground.separator)
                 .frame(width: S1RangeCardMetrics.expandDividerWidth)
             Button {
                 enterRange(row.id)
@@ -1864,7 +1850,7 @@ struct S1View: View {
 
     private var cardBackground: some View {
         RoundedRectangle(cornerRadius: S1RangeCardMetrics.cornerRadius)
-            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            .fill(S1ChromeForeground.cardBackground)
     }
 
     private func enterRange(_ rangeID: String) {

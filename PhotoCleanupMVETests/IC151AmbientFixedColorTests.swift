@@ -177,8 +177,8 @@ final class IC151AmbientFixedColorTests: XCTestCase {
         XCTAssertEqual(S2AmbientMetrics.glowFadeStop, 0.72, accuracy: 0.000_001)
         XCTAssertEqual(S2AmbientMetrics.grainOpacity, 0.90, accuracy: 0.000_001)
 
-        // 幕底色 #0B1A13 与绿色相 #7AC49E，两者 alpha 均为 1。
-        assertColor(S2AmbientMetrics.baseColor, red: 11, green: 26, blue: 19)
+        // 幕底色 #0B0F0D（IC-177 起，Decision_log 第 205 条）与绿色相 #7AC49E，两者 alpha 均为 1。
+        assertColor(S2AmbientMetrics.baseColor, red: 11, green: 15, blue: 13)
         assertColor(
             S2AmbientMetrics.tintColor,
             red: 122,
