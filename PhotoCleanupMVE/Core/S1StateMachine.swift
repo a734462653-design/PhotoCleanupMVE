@@ -841,17 +841,25 @@ final class S1StateMachine: ObservableObject {
         scope: Set<String>
     ) {
         var nextStore = sessionStore
-        let previous = nextStore.pendingDeletionAssetIDsByRangeID[
-            rangeID
-        ] ?? []
-        for assetID in previous.intersection(scope).subtracting(pendingDeletionAssetIDs).sorted() {
-            nextStore.setMarked(
-                false,
-                assetID: assetID,
-                rangeID: rangeID
-            )
+        // IC-169（决策 42 + ④ 第 201 条 (b)）：两条规则都以**此刻**的合并待删集合为基准（每次现取、
+        // 不缓存进入时的值——同一会话里撤标后再标回，要按「此刻不在篮」算新标）。
+        let basket = nextStore.allPendingDeletionAssetIDs
+        // 撤标全局：列表内在篮、却不在 D 的，从含它的每个范围移除（`F` 随最后一处移除删掉）。
+        for assetID in basket.intersection(scope).subtracting(pendingDeletionAssetIDs).sorted() {
+            let markedRangeIDs = nextStore.pendingDeletionAssetIDsByRangeID
+                .filter { $0.value.contains(assetID) }
+                .keys
+                .sorted()
+            for markedRangeID in markedRangeIDs {
+                nextStore.setMarked(
+                    false,
+                    assetID: assetID,
+                    rangeID: markedRangeID
+                )
+            }
         }
-        for assetID in pendingDeletionAssetIDs.subtracting(previous).sorted() {
+        // 加标只写本范围、只写新标：D 里此刻不在篮的才写（已在篮的不因「看过」写进本范围）。
+        for assetID in pendingDeletionAssetIDs.subtracting(basket).sorted() {
             nextStore.setMarked(
                 true,
                 assetID: assetID,
