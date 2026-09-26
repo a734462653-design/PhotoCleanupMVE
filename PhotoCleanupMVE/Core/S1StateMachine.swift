@@ -438,16 +438,19 @@ final class S1StateMachine: ObservableObject {
         return visible
     }
 
+    /// IC-169（④ 第 200 条第五节 (c)）：范围封面红角标 = 合并待删集合与本范围资产的交集张数，
+    /// 与该范围 S2 里显示为已标记的张数一致；不读 `M[r]`（`SessionStore.pendingDeletionCount(for:)` 不动）。
     var rangeRows: [S1RangeRow] {
-        visibleRanges.map { range in
+        let basket = sessionStore.allPendingDeletionAssetIDs
+        return visibleRanges.map { range in
             let childCount = childRanges(of: range.id).count
             return S1RangeRow(
                 id: range.id,
                 displayName: range.displayName,
                 totalAssetCount: range.totalAssetCount,
-                pendingDeletionCount: sessionStore.pendingDeletionCount(
-                    for: range.id
-                ),
+                pendingDeletionCount: basket
+                    .intersection(range.assetIDsNewestFirst)
+                    .count,
                 processedAssetCount: processedAssetIDs(for: range.id).count,
                 parentRangeID: range.parentRangeID,
                 childCount: childCount,
