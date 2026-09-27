@@ -279,13 +279,21 @@ final class S1StateMachine: ObservableObject {
         didSet { publishSnapshotIfChanged() }
     }
     @Published private(set) var isObscured = false
-    @Published private(set) var ranges: [S1Range] = []
+    @Published private(set) var ranges: [S1Range] = [] {
+        // IC-178 B：范围列表每次被替换（读取、对账、切维度、重试、读取失败）都核一次年页身份——
+        // 年不再是有子节点的一级范围即清掉，年页随之弹回列表，不留指向已消失范围的身份。
+        didSet { pruneYearPageIfNeeded() }
+    }
     @Published private(set) var readFailure: S1RangeReadFailure?
     @Published private(set) var sessionStore: SessionStore {
         didSet { publishSnapshotIfChanged() }
     }
     /// IC-127 A：收起的年节点集合（会话内视图态，不入档）。默认全部展开。
     @Published private(set) var collapsedYearRangeIDs: Set<String> = []
+    /// IC-178 B：年页身份（会话内视图态，不入档、不发快照；与 `collapsedYearRangeIDs` 同层）。非 nil 即年页在前。
+    /// 放在状态机而不是视图：进 S2 时 tab 容器整棵重建，视图 `@State` 活不过一次往返（IC-157 同一教训）；
+    /// 状态机跨路由保留，回来时 `S1View` 的 `NavigationStack` 直接推出年页。S2 遮挡期间不清。
+    @Published private(set) var presentedYearRangeID: String?
     /// IC-127 D：受限授权标志。为真表示当前 `R(T)` 只覆盖用户选中的资产，
     /// 界面层据此挂提示条；不影响状态机的任何迁移。
     @Published private(set) var isLimitedAuthorization = false
@@ -411,6 +419,39 @@ final class S1StateMachine: ObservableObject {
             collapsedYearRangeIDs.insert(rangeID)
         }
         return true
+    }
+
+    /// IC-178 B：进年页。守卫与 `toggleYearExpansion` 同一组——未遮挡、`T == .date`、就绪、是有子节点的
+    /// 一级节点；不改 `T`、`R(T)`、`M`、`K`，不触发读取，不形成交接，不写快照。
+    @discardableResult
+    func presentYearPage(_ rangeID: String) -> Bool {
+        guard !isObscured,
+              groupingDimension == .date,
+              state == .ready,
+              let range = ranges.first(where: { $0.id == rangeID }),
+              range.parentRangeID == nil,
+              !childRanges(of: rangeID).isEmpty else {
+            return false
+        }
+        presentedYearRangeID = rangeID
+        return true
+    }
+
+    /// IC-178 B：回到列表（年页返回钮，或系统边缘右滑把导航 item 置 nil）。
+    func dismissYearPage() {
+        presentedYearRangeID = nil
+    }
+
+    /// `ranges` 的 didSet：年页所指的年不再是有子节点的一级范围即清身份；本来就不在年页时不写、不发布。
+    private func pruneYearPageIfNeeded() {
+        guard let rangeID = presentedYearRangeID else {
+            return
+        }
+        let stillValid = ranges.contains { $0.id == rangeID && $0.parentRangeID == nil }
+            && !childRanges(of: rangeID).isEmpty
+        if !stillValid {
+            presentedYearRangeID = nil
+        }
     }
 
     /// 范围列表的可见顺序。`T=date`：年节点按 `O` 排列，每个年节点后跟其月节点
