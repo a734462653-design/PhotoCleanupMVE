@@ -823,8 +823,15 @@ struct S2View: View {
     @State private var sharePreparation = S2SharePreparation()
     /// IC-110 D：首次引导教程（未定项 20 ④）。持久化走 `UserDefaults`，
     /// 不入标定出厂值、`schemaVersion` 不动。
+    /// IC-179（Decision_log 第 207 条第五节）：六步教程**停用不删**——不再从本视图启动，
+    /// 类型、接线与其 20 条测试原样保留，退役归后续维护卡。
     @StateObject private var tutorial = S2TutorialCoordinator(
         store: S2UserDefaultsTutorialCompletionStore()
+    )
+    /// IC-179：三句就地提示的协调器。三个「已会」各自持久化走 `UserDefaults`，
+    /// 不入标定出厂值、`schemaVersion` 不动；由本视图内部构造，`init` 无对应形参（与教程同款）。
+    @StateObject private var hints = S2InlineHintCoordinator(
+        store: S2UserDefaultsInlineHintStore()
     )
     @StateObject private var feedbackToast: S2FeedbackToastPresenter
 
@@ -967,6 +974,13 @@ struct S2View: View {
                     viewportSize: geometry.size
                 )
 
+                // IC-179：三句就地提示，与教程浮层同一层级（教程已停用，那层实际为空）。
+                // 整层随 chrome 显隐；只有 × 钮吃点击，手势原样落到主图。
+                inlineHintOverlay(
+                    metrics: viewportMetrics,
+                    viewportSize: geometry.size
+                )
+
                 S2SafeAreaInsetsReader(insets: $safeAreaInsets)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
@@ -983,8 +997,10 @@ struct S2View: View {
                     machine.sessionMergedPendingDeletionCount
                 // IC-112 B：进场即按当前页状态落一次指示，不带动画。
                 refreshCenterIndicator(animated: false)
-                // IC-110 D：首次进入 S2 放一次；已完成/已跳过过不再放。
-                tutorial.startIfNeeded()
+                // IC-179：进门就出第 1 句（不等动手）；已会的不再出。六步教程不再从这里启动。
+                hints.startIfNeeded(
+                    mergedCount: machine.sessionMergedPendingDeletionCount
+                )
                 // IC-140 D（规格第 3 条）：记住入口资产——入口那张不自动播
                 // 短动效，直到发生过至少一次页变更。
                 let (entryAssetID, _) = liveCurrentAssetAndNeighbours()
@@ -998,6 +1014,8 @@ struct S2View: View {
             .onDisappear {
                 // IC-110 D：中途离开 S2 视为跳过，不拦截。
                 tutorial.leaveScreen()
+                // IC-179：离开只收起当前提示，不记「已会」。
+                hints.leaveScreen()
                 // IC-140 D：离开即停播、取消在飞请求、卸资源。
                 livePlayback.leave()
                 // IC-141 D：视频侧同款收口。
@@ -1061,6 +1079,14 @@ struct S2View: View {
             for assetID in removed {
                 tutorial.assetDidBecomeUnmarked(assetID: assetID)
             }
+            // IC-179：同一份已发布状态喂就地提示——新增＝真实标记（第 1 句已会、出第 2 句），
+            // 移除＝真实撤标（第 2 句已会）。追加在既有回调体内，不另开同表达式的 `.onChange`。
+            if !inserted.isEmpty {
+                hints.assetDidBecomeMarked()
+            }
+            if !removed.isEmpty {
+                hints.assetDidBecomeUnmarked()
+            }
             // IC-112 B：标记/撤回都算一次「最近动作」，据此裁决两态并存时显示哪种。
             // IC-118 D：按张登记——只记到被操作那几张头上。
             if !inserted.isEmpty || !removed.isEmpty {
@@ -1121,6 +1147,8 @@ struct S2View: View {
         // IC-111 B：模型值变化时——有残影在途就压住，等落点再跟上（卡内「同帧」）；
         // 没有在途残影（取消标记、确认页回来等）就立即跟上，不留滞后。
         .onChange(of: machine.sessionMergedPendingDeletionCount) { _, count in
+            // IC-179：攒到阈值出第 3 句。放在残影守卫之前——守卫早返回不该吞掉它。
+            hints.mergedCountDidChange(count)
             guard markAfterimages.inFlightCount == 0 else {
                 return
             }
@@ -1785,6 +1813,55 @@ struct S2View: View {
         }
     }
 
+    /// IC-179（Decision_log 第 207 条第五节）：三句就地提示。
+    ///
+    /// 第 1／2 句压在主图上（居中于 `oneXDisplayCenterY`，下方复用教程的循环手势示意）；
+    /// 第 3 句挂在顶排右上垃圾桶下方、带小三角。整层随 chrome 显隐（V=隐藏 时随 chrome 隐去）；
+    /// 除 × 钮外不吃点击。抽成独立 builder 的理由同 `tutorialOverlay`（#214 的类型检查预算）。
+    private func inlineHintOverlay(
+        metrics: S2ViewportMetrics,
+        viewportSize: CGSize
+    ) -> some View {
+        ZStack {
+            if let hint = hints.activeHint {
+                S2InlineHintLayer(
+                    hint: hint,
+                    // 张数读角标的显示值（残影落点才同步），与右上角标一起滚。
+                    mergedCount: displayedPendingCount,
+                    viewportSize: viewportSize,
+                    photoCenterY: metrics.oneXDisplayCenterY,
+                    topInset: safeAreaInsets.top + S2OverlayLayout.topBarHeight,
+                    onDismiss: { hints.dismiss() }
+                )
+                .transition(.opacity)
+                .task(id: hint) {
+                    // 第 2 句限时（裁定 三）：到点不记已会地收起；换句或离开即取消，
+                    // 取消后不得再收起新的一句。
+                    guard hint == .markedOnce else {
+                        return
+                    }
+                    try? await Task.sleep(
+                        nanoseconds: UInt64(
+                            S2InlineHintCoordinator.markedOnceAutoDismissSeconds *
+                                1_000_000_000
+                        )
+                    )
+                    guard !Task.isCancelled else {
+                        return
+                    }
+                    hints.hintDidTimeOut(.markedOnce)
+                }
+            }
+        }
+        .animation(
+            .easeOut(duration: S2InlineHintMetrics.transitionSeconds),
+            value: hints.activeHint
+        )
+        .s2ChromeVisibilityTransition(
+            isVisible: machine.interfaceVisibility == .visible
+        )
+    }
+
     /// IC-112 B：中央状态指示浮层。位置 = **主图几何中心**
     /// （视口中心 X + `oneXDisplayCenterY`，故截图的适配带锚定同样正确）。
     ///
@@ -2022,6 +2099,8 @@ struct S2View: View {
                 guard let payload = machine.makeExitPayload() else {
                     return
                 }
+                // IC-179：真进确认页即第 3 句「已会」（放在 guard 之后：取不到载荷不算）。
+                hints.confirmEntryTapped()
                 performCalibratedAnimation {
                     onConfirmation(payload)
                 }
@@ -2802,9 +2881,9 @@ struct S2View: View {
                     calibration.restoreFactoryPlaceholder()
                 }
                 .s2MinimumTouchTarget()
-                // IC-110 D：重看教程。清掉持久化标记并当场重放。
+                // IC-179：「重看教程」改为清掉三句就地提示的「已会」并当场重出第 1 句；六步教程不再重放。
                 Button(L10n.text("s2.tutorial.replay")) {
-                    tutorial.replay()
+                    hints.reset()
                 }
                 .s2MinimumTouchTarget()
                 if calibration.persistenceFailed {
