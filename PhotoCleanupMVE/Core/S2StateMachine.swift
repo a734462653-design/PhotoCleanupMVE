@@ -642,6 +642,10 @@ final class S2StateMachine: ObservableObject {
     @Published private(set) var currentIndex: Int
     @Published private(set) var farthestIndex: Int
     @Published private(set) var pendingDeletionAssetIDs: Set<String>
+    /// IC-182（④ 第 211 条）：下一次上滑标记成功后**停在刚标记的这张**、不自动翻页，只吃一次。
+    /// 由视图按就地提示协调器的 `holdsPageOnNextMark`（第 2 句会在那一刻出现）置位，其余时候恒 false——
+    /// 既有的「标记后自动进入下一张」不变；只在 1x 生效。不发布、不入档、不入标定出厂值。
+    var holdsPageAfterNextMark = false
     @Published private(set) var favoriteAssetIDs: Set<String>
     @Published private(set) var recentAlbum: S2AlbumReference?
     @Published private(set) var semanticNotice: S2SemanticNotice?
@@ -1413,7 +1417,11 @@ final class S2StateMachine: ObservableObject {
         var nextPending = pendingDeletionAssetIDs
         nextPending.insert(assetID)
         replacePendingDeletionAssetIDs(with: nextPending)
-        if !switchPhoto(by: 1) {
+        if holdsPageAfterNextMark && zoomState == .oneX {
+            // IC-182：学习那一下——停在刚标记的这张，第 2 句「下滑放回来」才落在正确的照片上；只吃一次。
+            // 只在 1x 生效：放大态下下滑撤标本就无效，且分页器只在翻页后才同步倍率——照旧翻页、开关留待 1x。
+            holdsPageAfterNextMark = false
+        } else if !switchPhoto(by: 1) {
             pendingUndecidedItem = .item02
         }
         return true
