@@ -902,6 +902,31 @@ struct S1View: View {
     }
 
     var body: some View {
+        NavigationStack {
+            rootPage
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(item: presentedYearRangeBinding) { rangeID in
+                    yearPage(rangeID)
+                }
+        }
+        .allowsHitTesting(!machine.isObscured)
+        .overlay(alignment: .bottom) {
+            feedbackToastOverlay
+        }
+        .onAppear {
+            readCurrentRequestIfPossible()
+            presentPendingFeedbackEventIfNeeded()
+        }
+        .onChange(of: feedbackEvent) { _, _ in
+            presentPendingFeedbackEventIfNeeded()
+        }
+    }
+
+    /// IC-178 C：列表页——页头、四态、菜单、受限提示条一字不动，只有 `.ready` 的列表本体换成年卡叠。
+    /// 年页由外层 `NavigationStack` 推出（照「空间清理」tab 的 `S0CleanupFlowView`）：根页隐藏系统导航栏，
+    /// 身份在状态机（进 S2 时 tab 容器整棵重建、视图 `@State` 活不过一次往返——IC-157 同一教训），回来时
+    /// 容器重建、直接推出年页；toast 挂在栈外，两页都看得到。
+    private var rootPage: some View {
         ZStack(alignment: .top) {
             S1ChromeForeground.pageBackground
                 .ignoresSafeArea()
@@ -921,17 +946,18 @@ struct S1View: View {
                     .padding(.top, S1ChromeLayout.overlayTopOffset)
             }
         }
-        .allowsHitTesting(!machine.isObscured)
-        .overlay(alignment: .bottom) {
-            feedbackToastOverlay
-        }
-        .onAppear {
-            readCurrentRequestIfPossible()
-            presentPendingFeedbackEventIfNeeded()
-        }
-        .onChange(of: feedbackEvent) { _, _ in
-            presentPendingFeedbackEventIfNeeded()
-        }
+    }
+
+    /// 系统返回（边缘右滑）把 item 置 nil 时走状态机的同一出口；推出只由 `presentYearPage` 发起。
+    private var presentedYearRangeBinding: Binding<String?> {
+        Binding(
+            get: { machine.presentedYearRangeID },
+            set: { newValue in
+                if newValue == nil {
+                    machine.dismissYearPage()
+                }
+            }
+        )
     }
 
     // MARK: - IC-131 B：写回失败 toast
@@ -1589,268 +1615,65 @@ struct S1View: View {
         UIApplication.shared.open(url)
     }
 
-    // MARK: - IC-128 B：范围卡列表
+    // MARK: - IC-178 C：年卡叠 → 年页（Decision_log 第 205 条第二节第 1 条；两级树的展开区退役）
 
-    /// IC-127 A 结构不变：年节点行的「展开／收起」与「进入」仍是两个可区分的
-    /// 点击目标（展开区触发展开／收起，行其余部分触发进入）。
+    /// 一级范围一叠卡：`T=按日期` 是年卡，其余维度是相册／未分类卡（月卡样式）。有子节点的卡进年页，
+    /// 其余直接进 S2；月卡数据从 `rangeRows` 里按 `parentRangeID` 过滤，模型不改（展开集合恒空、全部月都在）。
     private var rangeList: some View {
-        ScrollView {
-            LazyVStack(spacing: S1RangeCardMetrics.cardSpacing) {
-                ForEach(machine.rangeRows) { row in
-                    rangeCard(row)
+        S1DeckListView(
+            rows: machine.rangeRows.filter { $0.parentRangeID == nil },
+            kind: machine.groupingDimension == .date ? .years : .albums,
+            coverAssetID: coverAssetID(for:),
+            onTap: { row in
+                if S1DeckCardPresentation.opensYearPage(childCount: row.childCount) {
+                    _ = machine.presentYearPage(row.id)
+                } else {
+                    enterRange(row.id)
                 }
             }
-            .padding(.horizontal, S1RangeCardMetrics.horizontalMargin)
-            .padding(.bottom, S1RangeCardMetrics.cardSpacing)
-        }
+        )
     }
 
+    /// 年页：返回 + 待删篮入口、年标题 +「整理整年」、汇总行、年进度条、月卡叠。年在对账后消失时状态机
+    /// 会把身份清掉、页面随之弹回；这里只对找不到行的一瞬做兜底，不画内容。
     @ViewBuilder
-    private func rangeCard(_ row: S1RangeRow) -> some View {
-        if S1RangeCardPresentation.hasExpandZone(childCount: row.childCount) {
-            yearCard(row)
-        } else {
-            plainCard(row)
-        }
-    }
-
-    private func plainCard(_ row: S1RangeRow) -> some View {
-        Button {
-            enterRange(row.id)
-        } label: {
-            rowContent(row, isYear: false)
-                .padding(
-                    .leading,
-                    S1RangeCardPresentation.leadingInset(
-                        isChildRow: row.parentRangeID != nil
+    private func yearPage(_ rangeID: String) -> some View {
+        let rows = machine.rangeRows
+        if let yearRow = rows.first(where: { $0.id == rangeID }) {
+            S1YearPageView(
+                yearRow: yearRow,
+                monthRows: rows.filter { $0.parentRangeID == rangeID },
+                basketCount: machine.badgeCount,
+                coverAssetID: coverAssetID(for:),
+                onBack: {
+                    machine.dismissYearPage()
+                },
+                onOrganizeYear: {
+                    enterRange(rangeID)
+                },
+                onEnterMonth: { row in
+                    enterRange(row.id)
+                },
+                onTrash: {
+                    S1TrashButtonAction.perform(
+                        machine: machine,
+                        onS3Submission: onS3Submission,
+                        onSubmissionUnavailable: {
+                            presentLocalFeedback(.submissionUnavailable)
+                        }
                     )
-                )
-                .padding(.trailing, S1RangeCardMetrics.contentSpacing)
-        }
-        .buttonStyle(.plain)
-        .frame(minHeight: S1RangeCardMetrics.rowHeight)
-        .background(cardBackground)
-    }
-
-    private func yearCard(_ row: S1RangeRow) -> some View {
-        HStack(spacing: 0) {
-            expandZone(row)
-            Rectangle()
-                .fill(S1ChromeForeground.separator)
-                .frame(width: S1RangeCardMetrics.expandDividerWidth)
-            Button {
-                enterRange(row.id)
-            } label: {
-                rowContent(row, isYear: true)
-                    .padding(
-                        .horizontal,
-                        S1RangeCardMetrics.contentSpacing
-                    )
-            }
-            .buttonStyle(.plain)
-        }
-        .frame(minHeight: S1RangeCardMetrics.rowHeight)
-        .background(cardBackground)
-    }
-
-    private func expandZone(_ row: S1RangeRow) -> some View {
-        Button {
-            _ = machine.toggleYearExpansion(row.id)
-        } label: {
-            Image(
-                systemName: row.isExpanded
-                    ? "chevron.down"
-                    : "chevron.right"
+                }
             )
-            .font(
-                .system(
-                    size: S1RangeCardMetrics.chevronPointSize,
-                    weight: .semibold
-                )
-            )
-            .foregroundStyle(S1ChromeForeground.secondary)
-            .frame(width: S1RangeCardMetrics.expandZoneWidth)
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func rowContent(_ row: S1RangeRow, isYear: Bool) -> some View {
-        HStack(spacing: S1RangeCardMetrics.contentSpacing) {
-            thumbnailStack(row, isYear: isYear)
-            rowTexts(row, isYear: isYear)
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.system(size: S1RangeCardMetrics.chevronPointSize))
-                .foregroundStyle(S1ChromeForeground.secondary)
-        }
-        .padding(.vertical, S1RangeCardMetrics.verticalPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-    }
-
-    private func rowTexts(_ row: S1RangeRow, isYear: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(row.displayName)
-                .font(
-                    .system(
-                        size: isYear
-                            ? S1RangeCardMetrics.yearNameFontSize
-                            : S1RangeCardMetrics.nameFontSize,
-                        weight: isYear ? .semibold : .regular
-                    )
-                )
-                .foregroundStyle(S1ChromeForeground.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Text(L10n.text(
-                "s1.range.total_count",
-                replacing: ["count": String(row.totalAssetCount)]
-            ))
-            .font(.system(size: S1RangeCardMetrics.countFontSize))
-            .monospacedDigit()
-            .foregroundStyle(S1ChromeForeground.secondary)
         }
     }
 
-    private func thumbnailStack(_ row: S1RangeRow, isYear: Bool) -> some View {
-        let coverAssetID = S1RangeCoverPolicy.coverAssetID(
+    /// 封面沿用 IC-128 B 的口径：该范围按当前 `O` 的第一张；年取按 `O` 的首个月再取其第一张。
+    private func coverAssetID(for row: S1RangeRow) -> String? {
+        S1RangeCoverPolicy.coverAssetID(
             forRangeID: row.id,
             in: machine.ranges,
             sortOrder: machine.sortOrder
         )
-        let hasContinuation =
-            machine.sessionStore.continuationsByRangeID[row.id] != nil
-        return ZStack(alignment: .topLeading) {
-            if isYear {
-                yearStackLayers
-            }
-            S1RangeCoverThumbnail(
-                assetID: coverAssetID,
-                loader: coverImageLoader
-            )
-            .overlay(alignment: .bottom) {
-                progressLine(row, hasContinuation: hasContinuation)
-            }
-            .overlay(alignment: .topTrailing) {
-                pendingBadge(row)
-            }
-        }
-        .padding(.trailing, isYear ? S1YearStackStyle.layerOneOffset.width : 0)
-    }
-
-    private var yearStackLayers: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: S1YearStackStyle.cornerRadius)
-                .fill(S1YearStackStyle.layerOneColor)
-                .frame(
-                    width: S1YearStackStyle.layerOneSize.width,
-                    height: S1YearStackStyle.layerOneSize.height
-                )
-                .offset(
-                    x: S1YearStackStyle.layerOneOffset.width,
-                    y: S1YearStackStyle.layerOneOffset.height
-                )
-            RoundedRectangle(cornerRadius: S1YearStackStyle.cornerRadius)
-                .fill(S1YearStackStyle.layerTwoColor)
-                .frame(
-                    width: S1YearStackStyle.layerTwoSize.width,
-                    height: S1YearStackStyle.layerTwoSize.height
-                )
-                .offset(
-                    x: S1YearStackStyle.layerTwoOffset.width,
-                    y: S1YearStackStyle.layerTwoOffset.height
-                )
-        }
-    }
-
-    @ViewBuilder
-    private func progressLine(
-        _ row: S1RangeRow,
-        hasContinuation: Bool
-    ) -> some View {
-        if S1ProgressLinePresentation.isVisible(
-            hasContinuation: hasContinuation
-        ) {
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(
-                        cornerRadius: S1ProgressLineStyle.cornerRadius
-                    )
-                    .fill(
-                        Color.white.opacity(S1ProgressLineStyle.trackOpacity)
-                    )
-                    RoundedRectangle(
-                        cornerRadius: S1ProgressLineStyle.cornerRadius
-                    )
-                    .fill(
-                        Color.white.opacity(S1ProgressLineStyle.fillOpacity)
-                    )
-                    .frame(
-                        width: proxy.size.width
-                            * S1ProgressLinePresentation.fillFraction(
-                                processed: row.processedAssetCount,
-                                total: row.totalAssetCount
-                            )
-                    )
-                }
-            }
-            .frame(height: S1ProgressLineStyle.height)
-            .padding(.horizontal, S1ProgressLineStyle.horizontalInset)
-            .padding(.bottom, S1ProgressLineStyle.bottomInset)
-            .allowsHitTesting(false)
-        }
-    }
-
-    @ViewBuilder
-    private func pendingBadge(_ row: S1RangeRow) -> some View {
-        if let badgeText = S1PendingBadgePresentation.text(
-            count: row.pendingDeletionCount
-        ) {
-            Text(badgeText)
-                .font(
-                    .system(
-                        size: S1NotificationBadgeStyle.fontSize,
-                        weight: .semibold
-                    )
-                )
-                .monospacedDigit()
-                .foregroundStyle(S1NotificationBadgeStyle.digitColor)
-                .padding(
-                    .horizontal,
-                    S1NotificationBadgeStyle.horizontalPadding
-                )
-                .frame(
-                    minWidth: S1NotificationBadgeStyle.minDiameter,
-                    minHeight: S1NotificationBadgeStyle.minDiameter
-                )
-                .background(S1NotificationBadgeStyle.fill, in: Capsule())
-                .overlay {
-                    Capsule().strokeBorder(
-                        S1NotificationBadgeStyle.cardRing,
-                        lineWidth: S1NotificationBadgeStyle.ringWidth
-                    )
-                }
-                .offset(
-                    x: S1RangeCardMetrics.pendingBadgeOffset,
-                    y: -S1RangeCardMetrics.pendingBadgeOffset
-                )
-                .allowsHitTesting(false)
-                .accessibilityLabel(
-                    L10n.text(
-                        "s1.range.pending_count",
-                        replacing: [
-                            "count": String(row.pendingDeletionCount)
-                        ]
-                    )
-                )
-        }
-    }
-
-    private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: S1RangeCardMetrics.cornerRadius)
-            .fill(S1ChromeForeground.cardBackground)
     }
 
     private func enterRange(_ rangeID: String) {
