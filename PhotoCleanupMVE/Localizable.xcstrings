@@ -881,6 +881,83 @@
         }
       }
     },
+    "s1.deck.year.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张 · {months} 个月"
+          }
+        }
+      }
+    },
+    "s1.deck.pending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待删 {count}"
+          }
+        }
+      }
+    },
+    "s1.deck.seen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已看 {percent}%"
+          }
+        }
+      }
+    },
+    "s1.deck.done" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "看完"
+          }
+        }
+      }
+    },
+    "s1.yearPage.summary" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张 · {months} 个月 · 已看 {percent}% · 待删 {pending}"
+          }
+        }
+      }
+    },
+    "s1.yearPage.organizeAll" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整理整年"
+          }
+        }
+      }
+    },
+    "s1.yearPage.back" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回"
+          }
+        }
+      }
+    },
     "s2.action.add_album" : {
       "extractionState" : "manual",
       "localizations" : {

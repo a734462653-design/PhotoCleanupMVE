@@ -57,7 +57,7 @@ final class IC177UnifiedBackgroundTests: XCTestCase {
             "userInterfaceStyle", "dynamicColor("
         ]
         let expectations: [(String, Int, Int, Int)] = [
-            (Self.s1Path, 37, 7, 1),
+            (Self.s1Path, 31, 7, 1),
             (Self.s3Path, 18, 0, 2),
             (Self.s4Path, 7, 0, 2),
             (Self.s5Path, 19, 1, 1)
