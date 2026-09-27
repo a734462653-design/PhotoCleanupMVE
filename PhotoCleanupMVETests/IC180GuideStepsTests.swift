@@ -28,7 +28,6 @@ final class IC180GuideStepsTests: XCTestCase {
     func testIC180A_FiveStepsInSpecOrderWithSpecSentences() {
         XCTAssertEqual(S5GuideStep.allCases.map(\.rawValue), [1, 2, 3, 4, 5])
         XCTAssertEqual(S5GuideStep.allCases.map(\.text), Self.stepTexts)
-        XCTAssertEqual(S5GuideStep.allCases.map(\.isLeadStep), [true, false, false, false, false])
         XCTAssertEqual(Set(S5GuideStep.allCases.map(\.symbolName)).count, 5, "五个符号互异")
         for key in Self.stepKeys {
             XCTAssertNotEqual(L10n.text(key), key, key)
@@ -66,6 +65,8 @@ final class IC180GuideStepsTests: XCTestCase {
         XCTAssertEqual(S5GuideMetrics.textFontSize, 15)
         XCTAssertEqual(S5GuideMetrics.textLineSpacing, 21)
         XCTAssertEqual(S5GuideMetrics.symbolPointSize, 18)
+        // IC-182：正文单行按需缩放（④ 第 211 条「五步不分行」）。
+        XCTAssertEqual(S5GuideMetrics.textMinimumScaleFactor, 0.8)
     }
 
     // MARK: - 断言 4：源码落位
@@ -106,14 +107,18 @@ final class IC180GuideStepsTests: XCTestCase {
         ] {
             XCTAssertEqual(occurrences(of: needle, in: guide), 0, needle)
         }
-        XCTAssertEqual(occurrences(of: "S1ChromeForeground.", in: guide), 6, "正文、实心底、实心字、描边、描边字、符号")
+        // IC-182：编号圆五步统一描边（实心分支退役），正文单行按需缩放。
+        XCTAssertEqual(occurrences(of: "S1ChromeForeground.", in: guide), 4, "正文、描边、描边字、符号")
         XCTAssertEqual(occurrences(of: "ForEach(S5GuideStep.allCases, id: \\.rawValue)", in: guide), 1)
-        XCTAssertEqual(occurrences(of: "strokeBorder(", in: guide), 1, "第 2～5 步描边")
-        XCTAssertEqual(occurrences(of: "in: Circle())", in: guide), 1, "第 1 步实心")
+        XCTAssertEqual(occurrences(of: "strokeBorder(", in: guide), 1, "五步描边")
+        XCTAssertEqual(occurrences(of: "in: Circle())", in: guide), 0, "无实心圆")
+        XCTAssertEqual(occurrences(of: "isLeadStep", in: guide), 0)
+        XCTAssertEqual(occurrences(of: ".lineLimit(1)", in: guide), 1)
+        XCTAssertEqual(occurrences(of: ".minimumScaleFactor(S5GuideMetrics.textMinimumScaleFactor)", in: guide), 1)
         XCTAssertEqual(occurrences(of: ".accessibilityHidden(true)", in: guide), 1, "行尾符号纯装饰")
         XCTAssertEqual(occurrences(of: ".accessibilityElement(children: .combine)", in: guide), 1, "每行一个焦点")
         let metrics = try XCTUnwrap(slice(guide, from: "enum S5GuideMetrics {", to: "\n}\n"))
-        XCTAssertEqual(occurrences(of: "static let ", in: metrics), 12, "登记值恰十二个")
+        XCTAssertEqual(occurrences(of: "static let ", in: metrics), 13, "登记值恰十三个（IC-182 加最小缩放）")
         let symbols = try XCTUnwrap(slice(guide, from: "enum S5GuideSymbol {", to: "\n}\n"))
         XCTAssertEqual(occurrences(of: "static let ", in: symbols), 5)
         for key in Self.stepKeys {
