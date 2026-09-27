@@ -539,19 +539,23 @@ struct S5View: View {
         .background(cardBackground(cornerRadius: S5CardMetrics.cornerRadius))
     }
 
-    /// 引导卡：告诉用户去系统「照片」的「最近删除」自己清空。**不加截图。**
+    /// 引导卡（SPEC-S5 v6 第三节两部分）：文字说明 + 五步竖排引导（IC-180，`S5GuideStepsView`，
+    /// 与首页「未通过」共享同一份）。首句的字号、行高与容器登记不动。**不加截图。**
     private var guidanceCard: some View {
-        Text(L10n.text("s5.recently_deleted.boundary_notice"))
-            .font(.system(size: S5CardMetrics.guidanceFontSize))
-            .lineSpacing(
-                S5CardMetrics.guidanceLineSpacing
-                    - S5CardMetrics.guidanceFontSize
-            )
-            .foregroundStyle(S1ChromeForeground.primary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, S5CardMetrics.verticalPadding)
-            .padding(.horizontal, S5CardMetrics.horizontalPadding)
-            .background(cardBackground(cornerRadius: S5CardMetrics.cornerRadius))
+        VStack(alignment: .leading, spacing: S5GuideMetrics.introBottomSpacing) {
+            Text(L10n.text("s5.recently_deleted.boundary_notice"))
+                .font(.system(size: S5CardMetrics.guidanceFontSize))
+                .lineSpacing(
+                    S5CardMetrics.guidanceLineSpacing
+                        - S5CardMetrics.guidanceFontSize
+                )
+                .foregroundStyle(S1ChromeForeground.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            S5GuideStepsView()
+        }
+        .padding(.vertical, S5CardMetrics.verticalPadding)
+        .padding(.horizontal, S5CardMetrics.horizontalPadding)
+        .background(cardBackground(cornerRadius: S5CardMetrics.cornerRadius))
     }
 
     private func cardBackground(cornerRadius: CGFloat) -> some View {

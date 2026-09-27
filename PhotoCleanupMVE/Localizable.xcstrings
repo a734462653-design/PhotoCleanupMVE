@@ -2790,7 +2790,62 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "照片已移入系统「最近删除」，仍由系统保留。应用无法读取或清空该位置。请打开系统「照片」，进入「实用工具」中的「最近删除」，由你完成清空，然后返回本页。"
+            "value" : "照片仍由系统保留。清空「最近删除」后才真正释放空间。应用无法读取或清空该位置。"
+          }
+        }
+      }
+    },
+    "s5.guide.step1" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开系统「照片」"
+          }
+        }
+      }
+    },
+    "s5.guide.step2" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "进入「精选集」，向下找到「最近删除」"
+          }
+        }
+      }
+    },
+    "s5.guide.step3" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开「最近删除」"
+          }
+        }
+      }
+    },
+    "s5.guide.step4" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点「选择」"
+          }
+        }
+      }
+    },
+    "s5.guide.step5" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点「更多 (…)」，选择「全部删除」"
           }
         }
       }
