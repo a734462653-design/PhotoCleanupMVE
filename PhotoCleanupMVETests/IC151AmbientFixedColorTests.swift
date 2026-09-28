@@ -137,11 +137,12 @@ final class IC151AmbientFixedColorTests: XCTestCase {
             )
         }
 
-        let s1View = try XCTUnwrap(
-            strippedSource("PhotoCleanupMVE/Features/S1/S1View.swift")
+        // IC-183：S1View 的缩略图已退役，正对照改取仍在画封面的共享缩略图视图。
+        let thumbnailView = try XCTUnwrap(
+            strippedSource("PhotoCleanupMVE/Features/Shared/ThumbnailView.swift")
         )
-        XCTAssertGreaterThan(occurrences(of: "scaledToFill", in: s1View), 0)
-        XCTAssertGreaterThan(occurrences(of: "Image(uiImage:", in: s1View), 0)
+        XCTAssertGreaterThan(occurrences(of: "scaledToFill", in: thumbnailView), 0)
+        XCTAssertGreaterThan(occurrences(of: "Image(uiImage:", in: thumbnailView), 0)
         let s2View = try XCTUnwrap(strippedSource(Self.s2ViewPath))
         XCTAssertGreaterThan(occurrences(of: ".blur(", in: s2View), 0)
     }
