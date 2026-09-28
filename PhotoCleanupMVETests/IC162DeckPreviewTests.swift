@@ -13,7 +13,7 @@ final class IC162DeckPreviewTests: XCTestCase {
 
     // MARK: - 断言 1：卡按入参序、丢空类、「其余照片」是普通类别卡（子项 A；IC-166 裁定 四）
 
-    func testIC162A_CardsKeepOrderDropEmptyAndAppendRest() {
+    func testIC162A_CardsKeepOrderDropEmptyAndIncludeRest() {
         let cards = S0DeckHomeModel.cards(
             categories: Self.fixtureCategoriesWithRest,
             libraryTotalByteCount: 1_000
@@ -41,7 +41,7 @@ final class IC162DeckPreviewTests: XCTestCase {
         XCTAssertEqual(cards[2].fraction, 0.58, accuracy: 0.000_001)
         XCTAssertEqual(cards.map { $0.percent }, [30, 12, 58])
 
-        // 可点性与 `S0CategoryRowPresentation.showsDisclosure` 同式；「其余照片」与其他类别同样可点。
+        // 可点性沿旧类别行口径；「其余照片」与其他类别同样可点。
         XCTAssertEqual(cards.map { $0.isEnterable }, [true, true, true])
 
         // `LIB` 取不到（扫描早期）：占比一律 0，不除零、不崩。
@@ -56,7 +56,7 @@ final class IC162DeckPreviewTests: XCTestCase {
 
     // MARK: - 断言 2：快照里没有「其余照片」行时不出这张卡（子项 A；IC-166 裁定 四）
 
-    func testIC162A_RestCardOmittedWhenZero() {
+    func testIC162A_RestCardOmittedWhenNoRestRow() {
         let cards = S0DeckHomeModel.cards(
             categories: Self.fixtureCategories,
             libraryTotalByteCount: 1_000

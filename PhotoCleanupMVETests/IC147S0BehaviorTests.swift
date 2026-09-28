@@ -686,7 +686,10 @@ final class IC147S0BehaviorTests: XCTestCase {
             "PhotoCleanupMVE/Features/S0/S0DeckHomeView.swift",
             "PhotoCleanupMVE/Features/S0/S0TabContainer.swift",
             "PhotoCleanupMVE/Services/S0CleanupDataStub.swift",
-            "PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift"
+            "PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift",
+            "PhotoCleanupMVE/Features/S0/S0DeckCategoryPageView.swift",
+            "PhotoCleanupMVE/Features/S0/S0CleanupFlowView.swift",
+            "PhotoCleanupMVE/Features/S0/S0CleanupFlowModel.swift"
         ] {
             let source = try XCTUnwrap(strippedSource(relativePath))
             for (assignment, _) in funnels {
