@@ -4,7 +4,7 @@ import Foundation
 
 /// IC-156 C：类别页的选择集合 `SEL`（SPEC-S0 v2 第六节）。纯模型，可直接断言。
 ///
-/// - 全部项默认不勾选，不预勾任何项；
+/// - 默认按「保留集 ∩ 当前列表」播种（IC-160，`init(items:preselected:)`）；无保留集时全部不勾选；
 /// - 网格顺序在页面存续期间稳定：移入待删篮只删项、不重排其余项；
 /// - 「已选」计数与主按钮数值由同一份 `selected` 算出，不分别计算。
 struct S0CategoryPageSelection: Equatable {
