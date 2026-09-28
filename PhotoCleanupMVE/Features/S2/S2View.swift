@@ -1001,6 +1001,9 @@ struct S2View: View {
                 hints.startIfNeeded(
                     mergedCount: machine.sessionMergedPendingDeletionCount
                 )
+                // IC-182（④ 第 211 条）：第 2 句会在下一次标记时出现 → 那一下停在刚标记的这张、不翻页，
+                // 让「下滑放回来」落在正确的照片上；其余情况恒 false，自动翻页照旧。
+                machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark
                 // IC-140 D（规格第 3 条）：记住入口资产——入口那张不自动播
                 // 短动效，直到发生过至少一次页变更。
                 let (entryAssetID, _) = liveCurrentAssetAndNeighbours()
@@ -1020,6 +1023,11 @@ struct S2View: View {
                 livePlayback.leave()
                 // IC-141 D：视频侧同款收口。
                 videoPlayback.leave()
+            }
+            .onChange(of: hints.activeHint) { _, _ in
+                // IC-182：句子一变（出第 2 句、× 收起、限时、被第 3 句顶掉、学会、重看教程）就重算
+                // 「下一次标记要不要停」；判据在协调器里，这里只同步给状态机。
+                machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark
             }
             .onChange(of: calibration.configuration) { _, configuration in
                 _ = machine.applyCalibration(configuration)
@@ -1087,6 +1095,8 @@ struct S2View: View {
             if !removed.isEmpty {
                 hints.assetDidBecomeUnmarked()
             }
+            // IC-182：撤标记「已会」不一定改 `activeHint`，这里再同步一次开关。
+            machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark
             // IC-112 B：标记/撤回都算一次「最近动作」，据此裁决两态并存时显示哪种。
             // IC-118 D：按张登记——只记到被操作那几张头上。
             if !inserted.isEmpty || !removed.isEmpty {
@@ -1815,8 +1825,8 @@ struct S2View: View {
 
     /// IC-179（Decision_log 第 207 条第五节）：三句就地提示。
     ///
-    /// 第 1／2 句压在主图上（居中于 `oneXDisplayCenterY`，下方复用教程的循环手势示意）；
-    /// 第 3 句挂在顶排右上垃圾桶下方、带小三角。整层随 chrome 显隐（V=隐藏 时随 chrome 隐去）；
+    /// IC-182：三句气泡都挂在顶排右上垃圾桶下方（只有第 3 句带小三角）；第 1／2 句另有循环手势示意
+    /// 压在主图中心上方（`oneXDisplayCenterY` 之上）。整层随 chrome 显隐（V=隐藏 时随 chrome 隐去）；
     /// 除 × 钮外不吃点击。抽成独立 builder 的理由同 `tutorialOverlay`（#214 的类型检查预算）。
     private func inlineHintOverlay(
         metrics: S2ViewportMetrics,
@@ -1853,6 +1863,10 @@ struct S2View: View {
                 }
             }
         }
+        // IC-182（H94 第 3／4 条根因）：内层 ZStack 没有框时，句子消失的一瞬它塌成零尺寸落到视口中心，
+        // 淡出中的气泡随之整体向右下平移半屏——右下角「闪一下的对话框」就是它。全屏框 + 左上对齐让
+        // 空容器的原点钉在 (0, 0)，与有句子时同一原点（默认居中对齐会把空容器仍摆到中心，修不掉）。
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .animation(
             .easeOut(duration: S2InlineHintMetrics.transitionSeconds),
             value: hints.activeHint
@@ -2884,6 +2898,8 @@ struct S2View: View {
                 // IC-179：「重看教程」改为清掉三句就地提示的「已会」并当场重出第 1 句；六步教程不再重放。
                 Button(L10n.text("s2.tutorial.replay")) {
                     hints.reset()
+                    // IC-182：第 1 句本就在显时 `reset()` 不改 `activeHint`，这里再同步一次开关。
+                    machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark
                 }
                 .s2MinimumTouchTarget()
                 if calibration.persistenceFailed {

@@ -43,7 +43,7 @@ enum S2InlineHint: String, CaseIterable, Equatable {
         }
     }
 
-    /// 第 1／2 句下方的循环手势示意（复用教程的 `S2TutorialGestureHint`）；第 3 句没有。
+    /// 第 1／2 句压在主图中心上方的循环手势示意（IC-182 起为就地提示自己的 `S2InlineHintGestureView`）；第 3 句没有。
     var gestureDirection: S2TutorialGestureDirection? {
         switch self {
         case .swipeUp:
@@ -53,6 +53,11 @@ enum S2InlineHint: String, CaseIterable, Equatable {
         case .confirmEntry:
             return nil
         }
+    }
+
+    /// IC-182（④ 第 211 条）：三句都挂右上、顶排之下；只有第 3 句带指向垃圾桶圆钮的小三角。
+    var pointsAtConfirmEntry: Bool {
+        self == .confirmEntry
     }
 
     /// 标题左侧的符号（照 `S0DeckSymbol` 的写法：登记为常量，不经 helper 返回字面量）。
@@ -69,11 +74,15 @@ enum S2InlineHint: String, CaseIterable, Equatable {
     }
 }
 
-/// SF Symbol 名登记（R2 画布 `bubble()` 的 `up`／`shield`／`close`）。
+/// SF Symbol 名登记（R2 画布 `bubble()` 的 `up`／`shield`／`close`，`hint_gesture()` 的 `hand`／`up`／`down`）。
+/// 手势示意三名由决策会话卡内取定，存在性由 CI 断言 `UIImage(systemName:)` 非空核。
 enum S2InlineHintSymbol {
     static let swipeUp = "arrow.up"
     static let markedOnce = "checkmark.shield"
     static let dismiss = "xmark"
+    static let gestureHand = "hand.point.up.left"
+    static let gestureArrowDown = "arrow.down"
+    static let gestureArrowRight = "arrow.right"
 }
 
 // MARK: - 持久化
@@ -152,6 +161,12 @@ final class S2InlineHintCoordinator: ObservableObject {
 
     func isLearned(_ hint: S2InlineHint) -> Bool {
         store.isLearned(hint)
+    }
+
+    /// IC-182（④ 第 211 条）：下一次标记成功后要不要停在刚标记的这张——恰当第 2 句会在那一刻出现时
+    /// （无句在显或第 1 句在显，且第 2 句未会、本次未收起）。视图据此置 `S2StateMachine.holdsPageAfterNextMark`。
+    var holdsPageOnNextMark: Bool {
+        (activeHint == nil || activeHint == .swipeUp) && canShow(.markedOnce)
     }
 
     /// 进 S2 立即调（`onAppear`）：未会第 1 句就出第 1 句；否则若篮内已攒到阈值且未会第 3 句就出第 3 句。
@@ -273,20 +288,31 @@ enum S2InlineHintMetrics {
     static let dismissButtonLeading: CGFloat = 6
     static let dismissTouchTargetSide: CGFloat = S2OverlayLayout.minimumTouchTarget
     static let dismissTouchOverhang: CGFloat = (dismissTouchTargetSide - dismissButtonSide) / 2
-    /// 气泡最大宽：居中句 340、右上句 300（右上句框内右对齐，气泡右缘恒贴 `trailingMargin`）。
-    static let centeredMaxWidth: CGFloat = 340
+    /// 气泡最大宽 300：IC-182 起三句都挂右上、框内右对齐，气泡右缘恒贴 `trailingMargin`（居中句的 340 退役）。
     static let trailingMaxWidth: CGFloat = 300
     /// `box-shadow: 0 10px 30px rgba(0,0,0,0.45)`（CSS 模糊半径 30 → SwiftUI radius 15）。
     static let shadowOpacity: Double = 0.45
     static let shadowRadius: CGFloat = 15
     static let shadowYOffset: CGFloat = 10
-    /// 第 1／2 句：气泡与下方循环手势示意的间距（④）。
-    static let gestureHintSpacing: CGFloat = 24
-    /// 第 1／2 句单元（气泡 + 示意）的底缘距主图显示帧竖直中心：中央指示容器半高 + 16 的避让
-    /// （④，避让值沿用旧教程 `S2TutorialHintAnchor.indicatorClearance`；画布第 2 句也放在指示之上）。
+    /// 第 1／2 句的循环手势示意（不再与气泡绑成一个单元）：底缘距主图显示帧竖直中心 = 中央指示容器半高 + 16
+    /// 的避让（④，避让值沿用旧教程 `S2TutorialHintAnchor.indicatorClearance`）。
     static let indicatorClearance: CGFloat = 16
     static let centeredUnitBottomInset: CGFloat =
         S2CenterIndicatorView.containerHeight / 2 + indicatorClearance
+    /// 手势示意（R2 画布 `hint_gesture()`）：手 28 pt 在 Ø56 圆里（底暖白 0.18）、圆外 8 pt 光晕（暖白 0.08）、
+    /// 箭头 28 pt、竖向间距 6；循环位移 40、周期 0.9 s（沿旧教程示意的节奏，④）；光晕画成圆外一圈环（CSS 外阴影不落在圆内）。
+    static let gestureCircleSide: CGFloat = 56
+    static let gestureCircleFillOpacity: Double = 0.18
+    static let gestureHaloWidth: CGFloat = 8
+    static let gestureHaloOpacity: Double = 0.08
+    static let gestureHandPointSize: CGFloat = 28
+    static let gestureArrowPointSize: CGFloat = 28
+    static let gestureSpacing: CGFloat = 6
+    static let gestureTravel: CGFloat = 40
+    static let gestureCycleSeconds: TimeInterval = 0.9
+    /// 手势示意的对比阴影（沿 IC-113 C：白填充在白照片上不可辨，整个单元加黑影 0.35／半径 3）。
+    static let gestureShadowOpacity: Double = 0.35
+    static let gestureShadowRadius: CGFloat = 3
     /// 第 3 句：小三角 14 pt 方块转 45°、圆角 3，压进气泡 8 pt（`margin-bottom: -8`）；④ 右缩进取 19
     /// （画布 18）：三角中心距气泡右缘 = 19 + 7 = 26，加气泡右边距 12 = 38 = 顶排右上圆钮中心距
     /// 视口右缘（`chromeHorizontalMargin` 16 + 圆钮半径 22）。
@@ -295,7 +321,7 @@ enum S2InlineHintMetrics {
     static let pointerOverlap: CGFloat = 8
     static let pointerTrailingInset: CGFloat = 19
     static let trailingMargin: CGFloat = 12
-    /// 第 3 句：三角上缘距顶排下缘（④）。
+    /// 气泡上缘（第 3 句为三角上缘）距顶排下缘（④）。
     static let topBarGap: CGFloat = 4
     /// 出现／消失的淡入淡出时长（④）。
     static let transitionSeconds: TimeInterval = 0.2
@@ -402,10 +428,10 @@ struct S2InlineHintBubble: View {
     }
 }
 
-/// 一句提示在视口里的落位。第 1／2 句：气泡 + 循环手势示意作为一个单元，横向居中、**底缘**锚在
-/// 主图显示帧竖直中心（`oneXDisplayCenterY`）之上 `centeredUnitBottomInset`——避开同一锚点上的
-/// 中央状态指示（「已标记 · 撤销」胶囊）；第 3 句：右上、顶排之下、带小三角指向垃圾桶圆钮。
-/// 整层不设命中形状——除 × 钮外都穿透。
+/// 一句提示在视口里的落位（IC-182，④ 第 211 条：三句统一右上）。气泡一律右上、顶排之下、框内右对齐；
+/// 第 3 句带小三角指向垃圾桶圆钮，第 1／2 句不带。第 1／2 句另有循环手势示意压在主图上：横向居中、
+/// **底缘**锚在主图显示帧竖直中心（`oneXDisplayCenterY`）之上 `centeredUnitBottomInset`——避开同一锚点上的
+/// 中央状态指示（「已标记 · 撤销」胶囊）。整层不设命中形状——除 × 钮外都穿透。
 struct S2InlineHintLayer: View {
     let hint: S2InlineHint
     let mergedCount: Int
@@ -416,41 +442,39 @@ struct S2InlineHintLayer: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        if let direction = hint.gestureDirection {
-            VStack(spacing: S2InlineHintMetrics.gestureHintSpacing) {
-                S2InlineHintBubble(
-                    hint: hint,
-                    mergedCount: mergedCount,
-                    onDismiss: onDismiss
-                )
-                .frame(maxWidth: S2InlineHintMetrics.centeredMaxWidth)
-                S2TutorialGestureHint(direction: direction)
+        ZStack(alignment: .top) {
+            if let direction = hint.gestureDirection {
+                S2InlineHintGestureView(direction: direction)
+                    // 按方向重建整个示意（连同它的 `@State`）：第 1 → 2 句是同步换句，示意的位置与身份都不变，
+                    // 只有在调用点换身份才能让循环动画从头以新方向跑（IC-114 B2 教训）。
+                    .id(direction)
+                    .frame(
+                        width: viewportSize.width,
+                        // 下滑示意循环向下位移 `gestureTravel`，避让量再加上它，示意的下半程也不扫进胶囊。
+                        height: max(
+                            0,
+                            photoCenterY - S2InlineHintMetrics.centeredUnitBottomInset -
+                                (direction == .down ? S2InlineHintMetrics.gestureTravel : 0)
+                        ),
+                        alignment: .bottom
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .frame(
-                width: viewportSize.width,
-                // 下滑示意循环向下位移 `travel`，避让量再加上它，示意的下半程也不扫进胶囊。
-                height: max(
-                    0,
-                    photoCenterY - S2InlineHintMetrics.centeredUnitBottomInset -
-                        (direction == .down ? S2TutorialGestureHint.travel : 0)
-                ),
-                alignment: .bottom
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        } else {
             VStack(alignment: .trailing, spacing: -S2InlineHintMetrics.pointerOverlap) {
-                RoundedRectangle(
-                    cornerRadius: S2InlineHintMetrics.pointerCornerRadius,
-                    style: .continuous
-                )
-                .fill(S0DeckMetrics.text)
-                .frame(
-                    width: S2InlineHintMetrics.pointerSide,
-                    height: S2InlineHintMetrics.pointerSide
-                )
-                .rotationEffect(.degrees(45))
-                .padding(.trailing, S2InlineHintMetrics.pointerTrailingInset)
-                .allowsHitTesting(false)
+                if hint.pointsAtConfirmEntry {
+                    RoundedRectangle(
+                        cornerRadius: S2InlineHintMetrics.pointerCornerRadius,
+                        style: .continuous
+                    )
+                    .fill(S0DeckMetrics.text)
+                    .frame(
+                        width: S2InlineHintMetrics.pointerSide,
+                        height: S2InlineHintMetrics.pointerSide
+                    )
+                    .rotationEffect(.degrees(45))
+                    .padding(.trailing, S2InlineHintMetrics.pointerTrailingInset)
+                    .allowsHitTesting(false)
+                }
                 S2InlineHintBubble(
                     hint: hint,
                     mergedCount: mergedCount,
@@ -469,5 +493,100 @@ struct S2InlineHintLayer: View {
             .padding(.top, topInset + S2InlineHintMetrics.topBarGap)
             .padding(.trailing, S2InlineHintMetrics.trailingMargin)
         }
+    }
+}
+
+/// IC-182：第 1／2 句的循环手势示意（R2 画布 `hint_gesture()`）——上滑：箭头在手之上；下滑：箭头在手之下；
+/// 手在暖白半透明圆里、圆外一圈光晕环；整体沿方向循环平移 `gestureTravel` 并淡出；调用点按方向 `.id`
+/// 重建（IC-114 B2 教训：跨方向复用实例会带着安装时的动画跑）。白照片上靠一层黑影可辨（IC-113 C）。
+/// 不吃点击、不进读屏。旧教程的 `S2TutorialGestureHint` 原样保留（六步教程停用不删）。
+struct S2InlineHintGestureView: View {
+    let direction: S2TutorialGestureDirection
+
+    @State private var looping = false
+
+    var body: some View {
+        VStack(spacing: S2InlineHintMetrics.gestureSpacing) {
+            if direction == .up {
+                arrow
+            }
+            hand
+            if direction != .up {
+                arrow
+            }
+        }
+        .foregroundStyle(S0DeckMetrics.text)
+        .shadow(
+            color: Color.black.opacity(S2InlineHintMetrics.gestureShadowOpacity),
+            radius: S2InlineHintMetrics.gestureShadowRadius,
+            x: 0,
+            y: 1
+        )
+        .offset(x: looping ? travelOffset.width : 0, y: looping ? travelOffset.height : 0)
+        .opacity(looping ? 0 : 1)
+        .onAppear {
+            withAnimation(
+                .linear(duration: S2InlineHintMetrics.gestureCycleSeconds)
+                    .repeatForever(autoreverses: false)
+            ) {
+                looping = true
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var travelOffset: CGSize {
+        switch direction {
+        case .up:
+            return CGSize(width: 0, height: -S2InlineHintMetrics.gestureTravel)
+        case .down:
+            return CGSize(width: 0, height: S2InlineHintMetrics.gestureTravel)
+        case .right:
+            return CGSize(width: S2InlineHintMetrics.gestureTravel, height: 0)
+        }
+    }
+
+    private var arrowSymbolName: String {
+        switch direction {
+        case .up:
+            return S2InlineHintSymbol.swipeUp
+        case .down:
+            return S2InlineHintSymbol.gestureArrowDown
+        case .right:
+            return S2InlineHintSymbol.gestureArrowRight
+        }
+    }
+
+    private var arrow: some View {
+        Image(systemName: arrowSymbolName)
+            .font(.system(
+                size: S2InlineHintMetrics.gestureArrowPointSize,
+                weight: .bold
+            ))
+    }
+
+    private var hand: some View {
+        Image(systemName: S2InlineHintSymbol.gestureHand)
+            .font(.system(
+                size: S2InlineHintMetrics.gestureHandPointSize,
+                weight: .medium
+            ))
+            .frame(
+                width: S2InlineHintMetrics.gestureCircleSide,
+                height: S2InlineHintMetrics.gestureCircleSide
+            )
+            .background {
+                Circle()
+                    .strokeBorder(
+                        S0DeckMetrics.text.opacity(S2InlineHintMetrics.gestureHaloOpacity),
+                        lineWidth: S2InlineHintMetrics.gestureHaloWidth
+                    )
+                    .padding(-S2InlineHintMetrics.gestureHaloWidth)
+            }
+            .background(
+                S0DeckMetrics.text.opacity(S2InlineHintMetrics.gestureCircleFillOpacity),
+                in: Circle()
+            )
     }
 }

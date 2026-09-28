@@ -44,11 +44,6 @@ enum S5GuideStep: Int, CaseIterable, Equatable {
             return S5GuideSymbol.tapMoreDeleteAll
         }
     }
-
-    /// 第 1 步编号圆实心，其余描边（R2 画布 `steps_list("num")`）。
-    var isLeadStep: Bool {
-        self == .openPhotos
-    }
 }
 
 /// SF Symbol 名登记（规格与画布都未给名，决策会话卡内取定、S5 v7 回填；存在性由 CI 断言 `UIImage(systemName:)` 非空核）。
@@ -70,7 +65,7 @@ enum S5GuideMetrics {
     static let rowSpacing: CGFloat = 6
     static let rowMinHeight: CGFloat = 44
     static let leadSpacing: CGFloat = 14
-    /// 编号圆 28、字 14/800；第 1 步实心（暖白底深字），其余 1.5 描边 40%、字 80%。
+    /// 编号圆 28、字 14/800；五步统一 1.5 描边 40%、字 80%（IC-182，④ 第 210／211 条：第 1 步实心退役）。
     static let numberCircleSide: CGFloat = 28
     static let numberFontSize: CGFloat = 14
     static let numberRingWidth: CGFloat = 1.5
@@ -81,6 +76,8 @@ enum S5GuideMetrics {
     static let textLineSpacing: CGFloat = 21
     /// 行尾符号 18，色取三级前景（`.dim2` 0.45）。
     static let symbolPointSize: CGFloat = 18
+    /// IC-182（④ 第 211 条「五步不分行」）：正文单行，放不下时按需缩到最小 0.8 倍（375 宽下第 2 步 18 字需 ≤ 0.87）。
+    static let textMinimumScaleFactor: CGFloat = 0.8
 }
 
 /// 五步竖排：编号圆 + 一句 + 行尾符号。不吃点击、无按钮；恒深色（色全部来自前景表）。
@@ -106,6 +103,9 @@ struct S5GuideStepsView: View {
                     S5GuideMetrics.textLineSpacing - S5GuideMetrics.textFontSize
                 )
                 .foregroundStyle(S1ChromeForeground.primary)
+                // IC-182：不分行，长句按需缩字（只缩放不下的那一行）。
+                .lineLimit(1)
+                .minimumScaleFactor(S5GuideMetrics.textMinimumScaleFactor)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: step.symbolName)
                 .font(.system(size: S5GuideMetrics.symbolPointSize))
@@ -117,39 +117,28 @@ struct S5GuideStepsView: View {
         .accessibilityElement(children: .combine)
     }
 
-    @ViewBuilder
+    /// 五步统一描边（IC-182；第 209 条裁定 三的「第 1 步实心」退役）。
     private func numberCircle(_ step: S5GuideStep) -> some View {
-        let number = Text(String(step.rawValue))
+        Text(String(step.rawValue))
             .font(.system(
                 size: S5GuideMetrics.numberFontSize,
                 weight: .heavy
             ))
             .monospacedDigit()
-        if step.isLeadStep {
-            number
-                .foregroundStyle(S1ChromeForeground.pageBackground)
-                .frame(
-                    width: S5GuideMetrics.numberCircleSide,
-                    height: S5GuideMetrics.numberCircleSide
-                )
-                .background(S1ChromeForeground.primary, in: Circle())
-        } else {
-            number
-                .foregroundStyle(
+            .foregroundStyle(
+                S1ChromeForeground.primary
+                    .opacity(S5GuideMetrics.numberTextOpacity)
+            )
+            .frame(
+                width: S5GuideMetrics.numberCircleSide,
+                height: S5GuideMetrics.numberCircleSide
+            )
+            .overlay {
+                Circle().strokeBorder(
                     S1ChromeForeground.primary
-                        .opacity(S5GuideMetrics.numberTextOpacity)
+                        .opacity(S5GuideMetrics.numberRingOpacity),
+                    lineWidth: S5GuideMetrics.numberRingWidth
                 )
-                .frame(
-                    width: S5GuideMetrics.numberCircleSide,
-                    height: S5GuideMetrics.numberCircleSide
-                )
-                .overlay {
-                    Circle().strokeBorder(
-                        S1ChromeForeground.primary
-                            .opacity(S5GuideMetrics.numberRingOpacity),
-                        lineWidth: S5GuideMetrics.numberRingWidth
-                    )
-                }
-        }
+            }
     }
 }
