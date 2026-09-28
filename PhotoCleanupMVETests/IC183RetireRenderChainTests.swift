@@ -3,7 +3,7 @@ import XCTest
 @testable import PhotoCleanupMVE
 
 /// IC-183：纯重构退役卡（Decision_log 第 214 条第三节）——IC-178 旧列表层的渲染链退役、过时注释订正、测试卫生。
-/// 零产品行为改动；本文件只钉源码落位：1 渲染链已从 `S1View` 与整个产品源码退役、`S1RangeCardMetrics` 只剩三值、
+/// 零产品行为改动；本文件只钉源码落位：1 渲染链已从 `S1View` 与整个产品源码退役（`S1RangeCardMetrics` 余三值已随 IC-184 整族退役）、
 /// 页头／四态／菜单／玻璃 helper 不动；2 六处过时注释已改写（D 四处 + A8 + E3）；3 测试卫生（无调用者 helper 删除、名单加文件、
 /// needle 改扫函数名本体、四个过时函数名改名、App 逐参换行）。
 final class IC183RetireRenderChainTests: XCTestCase {
@@ -28,17 +28,10 @@ final class IC183RetireRenderChainTests: XCTestCase {
         ] {
             XCTAssertEqual(occurrences(of: retired, in: s1), 0, retired)
         }
-        // 只剩两处口径枚举引用它：`targetPixelSize` 一处、`leadingInset` 两处。
-        XCTAssertEqual(occurrences(of: "S1RangeCardMetrics.", in: s1), 3)
-        let metrics = try XCTUnwrap(
-            slice(s1, from: "enum S1RangeCardMetrics {", to: Self.newline + "}" + Self.newline)
-        )
-        XCTAssertEqual(occurrences(of: "static let ", in: metrics), 3)
-        for kept in ["thumbnailSide", "monthLeadingInset", "contentSpacing"] {
-            XCTAssertEqual(occurrences(of: "static let " + kept + ":", in: metrics), 1, kept)
-        }
-        // 页头、四态、菜单、玻璃 helper 一字不动（IC177／IC178／IC172 的钉子只有列表层那两处消失）。
-        XCTAssertEqual(occurrences(of: "S1ChromeForeground.", in: s1), 29)
+        // IC-184：`S1RangeCardMetrics` 整族退役（余三值的两个读者 `targetPixelSize`／`leadingInset` 同批退役）。
+        XCTAssertEqual(occurrences(of: "S1RangeCardMetrics", in: s1), 0)
+        // 页头、四态、菜单、玻璃 helper 一字不动（IC-184 起 `cardRing` 退役，前景表引用 29 → 28）。
+        XCTAssertEqual(occurrences(of: "S1ChromeForeground.", in: s1), 28)
         XCTAssertEqual(occurrences(of: "s1ChromeGlassBackground(", in: s1), 4)
         XCTAssertEqual(occurrences(of: "S1RangeCoverPolicy.coverAssetID(", in: s1), 1)
         XCTAssertEqual(occurrences(of: "S1DeckListView(", in: s1), 1)

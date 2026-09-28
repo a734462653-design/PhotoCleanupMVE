@@ -101,12 +101,8 @@ final class IC178DeckListTests: XCTestCase {
         XCTAssertNil(machine.presentedYearRangeID, "重复返回无副作用")
         XCTAssertEqual(writes, 0)
 
-        // 展开／收起 API 仍在（IC-127 A 的测试仍引用），与年页身份互不相干。
+        // 回到年页（同页展开／收起 API 已随 IC-184 退役）。
         XCTAssertTrue(machine.presentYearPage("y2026"))
-        XCTAssertTrue(machine.toggleYearExpansion("y2026"))
-        XCTAssertEqual(machine.presentedYearRangeID, "y2026")
-        XCTAssertTrue(machine.toggleYearExpansion("y2026"))
-        XCTAssertEqual(machine.rangeRows, rowsBefore)
 
         // S2 遮挡期间保留（进 S2 再回来仍在年页）；遮挡中不能切年页、不能返回到别处。
         machine.presentObscuration()
@@ -213,7 +209,7 @@ final class IC178DeckListTests: XCTestCase {
         let s1 = try XCTUnwrap(strippedSource(Self.s1ViewPath))
         let s1Raw = try XCTUnwrap(sourceText(Self.s1ViewPath))
         for (needle, expected) in [
-            ("S1ChromeForeground.", 29),
+            ("S1ChromeForeground.", 28),
             ("S0DeckMetrics.", 7),
             ("ProgressView()", 1),
             ("ProgressView().tint(S1ChromeForeground.secondary)", 1),

@@ -205,7 +205,7 @@ struct S1ToS2Handoff {
 }
 
 /// 范围列表项投影。IC-127 A：加入树形信息——`parentRangeID`（月节点指向年节点）、
-/// `childCount`（年节点下月节点数）、`isExpanded`（年节点展开态；非年节点恒 false）。
+/// `childCount`（年节点下月节点数）；`isExpanded` 随同页展开／收起退役（IC-178 改年页，IC-184 删）。
 struct S1RangeRow: Identifiable, Equatable, Sendable {
     let id: String
     let displayName: String
@@ -214,11 +214,10 @@ struct S1RangeRow: Identifiable, Equatable, Sendable {
     let processedAssetCount: Int
     let parentRangeID: String?
     let childCount: Int
-    let isExpanded: Bool
 }
 
 /// IC-127 B（未定项 11）：S1 会话跨启动持久化的值快照。`M`／`K`／`F`／`T`／`O` 与
-/// `sessionID` 一并入档；展开／收起状态是会话内视图态，不入档。
+/// `sessionID` 一并入档；年页身份是会话内视图态、不入档（IC-178；同页展开／收起随 IC-184 退役）。
 ///
 /// IC-132 A：范围显示名一并入档。`makeS3Submission()` 要求 `M` 中每个已标记范围
 /// 都有已知名字（第七节第 3 部分「每个分组必须提供组名」），而名字表原先只由本次
@@ -288,9 +287,7 @@ final class S1StateMachine: ObservableObject {
     @Published private(set) var sessionStore: SessionStore {
         didSet { publishSnapshotIfChanged() }
     }
-    /// IC-127 A：收起的年节点集合（会话内视图态，不入档）。默认全部展开。
-    @Published private(set) var collapsedYearRangeIDs: Set<String> = []
-    /// IC-178 B：年页身份（会话内视图态，不入档、不发快照；与 `collapsedYearRangeIDs` 同层）。非 nil 即年页在前。
+    /// IC-178 B：年页身份（会话内视图态，不入档、不发快照）。非 nil 即年页在前。
     /// 放在状态机而不是视图：进 S2 时 tab 容器整棵重建，视图 `@State` 活不过一次往返（IC-157 同一教训）；
     /// 状态机跨路由保留，回来时 `S1View` 的 `NavigationStack` 直接推出年页。S2 遮挡期间不清。
     @Published private(set) var presentedYearRangeID: String?
@@ -397,31 +394,7 @@ final class S1StateMachine: ObservableObject {
         ranges.filter { $0.parentRangeID == rangeID }
     }
 
-    func isYearExpanded(_ rangeID: String) -> Bool {
-        !collapsedYearRangeIDs.contains(rangeID)
-    }
-
-    /// IC-127 A：展开／收起与「进入年范围」是两个可区分的目标——本方法只改月节点
-    /// 行是否显示，不改 `T`、`R(T)`、`M`、`K`，不触发读取，不形成交接。
-    @discardableResult
-    func toggleYearExpansion(_ rangeID: String) -> Bool {
-        guard !isObscured,
-              groupingDimension == .date,
-              state == .ready,
-              let range = ranges.first(where: { $0.id == rangeID }),
-              range.parentRangeID == nil,
-              !childRanges(of: rangeID).isEmpty else {
-            return false
-        }
-        if collapsedYearRangeIDs.contains(rangeID) {
-            collapsedYearRangeIDs.remove(rangeID)
-        } else {
-            collapsedYearRangeIDs.insert(rangeID)
-        }
-        return true
-    }
-
-    /// IC-178 B：进年页。守卫与 `toggleYearExpansion` 同一组——未遮挡、`T == .date`、就绪、是有子节点的
+    /// IC-178 B：进年页。守卫——未遮挡、`T == .date`、就绪、是有子节点的
     /// 一级节点；不改 `T`、`R(T)`、`M`、`K`，不触发读取，不形成交接，不写快照。
     @discardableResult
     func presentYearPage(_ rangeID: String) -> Bool {
@@ -454,8 +427,8 @@ final class S1StateMachine: ObservableObject {
         }
     }
 
-    /// 范围列表的可见顺序。`T=date`：年节点按 `O` 排列，每个年节点后跟其月节点
-    /// （同样按 `O`），收起的年节点不列出月节点；其余维度沿用读取方顺序。
+    /// 范围列表的可见顺序。`T=date`：年节点按 `O` 排列，每个年节点后跟其全部月节点
+    /// （同样按 `O`；同页收起随 IC-184 退役）；其余维度沿用读取方顺序。
     var visibleRanges: [S1Range] {
         guard groupingDimension == .date else {
             return ranges
@@ -466,9 +439,6 @@ final class S1StateMachine: ObservableObject {
         var visible: [S1Range] = []
         for year in orderedYears {
             visible.append(year)
-            guard isYearExpanded(year.id) else {
-                continue
-            }
             let months = childRanges(of: year.id)
             visible.append(
                 contentsOf: sortOrder == .oldestFirst
@@ -494,8 +464,7 @@ final class S1StateMachine: ObservableObject {
                     .count,
                 processedAssetCount: processedAssetIDs(for: range.id).count,
                 parentRangeID: range.parentRangeID,
-                childCount: childCount,
-                isExpanded: childCount > 0 && isYearExpanded(range.id)
+                childCount: childCount
             )
         }
     }
@@ -591,8 +560,6 @@ final class S1StateMachine: ObservableObject {
             mergedRangeNames[range.id] = range.displayName
         }
         knownRangeNamesByID = mergedRangeNames
-        let validRangeIDs = Set(newRanges.map(\.id))
-        collapsedYearRangeIDs = collapsedYearRangeIDs.intersection(validRangeIDs)
         self.isLimitedAuthorization = isLimitedAuthorization
         if countsAsReconciliation {
             reconciliationCount += 1

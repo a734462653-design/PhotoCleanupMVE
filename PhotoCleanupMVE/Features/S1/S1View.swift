@@ -78,7 +78,7 @@ enum S1ChromeTypography {
 }
 
 /// 通知徽标样式（v18 §11.2 badge*，与 S2 确认入口徽标同族）。垃圾桶徽标描边取
-/// 页面底色（v18 回写决策 43；IC-177 起为恒定色）；范围卡待删红点描边取卡片底色（④卡）。
+/// 页面底色（v18 回写决策 43；IC-177 起为恒定色）；范围卡待删红点描边 `cardRing` 随旧列表层退役（IC-184）。
 enum S1NotificationBadgeStyle {
     static let fontSize: CGFloat = 12
     static let minDiameter: CGFloat = 18
@@ -88,9 +88,6 @@ enum S1NotificationBadgeStyle {
     static let digitColor = Color.white
     static var chromeRing: Color {
         S1ChromeForeground.pageBackground
-    }
-    static var cardRing: Color {
-        S1ChromeForeground.cardBackground
     }
 }
 
@@ -149,22 +146,10 @@ enum S1ActiveMenu: Equatable {
     }
 }
 
-// MARK: - IC-128 B：范围卡常量与展示口径
+// MARK: - IC-128 B：范围口径（IC-184 起只剩进度线比例与封面取图策略）
 
-/// 范围项卡片几何（④卡；contentSpacing 为 ④取定）。IC-183：旧列表层退役后只保留仍被口径枚举引用的三值
-/// （`thumbnailSide` ← `S1RangeCoverPolicy.targetPixelSize`；`monthLeadingInset`／`contentSpacing` ←
-/// `S1RangeCardPresentation.leadingInset`）；其余十三值随 IC-178 旧列表层一并退役（Decision_log 第 212 条）。
-enum S1RangeCardMetrics {
-    /// 缩略图边长（④卡 56）。
-    static let thumbnailSide: CGFloat = 56
-    /// 月行左内边距（④卡 52）。
-    static let monthLeadingInset: CGFloat = 52
-    /// 顶层行（相册／未分类／年行内容区）左右内边距与元素间距（④取定 12）。
-    static let contentSpacing: CGFloat = 12
-}
-
-/// 进度线口径（测试钉住）：填充比例 = 已处理数 / 该范围总数，钳到 [0, 1]；
-/// 范围未开始（`r.id` 不在 `K` 中）时整条不画。
+/// 进度线口径（测试钉住；卡片叠进度条借用）：填充比例 = 已处理数 / 该范围总数，钳到 [0, 1]。
+/// 旧列表层的显隐口径 `isVisible` 随之退役（IC-184）。
 enum S1ProgressLinePresentation {
     static func fillFraction(processed: Int, total: Int) -> Double {
         guard total > 0 else {
@@ -172,48 +157,6 @@ enum S1ProgressLinePresentation {
         }
         return min(1, max(0, Double(processed) / Double(total)))
     }
-
-    static func isVisible(hasContinuation: Bool) -> Bool {
-        hasContinuation
-    }
-}
-
-/// 待删红点口径（测试钉住）：零待删不画。
-enum S1PendingBadgePresentation {
-    static func text(count: Int) -> String? {
-        count > 0 ? String(count) : nil
-    }
-}
-
-/// 范围卡结构口径（测试钉住）：展开区仅年节点（有子节点的行）持有；
-/// 展开区与「进入年范围」是两个可区分的点击目标（规格第六节硬要求）。
-enum S1RangeCardPresentation {
-    static func hasExpandZone(childCount: Int) -> Bool {
-        childCount > 0
-    }
-
-    static func leadingInset(isChildRow: Bool) -> CGFloat {
-        isChildRow
-            ? S1RangeCardMetrics.monthLeadingInset
-            : S1RangeCardMetrics.contentSpacing
-    }
-}
-
-/// 年节点缩略图垫卡（④卡：层一 top 5 / left 8 / 56×46；层二 top 2 / left 4 /
-/// 56×50；圆角 10。top/left 解释为相对主图原点向右下的 x/y 位移——层高小于主图，
-/// 唯有横向位移能露出层叠边，报告登记该解释）。
-enum S1YearStackStyle {
-    static let cornerRadius: CGFloat = 10
-    static let layerOneSize = CGSize(width: 56, height: 46)
-    static let layerOneOffset = CGSize(width: 8, height: 5)
-    static let layerTwoSize = CGSize(width: 56, height: 50)
-    static let layerTwoOffset = CGSize(width: 4, height: 2)
-
-    /// IC-177：恒定 #3A3A3C（原深色侧；浅色侧 #D8D8DE 随全屏恒深退役，SPEC-S1 v10 `:704-705` 归 v11 回填）。
-    static let layerOneColor = Color(.sRGB, red: 0x3A / 255.0, green: 0x3A / 255.0, blue: 0x3C / 255.0, opacity: 1)
-
-    /// IC-177：恒定 #2F2F31（原深色侧；浅色侧 #CACAD1 退役）。
-    static let layerTwoColor = Color(.sRGB, red: 0x2F / 255.0, green: 0x2F / 255.0, blue: 0x31 / 255.0, opacity: 1)
 }
 
 /// IC-128 B：范围封面取图策略（Decision_log 第 140 条挂给本卡的定案）。
@@ -243,38 +186,6 @@ enum S1RangeCoverPolicy {
             in: ranges,
             sortOrder: sortOrder
         )
-    }
-
-    /// 请求口径：目标尺寸按 56pt × 屏幕 scale（2× 取 112px、3× 取 168px）。
-    static func targetPixelSize(displayScale: CGFloat) -> CGSize {
-        let side = S1RangeCardMetrics.thumbnailSide * displayScale
-        return CGSize(width: side, height: side)
-    }
-}
-
-/// IC-128 B：封面呈现相位与「只升不降」替换规则（S2 决策 28、v16 回写决策 36
-/// 同族口径）：降质图先上、最终图原位替换；已到最终图后不被降质图覆盖；
-/// 取不到图（nil）只在尚无图可展示时落中性占位，不回退已有图。
-enum S1CoverImagePhase: Equatable {
-    case loading
-    case placeholder
-    case degraded
-    case final
-
-    static func shouldReplace(
-        current: S1CoverImagePhase,
-        incomingIsDegraded: Bool,
-        incomingIsNil: Bool
-    ) -> Bool {
-        if incomingIsNil {
-            return current == .loading
-        }
-        switch current {
-        case .loading, .placeholder, .degraded:
-            return true
-        case .final:
-            return !incomingIsDegraded
-        }
     }
 }
 
@@ -1447,7 +1358,7 @@ struct S1View: View {
     // MARK: - IC-178 C：年卡叠 → 年页（Decision_log 第 205 条第二节第 1 条；两级树的展开区退役）
 
     /// 一级范围一叠卡：`T=按日期` 是年卡，其余维度是相册／未分类卡（月卡样式）。有子节点的卡进年页，
-    /// 其余直接进 S2；月卡数据从 `rangeRows` 里按 `parentRangeID` 过滤，模型不改（展开集合恒空、全部月都在）。
+    /// 其余直接进 S2；月卡数据从 `rangeRows` 里按 `parentRangeID` 过滤（同页展开／收起随 IC-184 退役，全部月都在）。
     private var rangeList: some View {
         S1DeckListView(
             rows: machine.rangeRows.filter { $0.parentRangeID == nil },

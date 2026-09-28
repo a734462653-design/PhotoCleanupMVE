@@ -28,16 +28,13 @@ final class IC177UnifiedBackgroundTests: XCTestCase {
         XCTAssertEqual(S1ChromeForeground.secondaryOpacity, 0.62, accuracy: 0.000_001)
         XCTAssertEqual(S1ChromeForeground.tertiaryOpacity, 0.45, accuracy: 0.000_001)
         XCTAssertEqual(S1ChromeForeground.separatorOpacity, 0.14, accuracy: 0.000_001)
-        // 徽标描边随之恒定：垃圾桶徽标取页面底色，范围卡红点取卡底。
+        // 徽标描边随之恒定：垃圾桶徽标取页面底色（范围卡红点描边 `cardRing` 随 IC-184 退役）。
         assertFixed(S1NotificationBadgeStyle.chromeRing, red: 11, green: 15, blue: 13, alpha: 1)
-        assertFixed(S1NotificationBadgeStyle.cardRing, red: 22, green: 27, blue: 24, alpha: 1)
     }
 
-    // MARK: - 断言 2：年卡垫层、S5 hero 与 S2 幕底都是定值
+    // MARK: - 断言 2：S5 hero 与 S2 幕底都是定值（年卡垫层 `S1YearStackStyle` 随 IC-184 退役）
 
-    func testIC177B_YearStackHeroPaletteAndAmbientBaseAreFixed() {
-        assertFixed(S1YearStackStyle.layerOneColor, red: 58, green: 58, blue: 60, alpha: 1)
-        assertFixed(S1YearStackStyle.layerTwoColor, red: 47, green: 47, blue: 49, alpha: 1)
+    func testIC177B_HeroPaletteAndAmbientBaseAreFixed() {
         assertFixed(S5HeroPalette.success, red: 111, green: 214, blue: 190, alpha: 1)
         assertFixed(S5HeroPalette.warning, red: 255, green: 159, blue: 10, alpha: 1)
         assertFixed(S5HeroPalette.neutral, red: 255, green: 251, blue: 245, alpha: 0.45)
@@ -57,7 +54,7 @@ final class IC177UnifiedBackgroundTests: XCTestCase {
             "userInterfaceStyle", "dynamicColor("
         ]
         let expectations: [(String, Int, Int, Int)] = [
-            (Self.s1Path, 29, 7, 1),
+            (Self.s1Path, 28, 7, 1),
             (Self.s3Path, 18, 0, 2),
             (Self.s4Path, 7, 0, 2),
             (Self.s5Path, 19, 1, 1)

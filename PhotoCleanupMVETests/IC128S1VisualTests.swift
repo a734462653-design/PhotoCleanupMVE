@@ -205,75 +205,8 @@ final class IC128S1VisualTests: XCTestCase {
         )
     }
 
-    // 请求口径：目标尺寸按 56pt × 屏幕 scale。
-    func testIC128B_CoverTargetPixelSizeFollowsDisplayScale() {
-        XCTAssertEqual(
-            S1RangeCoverPolicy.targetPixelSize(displayScale: 2),
-            CGSize(width: 112, height: 112)
-        )
-        XCTAssertEqual(
-            S1RangeCoverPolicy.targetPixelSize(displayScale: 3),
-            CGSize(width: 168, height: 168)
-        )
-    }
-
-    // 只升不降：降质 → 最终允许替换；最终不被降质覆盖；nil 只在尚无图时落占位。
-    func testIC128B_CoverReplacementNeverDowngrades() {
-        XCTAssertTrue(
-            S1CoverImagePhase.shouldReplace(
-                current: .loading,
-                incomingIsDegraded: true,
-                incomingIsNil: false
-            )
-        )
-        XCTAssertTrue(
-            S1CoverImagePhase.shouldReplace(
-                current: .degraded,
-                incomingIsDegraded: false,
-                incomingIsNil: false
-            )
-        )
-        XCTAssertFalse(
-            S1CoverImagePhase.shouldReplace(
-                current: .final,
-                incomingIsDegraded: true,
-                incomingIsNil: false
-            )
-        )
-        XCTAssertTrue(
-            S1CoverImagePhase.shouldReplace(
-                current: .final,
-                incomingIsDegraded: false,
-                incomingIsNil: false
-            )
-        )
-        // 取不到图（nil）：无图可展示时落占位；已有图（含降质）不回退。
-        XCTAssertTrue(
-            S1CoverImagePhase.shouldReplace(
-                current: .loading,
-                incomingIsDegraded: false,
-                incomingIsNil: true
-            )
-        )
-        XCTAssertFalse(
-            S1CoverImagePhase.shouldReplace(
-                current: .degraded,
-                incomingIsDegraded: false,
-                incomingIsNil: true
-            )
-        )
-        XCTAssertFalse(
-            S1CoverImagePhase.shouldReplace(
-                current: .final,
-                incomingIsDegraded: false,
-                incomingIsNil: true
-            )
-        )
-    }
-
-    // 进度线：填充比例 = 已处理 / 总数（钳到 [0,1]）；范围未开始（r.id 不在 K 中）
-    // 整条不画。
-    func testIC128B_ProgressLineFractionAndVisibility() {
+    // 进度线：填充比例 = 已处理 / 总数（钳到 [0,1]）；显隐口径 `isVisible` 随 IC-184 退役，函数随之改名。
+    func testIC128B_ProgressLineFraction() {
         XCTAssertEqual(
             S1ProgressLinePresentation.fillFraction(processed: 0, total: 10),
             0
@@ -294,70 +227,6 @@ final class IC128S1VisualTests: XCTestCase {
             S1ProgressLinePresentation.fillFraction(processed: 3, total: 0),
             0
         )
-        XCTAssertFalse(
-            S1ProgressLinePresentation.isVisible(hasContinuation: false)
-        )
-        XCTAssertTrue(
-            S1ProgressLinePresentation.isVisible(hasContinuation: true)
-        )
-    }
-
-    // 待删红点显隐口径：零待删不画。
-    func testIC128B_PendingBadgeHiddenAtZero() {
-        XCTAssertNil(S1PendingBadgePresentation.text(count: 0))
-        XCTAssertEqual(S1PendingBadgePresentation.text(count: 1), "1")
-        XCTAssertEqual(S1PendingBadgePresentation.text(count: 12), "12")
-    }
-
-    // 展开区与进入区是两个不同目标：展开区仅年节点持有；月行内容左缩进 52；
-    // 展开／收起不产生 S2 交接（机器侧行为复核）。
-    func testIC128B_YearRowHasSeparateExpandAndEnterTargets() {
-        XCTAssertTrue(S1RangeCardPresentation.hasExpandZone(childCount: 2))
-        XCTAssertFalse(S1RangeCardPresentation.hasExpandZone(childCount: 0))
-        XCTAssertEqual(
-            S1RangeCardPresentation.leadingInset(isChildRow: true),
-            52
-        )
-        XCTAssertEqual(
-            S1RangeCardPresentation.leadingInset(isChildRow: false),
-            12
-        )
-
-        let machine = S1StateMachine(
-            sessionStore: SessionStore(sessionID: "会话-128B"),
-            initialGroupingDimension: .date,
-            initialSortOrder: .newestFirst
-        )
-        let request = tryUnwrap(machine.currentReadRequest)
-        XCTAssertTrue(
-            machine.completeRangeRead(
-                .success([
-                    S1Range(
-                        id: "year",
-                        displayName: "2026",
-                        assetIDsNewestFirst: ["a1"]
-                    ),
-                    S1Range(
-                        id: "month",
-                        displayName: "2026-08",
-                        assetIDsNewestFirst: ["a1"],
-                        parentRangeID: "year"
-                    )
-                ]),
-                for: request
-            )
-        )
-        let yearRowBefore = tryUnwrap(
-            machine.rangeRows.first { $0.id == "year" }
-        )
-        XCTAssertTrue(yearRowBefore.isExpanded)
-        XCTAssertTrue(machine.toggleYearExpansion("year"))
-        let yearRowAfter = tryUnwrap(
-            machine.rangeRows.first { $0.id == "year" }
-        )
-        XCTAssertFalse(yearRowAfter.isExpanded)
-        // 展开／收起动作本身不构成进入：交接仍须显式调用且仍可用。
-        XCTAssertNotNil(machine.makeS2Handoff(for: "year"))
     }
 
     // MARK: - C：菜单与受限提示条
