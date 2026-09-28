@@ -727,41 +727,6 @@ final class S1DateTreeTests: XCTestCase {
         XCTAssertEqual(machine.badgeCount, 1)
     }
 
-    // 收起后月节点不出现在可见列表，但范围数据仍在，月范围仍可进入 S2。
-    func testIC127A_CollapsingYearHidesMonthRowsButKeepsRangeData() {
-        let machine = makeTreeMachine()
-        let originalRanges = machine.ranges
-        let originalStore = machine.sessionStore
-
-        XCTAssertTrue(machine.isYearExpanded("y2026"))
-        XCTAssertTrue(machine.toggleYearExpansion("y2026"))
-        XCTAssertFalse(machine.isYearExpanded("y2026"))
-        XCTAssertEqual(
-            machine.visibleRanges.map(\.id),
-            ["y2026", "y2024", "m2024-01"]
-        )
-        XCTAssertEqual(
-            machine.rangeRows.map(\.id),
-            ["y2026", "y2024", "m2024-01"]
-        )
-        XCTAssertEqual(machine.rangeRows.first?.isExpanded, false)
-        XCTAssertEqual(machine.rangeRows.first?.childCount, 2)
-        XCTAssertEqual(machine.ranges, originalRanges)
-        XCTAssertEqual(machine.sessionStore, originalStore)
-        XCTAssertEqual(machine.state, .ready)
-        XCTAssertNotNil(machine.makeS2Handoff(for: "m2026-08"))
-
-        XCTAssertTrue(machine.toggleYearExpansion("y2026"))
-        XCTAssertEqual(
-            machine.visibleRanges.map(\.id),
-            ["y2026", "m2026-08", "m2026-03", "y2024", "m2024-01"]
-        )
-
-        // 月节点、无子节点的范围与非日期维度都不是可展开目标。
-        XCTAssertFalse(machine.toggleYearExpansion("m2026-08"))
-        XCTAssertFalse(machine.toggleYearExpansion("missing"))
-    }
-
     // O 翻转时年序与年内月序同时翻转。
     func testIC127A_SortFlipReversesYearOrderAndMonthOrderTogether() {
         let machine = makeTreeMachine()
@@ -825,28 +790,6 @@ final class S1DateTreeTests: XCTestCase {
         ]
         XCTAssertFalse(retryMachine.completeRangeRead(.success(orphan), for: retryRequest))
         XCTAssertEqual(retryMachine.state, .failed)
-    }
-
-    // 展开／收起与进入年范围是两个可区分的目标：展开不形成交接、不改 T／O／M／K；
-    // 进入不改展开态。
-    func testIC127A_ExpandAndEnterAreDistinctTargets() {
-        let machine = makeTreeMachine()
-        let originalStore = machine.sessionStore
-        let originalGrouping = machine.groupingDimension
-        let originalSort = machine.sortOrder
-        let originalRequest = machine.currentReadRequest
-
-        XCTAssertTrue(machine.toggleYearExpansion("y2024"))
-        XCTAssertEqual(machine.sessionStore, originalStore)
-        XCTAssertEqual(machine.groupingDimension, originalGrouping)
-        XCTAssertEqual(machine.sortOrder, originalSort)
-        XCTAssertEqual(machine.currentReadRequest, originalRequest)
-        XCTAssertEqual(machine.loadingState, .ready)
-
-        let handoff = tryUnwrap(machine.makeS2Handoff(for: "y2024"))
-        XCTAssertEqual(handoff.rangeDisplayInformation.rangeID, "y2024")
-        XCTAssertFalse(machine.isYearExpanded("y2024"))
-        XCTAssertEqual(machine.collapsedYearRangeIDs, ["y2024"])
     }
 
     // MARK: - Fixtures

@@ -1358,7 +1358,7 @@ struct S1View: View {
     // MARK: - IC-178 C：年卡叠 → 年页（Decision_log 第 205 条第二节第 1 条；两级树的展开区退役）
 
     /// 一级范围一叠卡：`T=按日期` 是年卡，其余维度是相册／未分类卡（月卡样式）。有子节点的卡进年页，
-    /// 其余直接进 S2；月卡数据从 `rangeRows` 里按 `parentRangeID` 过滤，模型不改（展开集合恒空、全部月都在）。
+    /// 其余直接进 S2；月卡数据从 `rangeRows` 里按 `parentRangeID` 过滤（同页展开／收起随 IC-184 退役，全部月都在）。
     private var rangeList: some View {
         S1DeckListView(
             rows: machine.rangeRows.filter { $0.parentRangeID == nil },
