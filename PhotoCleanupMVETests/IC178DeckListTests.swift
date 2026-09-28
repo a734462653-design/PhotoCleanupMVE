@@ -213,7 +213,7 @@ final class IC178DeckListTests: XCTestCase {
         let s1 = try XCTUnwrap(strippedSource(Self.s1ViewPath))
         let s1Raw = try XCTUnwrap(sourceText(Self.s1ViewPath))
         for (needle, expected) in [
-            ("S1ChromeForeground.", 31),
+            ("S1ChromeForeground.", 29),
             ("S0DeckMetrics.", 7),
             ("ProgressView()", 1),
             ("ProgressView().tint(S1ChromeForeground.secondary)", 1),

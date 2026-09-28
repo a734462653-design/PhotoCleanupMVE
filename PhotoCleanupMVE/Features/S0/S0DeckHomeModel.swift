@@ -15,7 +15,7 @@ enum S0DeckHomeModel {
         let fraction: Double
         /// `fraction` 的百分数读数（四舍五入）。
         let percent: Int
-        /// 能不能点：与 `S0CategoryRowPresentation.showsDisclosure` 同式
+        /// 能不能点：沿用旧类别行的可点口径（旧类别行呈现类型已随 IC-165 退役）
         /// （第 170 条裁定 1：扫描期 `.counting` 可点、`.awaitingScanCompletion` 不可点）。
         /// 最终进不进类别页仍由 `S0StateMachine.handle(.categoryRowTapped)` 判定。
         let isEnterable: Bool

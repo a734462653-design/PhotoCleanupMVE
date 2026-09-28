@@ -538,7 +538,7 @@ final class IC148S0VisualTests: XCTestCase {
 
     // MARK: - 断言 10：文案门禁
 
-    func testIC148CAssertion10CatalogHasExactlyThirtyTwoS0Keys() throws {
+    func testIC148CAssertion10CatalogS0KeysCountAndCrossReference() throws {
         let catalog = try loadCatalogValues()
         let catalogS0Keys = Set(catalog.keys.filter { $0.hasPrefix("s0.") })
         // IC-156 C：32 → 37；IC-157 B：→ 38；IC-165 C：→ 39；IC-166 B：S0-3 副句一条 → 40。

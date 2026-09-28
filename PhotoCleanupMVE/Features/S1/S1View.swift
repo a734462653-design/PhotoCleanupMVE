@@ -54,7 +54,7 @@ enum S1ChromeForeground {
     static let secondary = S0DeckMetrics.text.opacity(secondaryOpacity)
     /// 占位图标、空态与失败态图标（原 `.tertiaryLabel`）。
     static let tertiary = S0DeckMetrics.text.opacity(tertiaryOpacity)
-    /// 分隔线：年卡展开区右缘、菜单行之间（原 `.separator`）。
+    /// 分隔线：卡片叠外圈描边（`S1DeckCards`）、菜单行之间（原 `.separator`）。
     static let separator = S0DeckMetrics.text.opacity(separatorOpacity)
     /// 选中态、「管理」与重试、S3 提交、S5 失败数与「返回确认页」（原系统 tint 蓝与系统红）。
     static let accent = S0DeckMetrics.accent
@@ -151,48 +151,16 @@ enum S1ActiveMenu: Equatable {
 
 // MARK: - IC-128 B：范围卡常量与展示口径
 
-/// 范围项卡片几何（④卡；contentSpacing 为 ④取定）。
+/// 范围项卡片几何（④卡；contentSpacing 为 ④取定）。IC-183：旧列表层退役后只保留仍被口径枚举引用的三值
+/// （`thumbnailSide` ← `S1RangeCoverPolicy.targetPixelSize`；`monthLeadingInset`／`contentSpacing` ←
+/// `S1RangeCardPresentation.leadingInset`）；其余十三值随 IC-178 旧列表层一并退役（Decision_log 第 212 条）。
 enum S1RangeCardMetrics {
-    /// 列表卡片圆角（④卡 14）。
-    static let cornerRadius: CGFloat = 14
-    /// 列表左右边距（④卡 16）。
-    static let horizontalMargin: CGFloat = 16
-    /// 卡片间距（④卡 16）。
-    static let cardSpacing: CGFloat = 16
     /// 缩略图边长（④卡 56）。
     static let thumbnailSide: CGFloat = 56
-    /// 缩略图圆角（④卡 12）。
-    static let thumbnailCornerRadius: CGFloat = 12
-    /// 月／相册行高；年行取同值为最小行高（④卡 76）。
-    static let rowHeight: CGFloat = 76
-    /// 行上下内边距（④卡 10）。
-    static let verticalPadding: CGFloat = 10
-    /// 显示名字号（④卡 17；年节点 19 半粗）。
-    static let nameFontSize: CGFloat = 17
-    static let yearNameFontSize: CGFloat = 19
-    /// 张数字号（④卡 13，次级色，等宽数字）。
-    static let countFontSize: CGFloat = 13
-    /// 右端进入指示箭头（④卡 13pt 次级）。
-    static let chevronPointSize: CGFloat = 13
-    /// 年行左侧展开／收起区宽与右缘分隔线（④卡 40 / 0.5）。
-    static let expandZoneWidth: CGFloat = 40
-    static let expandDividerWidth: CGFloat = 0.5
     /// 月行左内边距（④卡 52）。
     static let monthLeadingInset: CGFloat = 52
     /// 顶层行（相册／未分类／年行内容区）左右内边距与元素间距（④取定 12）。
     static let contentSpacing: CGFloat = 12
-    /// 待删红点位置：top −5 / right −5（④卡）。
-    static let pendingBadgeOffset: CGFloat = 5
-}
-
-/// 已处理进度线（④卡：左右各内缩 6、距底 6、高 3、圆角 2；底白 34%、填充白 95%）。
-enum S1ProgressLineStyle {
-    static let horizontalInset: CGFloat = 6
-    static let bottomInset: CGFloat = 6
-    static let height: CGFloat = 3
-    static let cornerRadius: CGFloat = 2
-    static let trackOpacity: Double = 0.34
-    static let fillOpacity: Double = 0.95
 }
 
 /// 进度线口径（测试钉住）：填充比例 = 已处理数 / 该范围总数，钳到 [0, 1]；
@@ -306,55 +274,6 @@ enum S1CoverImagePhase: Equatable {
             return true
         case .final:
             return !incomingIsDegraded
-        }
-    }
-}
-
-/// IC-128 B：封面图请求抽象。回调可多次（降质先上、最终图替换），主线程回调；
-/// 测试注入夹具实现，生产走 PhotoKit。
-protocol S1CoverImageLoading {
-    func loadCoverImage(
-        assetID: String,
-        targetSize: CGSize,
-        onImage: @escaping (UIImage?, _ isDegraded: Bool) -> Void
-    )
-}
-
-/// 生产实现：`PHImageManager` 单次 opportunistic 请求——降质图先回、最终图后到；
-/// 无预取、无磁盘缓存、无自建后台队列（卡内明示不做）。
-struct S1PhotoKitCoverImageLoader: S1CoverImageLoading {
-    func loadCoverImage(
-        assetID: String,
-        targetSize: CGSize,
-        onImage: @escaping (UIImage?, Bool) -> Void
-    ) {
-        let fetched = PHAsset.fetchAssets(
-            withLocalIdentifiers: [assetID],
-            options: nil
-        )
-        guard let asset = fetched.firstObject else {
-            onImage(nil, false)
-            return
-        }
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
-        options.isNetworkAccessAllowed = false
-        options.resizeMode = .fast
-        PHImageManager.default().requestImage(
-            for: asset,
-            targetSize: targetSize,
-            contentMode: .aspectFill,
-            options: options
-        ) { image, info in
-            let isDegraded = (info?[PHImageResultIsDegradedKey] as? NSNumber)?
-                .boolValue ?? false
-            if Thread.isMainThread {
-                onImage(image, isDegraded)
-            } else {
-                DispatchQueue.main.async {
-                    onImage(image, isDegraded)
-                }
-            }
         }
     }
 }
@@ -674,93 +593,6 @@ struct S1GlassBadgeLayer<Badge: View>: View {
     }
 }
 
-// MARK: - IC-128 B：封面缩略图
-
-/// 56×56 圆角 12 封面：降质先上、最终图原位替换（只升不降）；取不到图显示
-/// 中性占位（次级色底 + 照片线条图标），不显示破图、不显示错误文案；
-/// 请求异步回调，不阻塞列表渲染。
-private struct S1RangeCoverThumbnail: View {
-    let assetID: String?
-    let loader: any S1CoverImageLoading
-
-    @Environment(\.displayScale) private var displayScale
-    @State private var image: UIImage?
-    @State private var phase: S1CoverImagePhase = .loading
-    @State private var requestedAssetID: String?
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(
-                cornerRadius: S1RangeCardMetrics.thumbnailCornerRadius
-            )
-            .fill(S1ChromeForeground.cardBackground)
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else if phase == .placeholder {
-                Image(systemName: "photo")
-                    .font(.system(size: 20))
-                    .foregroundStyle(S1ChromeForeground.secondary)
-            }
-        }
-        .frame(
-            width: S1RangeCardMetrics.thumbnailSide,
-            height: S1RangeCardMetrics.thumbnailSide
-        )
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: S1RangeCardMetrics.thumbnailCornerRadius
-            )
-        )
-        .onAppear {
-            requestIfNeeded()
-        }
-        .onChange(of: assetID) { _, _ in
-            image = nil
-            phase = .loading
-            requestedAssetID = nil
-            requestIfNeeded()
-        }
-    }
-
-    private func requestIfNeeded() {
-        guard let assetID else {
-            phase = .placeholder
-            return
-        }
-        guard requestedAssetID != assetID else {
-            return
-        }
-        requestedAssetID = assetID
-        let targetSize = S1RangeCoverPolicy.targetPixelSize(
-            displayScale: displayScale
-        )
-        loader.loadCoverImage(
-            assetID: assetID,
-            targetSize: targetSize
-        ) { incoming, isDegraded in
-            guard requestedAssetID == assetID else {
-                return
-            }
-            guard S1CoverImagePhase.shouldReplace(
-                current: phase,
-                incomingIsDegraded: isDegraded,
-                incomingIsNil: incoming == nil
-            ) else {
-                return
-            }
-            if let incoming {
-                image = incoming
-                phase = isDegraded ? .degraded : .final
-            } else {
-                image = nil
-                phase = .placeholder
-            }
-        }
-    }
-}
-
 // MARK: - IC-131 B：写回失败的一次性反馈
 
 /// IC-131 B（v8 回写决策 29）：从 S2 返回时写回校验失败的一次性反馈。
@@ -873,7 +705,6 @@ struct S1View: View {
     private let rangeReader: RangeReader?
     private let onS2Handoff: (S1ToS2Handoff) -> Void
     private let onS3Submission: (SessionStore.S3Submission) -> Void
-    private let coverImageLoader: any S1CoverImageLoading
     /// IC-131 B：协调器里等着的一次性「写回失败」事件。视图出现或事件变化时取走
     /// 并交给呈现器，随后经 `onFeedbackEventConsumed` 把通道清空——失败发生在
     /// S1 尚未挂载的那一刻，事件必须能等到视图出现，不能丢。
@@ -886,7 +717,6 @@ struct S1View: View {
         rangeReader: RangeReader? = nil,
         onS2Handoff: @escaping (S1ToS2Handoff) -> Void = { _ in },
         onS3Submission: @escaping (SessionStore.S3Submission) -> Void = { _ in },
-        coverImageLoader: any S1CoverImageLoading = S1PhotoKitCoverImageLoader(),
         feedbackEvent: S1FeedbackEvent? = nil,
         feedbackToastDurationMilliseconds: Double = 0,
         onFeedbackEventConsumed: @escaping () -> Void = {}
@@ -895,7 +725,6 @@ struct S1View: View {
         self.rangeReader = rangeReader
         self.onS2Handoff = onS2Handoff
         self.onS3Submission = onS3Submission
-        self.coverImageLoader = coverImageLoader
         self.feedbackEvent = feedbackEvent
         self.feedbackToastDurationMilliseconds = feedbackToastDurationMilliseconds
         self.onFeedbackEventConsumed = onFeedbackEventConsumed

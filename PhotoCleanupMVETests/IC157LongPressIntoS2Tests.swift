@@ -210,7 +210,7 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
         let app = try XCTUnwrap(strippedSource("PhotoCleanupMVE/App/PhotoCleanupMVEApp.swift"))
         XCTAssertEqual(occurrences(of: "S0CleanupFlowModel()", in: app), 1)
         XCTAssertEqual(occurrences(of: "flowModel: s0FlowModel", in: app), 1)
-        XCTAssertEqual(occurrences(of: "makeS2Handoff(virtualRangeID:", in: app), 1)
+        XCTAssertEqual(occurrences(of: "makeS2Handoff(", in: app), 1)
         // S1 范围交接一处 + 类别页长按一处。
         XCTAssertEqual(occurrences(of: "enterS2(from:", in: app), 2)
         XCTAssertEqual(occurrences(of: "S0CategoryPageRange.prefix", in: app), 2)

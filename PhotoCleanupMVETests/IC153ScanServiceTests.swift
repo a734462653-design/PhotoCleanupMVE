@@ -190,9 +190,9 @@ final class IC153ScanServiceTests: XCTestCase {
         XCTAssertNil(S0ScanClassifier.primaryCategory(for: [.duplicate, .similar]))
     }
 
-    // MARK: - 断言 2：hero 去重、类别按归属（子项 A；IC-166 起类别也按归属去重，函数名沿用）
+    // MARK: - 断言 2：hero 去重、类别按归属（子项 A；IC-166 起类别也按归属去重，IC-183 改名）
 
-    func testIC153A_AggregationDedupesHeroButNotCategories() {
+    func testIC153A_AggregationDedupesHeroAndCategoriesByAttribution() {
         let megabyte: Int64 = 1_000_000
         let recording = scannedAsset(
             "recording",

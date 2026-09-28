@@ -114,10 +114,12 @@ struct PhotoCleanupMVEApp: App {
             },
             onEnterS2: { identifier, orderedAssetIDs, currentAssetID in
                 let virtualRangeID = S0CategoryPageRange.prefix + identifier.rawValue
-                guard let handoff = s1Machine.makeS2Handoff(virtualRangeID: virtualRangeID,
-                                                            displayName: S0CategoryText.displayName(for: identifier),
-                                                            orderedAssetIDs: orderedAssetIDs,
-                                                            currentAssetID: currentAssetID) else {
+                guard let handoff = s1Machine.makeS2Handoff(
+                    virtualRangeID: virtualRangeID,
+                    displayName: S0CategoryText.displayName(for: identifier),
+                    orderedAssetIDs: orderedAssetIDs,
+                    currentAssetID: currentAssetID
+                ) else {
                     return false
                 }
                 // IC-168 A（裁定 二）：进 S2 失败时撤销交接构造登记的在途范围（名字表留着）。

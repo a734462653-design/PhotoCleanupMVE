@@ -981,21 +981,6 @@ final class IC146ChromeRoundTwoTests: XCTestCase {
     // 氛围底取图桩 `S2AmbientLoaderStub` 随 `S2AmbientImageLoading` 协议
     // 一并删除（IC-151 裁定 五）：协议已不存在，桩无从遵循。
 
-    /// 有界轮询等待。异步收口的到达时机不由测试掌控，故给期限而不是数让出次数。
-    private func waitUntil(
-        timeout: TimeInterval = 2,
-        _ condition: @escaping () -> Bool
-    ) async -> Bool {
-        let deadline = Date(timeIntervalSinceNow: timeout)
-        while Date() < deadline {
-            if condition() {
-                return true
-            }
-            await Task.yield()
-        }
-        return condition()
-    }
-
     private func repoRoot() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

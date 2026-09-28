@@ -166,7 +166,7 @@ final class S0LibraryScanService {
     /// IC-155 B：某类别的候选资产，即类别页网格的数据（裁定 二）。
     ///
     /// 集合即该类别的 `c.assets`：与 `S0ScanAggregator.snapshot` 同一份排除规则（未解析、
-    /// `D_全部`、账本）与同一个命中判定，因而项数恒等于当前快照该类别的 `candidateCount`。
+    /// `D_全部`、账本）与同一个归属判定（`attributedCategory`，IC-166 起无命中归 `rest`），因而项数恒等于当前快照该类别的 `candidateCount`。
     /// 顺序体积降序、同体积标识升序，首项即该类别的 `coverAssetID`（聚合器同一口径）。
     ///
     /// 纯内存投影，不发任何源请求：`D_全部` 与 `currentSnapshot()` 同法在锁外先取，库内

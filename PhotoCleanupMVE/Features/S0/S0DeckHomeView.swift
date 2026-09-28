@@ -807,7 +807,7 @@ struct S0DeckHomeView: View {
                 )
             Spacer(minLength: 0)
             stripValue(parts)
-            // 只有能进类别页的条才画右箭头（与 `showsDisclosure` 同口径；IC-166 起「其余照片」同制）。
+            // 只有能进类别页的条才画右箭头（与 `Card.isEnterable` 同口径；IC-166 起「其余照片」同制）。
             if card.isEnterable {
                 Image(systemName: S0DeckSymbol.chevron)
                     .foregroundStyle(
