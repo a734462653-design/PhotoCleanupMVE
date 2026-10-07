@@ -1307,6 +1307,8 @@ struct S2View: View {
             onPagingSettled: {
                 livePlayback.pagingSettled()
                 videoPlayback.pagingSettled()
+                // IC-187：停住的那一张算「看过」（SPEC-S1 v12 决策 44）。
+                machine.notePagingSettled()
             },
             diagnosticsCoordinator: geometryDiagnostics,
             transitionDiagnosticsCoordinator: transitionDiagnostics,
