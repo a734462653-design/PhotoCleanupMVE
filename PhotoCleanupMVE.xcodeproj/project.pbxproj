@@ -93,6 +93,7 @@
 		200000000000000000000077 /* S2InlineHints.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007A /* S2InlineHints.swift */; };
 		200000000000000000000078 /* IC179InlineHintsTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007B /* IC179InlineHintsTests.swift */; };
 		200000000000000000000079 /* S5GuideStepsView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007C /* S5GuideStepsView.swift */; };
+		200000000000000000000081 /* NavigationEdgeSwipeBack.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000084 /* NavigationEdgeSwipeBack.swift */; };
 		20000000000000000000007A /* IC180GuideStepsTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007D /* IC180GuideStepsTests.swift */; };
 		20000000000000000000007B /* S1DeckCards.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007E /* S1DeckCards.swift */; };
 		20000000000000000000007C /* S1YearPageView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007F /* S1YearPageView.swift */; };
@@ -230,6 +231,7 @@
 		10000000000000000000007A /* S2InlineHints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2InlineHints.swift; sourceTree = "<group>"; };
 		10000000000000000000007B /* IC179InlineHintsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC179InlineHintsTests.swift; sourceTree = "<group>"; };
 		10000000000000000000007C /* S5GuideStepsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S5GuideStepsView.swift; sourceTree = "<group>"; };
+		100000000000000000000084 /* NavigationEdgeSwipeBack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationEdgeSwipeBack.swift; sourceTree = "<group>"; };
 		10000000000000000000007D /* IC180GuideStepsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC180GuideStepsTests.swift; sourceTree = "<group>"; };
 		10000000000000000000007E /* S1DeckCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1DeckCards.swift; sourceTree = "<group>"; };
 		10000000000000000000007F /* S1YearPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1YearPageView.swift; sourceTree = "<group>"; };
@@ -445,6 +447,7 @@
 				100000000000000000000064 /* S0DeckCoverView.swift */,
 				100000000000000000000069 /* S0DeckAssetDates.swift */,
 				10000000000000000000007C /* S5GuideStepsView.swift */,
+				100000000000000000000084 /* NavigationEdgeSwipeBack.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -650,6 +653,7 @@
 				200000000000000000000061 /* S0DeckCoverView.swift（源码） */,
 				200000000000000000000066 /* S0DeckAssetDates.swift（源码） */,
 				200000000000000000000079 /* S5GuideStepsView.swift（源码） */,
+				200000000000000000000081 /* NavigationEdgeSwipeBack.swift（源码） */,
 				200000000000000000000047 /* S0CleanupDataStub.swift（源码） */,
 				200000000000000000000052 /* S0ScanRules.swift（源码） */,
 				200000000000000000000074 /* S0SimilarPhotosRecognizer.swift（源码） */,
