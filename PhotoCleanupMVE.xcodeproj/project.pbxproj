@@ -9,6 +9,7 @@
 /* PBXBuildFile 区段开始 */
 		200000000000000000000001 /* PhotoCleanupMVEApp.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000001 /* PhotoCleanupMVEApp.swift */; };
 		200000000000000000000002 /* CleanupCoordinator.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* CleanupCoordinator.swift */; };
+		200000000000000000000082 /* S0TabRouteDiagnostics.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000085 /* S0TabRouteDiagnostics.swift */; };
 		200000000000000000000003 /* AssetModels.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* AssetModels.swift */; };
 		200000000000000000000004 /* S3StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000004 /* S3StateMachine.swift */; };
 		200000000000000000000005 /* S4StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000005 /* S4StateMachine.swift */; };
@@ -93,6 +94,7 @@
 		200000000000000000000077 /* S2InlineHints.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007A /* S2InlineHints.swift */; };
 		200000000000000000000078 /* IC179InlineHintsTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007B /* IC179InlineHintsTests.swift */; };
 		200000000000000000000079 /* S5GuideStepsView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007C /* S5GuideStepsView.swift */; };
+		200000000000000000000081 /* NavigationEdgeSwipeBack.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000084 /* NavigationEdgeSwipeBack.swift */; };
 		20000000000000000000007A /* IC180GuideStepsTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007D /* IC180GuideStepsTests.swift */; };
 		20000000000000000000007B /* S1DeckCards.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007E /* S1DeckCards.swift */; };
 		20000000000000000000007C /* S1YearPageView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007F /* S1YearPageView.swift */; };
@@ -100,6 +102,7 @@
 		20000000000000000000007E /* IC182TutorialRoundTwoTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000081 /* IC182TutorialRoundTwoTests.swift */; };
 		20000000000000000000007F /* IC183RetireRenderChainTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000082 /* IC183RetireRenderChainTests.swift */; };
 		200000000000000000000080 /* IC184RetireCaliberEnumsTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000083 /* IC184RetireCaliberEnumsTests.swift */; };
+		200000000000000000000083 /* IC185NavigationMaintenanceTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000086 /* IC185NavigationMaintenanceTests.swift */; };
 		20000000000000000000001F /* S1StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* S1StateMachine.swift */; };
 		200000000000000000000020 /* S1View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* S1View.swift */; };
 		200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* S1StateMachineTests.swift */; };
@@ -143,6 +146,7 @@
 /* PBXFileReference 区段开始 */
 		100000000000000000000001 /* PhotoCleanupMVEApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCleanupMVEApp.swift; sourceTree = "<group>"; };
 		100000000000000000000002 /* CleanupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupCoordinator.swift; sourceTree = "<group>"; };
+		100000000000000000000085 /* S0TabRouteDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S0TabRouteDiagnostics.swift; sourceTree = "<group>"; };
 		100000000000000000000003 /* AssetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetModels.swift; sourceTree = "<group>"; };
 		100000000000000000000004 /* S3StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S3StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000005 /* S4StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S4StateMachine.swift; sourceTree = "<group>"; };
@@ -230,6 +234,7 @@
 		10000000000000000000007A /* S2InlineHints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2InlineHints.swift; sourceTree = "<group>"; };
 		10000000000000000000007B /* IC179InlineHintsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC179InlineHintsTests.swift; sourceTree = "<group>"; };
 		10000000000000000000007C /* S5GuideStepsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S5GuideStepsView.swift; sourceTree = "<group>"; };
+		100000000000000000000084 /* NavigationEdgeSwipeBack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationEdgeSwipeBack.swift; sourceTree = "<group>"; };
 		10000000000000000000007D /* IC180GuideStepsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC180GuideStepsTests.swift; sourceTree = "<group>"; };
 		10000000000000000000007E /* S1DeckCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1DeckCards.swift; sourceTree = "<group>"; };
 		10000000000000000000007F /* S1YearPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1YearPageView.swift; sourceTree = "<group>"; };
@@ -237,6 +242,7 @@
 		100000000000000000000081 /* IC182TutorialRoundTwoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC182TutorialRoundTwoTests.swift; sourceTree = "<group>"; };
 		100000000000000000000082 /* IC183RetireRenderChainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC183RetireRenderChainTests.swift; sourceTree = "<group>"; };
 		100000000000000000000083 /* IC184RetireCaliberEnumsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC184RetireCaliberEnumsTests.swift; sourceTree = "<group>"; };
+		100000000000000000000086 /* IC185NavigationMaintenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC185NavigationMaintenanceTests.swift; sourceTree = "<group>"; };
 		100000000000000000000022 /* S1StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000023 /* S1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1View.swift; sourceTree = "<group>"; };
 		100000000000000000000024 /* S1StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachineTests.swift; sourceTree = "<group>"; };
@@ -313,6 +319,7 @@
 			children = (
 				100000000000000000000001 /* PhotoCleanupMVEApp.swift */,
 				100000000000000000000002 /* CleanupCoordinator.swift */,
+				100000000000000000000085 /* S0TabRouteDiagnostics.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -445,6 +452,7 @@
 				100000000000000000000064 /* S0DeckCoverView.swift */,
 				100000000000000000000069 /* S0DeckAssetDates.swift */,
 				10000000000000000000007C /* S5GuideStepsView.swift */,
+				100000000000000000000084 /* NavigationEdgeSwipeBack.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -506,6 +514,7 @@
 				100000000000000000000081 /* IC182TutorialRoundTwoTests.swift */,
 				100000000000000000000082 /* IC183RetireRenderChainTests.swift */,
 				100000000000000000000083 /* IC184RetireCaliberEnumsTests.swift */,
+				100000000000000000000086 /* IC185NavigationMaintenanceTests.swift */,
 				100000000000000000000014 /* SnapshotInvariantTests.swift */,
 				100000000000000000000015 /* VolumeFormattingTests.swift */,
 				100000000000000000000016 /* S4StateMachineTests.swift */,
@@ -631,6 +640,7 @@
 			files = (
 				200000000000000000000001 /* PhotoCleanupMVEApp.swift（源码） */,
 				200000000000000000000002 /* CleanupCoordinator.swift（源码） */,
+				200000000000000000000082 /* S0TabRouteDiagnostics.swift（源码） */,
 				200000000000000000000003 /* AssetModels.swift（源码） */,
 				20000000000000000000001C /* SessionStore.swift（源码） */,
 				200000000000000000000044 /* S0StateMachine.swift（源码） */,
@@ -650,6 +660,7 @@
 				200000000000000000000061 /* S0DeckCoverView.swift（源码） */,
 				200000000000000000000066 /* S0DeckAssetDates.swift（源码） */,
 				200000000000000000000079 /* S5GuideStepsView.swift（源码） */,
+				200000000000000000000081 /* NavigationEdgeSwipeBack.swift（源码） */,
 				200000000000000000000047 /* S0CleanupDataStub.swift（源码） */,
 				200000000000000000000052 /* S0ScanRules.swift（源码） */,
 				200000000000000000000074 /* S0SimilarPhotosRecognizer.swift（源码） */,
@@ -747,6 +758,7 @@
 				20000000000000000000007E /* IC182TutorialRoundTwoTests.swift（测试源码） */,
 				20000000000000000000007F /* IC183RetireRenderChainTests.swift（测试源码） */,
 				200000000000000000000080 /* IC184RetireCaliberEnumsTests.swift（测试源码） */,
+				200000000000000000000083 /* IC185NavigationMaintenanceTests.swift（测试源码） */,
 				200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */,
 				200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */,
 				200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */,
