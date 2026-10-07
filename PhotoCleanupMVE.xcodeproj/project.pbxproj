@@ -104,6 +104,7 @@
 		20000000000000000000007F /* IC183RetireRenderChainTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000082 /* IC183RetireRenderChainTests.swift */; };
 		200000000000000000000080 /* IC184RetireCaliberEnumsTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000083 /* IC184RetireCaliberEnumsTests.swift */; };
 		200000000000000000000083 /* IC185NavigationMaintenanceTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000086 /* IC185NavigationMaintenanceTests.swift */; };
+		200000000000000000000085 /* IC186RangeVolumeInterfaceTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000088 /* IC186RangeVolumeInterfaceTests.swift */; };
 		20000000000000000000001F /* S1StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* S1StateMachine.swift */; };
 		200000000000000000000020 /* S1View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* S1View.swift */; };
 		200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* S1StateMachineTests.swift */; };
@@ -245,6 +246,7 @@
 		100000000000000000000082 /* IC183RetireRenderChainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC183RetireRenderChainTests.swift; sourceTree = "<group>"; };
 		100000000000000000000083 /* IC184RetireCaliberEnumsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC184RetireCaliberEnumsTests.swift; sourceTree = "<group>"; };
 		100000000000000000000086 /* IC185NavigationMaintenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC185NavigationMaintenanceTests.swift; sourceTree = "<group>"; };
+		100000000000000000000088 /* IC186RangeVolumeInterfaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC186RangeVolumeInterfaceTests.swift; sourceTree = "<group>"; };
 		100000000000000000000022 /* S1StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000023 /* S1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1View.swift; sourceTree = "<group>"; };
 		100000000000000000000024 /* S1StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachineTests.swift; sourceTree = "<group>"; };
@@ -518,6 +520,7 @@
 				100000000000000000000082 /* IC183RetireRenderChainTests.swift */,
 				100000000000000000000083 /* IC184RetireCaliberEnumsTests.swift */,
 				100000000000000000000086 /* IC185NavigationMaintenanceTests.swift */,
+				100000000000000000000088 /* IC186RangeVolumeInterfaceTests.swift */,
 				100000000000000000000014 /* SnapshotInvariantTests.swift */,
 				100000000000000000000015 /* VolumeFormattingTests.swift */,
 				100000000000000000000016 /* S4StateMachineTests.swift */,
@@ -763,6 +766,7 @@
 				20000000000000000000007F /* IC183RetireRenderChainTests.swift（测试源码） */,
 				200000000000000000000080 /* IC184RetireCaliberEnumsTests.swift（测试源码） */,
 				200000000000000000000083 /* IC185NavigationMaintenanceTests.swift（测试源码） */,
+				200000000000000000000085 /* IC186RangeVolumeInterfaceTests.swift（测试源码） */,
 				200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */,
 				200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */,
 				200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */,
