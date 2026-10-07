@@ -14,6 +14,8 @@ struct PhotoCleanupMVEApp: App {
     /// IC-168 D（裁定 四）：清理 tab 上呈现 S1 回落事件的呈现器。与 `S1View` 自己那只分开：
     /// 回落后 tab 容器整棵重建，而清理 tab 恰是开屏落点。
     @StateObject private var cleanupFeedbackToast = S1FeedbackToastPresenter()
+    /// IC-185 B：tab 落点诊断时间线。与 tab 选择态同层持有，进出 S2 时 tab 容器整棵重建而它不动。
+    @StateObject private var tabDiagnostics = S0TabRouteDiagnostics()
     @Environment(\.scenePhase) private var scenePhase
     private let s2PhotoImageStrategy = S2TemporaryPhotoKitImageStrategy()
     /// IC-153 C：S0 数据源换成真实扫描服务（批次 5.1），替换 IC-147 的桩。
@@ -59,6 +61,19 @@ struct PhotoCleanupMVEApp: App {
             }
         )
         .onAppear {
+            // IC-185 B：接上 tab 写入回报，并记容器出现时的选中态与写入计数（只记不改）。
+            let diagnostics = tabDiagnostics
+            s0TabSelection.onSelect = { previous, next in
+                diagnostics.note("write " + previous.rawValue + "->" + next.rawValue)
+            }
+            let appearTab = s0TabSelection.selectedTab.rawValue
+            let appearCount = String(s0TabSelection.selectionCount)
+            let appearUIKit = S0TabRouteDiagnostics.uikitSelectedTabIndex()
+            tabDiagnostics.note("appear tab=" + appearTab + " n=" + appearCount + " uikit=" + appearUIKit)
+            // 出现那一刻底层 tab 控制器可能还没装好，下一拍再记一次 UIKit 选中下标。
+            Task { @MainActor in
+                diagnostics.note("settled uikit=" + S0TabRouteDiagnostics.uikitSelectedTabIndex())
+            }
             s0Machine.mergedPendingDeletionCountProvider = {
                 s1Machine.badgeCount
             }
@@ -307,7 +322,8 @@ struct PhotoCleanupMVEApp: App {
                 )
             },
             // IC-168 C（裁定 五）：上一次离开 S2 的诊断文本，面板末段显示；中间带默认值的形参照旧不传。
-            exitDiagnosticsText: coordinator.s2ExitDiagnosticsText,
+            // IC-185 B：末尾接 tab 落点时间线（`S0TabRouteDiagnostics`）。
+            exitDiagnosticsText: coordinator.s2ExitDiagnosticsText.withTabDiagnostics(tabDiagnostics.text),
             // IC-175：相似识别诊断文本（扫描服务持有，进 S2 那一刻取一次）。
             similarDiagnosticsText: s0DataProvider.similarDiagnosticsReport()
         )
@@ -359,6 +375,10 @@ struct PhotoCleanupMVEApp: App {
                 @unknown default:
                     coordinator.setApplicationActive(false)
                 }
+            }
+            .onChange(of: coordinator.route) { _, route in
+                // IC-185 B：路由每变一次记一笔（只记不改）。
+                tabDiagnostics.note("route=" + String(describing: route))
             }
         }
     }

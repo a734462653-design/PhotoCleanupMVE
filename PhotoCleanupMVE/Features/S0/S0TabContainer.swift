@@ -12,18 +12,22 @@ enum S0Tab: String, CaseIterable, Equatable, Sendable {
 ///
 /// 切 tab **不改变任何会话层数据**（`sessionID`、`M`、`K`、`F`、`D_全部`）、
 /// 不改变 S1 的 `T`／`O`、不触发任何重读——本类型因而只持有一个枚举，
-/// 不引用会话层、不引用任何状态机，也不做任何副作用。
+/// 不引用会话层、不引用任何状态机；除 IC-185 的写入回报（只供诊断）外不做任何副作用。
 final class S0TabSelectionModel: ObservableObject {
     /// 开屏后落在「空间清理」（Decision_log 第 159 条⑤）。
     @Published private(set) var selectedTab: S0Tab = .cleanup
     /// 切换次数，供「切若干次后数据逐个不变」的夹具断言钉住确实切过。
     private(set) var selectionCount = 0
+    /// IC-185 B：每次写入之后回报（旧 → 新），只供 App 记 tab 落点诊断时间线；不参与任何判断。
+    var onSelect: ((S0Tab, S0Tab) -> Void)?
 
     init() {}
 
     func select(_ tab: S0Tab) {
+        let previous = selectedTab
         selectionCount += 1
         selectedTab = tab
+        onSelect?(previous, tab)
     }
 }
 
