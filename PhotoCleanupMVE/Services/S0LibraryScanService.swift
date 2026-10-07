@@ -84,6 +84,8 @@ final class S0LibraryScanService {
     private var hasUnpersistedChanges = false
     private var persistenceFailures = 0
     private var memoizedSnapshot: MemoizedSnapshot?
+    /// IC-186：`assetByteCountTable()` 的记忆化（按修订号）。
+    private var memoizedByteCountTable: MemoizedByteCountTable?
     /// IC-175：最近一次相似识别的阶段与结果。只进诊断文本，不进快照、不改修订号——本卡 `similar`
     /// 不进 `CAT`，归属与组视图归 IC-176。
     private var similarRecognitionState = S0SimilarRecognitionState.idle
@@ -94,6 +96,11 @@ final class S0LibraryScanService {
         let revision: Int
         let pendingDeletionAssetIDs: Set<String>
         let snapshot: S0CleanupSnapshot
+    }
+
+    private struct MemoizedByteCountTable {
+        let revision: Int
+        let table: S1AssetByteCountTable
     }
 
     /// IC-175：识别器带默认值（不持久化），既有夹具的两参构造照旧；产品构造另给带特征缓存文件的识别器。
@@ -202,6 +209,33 @@ final class S0LibraryScanService {
                 return lhs.byteCount > rhs.byteCount
             }
             return lhs.id < rhs.id
+        }
+    }
+
+    /// IC-186：「逐张整理」V1 卡面的体积表（SPEC-S1 v12 第二节 `体积(r)`、`总占用`；界面与接线归 V1 视图卡）。
+    ///
+    /// 当前一遍扫描已完成（回报 `.completed`，与首页 S0-1 同一判据）才给出；扫描中或失败为 nil，S1 按「未知」显示。
+    /// 键 = 库内全部资产（与快照同按 `libraryIdentifiers` 过滤），**含已进待删篮的**——与 `LIB` 不同，不做
+    /// `D_全部` 与账本排除；未解析的记 0。纯内存投影、不发任何源请求，按修订号记忆化：已完成之后的未解析重试
+    /// 解出字节时修订号随之变，下一次读到新表（经同一个快照钩子送达）。
+    func assetByteCountTable() -> S1AssetByteCountTable? {
+        withState { () -> S1AssetByteCountTable? in
+            guard outcome == .completed else {
+                return nil
+            }
+            if let memo = memoizedByteCountTable, memo.revision == revision {
+                return memo.table
+            }
+            var byteCounts: [String: Int64] = [:]
+            byteCounts.reserveCapacity(libraryIdentifiers.count)
+            for identifier in libraryIdentifiers {
+                if let entry = records[identifier] {
+                    byteCounts[identifier] = entry.byteCount
+                }
+            }
+            let table = S1AssetByteCountTable(byteCountByAssetID: byteCounts)
+            memoizedByteCountTable = MemoizedByteCountTable(revision: revision, table: table)
+            return table
         }
     }
 
