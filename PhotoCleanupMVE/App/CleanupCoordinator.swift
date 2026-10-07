@@ -72,6 +72,10 @@ final class CleanupCoordinator: ObservableObject {
     private var s4TimerTask: Task<Void, Never>?
     private var s4LastUptime: TimeInterval?
     private var didStart = false
+    /// IC-187：看过档（SPEC-S1 v12 `看过档`）。第一次用到时从持久层读（读不到或坏档即空档），之后在内存里只增；
+    /// 离开 S2 与应用转入非活跃时合并写出，快照无变化不写。不随 `finishSession()` 清。
+    private var seenArchiveCache: S1SeenArchive?
+    private var writtenSeenArchive: S1SeenArchive?
 
     init(
         photoLibrary: PhotoLibraryService? = nil,
@@ -224,12 +228,17 @@ final class CleanupCoordinator: ObservableObject {
             },
             recentAlbumDidChange: { [weak self] album in
                 self?.recentAlbumStore.save(album)
+            },
+            seenAssetDidSettle: { [weak self] assetID in
+                self?.recordSeenAssets([assetID])
             }
         )
         guard let machine else {
             return false
         }
 
+        // IC-187：进入时的第一张即看过（构造期间不回调，这里并入）。
+        recordSeenAssets(machine.visitSeenAssetIDs)
         s2EntryContext = entryContext
         s2Machine = machine
         route = .s2
@@ -873,6 +882,10 @@ final class CleanupCoordinator: ObservableObject {
     }
 
     func setApplicationActive(_ isActive: Bool) {
+        // IC-187：转入非活跃时把看过档写出（进程随后可能被系统终止）。
+        if !isActive {
+            flushSeenArchive()
+        }
         if route == .execution {
             if !isActive {
                 advanceS4Clock()
@@ -994,6 +1007,10 @@ final class CleanupCoordinator: ObservableObject {
     private func applyS2ExitPayload(_ payload: S2ExitPayload) -> Bool {
         // IC-168 B（裁定 一）：W1～W7 顺序化搬进 `s2ExitGuardFailure`（纯判定）；全过才调 W8
         // 写回，短路顺序与原来的八子句 `guard` 相同。
+        // IC-187：无论写回成败都把看过档合并写出——实时计入的看过保留（SPEC-S1 v12 第七节第 2 部分）。
+        defer {
+            flushSeenArchive()
+        }
         guard s2ExitGuardFailure(payload) == nil,
               let s1Machine,
               let entryContext = s2EntryContext else {
@@ -1006,7 +1023,47 @@ final class CleanupCoordinator: ObservableObject {
             return false
         }
         sessionStore = s1Machine.sessionStore
+        // IC-187：写回成功才记本范围的离开时刻 `t_离开`（虚拟范围也记），并把本次看过集合作最后一次同步。
+        recordSeenAssets(s2Machine?.visitSeenAssetIDs ?? [])
+        recordS2Leave(rangeID: entryContext.rangeID, at: Date())
         return true
+    }
+
+    /// IC-187：当前看过档。第一次调用时从持久层读，读不到或坏档即空档。
+    func currentSeenArchive() -> S1SeenArchive {
+        if let seenArchiveCache {
+            return seenArchiveCache
+        }
+        let loaded = persistence.loadS1SeenArchive()
+        writtenSeenArchive = loaded
+        let archive = loaded ?? S1SeenArchive()
+        seenArchiveCache = archive
+        return archive
+    }
+
+    private func recordSeenAssets(_ assetIDs: Set<String>) {
+        guard !assetIDs.isEmpty else {
+            return
+        }
+        var archive = currentSeenArchive()
+        archive.seenAssetIDs.formUnion(assetIDs)
+        seenArchiveCache = archive
+    }
+
+    private func recordS2Leave(rangeID: String, at time: Date) {
+        var archive = currentSeenArchive()
+        archive.leaveTimeByRangeID[rangeID] = time
+        seenArchiveCache = archive
+    }
+
+    /// IC-187：看过档的单一写出口。写盘失败静默忽略（只影响已看进度、不影响任何待删数据），下次再写。
+    private func flushSeenArchive() {
+        guard let seenArchiveCache, seenArchiveCache != writtenSeenArchive else {
+            return
+        }
+        if (try? persistence.saveS1SeenArchive(seenArchiveCache)) != nil {
+            writtenSeenArchive = seenArchiveCache
+        }
     }
 
     private func clearS2RouteState() {

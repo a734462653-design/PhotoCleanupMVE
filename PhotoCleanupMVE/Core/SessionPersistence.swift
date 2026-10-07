@@ -308,6 +308,7 @@ struct PersistedS1Session: Codable, Equatable {
 final class SessionPersistence {
     private let fileURL: URL
     private let s1FileURL: URL
+    private let s1SeenFileURL: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let fileManager: FileManager
@@ -329,6 +330,8 @@ final class SessionPersistence {
         )
         fileURL = directory.appendingPathComponent("session.json")
         s1FileURL = directory.appendingPathComponent("s1-session.json")
+        // IC-187：看过档，与会话档分开、不随会话结束清。
+        s1SeenFileURL = directory.appendingPathComponent("s1-seen.json")
         encoder = JSONEncoder()
         decoder = JSONDecoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -361,6 +364,26 @@ final class SessionPersistence {
             return
         }
         try fileManager.removeItem(at: s1FileURL)
+    }
+
+    // MARK: - IC-187：看过档（独立文件，不随会话结束清）
+
+    func saveS1SeenArchive(_ archive: S1SeenArchive) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        let data = try encoder.encode(PersistedS1SeenArchive(archive))
+        try data.write(to: s1SeenFileURL, options: .atomic)
+    }
+
+    /// 文件不存在、不可解析、版本不符或标识重复都返回 nil：坏档按空档重建，不提示用户。
+    func loadS1SeenArchive() -> S1SeenArchive? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let data = try? Data(contentsOf: s1SeenFileURL),
+              let persisted = try? decoder.decode(PersistedS1SeenArchive.self, from: data) else {
+            return nil
+        }
+        return persisted.archive
     }
 
     func save(_ session: PersistedSession) throws {

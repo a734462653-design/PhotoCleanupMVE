@@ -665,6 +665,10 @@ final class S2StateMachine: ObservableObject {
 
     private let pendingDeletionDidChange: (Set<String>) -> Void
     private let recentAlbumDidChange: (S2AlbumReference?) -> Void
+    /// IC-187（SPEC-S1 v12 决策 44）：「看过」的实时回报——某张照片在本次进入里第一次停稳、成为当前那一张时调一次。
+    private let seenAssetDidSettle: (String) -> Void
+    /// IC-187：本次进入里看过的资产。不发布、不入档；协调器经回报实时并入看过集合 `W`。
+    private(set) var visitSeenAssetIDs: Set<String> = []
     private var pinchStartScale: CGFloat?
     private var albumPickerTargetAssetID: String?
     private var inFlightFavoriteRequest: S2AssetActionRequest?
@@ -692,7 +696,8 @@ final class S2StateMachine: ObservableObject {
         initialFavoriteAssetIDs: Set<String>,
         initialRecentAlbum: S2AlbumReference?,
         pendingDeletionDidChange: @escaping (Set<String>) -> Void,
-        recentAlbumDidChange: @escaping (S2AlbumReference?) -> Void = { _ in }
+        recentAlbumDidChange: @escaping (S2AlbumReference?) -> Void = { _ in },
+        seenAssetDidSettle: @escaping (String) -> Void = { _ in }
     ) {
         let assetIDSet = Set(entry.orderedAssetIDs)
         guard !entry.sessionID.isEmpty,
@@ -731,6 +736,9 @@ final class S2StateMachine: ObservableObject {
         recentAlbum = initialRecentAlbum
         self.pendingDeletionDidChange = pendingDeletionDidChange
         self.recentAlbumDidChange = recentAlbumDidChange
+        self.seenAssetDidSettle = seenAssetDidSettle
+        // IC-187：进入时的第一张不经任何切换即停稳，算看过；构造期间不回调，由协调器在构造之后并入。
+        visitSeenAssetIDs = [entry.currentAssetID]
     }
 
     var orderedAssetIDs: [String] {
@@ -1596,6 +1604,8 @@ final class S2StateMachine: ObservableObject {
         }
         bottomStripState = .idle
         touchSequenceOwner = .none
+        // IC-187：横栏拖完停住的那一张算看过（拖动途中依次经过的不算）。
+        markCurrentSeen()
         return true
     }
 
@@ -1938,7 +1948,27 @@ final class S2StateMachine: ObservableObject {
         currentIndex = destination
         farthestIndex = max(farthestIndex, destination)
         resetZoomAfterPhotoChange()
+        // IC-187：上滑后自动进入的下一张、Nx 贴边翻页即刻停稳算看过；横栏拖动途中的逐格切换由汇集口挡掉。
+        markCurrentSeen()
         return true
+    }
+
+    /// IC-187：翻页停稳（原生分页器的 `onPagingSettled`，由视图转来）——停住的那一张算看过。
+    /// 拖动途中越过半页的切换（`handleNativePageChange`）不算，停稳才算。
+    func notePagingSettled() {
+        markCurrentSeen()
+    }
+
+    /// IC-187：「看过」的汇集口——当前张停稳即记；横栏拖动态（含惯性段）里依次经过的不算。
+    private func markCurrentSeen() {
+        guard bottomStripState == .idle else {
+            return
+        }
+        let assetID = currentAssetID
+        guard visitSeenAssetIDs.insert(assetID).inserted else {
+            return
+        }
+        seenAssetDidSettle(assetID)
     }
 
     private func resetZoomAfterPhotoChange() {
