@@ -320,17 +320,20 @@ final class IC195GuideDLogicTests: XCTestCase {
         let store = S2UserDefaultsGuideStore(defaults: defaults)
 
         XCTAssertEqual(S2GuideStep.allCases.map(\.rawValue), ["swipeUp", "markedOnce", "undone", "confirmEntry"])
-        XCTAssertEqual(S2UserDefaultsGuideStore.defaultsKeyPrefix, S2UserDefaultsInlineHintStore.defaultsKeyPrefix)
-        XCTAssertEqual(S2UserDefaultsGuideStore.defaultsKey(for: .swipeUp), S2UserDefaultsInlineHintStore.defaultsKey(for: .swipeUp))
-        XCTAssertEqual(S2UserDefaultsGuideStore.defaultsKey(for: .markedOnce), S2UserDefaultsInlineHintStore.defaultsKey(for: .markedOnce))
-        XCTAssertEqual(S2UserDefaultsGuideStore.defaultsKey(for: .confirmEntry), S2UserDefaultsInlineHintStore.defaultsKey(for: .confirmEntry))
+        // v23 三句的键：前缀与后缀逐字写死（IC-197 起 `S2InlineHints.swift` 已删，不再引用旧类型）。
+        let v23Prefix = "com.iphonephotomanagement.PhotoCleanupMVE.s2.hint."
+        XCTAssertEqual(S2UserDefaultsGuideStore.defaultsKeyPrefix, v23Prefix)
+        XCTAssertEqual(S2UserDefaultsGuideStore.defaultsKey(for: .swipeUp), v23Prefix + "swipeUp")
+        XCTAssertEqual(S2UserDefaultsGuideStore.defaultsKey(for: .markedOnce), v23Prefix + "markedOnce")
+        XCTAssertEqual(S2UserDefaultsGuideStore.defaultsKey(for: .confirmEntry), v23Prefix + "confirmEntry")
+        // 与旧六步教程的完成标志互不相干（J12；原 IC179 测试 H 的这一条随整文件删而移到这里）。
+        XCTAssertFalse(S2UserDefaultsTutorialCompletionStore.defaultsKey.hasPrefix(S2UserDefaultsGuideStore.defaultsKeyPrefix))
         XCTAssertEqual(S2UserDefaultsGuideStore.defaultsKey(for: .undone), S2UserDefaultsGuideStore.defaultsKeyPrefix + "undone")
         XCTAssertEqual(S2UserDefaultsGuideStore.completionKey, S2UserDefaultsGuideStore.defaultsKeyPrefix + "completed")
         XCTAssertEqual(S2UserDefaultsGuideStore.introDimmedKey, S2UserDefaultsGuideStore.defaultsKeyPrefix + "introDimmed")
 
-        // v23 三句记下的「已会」，引导 D 原样读到（J12）。
-        let legacy = S2UserDefaultsInlineHintStore(defaults: defaults)
-        legacy.markLearned(.markedOnce)
+        // v23 三句记下的「已会」，引导 D 原样读到（J12）：直接按旧键写。
+        defaults.set(true, forKey: v23Prefix + "markedOnce")
         XCTAssertTrue(store.isLearned(.markedOnce))
         XCTAssertFalse(store.isLearned(.undone))
         XCTAssertFalse(store.hasShownCompletion)
@@ -466,13 +469,13 @@ final class IC195GuideDLogicTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "import ", in: guideRaw), 2)
         XCTAssertEqual(occurrences(of: "return \"", in: guideRaw), 0)
 
-        // 不接视图：S2View 与 v23 三句文件里没有引导 D 的名字。
-        for path in [Self.s2ViewPath, Self.hintsPath] {
-            let text = try XCTUnwrap(strippedSource(path))
-            for needle in ["S2GuideCoordinator", "S2GuideStep", "S2UserDefaultsGuideStore", "lastPendingDeletionChangeSource", "lastCurrentAssetChangeCause"] {
-                XCTAssertEqual(occurrences(of: needle, in: text), 0, path + " " + needle)
-            }
-        }
+        // IC-197 起：引导 D 由 S2View 接线（两个一次性信号只在视图对应回调体内读）；v23 三句文件已删。
+        XCTAssertNil(sourceText(Self.hintsPath), "v23 三句文件已退役")
+        let s2 = try XCTUnwrap(strippedSource(Self.s2ViewPath))
+        XCTAssertEqual(occurrences(of: "S2GuideCoordinator()", in: s2), 1)
+        XCTAssertEqual(occurrences(of: "machine.lastPendingDeletionChangeSource", in: s2), 1)
+        XCTAssertEqual(occurrences(of: "machine.lastCurrentAssetChangeCause", in: s2), 1)
+        XCTAssertEqual(occurrences(of: "S2UserDefaultsGuideStore", in: s2), 0, "存储走协调器默认值，视图不另构造")
     }
 
     // MARK: - 夹具

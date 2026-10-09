@@ -3,18 +3,16 @@ import UIKit
 import XCTest
 @testable import PhotoCleanupMVE
 
-/// IC-182：教学引导二轮（Decision_log 第 211 条 ④）——首次标记那一下不自动翻页；三句提示统一挂右上、
-/// 手势示意换 R2 `hint_gesture()` 式；浮层内层容器加全屏框（右下角闪烁根因）；S5 五步编号圆统一描边、
-/// 正文单行按需缩放。
+/// IC-182：教学引导二轮（Decision_log 第 211 条 ④）——首次标记那一下不自动翻页；S5 五步编号圆统一描边、正文单行按需缩放。
 ///
 /// 断言 1 钉「标记后停留」开关的行为（默认关 = 既有自动翻页；开 = 停在刚标记那张且只吃一次；最后一张与
-/// 隐藏态不受影响），2 钉三句落位口径与手势示意登记值、三个新 SF 名在宿主存在，3 钉源码落位
-/// （状态机、S2View 三处、`S2InlineHints` 新视图与退役名、S5 新文件的统一描边与缩放），4 钉目录未动。
-/// 观感（气泡位置、手势示意、停留那一瞬、S5 单行）归 H97 真机。
+/// 隐藏态不受影响），3 钉源码落位（状态机、S2View 把协调器判据同步给状态机的六处、S5 新文件的统一描边与缩放），
+/// 4 钉 v23 三句 key 已退役、第 2 步副句沿用原句。**IC-197 起**：v23 三句（`S2InlineHints.swift`）退役，判据改由
+/// 引导 D 的 `S2GuideCoordinator` 给出（IC-195 测试 B 覆盖），原断言 1b（旧协调器判据）与断言 2（三句落位口径）随旧族整删。
+/// 观感（停留那一瞬、S5 单行）归真机。
 final class IC182TutorialRoundTwoTests: XCTestCase {
     private static let s2ViewPath = "PhotoCleanupMVE/Features/S2/S2View.swift"
     private static let machinePath = "PhotoCleanupMVE/Core/S2StateMachine.swift"
-    private static let hintsPath = "PhotoCleanupMVE/Features/S2/S2InlineHints.swift"
     private static let guidePath = "PhotoCleanupMVE/Features/Shared/S5GuideStepsView.swift"
     private static let catalogPath = "PhotoCleanupMVE/Localizable.xcstrings"
     private static let newline = String(Character(UnicodeScalar(UInt8(10))))
@@ -86,94 +84,6 @@ final class IC182TutorialRoundTwoTests: XCTestCase {
         XCTAssertFalse(zoomed.holdsPageAfterNextMark)
     }
 
-    // MARK: - 断言 1b：协调器给出「下一次标记要不要停」
-
-    func testIC182A2_CoordinatorDecidesHoldExactlyWhenMarkedOnceWouldAppear() {
-        let store = IC182InMemoryHintStore()
-        let hints = S2InlineHintCoordinator(store: store)
-        XCTAssertTrue(hints.holdsPageOnNextMark, "构造后无句、第 2 句未会——判据已为真（视图要到 onAppear 才同步给状态机）")
-        hints.startIfNeeded(mergedCount: 0)
-        XCTAssertTrue(hints.holdsPageOnNextMark, "第 1 句在显、第 2 句未会 → 下一次标记停")
-        hints.assetDidBecomeMarked()
-        XCTAssertEqual(hints.activeHint, .markedOnce)
-        XCTAssertFalse(hints.holdsPageOnNextMark, "第 2 句已在显 → 再标记不停")
-        hints.hintDidTimeOut(.markedOnce)
-        XCTAssertFalse(hints.holdsPageOnNextMark, "本次已收起 → 不停")
-        hints.leaveScreen()
-        hints.startIfNeeded(mergedCount: 0)
-        XCTAssertNil(hints.activeHint, "第 1 句已会、进门静默")
-        XCTAssertTrue(hints.holdsPageOnNextMark, "第 2 句未会、本次未收起 → 下一次标记仍停（每次进门至多一次）")
-        hints.assetDidBecomeMarked()
-        XCTAssertEqual(hints.activeHint, .markedOnce)
-        hints.assetDidBecomeUnmarked()
-        XCTAssertFalse(hints.holdsPageOnNextMark, "第 2 句学会 → 永不再停")
-        hints.leaveScreen()
-        hints.startIfNeeded(mergedCount: 0)
-        XCTAssertFalse(hints.holdsPageOnNextMark)
-        hints.reset()
-        XCTAssertEqual(hints.activeHint, .swipeUp)
-        XCTAssertTrue(hints.holdsPageOnNextMark, "重看教程 → 再停一次")
-        // × 收起第 1 句：第 2 句本次仍可出 → 仍停；× 收起第 2 句 → 不停。
-        hints.dismiss()
-        XCTAssertNil(hints.activeHint)
-        XCTAssertTrue(hints.holdsPageOnNextMark)
-        hints.assetDidBecomeMarked()
-        hints.dismiss()
-        XCTAssertFalse(hints.holdsPageOnNextMark)
-        // 第 1 句在显时先撤标（进门那张已在篮里）：第 2 句先学会、`activeHint` 不变 → 判据转 false（视图要在撤标回调里同步）。
-        let undoFirst = S2InlineHintCoordinator(store: IC182InMemoryHintStore())
-        undoFirst.startIfNeeded(mergedCount: 1)
-        XCTAssertEqual(undoFirst.activeHint, .swipeUp)
-        XCTAssertTrue(undoFirst.holdsPageOnNextMark)
-        undoFirst.assetDidBecomeUnmarked()
-        XCTAssertEqual(undoFirst.activeHint, .swipeUp, "第 1 句仍在显")
-        XCTAssertFalse(undoFirst.holdsPageOnNextMark, "第 2 句已学会 → 不停")
-        // 第 3 句在显（篮到阈值）：第 2 句本次被顶掉 → 不停。
-        let crowded = S2InlineHintCoordinator(store: IC182InMemoryHintStore())
-        crowded.startIfNeeded(mergedCount: 4)
-        crowded.mergedCountDidChange(5)
-        XCTAssertEqual(crowded.activeHint, .confirmEntry)
-        XCTAssertFalse(crowded.holdsPageOnNextMark)
-    }
-
-    // MARK: - 断言 2：三句落位口径、手势示意登记值、SF 名
-
-    func testIC182B_PlacementRulesGestureMetricsAndSymbols() {
-        XCTAssertFalse(S2InlineHint.swipeUp.pointsAtConfirmEntry)
-        XCTAssertFalse(S2InlineHint.markedOnce.pointsAtConfirmEntry)
-        XCTAssertTrue(S2InlineHint.confirmEntry.pointsAtConfirmEntry, "只有第 3 句带小三角")
-        XCTAssertEqual(S2InlineHint.swipeUp.gestureDirection, .up)
-        XCTAssertEqual(S2InlineHint.markedOnce.gestureDirection, .down)
-        XCTAssertNil(S2InlineHint.confirmEntry.gestureDirection)
-
-        XCTAssertEqual(S2InlineHintMetrics.trailingMaxWidth, 300)
-        XCTAssertEqual(S2InlineHintMetrics.gestureCircleSide, 56)
-        XCTAssertEqual(S2InlineHintMetrics.gestureCircleFillOpacity, 0.18, accuracy: 0.000_001)
-        XCTAssertEqual(S2InlineHintMetrics.gestureHaloWidth, 8)
-        XCTAssertEqual(S2InlineHintMetrics.gestureHaloOpacity, 0.08, accuracy: 0.000_001)
-        XCTAssertEqual(S2InlineHintMetrics.gestureHandPointSize, 28)
-        XCTAssertEqual(S2InlineHintMetrics.gestureArrowPointSize, 28)
-        XCTAssertEqual(S2InlineHintMetrics.gestureSpacing, 6)
-        XCTAssertEqual(S2InlineHintMetrics.gestureTravel, 40)
-        XCTAssertEqual(S2InlineHintMetrics.gestureTravel, S2TutorialGestureHint.travel, "循环位移沿旧教程示意")
-        XCTAssertEqual(S2InlineHintMetrics.gestureCycleSeconds, 0.9, accuracy: 0.000_001)
-        XCTAssertEqual(S2InlineHintMetrics.gestureShadowOpacity, 0.35, accuracy: 0.000_001)
-        XCTAssertEqual(S2InlineHintMetrics.gestureShadowRadius, 3)
-        XCTAssertEqual(S2InlineHintMetrics.gestureShadowOpacity, S2TutorialGestureHint.contrastShadowOpacity, "对比阴影沿 IC-113 C")
-        XCTAssertEqual(S2InlineHintMetrics.gestureShadowRadius, S2TutorialGestureHint.contrastShadowRadius)
-        XCTAssertEqual(S2InlineHintMetrics.centeredUnitBottomInset, S2CenterIndicatorView.containerHeight / 2 + 16)
-        XCTAssertEqual(S2InlineHintMetrics.topBarGap, 4)
-        XCTAssertEqual(S2InlineHintMetrics.trailingMargin, 12)
-
-        XCTAssertEqual(S2InlineHintSymbol.gestureHand, "hand.point.up.left")
-        XCTAssertEqual(S2InlineHintSymbol.gestureArrowDown, "arrow.down")
-        XCTAssertEqual(S2InlineHintSymbol.gestureArrowRight, "arrow.right")
-        for name in [S2InlineHintSymbol.gestureHand, S2InlineHintSymbol.gestureArrowDown, S2InlineHintSymbol.gestureArrowRight, S2InlineHintSymbol.swipeUp] {
-            XCTAssertNotNil(UIImage(systemName: name), name)
-        }
-        XCTAssertEqual(S5GuideMetrics.textMinimumScaleFactor, 0.8)
-    }
-
     // MARK: - 断言 3：源码落位
 
     func testIC182C_SourceWiring() throws {
@@ -193,67 +103,28 @@ final class IC182TutorialRoundTwoTests: XCTestCase {
         XCTAssertLessThan(holdRange.lowerBound, switchRange.lowerBound, "停留分支挡在翻页之前")
         XCTAssertEqual(occurrences(of: "pendingUndecidedItem = .item02", in: swipeUp), 1)
 
-        // S2View：进门、撤标回调末、`activeHint` 变化、「重看教程」四处把协调器的判据同步给状态机；浮层内层容器加全屏框、左上对齐。
+        // S2View（IC-197 起）：进门、撤标回调末、当前张变化回调末、在显一项变化、「重看教程」、「跳过教程」六处
+        // 把引导 D 协调器的判据同步给状态机；判据只在协调器。
         let s2 = try XCTUnwrap(strippedSource(Self.s2ViewPath))
         let s2Raw = try XCTUnwrap(sourceText(Self.s2ViewPath))
-        XCTAssertEqual(occurrences(of: "machine.holdsPageAfterNextMark", in: s2), 4)
-        XCTAssertEqual(occurrences(of: "machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark", in: s2), 4, "判据只在协调器，视图只同步")
+        XCTAssertEqual(occurrences(of: "machine.holdsPageAfterNextMark", in: s2), 6)
+        XCTAssertEqual(occurrences(of: "machine.holdsPageAfterNextMark = guide.holdsPageOnNextMark", in: s2), 6, "判据只在协调器，视图只同步")
         XCTAssertEqual(occurrences(of: "machine.holdsPageAfterNextMark = true", in: s2), 0)
         XCTAssertEqual(occurrences(of: "machine.holdsPageAfterNextMark = false", in: s2), 0)
-        XCTAssertEqual(occurrences(of: ".onChange(of: hints.activeHint) {", in: s2), 1)
-        let startRange = try XCTUnwrap(s2.range(of: "hints.startIfNeeded("))
-        let holdSetRange = try XCTUnwrap(s2.range(of: "machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark"))
-        XCTAssertLessThan(startRange.lowerBound, holdSetRange.lowerBound, "先出第 1 句再同步开关（同一 onAppear）")
-        XCTAssertEqual(occurrences(of: "hints.startIfNeeded(", in: s2), 1)
-        XCTAssertEqual(occurrences(of: "hints.reset()", in: s2), 1)
-        let resetRange = try XCTUnwrap(s2.range(of: "hints.reset()"))
-        let afterReset = s2[resetRange.upperBound...]
-        let resetSync = try XCTUnwrap(afterReset.range(of: "machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark"))
-        XCTAssertLessThan(afterReset.distance(from: afterReset.startIndex, to: resetSync.lowerBound), 200, "重看教程后紧跟同步")
-        let unmarkRange = try XCTUnwrap(s2.range(of: "hints.assetDidBecomeUnmarked()"))
-        let afterUnmark = s2[unmarkRange.upperBound...]
-        let unmarkSync = try XCTUnwrap(afterUnmark.range(of: "machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark"))
-        XCTAssertLessThan(afterUnmark.distance(from: afterUnmark.startIndex, to: unmarkSync.lowerBound), 200, "撤标回调末尾紧跟同步")
-        let overlay = try XCTUnwrap(slice(s2, from: "private func inlineHintOverlay(", to: "private func centerIndicatorOverlay("))
-        XCTAssertEqual(occurrences(of: ".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)", in: overlay), 1, "内层容器全屏框、原点钉在左上")
-        let frameRange = try XCTUnwrap(overlay.range(of: ".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
-        let animationRange = try XCTUnwrap(overlay.range(of: ".animation("))
-        XCTAssertLessThan(frameRange.lowerBound, animationRange.lowerBound, "框在动画修饰之前")
-        XCTAssertEqual(occurrences(of: "S2InlineHintLayer(", in: overlay), 1)
+        XCTAssertEqual(occurrences(of: ".onChange(of: guide.display) {", in: s2), 1)
+        let startRange = try XCTUnwrap(s2.range(of: "guide.start(mergedCount:"))
+        let holdSetRange = try XCTUnwrap(s2.range(of: "machine.holdsPageAfterNextMark = guide.holdsPageOnNextMark"))
+        XCTAssertLessThan(startRange.lowerBound, holdSetRange.lowerBound, "先开引导再同步开关（同一 onAppear）")
+        for call in ["guide.reset()", "guide.skip()", "guide.assetDidBecomeUnmarked(", "guide.currentAssetDidChange("] {
+            XCTAssertEqual(occurrences(of: call, in: s2), 1, call)
+            let callRange = try XCTUnwrap(s2.range(of: call), call)
+            let after = s2[callRange.upperBound...]
+            let sync = try XCTUnwrap(after.range(of: "machine.holdsPageAfterNextMark = guide.holdsPageOnNextMark"), call)
+            XCTAssertLessThan(after.distance(from: after.startIndex, to: sync.lowerBound), 200, call + " 之后紧跟同步")
+        }
         // IC172／IC168 正对照不变。
         XCTAssertEqual(occurrences(of: "colorScheme, .dark)", in: s2Raw), 6)
         XCTAssertEqual(occurrences(of: ".background(.regularMaterial)", in: s2), 3)
-
-        // 提示文件：新手势示意视图、三句同一列、旧示意与居中宽退役；纪律不变。
-        let hints = try XCTUnwrap(strippedSource(Self.hintsPath))
-        let hintsRaw = try XCTUnwrap(sourceText(Self.hintsPath))
-        XCTAssertEqual(occurrences(of: "struct S2InlineHintGestureView: View {", in: hints), 1)
-        XCTAssertEqual(occurrences(of: "S2InlineHintGestureView(direction:", in: hints), 1)
-        XCTAssertEqual(occurrences(of: "S2TutorialGestureHint(direction:", in: hints), 0, "不再借教程的示意")
-        XCTAssertEqual(occurrences(of: "centeredMaxWidth", in: hints), 0)
-        XCTAssertEqual(occurrences(of: "gestureHintSpacing", in: hints), 0)
-        XCTAssertEqual(occurrences(of: "pointsAtConfirmEntry", in: hints), 2, "声明 + 三角分支")
-        XCTAssertEqual(occurrences(of: "holdsPageOnNextMark", in: hints), 1, "判据只声明一处")
-        XCTAssertEqual(occurrences(of: ".id(direction)", in: hints), 1, "按方向重建（IC-114 B2）——在调用点")
-        let layer = try XCTUnwrap(slice(hints, from: "struct S2InlineHintLayer: View {", to: "struct S2InlineHintGestureView: View {"))
-        XCTAssertEqual(occurrences(of: ".id(direction)", in: layer), 1, "`.id` 挂在调用点才重建 `@State`")
-        XCTAssertEqual(occurrences(of: "repeatForever", in: hints), 1)
-        XCTAssertEqual(occurrences(of: "strokeBorder(", in: hints), 1, "光晕是圆外一圈环")
-        XCTAssertEqual(occurrences(of: ".shadow(", in: hints), 2, "气泡底 + 手势示意对比阴影")
-        XCTAssertEqual(occurrences(of: "alignment: .topTrailing", in: hints), 1, "三句同一个右上框")
-        XCTAssertEqual(occurrences(of: "alignment: .trailing", in: hints), 2)
-        XCTAssertEqual(occurrences(of: ".accessibilityHidden(true)", in: hints), 1, "手势示意不进读屏")
-        XCTAssertEqual(occurrences(of: "Button {", in: hints), 1, "仍只有 × 一只按钮")
-        for needle in ["Material", "colorScheme", "Color(uiColor:", "@MainActor", "S2TutorialHintAnchor"] {
-            XCTAssertEqual(occurrences(of: needle, in: hints), 0, needle)
-        }
-        XCTAssertEqual(occurrences(of: "Text(\"", in: hintsRaw), 0)
-        XCTAssertEqual(occurrences(of: "return \"", in: hintsRaw), 0)
-        XCTAssertEqual(occurrences(of: "import ", in: hintsRaw), 1)
-        let symbols = try XCTUnwrap(slice(hints, from: "enum S2InlineHintSymbol {", to: Self.newline + "}" + Self.newline))
-        XCTAssertEqual(occurrences(of: "static let ", in: symbols), 6)
-        let metrics = try XCTUnwrap(slice(hints, from: "enum S2InlineHintMetrics {", to: Self.newline + "}" + Self.newline))
-        XCTAssertEqual(occurrences(of: "static let ", in: metrics), 39)
 
         // S5：五步统一描边、正文单行按需缩放、登记 13。
         let guide = try XCTUnwrap(strippedSource(Self.guidePath))
@@ -266,16 +137,17 @@ final class IC182TutorialRoundTwoTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "@ViewBuilder", in: guide), 0, "编号圆不再分支")
         let guideMetrics = try XCTUnwrap(slice(guide, from: "enum S5GuideMetrics {", to: Self.newline + "}" + Self.newline))
         XCTAssertEqual(occurrences(of: "static let ", in: guideMetrics), 13)
+        XCTAssertEqual(S5GuideMetrics.textMinimumScaleFactor, 0.8)
     }
 
-    // MARK: - 断言 4：目录未动
+    // MARK: - 断言 4：目录（IC-197 起 v23 七条 `s2.hint.*` 退役）
 
-    func testIC182D_CatalogUntouched() throws {
+    func testIC182D_CatalogHintKeysRetired() throws {
         let catalog = try XCTUnwrap(sourceText(Self.catalogPath))
         for key in ["s2.hint.swipe_up", "s2.hint.swipe_up.sub", "s2.hint.marked", "s2.hint.marked.sub", "s2.hint.confirm", "s2.hint.confirm.sub", "s2.hint.dismiss"] {
-            XCTAssertEqual(occurrences(of: "\"" + key + "\" : {", in: catalog), 1, key)
+            XCTAssertEqual(occurrences(of: "\"" + key + "\" : {", in: catalog), 0, key)
         }
-        XCTAssertEqual(L10n.text("s2.hint.marked.sub"), "标错了？下滑放回来。", "停留后这句才落在正确的照片上——文案不改")
+        XCTAssertEqual(L10n.text("s2.guide.marked.sub"), "标错了？下滑放回来。", "停留后这句才落在正确的照片上——第 2 步副句沿用原句")
         for key in ["s5.guide.step1", "s5.guide.step2", "s5.guide.step3", "s5.guide.step4", "s5.guide.step5"] {
             XCTAssertEqual(occurrences(of: "\"" + key + "\" : {", in: catalog), 1, key)
         }
@@ -435,22 +307,5 @@ private final class IC182CountBox {
 
     init(value: Int) {
         self.value = value
-    }
-}
-
-/// 内存版「已会」存储（照 IC179 的夹具；该类型为文件私有，不能跨文件调用）。
-private final class IC182InMemoryHintStore: S2InlineHintStoring {
-    var learned: Set<S2InlineHint> = []
-
-    func isLearned(_ hint: S2InlineHint) -> Bool {
-        learned.contains(hint)
-    }
-
-    func markLearned(_ hint: S2InlineHint) {
-        learned.insert(hint)
-    }
-
-    func reset() {
-        learned = []
     }
 }
