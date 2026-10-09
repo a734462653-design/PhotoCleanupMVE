@@ -257,6 +257,41 @@ final class CleanupCoordinator: ObservableObject {
         return true
     }
 
+    /// IC-198（SPEC-S2 v24 决策 59）：看图页顶部排序菜单改会话级排序 `O`。只对真实范围——`cat:` 范围的列表由类别页给、
+    /// 与 `O` 无关（菜单不出，③）。先按新 `O` 取本范围的 `A(r, O)` 并核与看图页现列表同数同成员（看图期间范围被对账改过即拒），
+    /// 再改 S1 的 `O`（随即写会话快照）、让看图页重排（当前照片不变；失败则把 `O` 改回），最后换在途交接副本——
+    /// 退出守卫 W4 与在途同步的顺序校验在重排后照样成立。
+    @discardableResult
+    func changeS2SortOrder(to newValue: S1SortOrder) -> Bool {
+        guard route == .s2,
+              let s1Machine,
+              let s2Machine,
+              let entryContext = s2EntryContext,
+              !s1Machine.activeVirtualRangeIDs.contains(entryContext.rangeID),
+              newValue != s1Machine.sortOrder,
+              let range = s1Machine.ranges.first(where: { $0.id == entryContext.rangeID }) else {
+            return false
+        }
+        let reordered = range.orderedAssetIDs(for: newValue)
+        let previousValue = s1Machine.sortOrder
+        guard reordered.count == entryContext.orderedAssetIDs.count,
+              Set(reordered) == Set(entryContext.orderedAssetIDs),
+              s1Machine.switchSortOrder(to: newValue) else {
+            return false
+        }
+        guard s2Machine.reorderAssets(reordered) else {
+            s1Machine.switchSortOrder(to: previousValue)
+            return false
+        }
+        s2EntryContext = SessionStore.S2EntryContext(
+            rangeID: entryContext.rangeID,
+            orderedAssetIDs: reordered,
+            sortOrder: newValue.sessionSortOrder
+        )
+        sessionStore = s1Machine.sessionStore
+        return true
+    }
+
     @discardableResult
     func leaveS2(with payload: S2ExitPayload) -> Bool {
         // IC-168 B（裁定 一）：诊断字段在写回校验之前取样——写回成功后在途登记即被移除、
