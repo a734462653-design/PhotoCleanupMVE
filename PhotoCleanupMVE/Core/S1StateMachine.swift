@@ -310,7 +310,11 @@ final class S1StateMachine: ObservableObject {
     @Published private(set) var ranges: [S1Range] = [] {
         // IC-178 B：范围列表每次被替换（读取、对账、切维度、重试、读取失败）都核一次年页身份——
         // 年不再是有子节点的一级范围即清掉，年页随之弹回列表，不留指向已消失范围的身份。
-        didSet { pruneYearPageIfNeeded() }
+        // IC-191：核过年页身份之后，两页的展开卡按 OPEN 规则回落（所指的卡仍在即不变，否则第一张）。
+        didSet {
+            pruneYearPageIfNeeded()
+            resolveOpenCards()
+        }
     }
     @Published private(set) var readFailure: S1RangeReadFailure?
     @Published private(set) var sessionStore: SessionStore {
@@ -320,6 +324,8 @@ final class S1StateMachine: ObservableObject {
     /// 放在状态机而不是视图：进 S2 时 tab 容器整棵重建，视图 `@State` 活不过一次往返（IC-157 同一教训）；
     /// 状态机跨路由保留，回来时 `S1View` 的 `NavigationStack` 直接推出年页。S2 遮挡期间不清。
     @Published private(set) var presentedYearRangeID: String?
+    /// IC-191（v12 `open`）：列表页与年页的展开卡身份，见 `S1OpenCardState`（不是 `@Published`：卡叠单独观察它）。
+    let openCards = S1OpenCardState()
     /// IC-127 D：受限授权标志。为真表示当前 `R(T)` 只覆盖用户选中的资产，
     /// 界面层据此挂提示条；不影响状态机的任何迁移。
     @Published private(set) var isLimitedAuthorization = false
@@ -458,12 +464,15 @@ final class S1StateMachine: ObservableObject {
             return false
         }
         presentedYearRangeID = rangeID
+        // IC-191：每次推入年页，年页的展开卡取初值（当前排序下第一张月卡）。
+        openCards.setYearPageRangeID(yearPageCardRangeIDs(of: rangeID).first)
         return true
     }
 
     /// IC-178 B：回到列表（年页返回钮，或系统边缘右滑把导航 item 置 nil）。
     func dismissYearPage() {
         presentedYearRangeID = nil
+        openCards.setYearPageRangeID(nil)
     }
 
     /// `ranges` 的 didSet：年页所指的年不再是有子节点的一级范围即清身份；本来就不在年页时不写、不发布。
@@ -476,6 +485,53 @@ final class S1StateMachine: ObservableObject {
         if !stillValid {
             presentedYearRangeID = nil
         }
+    }
+
+    /// IC-191：列表页卡叠的次序（一级范围；`T=date` 时年按 `O`，其余维度沿用读取方顺序）。
+    var listCardRangeIDs: [String] {
+        visibleRanges.filter { $0.parentRangeID == nil }.map(\.id)
+    }
+
+    /// IC-191：年页月卡叠的次序（按 `O`）。
+    func yearPageCardRangeIDs(of yearRangeID: String) -> [String] {
+        let months = childRanges(of: yearRangeID).map(\.id)
+        return sortOrder == .oldestFirst ? Array(months.reversed()) : months
+    }
+
+    /// IC-191（v12 `open`）：点列表页收起的卡即展开它。守卫——未遮挡、就绪、是列表页的卡；只改呈现：
+    /// 不改 `T`、`R(T)`、`M`、`K`、`W`，不触发读取，不写快照，状态机自己不发布。
+    @discardableResult
+    func openListCard(_ rangeID: String) -> Bool {
+        guard !isObscured, state == .ready, listCardRangeIDs.contains(rangeID) else {
+            return false
+        }
+        openCards.setListRangeID(rangeID)
+        return true
+    }
+
+    /// IC-191（v12 `open`）：点年页收起的月卡即展开它。守卫——未遮挡、年页在前、是该年的月卡。
+    @discardableResult
+    func openYearPageCard(_ rangeID: String) -> Bool {
+        guard !isObscured,
+              let yearRangeID = presentedYearRangeID,
+              yearPageCardRangeIDs(of: yearRangeID).contains(rangeID) else {
+            return false
+        }
+        openCards.setYearPageRangeID(rangeID)
+        return true
+    }
+
+    /// `ranges` 的 didSet（年页身份核过之后）：两页的展开卡按 OPEN 规则回落、写实——所指的卡仍在即不变，否则
+    /// 第一张；年页不在前即清。不在读时临时解析：切走再切回时旧值不复活，翻转排序时不跟着「第一张」跑。
+    private func resolveOpenCards() {
+        openCards.setListRangeID(S1OpenCardState.resolved(openCards.listRangeID, among: listCardRangeIDs))
+        guard let yearRangeID = presentedYearRangeID else {
+            openCards.setYearPageRangeID(nil)
+            return
+        }
+        openCards.setYearPageRangeID(
+            S1OpenCardState.resolved(openCards.yearPageRangeID, among: yearPageCardRangeIDs(of: yearRangeID))
+        )
     }
 
     /// 范围列表的可见顺序。`T=date`：年节点按 `O` 排列，每个年节点后跟其全部月节点

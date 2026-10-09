@@ -92,9 +92,9 @@ final class IC184RetireCaliberEnumsTests: XCTestCase {
         )
         // IC-189：加 `newAssetCount`（「新增 N 张」）；IC-191：加 `byteCount`／`sharePercent`（体积与占比）。
         XCTAssertEqual(occurrences(of: "let ", in: row), 10)
-        // 年页身份与既有钉子不动（IC178D／IC157／IC169 的计数）。
+        // 年页身份与既有钉子（IC178D／IC157／IC169 的计数）；IC-191：展开态回落与年页点卡各读一次年页身份，5 → 7。
         for (needle, expected) in [
-            ("presentedYearRangeID", 5),
+            ("presentedYearRangeID", 7),
             ("func presentYearPage(", 1),
             ("func dismissYearPage()", 1),
             ("didSet", 4),
