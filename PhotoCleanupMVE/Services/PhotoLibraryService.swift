@@ -329,7 +329,9 @@ final class PhotoLibraryService {
                             calendar: calendar
                         ),
                         assetIDsNewestFirst:
-                            (assetsByYearStart[yearStart] ?? []).map(\.identifier)
+                            (assetsByYearStart[yearStart] ?? []).map(\.identifier),
+                        creationDatesNewestFirst:
+                            (assetsByYearStart[yearStart] ?? []).map(\.creationDate)
                     )
                 )
                 let monthStarts = (monthStartsByYearStart[yearStart] ?? [])
@@ -349,6 +351,8 @@ final class PhotoLibraryService {
                             ),
                             assetIDsNewestFirst:
                                 (assetsByMonthStart[monthStart] ?? []).map(\.identifier),
+                            creationDatesNewestFirst:
+                                (assetsByMonthStart[monthStart] ?? []).map(\.creationDate),
                             parentRangeID: yearID
                         )
                     )
@@ -408,7 +412,8 @@ final class PhotoLibraryService {
                 S1Range(
                     id: rangeID,
                     displayName: displayName,
-                    assetIDsNewestFirst: assets.map(\.identifier)
+                    assetIDsNewestFirst: assets.map(\.identifier),
+                    creationDatesNewestFirst: assets.map(\.creationDate)
                 )
             )
         }
@@ -455,7 +460,8 @@ final class PhotoLibraryService {
                 S1Range(
                     id: "s1-unclassified",
                     displayName: L10n.text("s1.dimension.unclassified"),
-                    assetIDsNewestFirst: assets.map(\.identifier)
+                    assetIDsNewestFirst: assets.map(\.identifier),
+                    creationDatesNewestFirst: assets.map(\.creationDate)
                 )
             ])
         }

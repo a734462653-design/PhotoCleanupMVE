@@ -42,17 +42,22 @@ struct S1Range: Identifiable, Equatable, Sendable {
     let id: String
     let displayName: String
     let assetIDsNewestFirst: [String]
+    /// IC-189（SPEC-S1 v12 第二节 `拍摄时间(a)`）：与 `assetIDsNewestFirst` 逐张对应的拍摄时间；照片库读取时填，
+    /// 手造夹具与预览可不给（空列）——「新增」按无时间计 0。
+    let creationDatesNewestFirst: [Date]
     let parentRangeID: String?
 
     init(
         id: String,
         displayName: String,
         assetIDsNewestFirst: [String],
+        creationDatesNewestFirst: [Date] = [],
         parentRangeID: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.assetIDsNewestFirst = assetIDsNewestFirst
+        self.creationDatesNewestFirst = creationDatesNewestFirst
         self.parentRangeID = parentRangeID
     }
 
@@ -67,6 +72,19 @@ struct S1Range: Identifiable, Equatable, Sendable {
         case .oldestFirst:
             return Array(assetIDsNewestFirst.reversed())
         }
+    }
+
+    /// IC-189（v12 `新增(r)`）：拍摄时间严格晚于 `baseline`、且不在看过集合里的张数。整列扫描、不依赖存储顺序；
+    /// 时间列与资产列不等长（含没有时间列）按无时间计 0。
+    func newAssetCount(after baseline: Date, excluding seenAssetIDs: Set<String>) -> Int {
+        guard creationDatesNewestFirst.count == assetIDsNewestFirst.count else {
+            return 0
+        }
+        var count = 0
+        for (assetID, creationDate) in zip(assetIDsNewestFirst, creationDatesNewestFirst) where creationDate > baseline && !seenAssetIDs.contains(assetID) {
+            count += 1
+        }
+        return count
     }
 }
 
