@@ -54,7 +54,7 @@ final class IC177UnifiedBackgroundTests: XCTestCase {
             "userInterfaceStyle", "dynamicColor("
         ]
         let expectations: [(String, Int, Int, Int)] = [
-            (Self.s1Path, 28, 7, 1),
+            (Self.s1Path, 17, 7, 1),
             (Self.s3Path, 18, 0, 2),
             (Self.s4Path, 7, 0, 2),
             (Self.s5Path, 19, 1, 1)
@@ -71,13 +71,14 @@ final class IC177UnifiedBackgroundTests: XCTestCase {
             XCTAssertEqual(occurrences(of: "ProgressView().tint(S1ChromeForeground.secondary)", in: stripped), spinners, path)
         }
 
-        // IC-148 断言 2 与 IC-172 的正对照：S1View 仍有 `.primary`（成员名）、`Material`／`ultraThin`（回落玻璃、菜单、toast）、七处深色覆盖。
+        // IC-148 断言 2 与 IC-172 的正对照：S1View 仍有 `.primary`（成员名）、`Material`／`ultraThin`（回落玻璃、toast）、五处深色覆盖
+        // （IC-192：顶排容器与自绘菜单两处、中胶囊玻璃一处随 V1 页头退役；页头在 `S1PageHeader.swift`，前景表引用 28 → 17）。
         let s1 = try XCTUnwrap(strippedSource(Self.s1Path))
         XCTAssertGreaterThan(occurrences(of: ".primary", in: s1), 0)
         XCTAssertGreaterThan(occurrences(of: "Material", in: s1), 0)
         XCTAssertGreaterThan(occurrences(of: "ultraThin", in: s1), 0)
-        XCTAssertEqual(occurrences(of: "colorScheme, .dark)", in: s1), 7)
-        XCTAssertEqual(occurrences(of: "s1ChromeGlassBackground(", in: s1), 4, "玻璃 helper 不动")
+        XCTAssertEqual(occurrences(of: "colorScheme, .dark)", in: s1), 5)
+        XCTAssertEqual(occurrences(of: "s1ChromeGlassBackground(", in: s1), 3, "玻璃 helper 不动")
 
         let ambient = try XCTUnwrap(sourceText(Self.ambientPath))
         XCTAssertEqual(occurrences(of: "green: 15.0 / 255", in: ambient), 1)

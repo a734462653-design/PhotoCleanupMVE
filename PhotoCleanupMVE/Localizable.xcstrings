@@ -595,28 +595,6 @@
         }
       }
     },
-    "s1.chrome.subtitle_format" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "{count} 张 · {ranges} 个范围"
-          }
-        }
-      }
-    },
-    "s1.dimension.accessibility" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分组维度"
-          }
-        }
-      }
-    },
     "s1.dimension.album" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -650,6 +628,83 @@
         }
       }
     },
+    "s1.header.basket" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待删篮 {count} 张"
+          }
+        }
+      }
+    },
+    "s1.header.confirm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "去确认"
+          }
+        }
+      }
+    },
+    "s1.header.seen_label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已看"
+          }
+        }
+      }
+    },
+    "s1.header.subtitle.album" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张 · {albums} 个相册"
+          }
+        }
+      }
+    },
+    "s1.header.subtitle.date" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} 张 · {years} 年"
+          }
+        }
+      }
+    },
+    "s1.header.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "逐张整理"
+          }
+        }
+      }
+    },
+    "s1.header.total_label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片与视频占用"
+          }
+        }
+      }
+    },
     "s1.limited.banner" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -668,39 +723,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "管理"
-          }
-        }
-      }
-    },
-    "s1.menu.dimension.album_hint" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "{count} 个"
-          }
-        }
-      }
-    },
-    "s1.menu.dimension.date_hint" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "年 → 月"
-          }
-        }
-      }
-    },
-    "s1.menu.dimension.unclassified_hint" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "{count} 张"
           }
         }
       }
@@ -943,6 +965,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "整理整年"
+          }
+        }
+      }
+    },
+    "s1.volume.counting" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "统计中"
           }
         }
       }

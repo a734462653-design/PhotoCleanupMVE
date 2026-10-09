@@ -8,9 +8,8 @@ import UIKit
 // SPEC-S2 v18 第十一节第 2 部分；注「④卡」的为 IC-128 画布定稿转录；注「④取定」
 // 的为卡内未给、本卡取定并在报告登记的微观值。
 
-/// S1 chrome 布局锚。画布基准 393×852、安全区顶 59：卡内「距屏顶」的 114／122／174
-/// 在此登记为「距安全区顶」的推导量（卡内 122 = 62 + 44 + 16 自证推导式），随机型
-/// 安全区自适应。
+/// S1 chrome 布局锚（v18 §11.2 与 IC-128 画布）。顶排四值另被「空间清理」与 S3／S4／S5 借用；
+/// 列表起始与菜单的三个推导偏移随 V1 页头退役（IC-192，SPEC-S1 v12 第十一节第 2d 部分改为距顶排底缘）。
 enum S1ChromeLayout {
     /// 圆钮直径 = 胶囊高 = chrome 行高（v18 §11.2 chromeRowHeight）。
     static let rowHeight: CGFloat = 44
@@ -24,14 +23,6 @@ enum S1ChromeLayout {
     static let chromeToOverlaySpacing: CGFloat = 8
     /// chrome 底缘 → 列表起始（④卡：画布 122 − 106）。
     static let chromeToListSpacing: CGFloat = 16
-    /// 受限提示条底缘 → 列表起始（④卡：画布 174 − 158）。
-    static let bannerToListSpacing: CGFloat = 16
-    /// 菜单／受限提示条顶缘距安全区顶（④卡：画布 114 − 59 = 3 + 44 + 8）。
-    static let overlayTopOffset: CGFloat = 55
-    /// 正常列表起始距安全区顶（④卡：画布 122 − 59 = 3 + 44 + 16）。
-    static let listTopOffset: CGFloat = 63
-    /// 受限提示条在场时列表起始距安全区顶（④卡：画布 174 − 59 = 55 + 44 + 16）。
-    static let limitedListTopOffset: CGFloat = 115
 }
 
 /// S1 玻璃配方（v18 §11.2 glass*，与 S2 同族同值）。
@@ -54,7 +45,7 @@ enum S1ChromeForeground {
     static let secondary = S0DeckMetrics.text.opacity(secondaryOpacity)
     /// 占位图标、空态与失败态图标（原 `.tertiaryLabel`）。
     static let tertiary = S0DeckMetrics.text.opacity(tertiaryOpacity)
-    /// 分隔线：卡片叠外圈描边（`S1DeckCards`）、菜单行之间（原 `.separator`）。
+    /// 分隔线：卡片叠外圈描边（`S1DeckCards`）、页头骨架（`S1PageHeader`；原 `.separator`）。
     static let separator = S0DeckMetrics.text.opacity(separatorOpacity)
     /// 选中态、「管理」与重试、S3 提交、S5 失败数与「返回确认页」（原系统 tint 蓝与系统红）。
     static let accent = S0DeckMetrics.accent
@@ -65,7 +56,7 @@ enum S1ChromeForeground {
     static let separatorOpacity: Double = 0.14
 }
 
-/// chrome 文字与图标字号（v18 §11.2；capsuleChevronPointSize 为 ④取定）。
+/// chrome 文字与图标字号（v18 §11.2；中胶囊随 V1 页头退役，两个字号仍被「空间清理」与 S3／S4／S5 借用）。
 enum S1ChromeTypography {
     /// 中胶囊主行（v18 §11.2 titleFontSize）。
     static let titleFontSize: CGFloat = 15
@@ -73,8 +64,6 @@ enum S1ChromeTypography {
     static let subtitleFontSize: CGFloat = 11.5
     /// 圆钮图标（v18 §11.2 circleIconPointSize）。
     static let circleIconPointSize: CGFloat = 17
-    /// 中胶囊主行下箭头字号（④取定：主行 15 的随行小箭头）。
-    static let capsuleChevronPointSize: CGFloat = 11
 }
 
 /// 通知徽标样式（v18 §11.2 badge*，与 S2 确认入口徽标同族）。垃圾桶徽标描边取
@@ -91,7 +80,9 @@ enum S1NotificationBadgeStyle {
     }
 }
 
-/// IC-128 A／IC-131 A：顶排 chrome 的展示口径（测试钉住）。
+/// IC-128 A／IC-131 A：顶排 chrome 的展示口径（测试钉住）。IC-192：V1 页头四类件同用本模型——排序钮、
+/// 待删篮入口、人像圆钮按 `controlsEnabled`／`controlsOpacity`（S1-1 降 40% 不可触发），维度胶囊只按
+/// `controlsEnabled`（S1-1 不可触发、不降暗）；「去确认」按 `trashEnabled`。
 ///
 /// 四态统一口径（锁定决策 8：S1 的四个状态**均**显示垃圾桶入口；其中 S1-1
 /// 加载中显示但不可触发）：
@@ -116,33 +107,6 @@ struct S1ChromeBarModel: Equatable {
             trashEnabled: !isLoading && badgeCount > 0,
             badgeText: badgeVisible ? String(badgeCount) : nil
         )
-    }
-}
-
-/// IC-128 A：中胶囊副行口径——总数 = `R(T)` 各范围资产**并集**数（相册维度同一
-/// 资产可属多相册、日期维度年月两级重叠，取并集避免重复计数）；范围数 = `R(T)`
-/// 范围项总数（年与月都是范围）。卡内未指明口径，此为 ④取定登记。
-enum S1ChromeSubtitle {
-    static func counts(
-        for ranges: [S1Range]
-    ) -> (assetCount: Int, rangeCount: Int) {
-        var union = Set<String>()
-        for range in ranges {
-            union.formUnion(range.assetIDsNewestFirst)
-        }
-        return (union.count, ranges.count)
-    }
-}
-
-/// IC-128 A/C：两菜单互斥——单一枚举承载同一时刻至多一个；点开着的那个再点一次
-/// 即关闭，点另一个则切换（开一个必然关另一个）。
-enum S1ActiveMenu: Equatable {
-    case none
-    case sort
-    case dimension
-
-    func toggling(_ tapped: S1ActiveMenu) -> S1ActiveMenu {
-        self == tapped ? .none : tapped
     }
 }
 
@@ -189,63 +153,7 @@ enum S1RangeCoverPolicy {
     }
 }
 
-// MARK: - IC-128 C：菜单与受限提示条常量
-
-/// 两菜单共通样式（④卡：圆角 14、近白 92～94% + 模糊、外圈 0.5 黑 6%、
-/// 投影 0 12 32 黑 18%、行间 0.5 分隔线、列表压黑 14% 暗色。背景不透明度取
-/// 区间中值 0.93；投影 32 直接用作 SwiftUI shadow radius；行字号 15 与排序行高
-/// 44 为 ④取定——均报告登记）。
-enum S1MenuStyle {
-    static let cornerRadius: CGFloat = 14
-    static let backgroundOpacity: Double = 0.93
-    static let ringOpacity: Double = 0.06
-    static let ringWidth: CGFloat = 0.5
-    static let shadowOpacity: Double = 0.18
-    static let shadowRadius: CGFloat = 32
-    static let shadowYOffset: CGFloat = 12
-    static let separatorWidth: CGFloat = 0.5
-    static let scrimOpacity: Double = 0.14
-    static let rowFontSize: CGFloat = 15
-    static let rowHorizontalPadding: CGFloat = 16
-    /// 排序菜单：left 16、宽 200、两项；选中项 tint + 半粗 + 左侧对勾（16 宽对勾位）。
-    static let sortMenuWidth: CGFloat = 200
-    static let sortRowHeight: CGFloat = 44
-    static let checkmarkSlotWidth: CGFloat = 16
-    /// 维度菜单：左右各距屏边 68、行高 50、提示字号 12.5 次级色。
-    static let dimensionEdgeInset: CGFloat = 68
-    static let dimensionRowHeight: CGFloat = 50
-    static let hintFontSize: CGFloat = 12.5
-}
-
-/// IC-128 C：维度菜单提示口径（测试钉住）。按日期为固定结构提示；相册／未分类
-/// 的 N 由该维度只读读取取得，读不到（nil）则该行不显示提示。
-enum S1DimensionMenuHintModel: Equatable {
-    case dateStructure
-    case albumCount(Int)
-    case unclassifiedCount(Int)
-    case unavailable
-
-    static func make(
-        for dimension: S1GroupingDimension,
-        albumRangeCount: Int?,
-        unclassifiedAssetCount: Int?
-    ) -> S1DimensionMenuHintModel {
-        switch dimension {
-        case .date:
-            return .dateStructure
-        case .album:
-            guard let albumRangeCount else {
-                return .unavailable
-            }
-            return .albumCount(albumRangeCount)
-        case .unclassified:
-            guard let unclassifiedAssetCount else {
-                return .unavailable
-            }
-            return .unclassifiedCount(unclassifiedAssetCount)
-        }
-    }
-}
+// MARK: - IC-128 C：受限提示条常量（两只自绘菜单随 V1 页头退役，IC-192）
 
 /// 受限授权提示条（④卡：高 44 圆角 22 玻璃底、左起 17pt 图标、文案 13.5 单行
 /// 省略、右端「管理」小胶囊高 30 圆角 15 水平内边距 12 tint 文字 + tint 10% 底；
@@ -262,21 +170,14 @@ enum S1LimitedBannerStyle {
     static let horizontalPadding: CGFloat = 14
 }
 
-/// IC-128 C：受限提示条显隐与列表起始口径（测试钉住）。受限不进失败态、
-/// 正常列表：提示条挂在列表在场的状态（就绪／空态）；列表起始由 122 下移到 174
-/// （距安全区顶推导量 63 → 115）。
+/// IC-128 C：受限提示条显隐口径（测试钉住）。受限不进失败态：提示条挂在列表在场的状态（就绪／空态）；
+/// V1 起位于维度胶囊下方、卡叠之上（IC-192），列表起始偏移随之退役。
 enum S1LimitedBannerPresentation {
     static func isVisible(
         isLimitedAuthorization: Bool,
         state: S1State
     ) -> Bool {
         isLimitedAuthorization && (state == .ready || state == .empty)
-    }
-
-    static func listTopOffset(bannerVisible: Bool) -> CGFloat {
-        bannerVisible
-            ? S1ChromeLayout.limitedListTopOffset
-            : S1ChromeLayout.listTopOffset
     }
 }
 
@@ -607,9 +508,6 @@ struct S1View: View {
 
     @ObservedObject var machine: S1StateMachine
     @StateObject private var feedbackToast = S1FeedbackToastPresenter()
-    @State private var activeMenu: S1ActiveMenu = .none
-    @State private var albumHintRangeCount: Int?
-    @State private var unclassifiedHintAssetCount: Int?
     /// IC-132 B：本视图自发反馈的序号源（与协调器通道的序号互不相干）。
     @State private var localFeedbackEventCount = 0
 
@@ -662,29 +560,34 @@ struct S1View: View {
         }
     }
 
-    /// IC-178 C：列表页——页头、四态、菜单、受限提示条一字不动，只有 `.ready` 的列表本体换成年卡叠。
-    /// 年页由外层 `NavigationStack` 推出（照「空间清理」tab 的 `S0CleanupFlowView`）：根页隐藏系统导航栏，
-    /// 身份在状态机（进 S2 时 tab 容器整棵重建、视图 `@State` 活不过一次往返——IC-157 同一教训），回来时
-    /// 容器重建、直接推出年页；toast 挂在栈外，两页都看得到。
+    /// IC-192（G2）：列表页照「空间清理」首页——就绪时整页一个 `ScrollView`（页头、受限条、卡叠同滚）；
+    /// 加载中、空态、失败不滚动，页头之下是居中占位。年页由外层 `NavigationStack` 推出，身份在状态机
+    /// （进 S2 时 tab 容器整棵重建、视图 `@State` 活不过一次往返——IC-157 同一教训）；toast 挂在栈外。
     private var rootPage: some View {
         ZStack(alignment: .top) {
             S1ChromeForeground.pageBackground
                 .ignoresSafeArea()
-            stateContent
-                .padding(
-                    .top,
-                    S1LimitedBannerPresentation.listTopOffset(
-                        bannerVisible: showsLimitedBanner
-                    )
-                )
-            if activeMenu != .none {
-                menuScrim
+            pageContainer {
+                VStack(alignment: .leading, spacing: 0) {
+                    pageHeader
+                    limitedBannerRow
+                    stateContent
+                }
             }
-            chromeColumn
-            if activeMenu != .none {
-                menuOverlay
-                    .padding(.top, S1ChromeLayout.overlayTopOffset)
+        }
+    }
+
+    /// 就绪才滚动：占位的 `maxHeight: .infinity` 放进 `ScrollView` 撑不满视口，非就绪态不进滚动容器。
+    @ViewBuilder
+    private func pageContainer<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if machine.state == .ready {
+            ScrollView {
+                content()
             }
+        } else {
+            content()
         }
     }
 
@@ -743,7 +646,7 @@ struct S1View: View {
         )
     }
 
-    // MARK: - IC-128 A：顶排 chrome
+    // MARK: - IC-192：V1 页头（SPEC-S1 v12 第三节前言、第六节第 3、4 部分）
 
     private var chromeModel: S1ChromeBarModel {
         S1ChromeBarModel.make(
@@ -752,15 +655,40 @@ struct S1View: View {
         )
     }
 
-    private var chromeColumn: some View {
-        VStack(spacing: S1ChromeLayout.chromeToOverlaySpacing) {
-            chromeBar
-            if showsLimitedBanner {
-                limitedBanner
+    /// 页头只收值与回调；一次 `body` 只取一次 `headerSummary`（IC-191 规格欠账 (3)）。
+    private var pageHeader: some View {
+        S1PageHeader(
+            state: machine.state,
+            summary: machine.headerSummary,
+            groupingDimension: machine.groupingDimension,
+            badgeCount: machine.badgeCount,
+            chromeModel: chromeModel,
+            sortOrder: sortOrderBinding,
+            onBasket: openBasket,
+            onSelectDimension: selectDimension,
+            onOpenAccount: {}
+        )
+    }
+
+    /// 系统 `Menu` 的选择写进状态机；同值或遮挡时状态机拒收，菜单照系统默认关闭。
+    private var sortOrderBinding: Binding<S1SortOrder> {
+        Binding(
+            get: { machine.sortOrder },
+            set: { newValue in
+                _ = machine.switchSortOrder(to: newValue)
             }
-        }
-        .padding(.top, S1ChromeLayout.topRowTopInset)
-        .padding(.horizontal, S1ChromeLayout.horizontalMargin)
+        )
+    }
+
+    /// 待删篮入口与副行「去确认」同一动作（决策 8）。
+    private func openBasket() {
+        S1TrashButtonAction.perform(
+            machine: machine,
+            onS3Submission: onS3Submission,
+            onSubmissionUnavailable: {
+                presentLocalFeedback(.submissionUnavailable)
+            }
+        )
     }
 
     private var showsLimitedBanner: Bool {
@@ -770,364 +698,14 @@ struct S1View: View {
         )
     }
 
-    /// IC-120 B 同教训：iOS 26 玻璃容器会把普通 overlay 盖进合成层，
-    /// 徽标以 overlay 叠在容器之外，两分支同一实现。
+    /// 受限提示条位于维度胶囊下方、卡叠之上（第六节第 4 部分）。
     @ViewBuilder
-    private var chromeBar: some View {
-        let model = chromeModel
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer {
-                chromeItems(model)
-            }
-            // IC-172：容器内三件都是玻璃件；徽标在容器之外，不受覆盖。
-            .environment(\.colorScheme, .dark)
-            .overlay(alignment: .topTrailing) {
-                trashBadge(model)
-            }
-            .opacity(model.controlsOpacity)
-        } else {
-            chromeItems(model)
-                .overlay(alignment: .topTrailing) {
-                    trashBadge(model)
-                }
-                .opacity(model.controlsOpacity)
+    private var limitedBannerRow: some View {
+        if showsLimitedBanner {
+            limitedBanner
+                .padding(.horizontal, S1ChromeLayout.horizontalMargin)
+                .padding(.top, S1PageHeaderMetrics.bannerTopSpacing)
         }
-    }
-
-    private func chromeItems(_ model: S1ChromeBarModel) -> some View {
-        HStack(spacing: S1ChromeLayout.itemSpacing) {
-            sortButton(model)
-            dimensionCapsule(model)
-            trashButton(model)
-        }
-    }
-
-    private func sortButton(_ model: S1ChromeBarModel) -> some View {
-        Button {
-            activeMenu = activeMenu.toggling(.sort)
-        } label: {
-            Image(systemName: "arrow.up.arrow.down")
-                .foregroundStyle(S1ChromeForeground.primary)
-                .s1ChromeCircleGlass()
-        }
-        .disabled(!model.controlsEnabled)
-        .accessibilityLabel(L10n.text("s1.sort.accessibility"))
-    }
-
-    private func dimensionCapsule(_ model: S1ChromeBarModel) -> some View {
-        Button {
-            let next = activeMenu.toggling(.dimension)
-            if next == .dimension {
-                refreshDimensionHints()
-            }
-            activeMenu = next
-        } label: {
-            capsuleLabel
-        }
-        .disabled(!model.controlsEnabled)
-        .accessibilityLabel(L10n.text("s1.dimension.accessibility"))
-    }
-
-    private var capsuleLabel: some View {
-        VStack(spacing: 1) {
-            capsuleTitleLine
-            capsuleSubtitleLine
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: S1ChromeLayout.rowHeight)
-        .s1ChromeGlassBackground(in: Capsule())
-    }
-
-    private var capsuleTitleLine: some View {
-        HStack(spacing: 4) {
-            Text(groupingTitle(machine.groupingDimension))
-                .font(
-                    .system(
-                        size: S1ChromeTypography.titleFontSize,
-                        weight: .semibold
-                    )
-                )
-            Image(
-                systemName: activeMenu == .dimension
-                    ? "chevron.up"
-                    : "chevron.down"
-            )
-            .font(
-                .system(
-                    size: S1ChromeTypography.capsuleChevronPointSize,
-                    weight: .semibold
-                )
-            )
-        }
-        .foregroundStyle(S1ChromeForeground.primary)
-    }
-
-    private var capsuleSubtitleLine: some View {
-        let counts = S1ChromeSubtitle.counts(for: machine.ranges)
-        return Text(
-            L10n.text(
-                "s1.chrome.subtitle_format",
-                replacing: [
-                    "count": String(counts.assetCount),
-                    "ranges": String(counts.rangeCount)
-                ]
-            )
-        )
-        .font(.system(size: S1ChromeTypography.subtitleFontSize))
-        .monospacedDigit()
-        .foregroundStyle(S1ChromeForeground.secondary)
-    }
-
-    private func trashButton(_ model: S1ChromeBarModel) -> some View {
-        Button {
-            S1TrashButtonAction.perform(
-                machine: machine,
-                onS3Submission: onS3Submission,
-                onSubmissionUnavailable: {
-                    presentLocalFeedback(.submissionUnavailable)
-                }
-            )
-        } label: {
-            Image(systemName: "trash")
-                .foregroundStyle(S1ChromeForeground.primary)
-                .s1ChromeCircleGlass()
-        }
-        .disabled(!model.trashEnabled)
-        .accessibilityLabel(
-            L10n.text(
-                "s1.trash.accessibility",
-                replacing: ["count": String(machine.badgeCount)]
-            )
-        )
-    }
-
-    @ViewBuilder
-    private func trashBadge(_ model: S1ChromeBarModel) -> some View {
-        if let badgeText = model.badgeText {
-            Text(badgeText)
-                .font(
-                    .system(
-                        size: S1NotificationBadgeStyle.fontSize,
-                        weight: .semibold
-                    )
-                )
-                .monospacedDigit()
-                .foregroundStyle(S1NotificationBadgeStyle.digitColor)
-                .padding(
-                    .horizontal,
-                    S1NotificationBadgeStyle.horizontalPadding
-                )
-                .frame(
-                    minWidth: S1NotificationBadgeStyle.minDiameter,
-                    minHeight: S1NotificationBadgeStyle.minDiameter
-                )
-                .background(S1NotificationBadgeStyle.fill, in: Capsule())
-                .overlay {
-                    Capsule().strokeBorder(
-                        S1NotificationBadgeStyle.chromeRing,
-                        lineWidth: S1NotificationBadgeStyle.ringWidth
-                    )
-                }
-                .allowsHitTesting(false)
-        }
-    }
-
-    // MARK: - IC-128 C：菜单
-
-    /// 菜单开着时列表压一层黑 14% 暗色；点暗色层关闭菜单。
-    /// 层序在 chrome 之下——chrome 不被压暗，再点圆钮／胶囊即切换或关闭。
-    private var menuScrim: some View {
-        Color.black.opacity(S1MenuStyle.scrimOpacity)
-            .ignoresSafeArea()
-            .onTapGesture {
-                activeMenu = .none
-            }
-    }
-
-    @ViewBuilder
-    private var menuOverlay: some View {
-        switch activeMenu {
-        case .sort:
-            sortMenu
-                .frame(width: S1MenuStyle.sortMenuWidth)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, S1ChromeLayout.horizontalMargin)
-        case .dimension:
-            dimensionMenu
-                .padding(.horizontal, S1MenuStyle.dimensionEdgeInset)
-        case .none:
-            EmptyView()
-        }
-    }
-
-    private var sortMenu: some View {
-        menuContainer {
-            sortMenuRow(.newestFirst)
-            menuSeparator
-            sortMenuRow(.oldestFirst)
-        }
-    }
-
-    private func sortMenuRow(_ order: S1SortOrder) -> some View {
-        let isSelected = machine.sortOrder == order
-        return Button {
-            activeMenu = .none
-            _ = machine.switchSortOrder(to: order)
-        } label: {
-            HStack(spacing: 4) {
-                ZStack {
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                }
-                .frame(width: S1MenuStyle.checkmarkSlotWidth)
-                Text(sortTitle(order))
-                    .font(
-                        .system(
-                            size: S1MenuStyle.rowFontSize,
-                            weight: isSelected ? .semibold : .regular
-                        )
-                    )
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(
-                isSelected ? S1ChromeForeground.accent : S1ChromeForeground.primary
-            )
-            .padding(.horizontal, S1MenuStyle.rowHorizontalPadding)
-            .frame(height: S1MenuStyle.sortRowHeight)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var dimensionMenu: some View {
-        menuContainer {
-            dimensionMenuRow(.date)
-            menuSeparator
-            dimensionMenuRow(.album)
-            menuSeparator
-            dimensionMenuRow(.unclassified)
-        }
-    }
-
-    private func dimensionMenuRow(
-        _ dimension: S1GroupingDimension
-    ) -> some View {
-        let isSelected = machine.groupingDimension == dimension
-        return Button {
-            activeMenu = .none
-            selectDimension(dimension)
-        } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(groupingTitle(dimension))
-                    .font(
-                        .system(
-                            size: S1MenuStyle.rowFontSize,
-                            weight: isSelected ? .semibold : .regular
-                        )
-                    )
-                    .foregroundStyle(
-                        isSelected
-                            ? S1ChromeForeground.accent
-                            : S1ChromeForeground.primary
-                    )
-                if let hint = dimensionHintText(dimension) {
-                    Text(hint)
-                        .font(.system(size: S1MenuStyle.hintFontSize))
-                        .foregroundStyle(S1ChromeForeground.secondary)
-                }
-            }
-            .padding(.horizontal, S1MenuStyle.rowHorizontalPadding)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: S1MenuStyle.dimensionRowHeight,
-                alignment: .leading
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func dimensionHintText(
-        _ dimension: S1GroupingDimension
-    ) -> String? {
-        let model = S1DimensionMenuHintModel.make(
-            for: dimension,
-            albumRangeCount: albumHintRangeCount,
-            unclassifiedAssetCount: unclassifiedHintAssetCount
-        )
-        switch model {
-        case .dateStructure:
-            return L10n.text("s1.menu.dimension.date_hint")
-        case let .albumCount(count):
-            return L10n.text(
-                "s1.menu.dimension.album_hint",
-                replacing: ["count": String(count)]
-            )
-        case let .unclassifiedCount(count):
-            return L10n.text(
-                "s1.menu.dimension.unclassified_hint",
-                replacing: ["count": String(count)]
-            )
-        case .unavailable:
-            return nil
-        }
-    }
-
-    private func menuContainer<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(spacing: 0, content: content)
-            .background {
-                RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
-                    .fill(
-                        S1ChromeForeground.cardBackground
-                            .opacity(S1MenuStyle.backgroundOpacity)
-                    )
-            }
-            .clipShape(
-                RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
-                    .strokeBorder(
-                        Color.black.opacity(S1MenuStyle.ringOpacity),
-                        lineWidth: S1MenuStyle.ringWidth
-                    )
-            }
-            .shadow(
-                color: Color.black.opacity(S1MenuStyle.shadowOpacity),
-                radius: S1MenuStyle.shadowRadius,
-                x: 0,
-                y: S1MenuStyle.shadowYOffset
-            )
-            // IC-172（④ 第 201 条 Lynn 答复第 4 条）：排序／分组下拉菜单纳入玻璃恒深——
-            // 底层系统材质与「近白」叠层随之解析到深色分支（v10 `:709` 按欠账登记）。
-            .environment(\.colorScheme, .dark)
-    }
-
-    private var menuSeparator: some View {
-        Rectangle()
-            .fill(S1ChromeForeground.separator)
-            .frame(height: S1MenuStyle.separatorWidth)
-    }
-
-    /// 维度提示的只读读取：不触碰状态机，读不到即无提示。
-    private func refreshDimensionHints() {
-        guard let rangeReader else {
-            albumHintRangeCount = nil
-            unclassifiedHintAssetCount = nil
-            return
-        }
-        albumHintRangeCount = (try? rangeReader(.album).result.get())?.count
-        unclassifiedHintAssetCount =
-            (try? rangeReader(.unclassified).result.get())
-                .map { ranges in
-                    ranges.reduce(0) { $0 + $1.totalAssetCount }
-                }
     }
 
     private func selectDimension(_ dimension: S1GroupingDimension) {
@@ -1206,6 +784,7 @@ struct S1View: View {
             loadingState
         case .ready:
             rangeList
+                .padding(.top, S1PageHeaderMetrics.deckTopSpacing)
         case .empty:
             emptyState
         case .failed:
@@ -1423,7 +1002,7 @@ struct S1View: View {
         onS2Handoff(handoff)
     }
 
-    // MARK: - 读取与文案
+    // MARK: - 读取
 
     private func readCurrentRequestIfPossible() {
         guard let rangeReader,
@@ -1436,26 +1015,6 @@ struct S1View: View {
             for: request,
             isLimitedAuthorization: response.isLimitedAuthorization
         )
-    }
-
-    private func groupingTitle(_ dimension: S1GroupingDimension) -> String {
-        switch dimension {
-        case .date:
-            return L10n.text("s1.dimension.date")
-        case .album:
-            return L10n.text("s1.dimension.album")
-        case .unclassified:
-            return L10n.text("s1.dimension.unclassified")
-        }
-    }
-
-    private func sortTitle(_ sortOrder: S1SortOrder) -> String {
-        switch sortOrder {
-        case .newestFirst:
-            return L10n.text("s1.sort.newest_first")
-        case .oldestFirst:
-            return L10n.text("s1.sort.oldest_first")
-        }
     }
 }
 
