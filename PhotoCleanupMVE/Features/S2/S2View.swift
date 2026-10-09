@@ -722,6 +722,20 @@ struct S2AlbumPickerListView: View {
     }
 }
 
+/// IC-199（SPEC-S2 v24 决策 59）：顶部中胶囊的排序菜单——取值现读会话级排序 `O`，选择交给协调器重排（当前照片不变）。
+/// 由协调器 `makeS2SortMenu()` 造；nil 即不出菜单（`cat:` 类别范围，③）。
+struct S2SortMenu {
+    let currentOrder: () -> S1SortOrder
+    let changeOrder: (S1SortOrder) -> Bool
+}
+
+/// IC-199：中胶囊主行末尾的下箭头（决策 59「主行加下箭头」；字号与间距卡内暂登，下一次 S2 修订回填）。
+enum S2SortMenuMetrics {
+    static let chevronSymbol = "chevron.down"
+    static let chevronPointSize: CGFloat = 10
+    static let chevronSpacing: CGFloat = 4
+}
+
 struct S2View: View {
     typealias PhotoContent = (S2ImageContentContext) -> AnyView
     typealias StripItemContent = (S2BottomStripItemPresentation) -> AnyView
@@ -785,6 +799,8 @@ struct S2View: View {
     private let exitDiagnosticsText: String?
     /// IC-175：相似识别诊断文本（扫描服务持有，本视图只读显示）。nil = 调用方未接线（测试宿主）。
     private let similarDiagnosticsText: String?
+    /// IC-199：顶部中胶囊的排序菜单（nil 不出菜单，只画原信息胶囊）。
+    private let sortMenu: S2SortMenu?
 
     @State private var calibrationOverlayState =
         S2CalibrationOverlayState.initial
@@ -872,7 +888,8 @@ struct S2View: View {
         feedbackToastPresenter: S2FeedbackToastPresenter =
             S2FeedbackToastPresenter(),
         exitDiagnosticsText: String? = nil,
-        similarDiagnosticsText: String? = nil
+        similarDiagnosticsText: String? = nil,
+        sortMenu: S2SortMenu? = nil
     ) {
         self.machine = machine
         self.calibration = calibration
@@ -897,6 +914,7 @@ struct S2View: View {
         self.shareItemResolver = shareItemResolver
         self.exitDiagnosticsText = exitDiagnosticsText
         self.similarDiagnosticsText = similarDiagnosticsText
+        self.sortMenu = sortMenu
         _geometryDiagnostics = StateObject(wrappedValue: geometryDiagnostics)
         _transitionDiagnostics = StateObject(
             wrappedValue: transitionDiagnostics
@@ -2164,8 +2182,7 @@ struct S2View: View {
             )
             .contentShape(Rectangle())
 
-            topInfoArea
-                .s2ChromeCapsuleGlass()
+            topCenterCapsule
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // IC-139 D（v19 回写决策 58）：标定／诊断面板的入口从主图长按
                 // 改到这里，所有页一致、与 `m` 无关。该面板不属产品行为，
@@ -2238,6 +2255,35 @@ struct S2View: View {
         .disabled(machine.touchSequenceOwner != .none)
     }
 
+    /// IC-199（SPEC-S2 v24 决策 59）：中胶囊——有排序菜单时整只是系统 `Menu`（两项、当前项系统勾选，与「逐张整理」页头
+    /// 同一组件、文案借 `s1.sort.*`），没有时照旧只画信息胶囊。长按进标定面板的手势仍挂在外层（`topBarRow`）。
+    @ViewBuilder
+    private var topCenterCapsule: some View {
+        if let sortMenu {
+            Menu {
+                Picker(
+                    L10n.text("s1.sort.accessibility"),
+                    selection: Binding(
+                        get: { sortMenu.currentOrder() },
+                        set: { _ = sortMenu.changeOrder($0) }
+                    )
+                ) {
+                    Text(S1PageHeaderPresentation.sortTitle(.newestFirst))
+                        .tag(S1SortOrder.newestFirst)
+                    Text(S1PageHeaderPresentation.sortTitle(.oldestFirst))
+                        .tag(S1SortOrder.oldestFirst)
+                }
+            } label: {
+                topInfoArea
+                    .s2ChromeCapsuleGlass()
+            }
+            .accessibilityHint(L10n.text("s1.sort.accessibility"))
+        } else {
+            topInfoArea
+                .s2ChromeCapsuleGlass()
+        }
+    }
+
     /// IC-099 阶段二 R2（v16 回写决策 35）：顶部中部信息区两行——
     /// 主行为当前资产拍摄日期（无拍摄日期时整行不显示，④ 卡内取定），
     /// 副行为「{当前序号}/{总数} · {占用空间}」；占用空间未就绪或取数失败时
@@ -2251,13 +2297,27 @@ struct S2View: View {
                 creationDate: assetCreationDate(machine.currentAssetID),
                 now: Date()
             ) {
-                Text(verbatim: dateText)
-                    .font(.system(
-                        size: S2ChromePillMetrics.titleFontSize,
-                        weight: .semibold
-                    ))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                HStack(spacing: S2SortMenuMetrics.chevronSpacing) {
+                    Text(verbatim: dateText)
+                        .font(.system(
+                            size: S2ChromePillMetrics.titleFontSize,
+                            weight: .semibold
+                        ))
+                        // IC-199：整只胶囊放进系统 `Menu` 的 label 后，层级 `.primary` 会解析成 tint（蓝）——
+                        // 与 IC-121 A 同一陷阱，改具体动态色（菜单外观感不变）。
+                        .foregroundStyle(S2ChromeForeground.onGlassPrimary)
+                        .lineLimit(1)
+                    // IC-199（决策 59「主行加下箭头」）：有排序菜单时主行末尾一个下箭头。
+                    if sortMenu != nil {
+                        Image(systemName: S2SortMenuMetrics.chevronSymbol)
+                            .font(.system(
+                                size: S2SortMenuMetrics.chevronPointSize,
+                                weight: .semibold
+                            ))
+                            .foregroundStyle(S2ChromeForeground.onGlassSecondary)
+                            .accessibilityHidden(true)
+                    }
+                }
             }
             Text(verbatim: S2TopBarInfoPresentation.subtitleText(
                 currentIndex: machine.currentIndex,
@@ -5872,6 +5932,9 @@ struct S2BottomStripView: View {
     let onPhotoSwitch: () -> Void
 
     @StateObject private var motion: S2BottomStripMotionController
+    /// IC-199：最近一次同步过的列表版本号——列表重排（`orderedListRevision` 变了）那次横栏直接跳到新格位、不滑行。
+    /// 初值取构造时的版本号：横栏重建后第一次翻页照旧带动画。
+    @State private var stripSyncedRevision: Int
 
     init(
         machine: S2StateMachine,
@@ -5900,6 +5963,7 @@ struct S2BottomStripView: View {
             currentIndex: machine.currentIndex
         )
         _motion = StateObject(wrappedValue: motion)
+        _stripSyncedRevision = State(initialValue: machine.orderedListRevision)
     }
 
     func markPresentation(for assetID: String) -> S2BottomStripMarkPresentation {
@@ -5998,10 +6062,21 @@ struct S2BottomStripView: View {
             }
             .onChange(of: machine.currentIndex) { _, currentIndex in
                 // 主图翻页引起的定位项变化：动画跟随；横栏拖动中由控制器自行跟踪。
+                // IC-199：列表重排引起的下标变化不滑行——版本号变了即直接跳到新格位。
+                let reordered = machine.orderedListRevision != stripSyncedRevision
+                stripSyncedRevision = machine.orderedListRevision
                 motion.synchronize(
                     count: machine.orderedAssetIDs.count,
                     currentIndex: currentIndex,
-                    animated: true
+                    animated: !reordered
+                )
+            }
+            .onChange(of: machine.orderedListRevision) { _, revision in
+                // IC-199：同数量换顺序（下标可能没变）——横栏按新顺序重画，格位直接对齐当前张。
+                stripSyncedRevision = revision
+                motion.synchronize(
+                    count: machine.orderedAssetIDs.count,
+                    currentIndex: machine.currentIndex
                 )
             }
             .onChange(of: machine.orderedAssetIDs.count) { _, count in
