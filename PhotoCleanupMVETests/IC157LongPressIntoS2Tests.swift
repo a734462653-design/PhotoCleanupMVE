@@ -238,7 +238,8 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
     /// 提前返回、不碰 `M`／`K`（IC-131 断言 4 的「会话层逐字未变」靠的是同一件事）。
     func testIC157C_RoundTripThroughCoordinatorLandsMarksAndKeepsPageIdentity() async {
         await MainActor.run {
-            let coordinator = CleanupCoordinator()
+            // IC-188：离开 S2 会写看过档，用隔离持久层。
+            let coordinator = CleanupCoordinator(persistence: TestPersistenceIsolation.makePersistence())
             XCTAssertTrue(coordinator.enterS1(sessionID: "会话-157C-往返"))
             let machine = unwrapC(coordinator.s1Machine)
             let request = unwrapC(machine.currentReadRequest)

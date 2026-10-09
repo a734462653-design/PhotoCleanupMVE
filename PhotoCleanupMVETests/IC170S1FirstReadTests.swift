@@ -108,7 +108,9 @@ final class IC170S1FirstReadTests: XCTestCase {
                 ]
             )
             let coordinator = CleanupCoordinator(
-                photoLibrary: PhotoLibraryService(s1Source: box.source)
+                photoLibrary: PhotoLibraryService(s1Source: box.source),
+                // IC-188：离开 S2 会写看过档，用隔离持久层。
+                persistence: TestPersistenceIsolation.makePersistence()
             )
             XCTAssertTrue(coordinator.enterS1(sessionID: "会话-170A-返回"))
             let machine = unwrap(coordinator.s1Machine)

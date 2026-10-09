@@ -358,7 +358,8 @@ final class FullFlowRoutingTests: XCTestCase {
         sessionID: String,
         ranges: [S1Range]
     ) -> CleanupCoordinator {
-        let coordinator = CleanupCoordinator()
+        // IC-188：S1 的已看与进入位置读看过档，用隔离持久层，不读写测试宿主真实目录。
+        let coordinator = CleanupCoordinator(persistence: TestPersistenceIsolation.makePersistence())
         XCTAssertTrue(coordinator.enterS1(sessionID: sessionID))
         completeRead(coordinator: coordinator, ranges: ranges)
         return coordinator

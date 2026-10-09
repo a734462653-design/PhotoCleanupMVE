@@ -150,7 +150,8 @@ final class IC131S1WriteBackToastTests: XCTestCase {
     /// 建一个已进入 S2 的协调器：S1 读到一个范围 → 打开该范围 → 在 S2 里标记一张。
     @MainActor
     private func makeCoordinatorInS2(sessionID: String) -> CleanupCoordinator {
-        let coordinator = CleanupCoordinator()
+        // IC-188：离开 S2 会写看过档，用隔离持久层。
+        let coordinator = CleanupCoordinator(persistence: TestPersistenceIsolation.makePersistence())
         XCTAssertTrue(coordinator.enterS1(sessionID: sessionID))
         let machine = tryUnwrap(coordinator.s1Machine)
         let request = tryUnwrap(machine.currentReadRequest)
