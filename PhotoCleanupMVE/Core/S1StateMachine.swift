@@ -311,6 +311,10 @@ final class S1StateMachine: ObservableObject {
     /// 不随会话清）；未注入的夹具按空集。已看进度与从 S1 进入的位置都从这里读。
     var seenAssetIDsProvider: (() -> Set<String>)?
 
+    /// IC-188（SPEC-S1 v12 第二节 `看过档`·迁移）：旧会话档 `p_范围` 前缀的一次性迁移入口——每次采用新读到的范围时、
+    /// **在按范围收敛（`K` 钳制）之前**连同本次采用的维度交给协调器；协调器按看过档的迁移标记只做一次。未注入的夹具不迁移。
+    var legacyProgressMigration: ((_ ranges: [S1Range], _ groupingDimension: S1GroupingDimension, _ store: SessionStore) -> Void)?
+
     private var readGeneration = 0
     private var knownRangeNamesByID: [String: String] = [:]
     /// IC-157 A：在途的虚拟范围（S0 类别页长按进 S2 时登记，写回成功即移除）。逐张镜像与
@@ -565,6 +569,8 @@ final class S1StateMachine: ObservableObject {
         if countsAsReconciliation {
             reconciliationCount += 1
         }
+        // IC-188：旧档迁移要用钳制之前的 `K`——钳制会把已失效的 `p_范围` 移到序列末位，迁移后就成了「全部看过」。
+        legacyProgressMigration?(newRanges, groupingDimension, sessionStore)
         var reconciledStore = Self.reconciledStore(sessionStore, against: newRanges)
         // IC-129：在按范围收敛之上叠加按存在性收敛——覆盖 `M` 的全部范围，
         // 与本次读到的 `R(T)` 无关，跨维度的失效资产在任一次对账中即收敛。
