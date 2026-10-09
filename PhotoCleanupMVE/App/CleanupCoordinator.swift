@@ -992,6 +992,12 @@ final class CleanupCoordinator: ObservableObject {
                 self.migrateLegacyProgressIfNeeded(adopting: ranges, groupedBy: groupingDimension, from: store)
             }
         }
+        // IC-189：范围离开时刻接到状态机——「新增 N 张」的基线；与看过集合同在看过档。
+        machine.leaveTimeProvider = { [weak self] rangeID in
+            MainActor.assumeIsolated {
+                self?.currentSeenArchive().leaveTimeByRangeID[rangeID]
+            }
+        }
         s1Machine = machine
         s2Machine = nil
         s2EntryContext = nil
