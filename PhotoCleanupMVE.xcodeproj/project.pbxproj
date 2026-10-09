@@ -97,6 +97,7 @@
 		200000000000000000000075 /* IC175SimilarRecognizerTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000078 /* IC175SimilarRecognizerTests.swift */; };
 		200000000000000000000076 /* IC177UnifiedBackgroundTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000079 /* IC177UnifiedBackgroundTests.swift */; };
 		200000000000000000000077 /* S2InlineHints.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007A /* S2InlineHints.swift */; };
+		200000000000000000000094 /* S2GuideD.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000097 /* S2GuideD.swift */; };
 		200000000000000000000078 /* IC179InlineHintsTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007B /* IC179InlineHintsTests.swift */; };
 		200000000000000000000079 /* S5GuideStepsView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007C /* S5GuideStepsView.swift */; };
 		200000000000000000000081 /* NavigationEdgeSwipeBack.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000084 /* NavigationEdgeSwipeBack.swift */; };
@@ -119,6 +120,7 @@
 		200000000000000000000091 /* IC192PageHeaderTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000094 /* IC192PageHeaderTests.swift */; };
 		200000000000000000000092 /* IC193V1DeckTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000095 /* IC193V1DeckTests.swift */; };
 		200000000000000000000093 /* IC194S3ReturnLandingTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000096 /* IC194S3ReturnLandingTests.swift */; };
+		200000000000000000000095 /* IC195GuideDLogicTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000098 /* IC195GuideDLogicTests.swift */; };
 		20000000000000000000001F /* S1StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* S1StateMachine.swift */; };
 		200000000000000000000020 /* S1View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* S1View.swift */; };
 		200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* S1StateMachineTests.swift */; };
@@ -253,6 +255,7 @@
 		100000000000000000000078 /* IC175SimilarRecognizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC175SimilarRecognizerTests.swift; sourceTree = "<group>"; };
 		100000000000000000000079 /* IC177UnifiedBackgroundTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC177UnifiedBackgroundTests.swift; sourceTree = "<group>"; };
 		10000000000000000000007A /* S2InlineHints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2InlineHints.swift; sourceTree = "<group>"; };
+		100000000000000000000097 /* S2GuideD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2GuideD.swift; sourceTree = "<group>"; };
 		10000000000000000000007B /* IC179InlineHintsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC179InlineHintsTests.swift; sourceTree = "<group>"; };
 		10000000000000000000007C /* S5GuideStepsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S5GuideStepsView.swift; sourceTree = "<group>"; };
 		100000000000000000000084 /* NavigationEdgeSwipeBack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationEdgeSwipeBack.swift; sourceTree = "<group>"; };
@@ -275,6 +278,7 @@
 		100000000000000000000094 /* IC192PageHeaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC192PageHeaderTests.swift; sourceTree = "<group>"; };
 		100000000000000000000095 /* IC193V1DeckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC193V1DeckTests.swift; sourceTree = "<group>"; };
 		100000000000000000000096 /* IC194S3ReturnLandingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC194S3ReturnLandingTests.swift; sourceTree = "<group>"; };
+		100000000000000000000098 /* IC195GuideDLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC195GuideDLogicTests.swift; sourceTree = "<group>"; };
 		100000000000000000000022 /* S1StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000023 /* S1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1View.swift; sourceTree = "<group>"; };
 		100000000000000000000024 /* S1StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachineTests.swift; sourceTree = "<group>"; };
@@ -455,6 +459,7 @@
 				100000000000000000000032 /* S2AssetVolumeFormatter.swift */,
 				100000000000000000000033 /* S2TopBarInfoPresentation.swift */,
 				10000000000000000000007A /* S2InlineHints.swift */,
+				100000000000000000000097 /* S2GuideD.swift */,
 			);
 			path = S2;
 			sourceTree = "<group>";
@@ -563,6 +568,7 @@
 				100000000000000000000094 /* IC192PageHeaderTests.swift */,
 				100000000000000000000095 /* IC193V1DeckTests.swift */,
 				100000000000000000000096 /* IC194S3ReturnLandingTests.swift */,
+				100000000000000000000098 /* IC195GuideDLogicTests.swift */,
 				100000000000000000000014 /* SnapshotInvariantTests.swift */,
 				100000000000000000000015 /* VolumeFormattingTests.swift */,
 				100000000000000000000016 /* S4StateMachineTests.swift */,
@@ -746,6 +752,7 @@
 				20000000000000000000002F /* S2AssetVolumeFormatter.swift（源码） */,
 				200000000000000000000030 /* S2TopBarInfoPresentation.swift（源码） */,
 				200000000000000000000077 /* S2InlineHints.swift（源码） */,
+				200000000000000000000094 /* S2GuideD.swift（源码） */,
 				20000000000000000000000B /* S3View.swift（源码） */,
 				20000000000000000000000C /* S4View.swift（源码） */,
 				20000000000000000000000D /* S5View.swift（源码） */,
@@ -823,6 +830,7 @@
 				200000000000000000000091 /* IC192PageHeaderTests.swift（测试源码） */,
 				200000000000000000000092 /* IC193V1DeckTests.swift（测试源码） */,
 				200000000000000000000093 /* IC194S3ReturnLandingTests.swift（测试源码） */,
+				200000000000000000000095 /* IC195GuideDLogicTests.swift（测试源码） */,
 				200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */,
 				200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */,
 				200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */,

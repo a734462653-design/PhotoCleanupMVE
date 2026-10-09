@@ -288,6 +288,20 @@ struct S2ContinuationSnapshot: Equatable {
     let rangeDisplayInformation: S2RangeDisplayInformation
 }
 
+/// IC-195（SPEC-S2 v24 第二节第 6 部分 J5）：待删集合最近一次变化的来源。引导 D 据此区分「下滑或中央『撤销』」
+/// 与「加入相簿后的静默移除」——中央「撤销」调的也是 `handleSwipeDown()`，两者同为 `.undo`。
+enum S2PendingDeletionChangeSource: Equatable {
+    case mark
+    case undo
+    case albumRemoval
+}
+
+/// IC-195（J4／J6）：当前张最近一次变化的原因——标记后自动进入下一张，或用户翻看（左右滑、分页器、横栏、标定导航）。
+enum S2CurrentAssetChangeCause: Equatable {
+    case markAdvance
+    case browse
+}
+
 struct S2ExitPayload: Equatable {
     let upstreamReturn: SessionStore.S2Return
     let continuationSnapshot: S2ContinuationSnapshot
@@ -641,6 +655,10 @@ final class S2StateMachine: ObservableObject {
     @Published private(set) var touchSequenceOwner: S2TouchSequenceOwner = .none
     @Published private(set) var currentIndex: Int
     @Published private(set) var pendingDeletionAssetIDs: Set<String>
+    /// IC-195：两个一次性信号，供引导 D 在视图的两个 `.onChange` 里读——不发布、不入档、不入标定；
+    /// 进入后尚未变化时为 nil。各写入点在改值之前赋值（值没变也赋，视图只在值变了时才读）。
+    private(set) var lastPendingDeletionChangeSource: S2PendingDeletionChangeSource?
+    private(set) var lastCurrentAssetChangeCause: S2CurrentAssetChangeCause?
     /// IC-182（④ 第 211 条）：下一次上滑标记成功后**停在刚标记的这张**、不自动翻页，只吃一次。
     /// 由视图按就地提示协调器的 `holdsPageOnNextMark`（第 2 句会在那一刻出现）置位，其余时候恒 false——
     /// 既有的「标记后自动进入下一张」不变；只在 1x 生效。不发布、不入档、不入标定出厂值。
@@ -1296,6 +1314,7 @@ final class S2StateMachine: ObservableObject {
               index != currentIndex else {
             return false
         }
+        lastCurrentAssetChangeCause = .browse
         currentIndex = index
         resetZoomAfterPhotoChange()
         return true
@@ -1417,7 +1436,9 @@ final class S2StateMachine: ObservableObject {
 
         var nextPending = pendingDeletionAssetIDs
         nextPending.insert(assetID)
+        lastPendingDeletionChangeSource = .mark
         replacePendingDeletionAssetIDs(with: nextPending)
+        lastCurrentAssetChangeCause = .markAdvance
         if holdsPageAfterNextMark && zoomState == .oneX {
             // IC-182：学习那一下——停在刚标记的这张，第 2 句「下滑放回来」才落在正确的照片上；只吃一次。
             // 只在 1x 生效：放大态下下滑撤标本就无效，且分页器只在翻页后才同步倍率——照旧翻页、开关留待 1x。
@@ -1447,6 +1468,7 @@ final class S2StateMachine: ObservableObject {
         }
         var nextPending = pendingDeletionAssetIDs
         nextPending.remove(currentAssetID)
+        lastPendingDeletionChangeSource = .undo
         replacePendingDeletionAssetIDs(with: nextPending)
         return true
     }
@@ -1468,6 +1490,7 @@ final class S2StateMachine: ObservableObject {
                 return false
             }
         }
+        lastCurrentAssetChangeCause = .browse
         return switchPhoto(by: direction.indexOffset)
     }
 
@@ -1586,6 +1609,7 @@ final class S2StateMachine: ObservableObject {
               bottomStripState == .dragging else {
             return false
         }
+        lastCurrentAssetChangeCause = .browse
         return switchPhoto(by: offset)
     }
 
@@ -1915,6 +1939,7 @@ final class S2StateMachine: ObservableObject {
         )
         assetNavigationResult = result
         if case let .found(index, _) = result {
+            lastCurrentAssetChangeCause = .browse
             currentIndex = index
             resetZoomAfterPhotoChange()
         }
@@ -1983,6 +2008,7 @@ final class S2StateMachine: ObservableObject {
         }
         var nextPending = pendingDeletionAssetIDs
         nextPending.remove(assetID)
+        lastPendingDeletionChangeSource = .albumRemoval
         replacePendingDeletionAssetIDs(with: nextPending)
     }
 
