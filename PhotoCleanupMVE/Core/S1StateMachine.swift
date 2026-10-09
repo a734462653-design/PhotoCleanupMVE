@@ -232,6 +232,10 @@ struct S1RangeRow: Identifiable, Equatable, Sendable {
     let processedAssetCount: Int
     /// IC-189（v12 `新增(r)`）：有月的年为各月之和；为零即不显示（界面接线归 V1 视图卡）。
     let newAssetCount: Int
+    /// IC-191（v12 `体积(r)`）：nil = 未知（没有字节表、或范围里有表外的资产），GB 位「统计中」。
+    let byteCount: Int64?
+    /// IC-191（v12 `占比(r)`）：`体积(r) ÷ 总占用` 的整数百分比；体积未知（含没有表）为 nil，占比位不显示。
+    let sharePercent: Int?
     let parentRangeID: String?
     let childCount: Int
 }
@@ -306,7 +310,11 @@ final class S1StateMachine: ObservableObject {
     @Published private(set) var ranges: [S1Range] = [] {
         // IC-178 B：范围列表每次被替换（读取、对账、切维度、重试、读取失败）都核一次年页身份——
         // 年不再是有子节点的一级范围即清掉，年页随之弹回列表，不留指向已消失范围的身份。
-        didSet { pruneYearPageIfNeeded() }
+        // IC-191：核过年页身份之后，两页的展开卡按 OPEN 规则回落（所指的卡仍在即不变，否则第一张）。
+        didSet {
+            pruneYearPageIfNeeded()
+            resolveOpenCards()
+        }
     }
     @Published private(set) var readFailure: S1RangeReadFailure?
     @Published private(set) var sessionStore: SessionStore {
@@ -316,6 +324,8 @@ final class S1StateMachine: ObservableObject {
     /// 放在状态机而不是视图：进 S2 时 tab 容器整棵重建，视图 `@State` 活不过一次往返（IC-157 同一教训）；
     /// 状态机跨路由保留，回来时 `S1View` 的 `NavigationStack` 直接推出年页。S2 遮挡期间不清。
     @Published private(set) var presentedYearRangeID: String?
+    /// IC-191（v12 `open`）：列表页与年页的展开卡身份，见 `S1OpenCardState`（不是 `@Published`：卡叠单独观察它）。
+    let openCards = S1OpenCardState()
     /// IC-127 D：受限授权标志。为真表示当前 `R(T)` 只覆盖用户选中的资产，
     /// 界面层据此挂提示条；不影响状态机的任何迁移。
     @Published private(set) var isLimitedAuthorization = false
@@ -344,6 +354,10 @@ final class S1StateMachine: ObservableObject {
     /// IC-189（v12 `t_离开[r]`）：范围上次离开 S2 且写回成功的时刻的读口——由协调器从看过档注入；
     /// 未注入的夹具按「从未离开」（无基线、新增为 0）。
     var leaveTimeProvider: ((String) -> Date?)?
+
+    /// IC-191（v12 `体积(r)`／`总占用`）：库内资产字节表的读口——由 App 从扫描服务注入（S1 不自行扫描）；
+    /// 当前一遍扫描未完成或失败时为 nil（GB 位「统计中」）；未注入的夹具按 nil。
+    var byteCountTableProvider: (() -> S1AssetByteCountTable?)?
 
     private var readGeneration = 0
     private var knownRangeNamesByID: [String: String] = [:]
@@ -450,12 +464,15 @@ final class S1StateMachine: ObservableObject {
             return false
         }
         presentedYearRangeID = rangeID
+        // IC-191：每次推入年页，年页的展开卡取初值（当前排序下第一张月卡）。
+        openCards.setYearPageRangeID(yearPageCardRangeIDs(of: rangeID).first)
         return true
     }
 
     /// IC-178 B：回到列表（年页返回钮，或系统边缘右滑把导航 item 置 nil）。
     func dismissYearPage() {
         presentedYearRangeID = nil
+        openCards.setYearPageRangeID(nil)
     }
 
     /// `ranges` 的 didSet：年页所指的年不再是有子节点的一级范围即清身份；本来就不在年页时不写、不发布。
@@ -468,6 +485,53 @@ final class S1StateMachine: ObservableObject {
         if !stillValid {
             presentedYearRangeID = nil
         }
+    }
+
+    /// IC-191：列表页卡叠的次序（一级范围；`T=date` 时年按 `O`，其余维度沿用读取方顺序）。
+    var listCardRangeIDs: [String] {
+        visibleRanges.filter { $0.parentRangeID == nil }.map(\.id)
+    }
+
+    /// IC-191：年页月卡叠的次序（按 `O`）。
+    func yearPageCardRangeIDs(of yearRangeID: String) -> [String] {
+        let months = childRanges(of: yearRangeID).map(\.id)
+        return sortOrder == .oldestFirst ? Array(months.reversed()) : months
+    }
+
+    /// IC-191（v12 `open`）：点列表页收起的卡即展开它。守卫——未遮挡、就绪、是列表页的卡；只改呈现：
+    /// 不改 `T`、`R(T)`、`M`、`K`、`W`，不触发读取，不写快照，状态机自己不发布。
+    @discardableResult
+    func openListCard(_ rangeID: String) -> Bool {
+        guard !isObscured, state == .ready, listCardRangeIDs.contains(rangeID) else {
+            return false
+        }
+        openCards.setListRangeID(rangeID)
+        return true
+    }
+
+    /// IC-191（v12 `open`）：点年页收起的月卡即展开它。守卫——未遮挡、年页在前、是该年的月卡。
+    @discardableResult
+    func openYearPageCard(_ rangeID: String) -> Bool {
+        guard !isObscured,
+              let yearRangeID = presentedYearRangeID,
+              yearPageCardRangeIDs(of: yearRangeID).contains(rangeID) else {
+            return false
+        }
+        openCards.setYearPageRangeID(rangeID)
+        return true
+    }
+
+    /// `ranges` 的 didSet（年页身份核过之后）：两页的展开卡按 OPEN 规则回落、写实——所指的卡仍在即不变，否则
+    /// 第一张；年页不在前即清。不在读时临时解析：切走再切回时旧值不复活，翻转排序时不跟着「第一张」跑。
+    private func resolveOpenCards() {
+        openCards.setListRangeID(S1OpenCardState.resolved(openCards.listRangeID, among: listCardRangeIDs))
+        guard let yearRangeID = presentedYearRangeID else {
+            openCards.setYearPageRangeID(nil)
+            return
+        }
+        openCards.setYearPageRangeID(
+            S1OpenCardState.resolved(openCards.yearPageRangeID, among: yearPageCardRangeIDs(of: yearRangeID))
+        )
     }
 
     /// 范围列表的可见顺序。`T=date`：年节点按 `O` 排列，每个年节点后跟其全部月节点
@@ -496,8 +560,11 @@ final class S1StateMachine: ObservableObject {
     /// 与该范围 S2 里显示为已标记的张数一致；不读 `M[r]`（`SessionStore.pendingDeletionCount(for:)` 不动）。
     var rangeRows: [S1RangeRow] {
         let basket = sessionStore.allPendingDeletionAssetIDs
+        // IC-191：字节表每次求值只取一次（扫描服务按修订号记忆化）。
+        let table = byteCountTableProvider?()
         return visibleRanges.map { range in
             let childCount = childRanges(of: range.id).count
+            let byteCount = table?.volume(of: range)
             return S1RangeRow(
                 id: range.id,
                 displayName: range.displayName,
@@ -507,6 +574,8 @@ final class S1StateMachine: ObservableObject {
                     .count,
                 processedAssetCount: processedAssetIDs(for: range.id).count,
                 newAssetCount: newAssetCount(for: range.id),
+                byteCount: byteCount,
+                sharePercent: byteCount.flatMap { volume in table?.sharePercent(ofVolume: volume) },
                 parentRangeID: range.parentRangeID,
                 childCount: childCount
             )
@@ -555,6 +624,23 @@ final class S1StateMachine: ObservableObject {
             return 0
         }
         return range.newAssetCount(after: baseline, excluding: seenAssetIDs)
+    }
+
+    /// IC-191（v12 页头）：大数字区与副行前段的数据，见 `S1HeaderSummary.make`。
+    var headerSummary: S1HeaderSummary {
+        S1HeaderSummary.make(
+            topLevelRanges: topLevelRanges,
+            groupingDimension: groupingDimension,
+            isReady: loadingState == .ready,
+            seenAssetIDs: seenAssetIDsProvider?() ?? [],
+            table: byteCountTableProvider?()
+        )
+    }
+
+    /// IC-191：扫描快照变了（新一遍完成、或回到扫描中），字节表可能换了——只让观察者重读；
+    /// 不写会话快照、不改任何状态。由 App 在扫描服务的快照回调里调用。
+    func noteByteCountTableChanged() {
+        objectWillChange.send()
     }
 
     @discardableResult

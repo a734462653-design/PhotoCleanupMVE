@@ -278,11 +278,13 @@ final class IC178DeckListTests: XCTestCase {
         // 状态机：只加不改——年页身份无快照 didSet，IC157 钉住的三个计数不变。
         let machine = try XCTUnwrap(strippedSource(Self.machinePath))
         for (needle, expected) in [
-            ("presentedYearRangeID", 5),
+            // IC-191：展开态回落与年页点卡各读一次年页身份，5 → 7；`ranges` 的 didSet 改为多行（先核年页、再回落展开卡）。
+            ("presentedYearRangeID", 7),
             ("func presentYearPage(", 1),
             ("func dismissYearPage()", 1),
             ("func pruneYearPageIfNeeded()", 1),
-            ("didSet { pruneYearPageIfNeeded() }", 1),
+            ("pruneYearPageIfNeeded()", 2),
+            ("resolveOpenCards()", 2),
             ("didSet { publishSnapshotIfChanged() }", 3),
             ("didSet", 4),
             ("publishSnapshotIfChanged()", 6),

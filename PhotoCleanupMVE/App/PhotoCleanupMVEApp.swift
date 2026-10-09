@@ -84,7 +84,13 @@ struct PhotoCleanupMVEApp: App {
             // 快照每变一次（主线程、已节流）先摄入，再只在 `SC` 确实要变时发迁移。
             let machine = s0Machine
             let provider = s0DataProvider
-            provider.onSnapshotDidChange = { [weak machine, weak provider] in
+            // IC-191：S1 卡面与页头的体积读口——扫描服务当前一遍完成才给字节表，否则 S1 按「统计中」。
+            // 接上即让 S1 重读一次：容器出现之前已完成的那一遍不会再来通知。
+            s1Machine.byteCountTableProvider = { [weak provider] in
+                provider?.assetByteCountTable()
+            }
+            s1Machine.noteByteCountTableChanged()
+            provider.onSnapshotDidChange = { [weak machine, weak provider, weak s1Machine] in
                 guard let machine, let provider else {
                     return
                 }
@@ -96,6 +102,8 @@ struct PhotoCleanupMVEApp: App {
                 ) {
                     machine.handle(event)
                 }
+                // IC-191：字节表可能换了，让 S1 重读（S1 不在前时只是多一次无用的求值）。
+                s1Machine?.noteByteCountTableChanged()
             }
         }
     }

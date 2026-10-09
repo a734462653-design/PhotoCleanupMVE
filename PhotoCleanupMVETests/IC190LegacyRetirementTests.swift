@@ -190,7 +190,8 @@ final class IC190LegacyRetirementTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "publishSnapshotIfChanged()", in: machine), 6)
         XCTAssertEqual(occurrences(of: "didSet", in: machine), 4)
         XCTAssertEqual(occurrences(of: "setMarked(", in: machine), 3)
-        XCTAssertEqual(occurrences(of: "seenAssetIDsProvider?() ?? []", in: machine), 3)
+        // IC-191：页头已看（`headerSummary`）也读看过集合，3 → 4。
+        XCTAssertEqual(occurrences(of: "seenAssetIDsProvider?() ?? []", in: machine), 4)
 
         let s2 = try XCTUnwrap(strippedSource(Self.s2Path))
         XCTAssertEqual(occurrences(of: "seenAssetIDs: visitSeenAssetIDs", in: s2), 1)

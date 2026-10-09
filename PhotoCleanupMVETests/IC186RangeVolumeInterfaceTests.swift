@@ -6,7 +6,7 @@ import XCTest
 /// 1 纯口径：体积 = 范围内 `SZ` 之和、有一张不在表里即未知；总占用；占比四舍五入并钳 0～100。
 /// 2 扫描服务读口：只在当前一遍已完成时给表；键 = 库内全部资产，含待删篮的、未解析记 0；
 ///   第二遍有新增时回到扫描中即没有表，完成后新表含新增、不含已删；失败没有表。
-/// 3 源码落位：读口只在服务具体类型上（不进协议、桩、App），Core 新文件只依赖 Foundation。
+/// 3 源码落位：读口只在服务具体类型上（不进协议、桩；IC-191 起 App 把它接到 S1 状态机），Core 新文件只依赖 Foundation。
 ///
 /// **夹具驱动**：夹具源不是 PhotoKit；界面与接线归 V1 视图卡，本卡无人工判定项。
 final class IC186RangeVolumeInterfaceTests: XCTestCase {
@@ -137,12 +137,15 @@ final class IC186RangeVolumeInterfaceTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "PHAsset.fetchAssets(with: nil)", in: service), 1)
         XCTAssertEqual(occurrences(of: "attributedCategory(", in: service), 1)
 
-        // 读口只在服务具体类型上：不进协议、不进桩、不进 App（接线归 V1 视图卡）。
-        for path in [Self.providerPath, Self.stubPath, Self.appPath] {
+        // 读口只在服务具体类型上：不进协议、不进桩。IC-191：App 把它接到 S1 状态机的读口——只调一次、不写类型名。
+        for path in [Self.providerPath, Self.stubPath] {
             let text = try XCTUnwrap(strippedSource(path), path)
             XCTAssertEqual(occurrences(of: "assetByteCountTable", in: text), 0, path)
             XCTAssertEqual(occurrences(of: "S1AssetByteCountTable", in: text), 0, path)
         }
+        let app = try XCTUnwrap(strippedSource(Self.appPath))
+        XCTAssertEqual(occurrences(of: "assetByteCountTable", in: app), 1)
+        XCTAssertEqual(occurrences(of: "S1AssetByteCountTable", in: app), 0)
 
         // Core 新文件只依赖 Foundation，不碰 PhotoKit、不引用 S0 类型、不取文案。
         let volumesRaw = try XCTUnwrap(sourceText(Self.volumesPath))

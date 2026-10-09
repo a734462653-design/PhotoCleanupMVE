@@ -17,6 +17,8 @@
 		200000000000000000000007 /* SessionPersistence.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000007 /* SessionPersistence.swift */; };
 		200000000000000000000086 /* S1SeenArchive.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000089 /* S1SeenArchive.swift */; };
 		200000000000000000000089 /* S1LegacyProgressMigration.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000008C /* S1LegacyProgressMigration.swift */; };
+		20000000000000000000008D /* S1HeaderSummary.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000090 /* S1HeaderSummary.swift */; };
+		20000000000000000000008E /* S1OpenCardState.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000091 /* S1OpenCardState.swift */; };
 		200000000000000000000008 /* PhotoLibraryService.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* PhotoLibraryService.swift */; };
 		200000000000000000000009 /* AssetSizeScanner.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* AssetSizeScanner.swift */; };
 		20000000000000000000000A /* PhotoDeletionService.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000A /* PhotoDeletionService.swift */; };
@@ -112,6 +114,7 @@
 		20000000000000000000008A /* IC188SeenSwitchTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000008D /* IC188SeenSwitchTests.swift */; };
 		20000000000000000000008B /* IC189NewCountTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000008E /* IC189NewCountTests.swift */; };
 		20000000000000000000008C /* IC190LegacyRetirementTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000008F /* IC190LegacyRetirementTests.swift */; };
+		20000000000000000000008F /* IC191DeckDataTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000092 /* IC191DeckDataTests.swift */; };
 		20000000000000000000001F /* S1StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* S1StateMachine.swift */; };
 		200000000000000000000020 /* S1View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* S1View.swift */; };
 		200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* S1StateMachineTests.swift */; };
@@ -163,6 +166,8 @@
 		100000000000000000000007 /* SessionPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPersistence.swift; sourceTree = "<group>"; };
 		100000000000000000000089 /* S1SeenArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1SeenArchive.swift; sourceTree = "<group>"; };
 		10000000000000000000008C /* S1LegacyProgressMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1LegacyProgressMigration.swift; sourceTree = "<group>"; };
+		100000000000000000000090 /* S1HeaderSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1HeaderSummary.swift; sourceTree = "<group>"; };
+		100000000000000000000091 /* S1OpenCardState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1OpenCardState.swift; sourceTree = "<group>"; };
 		100000000000000000000008 /* PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryService.swift; sourceTree = "<group>"; };
 		100000000000000000000009 /* AssetSizeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetSizeScanner.swift; sourceTree = "<group>"; };
 		10000000000000000000000A /* PhotoDeletionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDeletionService.swift; sourceTree = "<group>"; };
@@ -261,6 +266,7 @@
 		10000000000000000000008D /* IC188SeenSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC188SeenSwitchTests.swift; sourceTree = "<group>"; };
 		10000000000000000000008E /* IC189NewCountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC189NewCountTests.swift; sourceTree = "<group>"; };
 		10000000000000000000008F /* IC190LegacyRetirementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC190LegacyRetirementTests.swift; sourceTree = "<group>"; };
+		100000000000000000000092 /* IC191DeckDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC191DeckDataTests.swift; sourceTree = "<group>"; };
 		100000000000000000000022 /* S1StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000023 /* S1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1View.swift; sourceTree = "<group>"; };
 		100000000000000000000024 /* S1StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachineTests.swift; sourceTree = "<group>"; };
@@ -357,6 +363,8 @@
 				100000000000000000000007 /* SessionPersistence.swift */,
 				100000000000000000000089 /* S1SeenArchive.swift */,
 				10000000000000000000008C /* S1LegacyProgressMigration.swift */,
+				100000000000000000000090 /* S1HeaderSummary.swift */,
+				100000000000000000000091 /* S1OpenCardState.swift */,
 				100000000000000000000019 /* L10n.swift */,
 			);
 			path = Core;
@@ -542,6 +550,7 @@
 				10000000000000000000008D /* IC188SeenSwitchTests.swift */,
 				10000000000000000000008E /* IC189NewCountTests.swift */,
 				10000000000000000000008F /* IC190LegacyRetirementTests.swift */,
+				100000000000000000000092 /* IC191DeckDataTests.swift */,
 				100000000000000000000014 /* SnapshotInvariantTests.swift */,
 				100000000000000000000015 /* VolumeFormattingTests.swift */,
 				100000000000000000000016 /* S4StateMachineTests.swift */,
@@ -703,6 +712,8 @@
 				200000000000000000000007 /* SessionPersistence.swift（源码） */,
 				200000000000000000000086 /* S1SeenArchive.swift（源码） */,
 				200000000000000000000089 /* S1LegacyProgressMigration.swift（源码） */,
+				20000000000000000000008D /* S1HeaderSummary.swift（源码） */,
+				20000000000000000000008E /* S1OpenCardState.swift（源码） */,
 				200000000000000000000008 /* PhotoLibraryService.swift（源码） */,
 				200000000000000000000009 /* AssetSizeScanner.swift（源码） */,
 				20000000000000000000000A /* PhotoDeletionService.swift（源码） */,
@@ -795,6 +806,7 @@
 				20000000000000000000008A /* IC188SeenSwitchTests.swift（测试源码） */,
 				20000000000000000000008B /* IC189NewCountTests.swift（测试源码） */,
 				20000000000000000000008C /* IC190LegacyRetirementTests.swift（测试源码） */,
+				20000000000000000000008F /* IC191DeckDataTests.swift（测试源码） */,
 				200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */,
 				200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */,
 				200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */,
