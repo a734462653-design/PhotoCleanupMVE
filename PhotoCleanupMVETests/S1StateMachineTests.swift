@@ -145,9 +145,9 @@ final class S1StateMachineTests: XCTestCase {
         }
     }
 
-    // IC046-010（IC-188 改，v12 决策 44；函数名留给 ②d 与 verify 脚本一起改）：已看集合 = 看过集合 `W` ∩ 本范围，
-    // 与 `K` 的最远位置无关——夹具里 `K` 记着最远到 asset-2，未注入 `W` 时一张也不算。
-    func testIC046_010ProcessedAssetsUsePrefixWhenOrdersMatch() {
+    // IC046-010（IC-188 改，v12 决策 44；IC-190 改名）：已看集合 = 看过集合 `W` ∩ 本范围，
+    // 与 `K` 无关——未注入 `W` 时一张也不算。
+    func testIC046_010ProcessedAssetsAreSeenSetIntersection() {
         let machine = makeMachine(
             state: .ready,
             store: makeStoreWithContinuation()
@@ -161,8 +161,8 @@ final class S1StateMachineTests: XCTestCase {
         )
     }
 
-    // IC046-011（IC-188 改；函数名留给 ②d）：已看集合与当前 O 无关——翻转排序前后相同。
-    func testIC046_011ProcessedAssetsUseSuffixWhenOrderFlips() {
+    // IC046-011（IC-188 改；IC-190 改名）：已看集合与当前 O 无关——翻转排序前后相同。
+    func testIC046_011ProcessedAssetsIgnoreSortOrder() {
         let machine = makeMachine(
             state: .ready,
             store: makeStoreWithContinuation()
