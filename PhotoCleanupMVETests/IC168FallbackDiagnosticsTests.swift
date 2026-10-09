@@ -157,7 +157,9 @@ final class IC168FallbackDiagnosticsTests: XCTestCase {
                 ]
             )
             let coordinator = CleanupCoordinator(
-                photoLibrary: PhotoLibraryService(s1Source: box.source)
+                photoLibrary: PhotoLibraryService(s1Source: box.source),
+                // IC-188：离开 S2 会写看过档，用隔离持久层。
+                persistence: TestPersistenceIsolation.makePersistence()
             )
             XCTAssertTrue(coordinator.enterS1(sessionID: "会话-168B-冷启动"))
             let machine = unwrap(coordinator.s1Machine)
@@ -329,7 +331,8 @@ final class IC168FallbackDiagnosticsTests: XCTestCase {
     /// 照 IC-157 断言 7：S1 读到一个真实范围、就绪；类别页长按同一条接线进 S2 并标记当前张。
     @MainActor
     private func makeReadyCoordinatorInVirtualS2(sessionID: String) -> CleanupCoordinator {
-        let coordinator = CleanupCoordinator()
+        // IC-188：离开 S2 会写看过档，用隔离持久层。
+        let coordinator = CleanupCoordinator(persistence: TestPersistenceIsolation.makePersistence())
         XCTAssertTrue(coordinator.enterS1(sessionID: sessionID))
         let machine = unwrap(coordinator.s1Machine)
         let request = unwrap(machine.currentReadRequest)
@@ -386,7 +389,8 @@ final class IC168FallbackDiagnosticsTests: XCTestCase {
         sessionID: String,
         ranges: [S1Range]
     ) -> CleanupCoordinator {
-        let coordinator = CleanupCoordinator()
+        // IC-188：离开 S2 会写看过档，用隔离持久层。
+        let coordinator = CleanupCoordinator(persistence: TestPersistenceIsolation.makePersistence())
         XCTAssertTrue(coordinator.enterS1(sessionID: sessionID))
         completeRead(coordinator: coordinator, ranges: ranges)
         return coordinator

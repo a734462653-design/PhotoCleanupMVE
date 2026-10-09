@@ -307,6 +307,14 @@ final class S1StateMachine: ObservableObject {
     /// 仅按范围收敛，即 IC-129 之前的行为。
     var assetExistenceProbe: ((Set<String>) -> Set<String>)?
 
+    /// IC-188（SPEC-S1 v12 决策 44）：看过集合 `W` 的读口——由协调器在安装状态机时注入（看过档在协调器、
+    /// 不随会话清）；未注入的夹具按空集。已看进度与从 S1 进入的位置都从这里读。
+    var seenAssetIDsProvider: (() -> Set<String>)?
+
+    /// IC-188（SPEC-S1 v12 第二节 `看过档`·迁移）：旧会话档 `p_范围` 前缀的一次性迁移入口——每次采用新读到的范围时、
+    /// **在按范围收敛（`K` 钳制）之前**连同本次采用的维度交给协调器；协调器按看过档的迁移标记只做一次。未注入的夹具不迁移。
+    var legacyProgressMigration: ((_ ranges: [S1Range], _ groupingDimension: S1GroupingDimension, _ store: SessionStore) -> Void)?
+
     private var readGeneration = 0
     private var knownRangeNamesByID: [String: String] = [:]
     /// IC-157 A：在途的虚拟范围（S0 类别页长按进 S2 时登记，写回成功即移除）。逐张镜像与
@@ -469,15 +477,12 @@ final class S1StateMachine: ObservableObject {
         }
     }
 
+    /// IC-188（v12 `已看(r) = W ∩ A(r)`）：按张记的看过集合与本范围的交集；与排序、与 `K` 的最远位置无关。
     func processedAssetIDs(for rangeID: String) -> Set<String> {
         guard let range = ranges.first(where: { $0.id == rangeID }) else {
             return []
         }
-        return sessionStore.processedAssetIDs(
-            for: range.id,
-            orderedAssetIDs: range.orderedAssetIDs(for: sortOrder),
-            currentSortOrder: sortOrder.sessionSortOrder
-        )
+        return (seenAssetIDsProvider?() ?? []).intersection(range.assetIDsNewestFirst)
     }
 
     @discardableResult
@@ -564,6 +569,8 @@ final class S1StateMachine: ObservableObject {
         if countsAsReconciliation {
             reconciliationCount += 1
         }
+        // IC-188：旧档迁移要用钳制之前的 `K`——钳制会把已失效的 `p_范围` 移到序列末位，迁移后就成了「全部看过」。
+        legacyProgressMigration?(newRanges, groupingDimension, sessionStore)
         var reconciledStore = Self.reconciledStore(sessionStore, against: newRanges)
         // IC-129：在按范围收敛之上叠加按存在性收敛——覆盖 `M` 的全部范围，
         // 与本次读到的 `R(T)` 无关，跨维度的失效资产在任一次对账中即收敛。
@@ -648,6 +655,7 @@ final class S1StateMachine: ObservableObject {
 
     /// IC-169（决策 42／63）：`D` 初值 = 合并待删集合 ∩ 本范围列表——篮里属于本范围的照片在 S2 里
     /// 都显示为已标记，不论在哪个范围标的。
+    /// IC-188（决策 44）：从当前 `O` 下第一张没看过的开始，全部看过从第一张开始；不读 `K`（`K` 只供 S3 返回回到 S2）。
     func makeS2Handoff(for rangeID: String) -> S1ToS2Handoff? {
         guard !isObscured,
               state == .ready,
@@ -659,8 +667,9 @@ final class S1StateMachine: ObservableObject {
         let assetIDSet = Set(orderedAssetIDs)
         let pendingDeletionAssetIDs =
             sessionStore.allPendingDeletionAssetIDs.intersection(assetIDSet)
-        let currentAssetID = sessionStore.continuationsByRangeID[range.id]?
-            .currentAssetID ?? orderedAssetIDs.first
+        let seenAssetIDs = seenAssetIDsProvider?() ?? []
+        let currentAssetID = orderedAssetIDs.first { !seenAssetIDs.contains($0) }
+            ?? orderedAssetIDs.first
 
         guard !orderedAssetIDs.isEmpty,
               assetIDSet.count == orderedAssetIDs.count,

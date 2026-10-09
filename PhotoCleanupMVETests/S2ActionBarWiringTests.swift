@@ -374,7 +374,9 @@ final class S2ActionBarWiringTests: XCTestCase {
         let coordinator = CleanupCoordinator(
             photoLibrary: photoLibrary,
             assetActionService: service,
-            recentAlbumStore: store
+            recentAlbumStore: store,
+            // IC-188：离开 S2 会写看过档，用隔离持久层。
+            persistence: TestPersistenceIsolation.makePersistence()
         )
         XCTAssertTrue(coordinator.enterS1(sessionID: "会话-076"))
         let s1Machine = try XCTUnwrap(coordinator.s1Machine)

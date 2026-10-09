@@ -155,7 +155,8 @@ final class IC187SeenArchiveTests: XCTestCase {
         XCTAssertEqual(saved.seenAssetIDs, ["a1", "a5"])
         let leftAt = try XCTUnwrap(saved.leaveTimeByRangeID["范围-月"])
         XCTAssertTrue(before <= leftAt && leftAt <= after)
-        XCTAssertFalse(saved.hasMigratedLegacyProgress)
+        // IC-188：第一次采用范围时已置迁移标记（新会话没有可迁的内容，只置标记），随离开 S2 写盘。
+        XCTAssertTrue(saved.hasMigratedLegacyProgress)
         XCTAssertEqual(saved, coordinator.currentSeenArchive())
 
         // 第二次进入：看 a3 后交回一份会话不符的载荷——写回失败：不记离开时刻，实时记下的 a3 保留并写盘。
@@ -208,7 +209,8 @@ final class IC187SeenArchiveTests: XCTestCase {
         let virtualPayload = try XCTUnwrap(virtualMachine.makeExitPayload())
         XCTAssertTrue(coordinator.leaveS2(with: virtualPayload))
         let finalArchive = try XCTUnwrap(persistence.loadS1SeenArchive())
-        XCTAssertEqual(finalArchive.seenAssetIDs, ["a1", "a3", "a5", "a6", "v2"])
+        // IC-188：第二、三次进入从第一张没看过的开始（a2、a4），进入时的第一张即看过。
+        XCTAssertEqual(finalArchive.seenAssetIDs, ["a1", "a2", "a3", "a4", "a5", "a6", "v2"])
         XCTAssertNotNil(finalArchive.leaveTimeByRangeID["cat:video"])
         XCTAssertEqual(Set(finalArchive.leaveTimeByRangeID.keys), ["范围-月", "cat:video"])
 
@@ -253,8 +255,8 @@ final class IC187SeenArchiveTests: XCTestCase {
         let coordinator = try XCTUnwrap(strippedSource(Self.coordinatorPath))
         XCTAssertEqual(occurrences(of: "func currentSeenArchive() -> S1SeenArchive {", in: coordinator), 1)
         XCTAssertEqual(occurrences(of: "private func flushSeenArchive() {", in: coordinator), 1)
-        // 单一写出口：一处定义 + 写回之后（`defer`）+ 转入非活跃。
-        XCTAssertEqual(occurrences(of: "flushSeenArchive()", in: coordinator), 3)
+        // 单一写出口：一处定义 + 写回之后（`defer`）+ 转入非活跃 + IC-188 迁移并入了内容之后。
+        XCTAssertEqual(occurrences(of: "flushSeenArchive()", in: coordinator), 4)
         XCTAssertEqual(occurrences(of: "persistence.saveS1SeenArchive(", in: coordinator), 1)
         XCTAssertEqual(occurrences(of: "persistence.loadS1SeenArchive()", in: coordinator), 1)
         XCTAssertEqual(occurrences(of: "seenAssetDidSettle: { [weak self] assetID in", in: coordinator), 1)

@@ -238,7 +238,8 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
     /// 提前返回、不碰 `M`／`K`（IC-131 断言 4 的「会话层逐字未变」靠的是同一件事）。
     func testIC157C_RoundTripThroughCoordinatorLandsMarksAndKeepsPageIdentity() async {
         await MainActor.run {
-            let coordinator = CleanupCoordinator()
+            // IC-188：离开 S2 会写看过档，用隔离持久层。
+            let coordinator = CleanupCoordinator(persistence: TestPersistenceIsolation.makePersistence())
             XCTAssertTrue(coordinator.enterS1(sessionID: "会话-157C-往返"))
             let machine = unwrapC(coordinator.s1Machine)
             let request = unwrapC(machine.currentReadRequest)
@@ -635,7 +636,7 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
 
     private static let s1MachinePath = "PhotoCleanupMVE/Core/S1StateMachine.swift"
 
-    /// `e97f394` 上 `makeS2Handoff(for:)` 的原文（声明行到闭合花括号），逐行；IC-169 只换了 `D` 初值一行。
+    /// `e97f394` 上 `makeS2Handoff(for:)` 的原文（声明行到闭合花括号），逐行；IC-169 只换了 `D` 初值一行；IC-188 把起点两行换成「第一张没看过的」三行。
     private static let realHandoffBodyLines = [
         "    func makeS2Handoff(for rangeID: String) -> S1ToS2Handoff? {",
         "        guard !isObscured,",
@@ -648,8 +649,9 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
         "        let assetIDSet = Set(orderedAssetIDs)",
         "        let pendingDeletionAssetIDs =",
         "            sessionStore.allPendingDeletionAssetIDs.intersection(assetIDSet)",
-        "        let currentAssetID = sessionStore.continuationsByRangeID[range.id]?",
-        "            .currentAssetID ?? orderedAssetIDs.first",
+        "        let seenAssetIDs = seenAssetIDsProvider?() ?? []",
+        "        let currentAssetID = orderedAssetIDs.first { !seenAssetIDs.contains($0) }",
+        "            ?? orderedAssetIDs.first",
         "",
         "        guard !orderedAssetIDs.isEmpty,",
         "              assetIDSet.count == orderedAssetIDs.count,",
