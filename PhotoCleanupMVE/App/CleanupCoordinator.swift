@@ -66,6 +66,17 @@ final class CleanupCoordinator: ObservableObject {
     private var loadedAssets: [String: PHAsset] = [:]
     private var sessionDescriptors: [String: AssetDescriptor] = [:]
     private var s2EntryContext: SessionStore.S2EntryContext?
+    /// IC-194 A（SPEC-S1 v12 第二节 `src3`、决策 47）：进 S3 之前那次 S2 的范围。真实范围返回时按标识重取 `A(r, O)`；
+    /// 在途虚拟范围（`cat:`）不在 `R(T)` 里，沿用当时的列表与显示名。
+    struct S3ReturnTarget: Equatable {
+        let rangeID: String
+        let displayName: String
+        let orderedAssetIDs: [String]
+        let isVirtual: Bool
+    }
+    /// IC-194 A：本次 S3 的返回落点——只在 S2 经待删篮入口进 S3 成功后记；S3 返回落位后、S1 侧入口进 S3 成功时、
+    /// 装新会话时清；「返回确认页」重进 S3 不碰（按最初来源落位）。会话内视图态、不入档；`private(set)` 只为测试可读。
+    private(set) var s3ReturnTarget: S3ReturnTarget?
     /// IC-168 B：`enterConfirmationFromS1` 最近一次的拒绝点（成功为 nil），供垃圾桶路径 E3 定名。
     private var lastS3EntryGuardFailure: S2ExitDiagnosticGuard?
     private var scanTasks: [String: Task<Void, Never>] = [:]
@@ -330,6 +341,16 @@ final class CleanupCoordinator: ObservableObject {
     func enterConfirmationFromS2(with payload: S2ExitPayload) -> Bool {
         // IC-168 B（裁定 一）：取样在写回校验之前，理由同 `leaveS2(with:)`。
         let sample = sampleS2Exit(payload)
+        // IC-194 A（裁定 1）：返回落点在写回之前取——在途虚拟范围写回成功即移出在途集合；列表与范围标识
+        // 已由写回校验（W4／W5）对过入口上下文，只在进 S3 成功后才记下。
+        let returnTarget = S3ReturnTarget(
+            rangeID: payload.continuationSnapshot.rangeDisplayInformation.rangeID,
+            displayName: payload.continuationSnapshot.rangeDisplayInformation.displayName,
+            orderedAssetIDs: payload.continuationSnapshot.orderedAssetIDs,
+            isVirtual: s1Machine?.activeVirtualRangeIDs.contains(
+                payload.continuationSnapshot.rangeDisplayInformation.rangeID
+            ) ?? false
+        )
         guard applyS2ExitPayload(payload) else {
             // IC-131 B：垃圾桶路径失败同样回到 S1 并发 toast，**不进入 S3**
             // （不形成提交）——④决策会话裁定，依据决策 29「不阻断」。
@@ -379,6 +400,8 @@ final class CleanupCoordinator: ObservableObject {
             message = nil
             return false
         }
+        // IC-194 A（裁定 2）：`enterConfirmationFromS1` 成功时已清掉旧值，这里再记本次来源。
+        s3ReturnTarget = returnTarget
         recordS2ExitDiagnostics(
             entry: "trash",
             sample: sample,
@@ -427,6 +450,8 @@ final class CleanupCoordinator: ObservableObject {
             return false
         }
         lastS3EntryGuardFailure = nil
+        // IC-194 A（裁定 2）：S1 列表页／年页与「空间清理」两处入口进 S3 不留 S2 来源，旧值一并抹掉。
+        s3ReturnTarget = nil
         return true
     }
 
@@ -690,6 +715,11 @@ final class CleanupCoordinator: ObservableObject {
 
     @discardableResult
     func handleS3Return(_ returned: S3UpstreamReturn) -> Bool {
+        // IC-194 B（裁定 6，SPEC-S1 v12 第七节第 4 部分第 6 项）：冷启动恢复 S4／S5 档、经「返回确认页」重进的 S3
+        // 没有会话——来源会话不可得，不写交集、不重进 S2；有 S1 会话档就恢复、无档开新，落「逐张整理」。
+        if route == .confirmation, sessionStore == nil, s1Machine == nil {
+            return enterS1ResumingPersistedSessionOrStartNew()
+        }
         let sessionReturn = SessionStore.S3Return(
             sourceSessionID: returned.sourceSessionID,
             currentPendingDeletionAssetIDs:
@@ -711,6 +741,62 @@ final class CleanupCoordinator: ObservableObject {
         sessionStore = store
         route = .upstream
         message = nil
+        // IC-194 A（裁定 3）：S2 来源——先照旧写交集、落上游，再按记录重进那次 S2；重进不成就留在上游
+        // （即发起那次 S2 的页面），不发提示。
+        if let target = s3ReturnTarget {
+            s3ReturnTarget = nil
+            _ = reenterS2(returningTo: target)
+        }
+        return true
+    }
+
+    /// IC-194 A（裁定 4、5，SPEC-S1 v12 第七节第 4 部分第 2、3 项）：S3 返回回到进 S3 之前那次 S2。
+    ///
+    /// 真实范围：先对账（与「从 S2 返回时对账一次」同口径），再由状态机按当前 `A(r, O)` 与 `D = D_全部 ∩ A` 构造交接，
+    /// 起点为离开时那张 `K[r].c_范围`。虚拟范围：沿用当时的列表、剔除已不在库中的，起点 `K` → 第一张没看过的 → 第一张；
+    /// 列表剔空即不进 S2、不登记在途；进 S2 失败撤销在途登记。返回是否已进 S2。
+    private func reenterS2(returningTo target: S3ReturnTarget) -> Bool {
+        guard let s1Machine else {
+            return false
+        }
+        let handoff: S1ToS2Handoff?
+        if target.isVirtual {
+            let existing = photoLibrary.existingAssetIdentifiers(
+                among: Set(target.orderedAssetIDs)
+            )
+            let orderedAssetIDs = target.orderedAssetIDs.filter { existing.contains($0) }
+            let seenAssetIDs = currentSeenArchive().seenAssetIDs
+            let resumedAssetID = s1Machine.sessionStore
+                .continuationsByRangeID[target.rangeID]?.currentAssetID
+            let currentAssetID: String?
+            if let resumedAssetID, orderedAssetIDs.contains(resumedAssetID) {
+                currentAssetID = resumedAssetID
+            } else {
+                currentAssetID = orderedAssetIDs.first { !seenAssetIDs.contains($0) }
+                    ?? orderedAssetIDs.first
+            }
+            guard let currentAssetID else {
+                return false
+            }
+            handoff = s1Machine.makeS2Handoff(
+                virtualRangeID: target.rangeID,
+                displayName: target.displayName,
+                orderedAssetIDs: orderedAssetIDs,
+                currentAssetID: currentAssetID
+            )
+        } else {
+            reconcileS1WithPhotoLibrary()
+            handoff = s1Machine.makeS2ReentryHandoff(for: target.rangeID)
+        }
+        guard let handoff else {
+            return false
+        }
+        guard enterS2(from: handoff) else {
+            if target.isVirtual {
+                s1Machine.cancelS2Handoff(virtualRangeID: target.rangeID)
+            }
+            return false
+        }
         return true
     }
 
@@ -1003,6 +1089,7 @@ final class CleanupCoordinator: ObservableObject {
         s2EntryContext = nil
         s3Machine = nil
         s3Groups = []
+        s3ReturnTarget = nil
         s4Machine = nil
         s5Machine = nil
         route = targetRoute
