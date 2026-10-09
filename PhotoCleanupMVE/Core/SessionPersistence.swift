@@ -194,10 +194,12 @@ struct PersistedSession: Codable {
 /// （`s1-session.json`），互不干扰——`claim` / `clear` 的既有语义原样保留。
 /// 集合以升序数组编码，保证同一状态的字节稳定。
 struct PersistedS1Session: Codable, Equatable {
+    /// IC-190：`farthestAssetID`／`recordedSortOrder` 是 v11 旧进度（`p_范围`／`O_记录`），只为一次性迁移改为可选——
+    /// 旧档带、读入后作为 `S1LegacyProgress` 交给状态机；迁移入口调过之后写出的档不再带这两个键。
     struct Continuation: Codable, Equatable {
         let currentAssetID: String
-        let farthestAssetID: String
-        let recordedSortOrder: String
+        let farthestAssetID: String?
+        let recordedSortOrder: String?
     }
 
     let sessionID: String
@@ -254,13 +256,16 @@ struct PersistedS1Session: Codable, Equatable {
         sortOrder = snapshot.sortOrder.rawValue
         pendingDeletionAssetIDsByRangeID = snapshot.pendingDeletionAssetIDsByRangeID
             .mapValues { $0.sorted() }
-        continuationsByRangeID = snapshot.continuationsByRangeID.mapValues {
-            Continuation(
-                currentAssetID: $0.currentAssetID,
-                farthestAssetID: $0.farthestAssetID,
-                recordedSortOrder: $0.recordedSortOrder.rawValue
+        var continuations: [String: Continuation] = [:]
+        for (rangeID, continuation) in snapshot.continuationsByRangeID {
+            let legacy = snapshot.legacyProgressByRangeID[rangeID]
+            continuations[rangeID] = Continuation(
+                currentAssetID: continuation.currentAssetID,
+                farthestAssetID: legacy?.farthestAssetID,
+                recordedSortOrder: legacy?.recordedSortOrder.rawValue
             )
         }
+        continuationsByRangeID = continuations
         firstMarkedRangeIDByAssetID = snapshot.firstMarkedRangeIDByAssetID
         rangeNamesByID = snapshot.rangeNamesByID
     }
@@ -281,17 +286,25 @@ struct PersistedS1Session: Codable, Equatable {
             pending[rangeID] = set
         }
         var continuations: [String: SessionStore.Continuation] = [:]
+        var legacyProgress: [String: S1LegacyProgress] = [:]
         for (rangeID, continuation) in continuationsByRangeID {
-            guard let recorded = SessionStore.SortOrder(
-                rawValue: continuation.recordedSortOrder
-            ) else {
+            continuations[rangeID] = SessionStore.Continuation(
+                currentAssetID: continuation.currentAssetID
+            )
+            // IC-190：旧档两键同在才是旧进度；只有一个、排序值非法或最远为空都视为坏档（与 v11 的判据同严）。
+            if let farthest = continuation.farthestAssetID,
+               let recordedRawValue = continuation.recordedSortOrder {
+                guard !farthest.isEmpty,
+                      let recorded = SessionStore.SortOrder(rawValue: recordedRawValue) else {
+                    return nil
+                }
+                legacyProgress[rangeID] = S1LegacyProgress(
+                    farthestAssetID: farthest,
+                    recordedSortOrder: recorded
+                )
+            } else if continuation.farthestAssetID != nil || continuation.recordedSortOrder != nil {
                 return nil
             }
-            continuations[rangeID] = SessionStore.Continuation(
-                currentAssetID: continuation.currentAssetID,
-                farthestAssetID: continuation.farthestAssetID,
-                recordedSortOrder: recorded
-            )
         }
         return S1SessionSnapshot(
             sessionID: sessionID,
@@ -300,7 +313,8 @@ struct PersistedS1Session: Codable, Equatable {
             pendingDeletionAssetIDsByRangeID: pending,
             continuationsByRangeID: continuations,
             firstMarkedRangeIDByAssetID: firstMarkedRangeIDByAssetID,
-            rangeNamesByID: rangeNamesByID
+            rangeNamesByID: rangeNamesByID,
+            legacyProgressByRangeID: legacyProgress
         )
     }
 }

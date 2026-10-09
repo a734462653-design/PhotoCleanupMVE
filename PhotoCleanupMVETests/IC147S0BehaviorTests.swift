@@ -73,9 +73,7 @@ final class IC147S0BehaviorTests: XCTestCase {
                 ],
                 continuationsByRangeID: [
                     "range-a": SessionStore.Continuation(
-                        currentAssetID: "asset-2",
-                        farthestAssetID: "asset-2",
-                        recordedSortOrder: .newestFirst
+                        currentAssetID: "asset-2"
                     )
                 ],
                 firstMarkedRangeIDByAssetID: [

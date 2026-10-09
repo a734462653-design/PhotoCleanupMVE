@@ -253,8 +253,11 @@ struct S1SessionSnapshot: Equatable, Sendable {
     /// IC-132 A：已知范围显示名。只增不删——对账剔除范围时不删名字，
     /// `M` 的键可能因范围失效而仍在（v8 未定项 18）。
     let rangeNamesByID: [String: String]
+    /// IC-190：会话档恢复时带来的 v11 旧进度（`p_范围`／`O_记录`），只在第一次采用范围、交给迁移入口之前存在；
+    /// 之后的快照为空，写盘即丢旧键（SPEC-S1 v12 第二节 `看过档`·迁移末句）。
+    let legacyProgressByRangeID: [String: S1LegacyProgress]
 
-    /// 逐成员构造，`rangeNamesByID` 带默认空表：既有构造点（含 IC-127 B 的两条
+    /// 逐成员构造，`rangeNamesByID`／`legacyProgressByRangeID` 带默认空表：既有构造点（含 IC-127 B 的两条
     /// 回归断言）无须改写即可编译。产品侧两个构造点都显式传值。
     init(
         sessionID: String,
@@ -263,7 +266,8 @@ struct S1SessionSnapshot: Equatable, Sendable {
         pendingDeletionAssetIDsByRangeID: [String: Set<String>],
         continuationsByRangeID: [String: SessionStore.Continuation],
         firstMarkedRangeIDByAssetID: [String: String],
-        rangeNamesByID: [String: String] = [:]
+        rangeNamesByID: [String: String] = [:],
+        legacyProgressByRangeID: [String: S1LegacyProgress] = [:]
     ) {
         self.sessionID = sessionID
         self.groupingDimension = groupingDimension
@@ -272,6 +276,7 @@ struct S1SessionSnapshot: Equatable, Sendable {
         self.continuationsByRangeID = continuationsByRangeID
         self.firstMarkedRangeIDByAssetID = firstMarkedRangeIDByAssetID
         self.rangeNamesByID = rangeNamesByID
+        self.legacyProgressByRangeID = legacyProgressByRangeID
     }
 }
 
@@ -332,8 +337,9 @@ final class S1StateMachine: ObservableObject {
     var seenAssetIDsProvider: (() -> Set<String>)?
 
     /// IC-188（SPEC-S1 v12 第二节 `看过档`·迁移）：旧会话档 `p_范围` 前缀的一次性迁移入口——每次采用新读到的范围时、
-    /// **在按范围收敛（`K` 钳制）之前**连同本次采用的维度交给协调器；协调器按看过档的迁移标记只做一次。未注入的夹具不迁移。
-    var legacyProgressMigration: ((_ ranges: [S1Range], _ groupingDimension: S1GroupingDimension, _ store: SessionStore) -> Void)?
+    /// 在按范围收敛之前连同本次采用的维度交给协调器；协调器按看过档的迁移标记只做一次。未注入的夹具不迁移。
+    /// IC-190：第三个形参改为会话档恢复时带来的旧进度（`K` 已不带 `p_范围`／`O_记录`）；交出之后状态机即清空它。
+    var legacyProgressMigration: ((_ ranges: [S1Range], _ groupingDimension: S1GroupingDimension, _ legacyProgress: [String: S1LegacyProgress]) -> Void)?
 
     /// IC-189（v12 `t_离开[r]`）：范围上次离开 S2 且写回成功的时刻的读口——由协调器从看过档注入；
     /// 未注入的夹具按「从未离开」（无基线、新增为 0）。
@@ -345,6 +351,8 @@ final class S1StateMachine: ObservableObject {
     /// 整体写回据此绕过真实范围的守卫——虚拟范围不在 `R(T)` 里。内存态，不入会话档。
     private(set) var activeVirtualRangeIDs: Set<String> = []
     private var lastPublishedSnapshot: S1SessionSnapshot?
+    /// IC-190：会话档恢复时带来的 v11 旧进度；第一次采用范围、交给迁移入口后清空（见 `legacyProgressMigration`）。
+    private var legacyProgressByRangeID: [String: S1LegacyProgress] = [:]
 
     init(
         sessionStore: SessionStore,
@@ -375,6 +383,8 @@ final class S1StateMachine: ObservableObject {
         // IC-132 A：把档里的范围名灌回名字表，使恢复出的状态机在读取任何 `R(T)`
         // 之前就能形成提交。
         machine.knownRangeNamesByID = snapshot.rangeNamesByID
+        // IC-190：旧进度随状态机保留到第一次采用范围，期间的写盘照样带着它（不丢迁移所需的数据）。
+        machine.legacyProgressByRangeID = snapshot.legacyProgressByRangeID
         return machine
     }
 
@@ -387,7 +397,8 @@ final class S1StateMachine: ObservableObject {
                 sessionStore.pendingDeletionAssetIDsByRangeID,
             continuationsByRangeID: sessionStore.continuationsByRangeID,
             firstMarkedRangeIDByAssetID: sessionStore.firstMarkedRangeIDByAssetID,
-            rangeNamesByID: knownRangeNamesByID
+            rangeNamesByID: knownRangeNamesByID,
+            legacyProgressByRangeID: legacyProgressByRangeID
         )
     }
 
@@ -591,7 +602,7 @@ final class S1StateMachine: ObservableObject {
     }
 
     /// IC-127 C（未定项 13）：外部变更对账的单一入口。就绪态下以新的 `R(T)` 为准：
-    /// 替换范围列表；`M` 剔除已不存在的资产并从 `F` 删键；`K` 按新序列重新钳制。
+    /// 替换范围列表；`M` 剔除已不存在的资产并从 `F` 删键；`K` 不钳制（IC-190）。
     /// 静默完成——不改 `loadingState`、不写 `readFailure`、不产生任何提示。
     /// 重读失败时没有「新结果」可依据，原样保留（同样静默），返回 false。
     @discardableResult
@@ -630,8 +641,9 @@ final class S1StateMachine: ObservableObject {
         if countsAsReconciliation {
             reconciliationCount += 1
         }
-        // IC-188：旧档迁移要用钳制之前的 `K`——钳制会把已失效的 `p_范围` 移到序列末位，迁移后就成了「全部看过」。
-        legacyProgressMigration?(newRanges, groupingDimension, sessionStore)
+        // IC-190：旧进度只在第一次采用范围时交给迁移入口，交出即清空——之后的快照不带它，下一次写盘丢掉旧键。
+        legacyProgressMigration?(newRanges, groupingDimension, legacyProgressByRangeID)
+        legacyProgressByRangeID = [:]
         var reconciledStore = Self.reconciledStore(sessionStore, against: newRanges)
         // IC-129：在按范围收敛之上叠加按存在性收敛——覆盖 `M` 的全部范围，
         // 与本次读到的 `R(T)` 无关，跨维度的失效资产在任一次对账中即收敛。
@@ -654,9 +666,9 @@ final class S1StateMachine: ObservableObject {
         publishSnapshotIfChanged()
     }
 
-    /// 对账的按范围部分：只对出现在新 `R(T)` 中的范围做剔除与钳制。当前维度之外
-    /// 范围里的失效**资产**由叠加其上的存在性收敛（IC-129）兜住；这些范围的 `K`
-    /// 钳制仍在切回该维度读取时经同一入口完成。
+    /// 对账的按范围部分：只对出现在新 `R(T)` 中的范围做剔除（IC-190 起 `K` 不钳制）。当前维度之外
+    /// 范围里的失效**资产**由叠加其上的存在性收敛（IC-129）兜住。
+    /// 两者都只收敛 `M`／`F`。
     private static func reconciledStore(
         _ store: SessionStore,
         against newRanges: [S1Range]

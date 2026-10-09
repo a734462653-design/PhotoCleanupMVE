@@ -469,7 +469,7 @@ final class S2StateMachineTests: XCTestCase {
         XCTAssertEqual(payload.upstreamReturn.sourceSessionID, "session-047")
         XCTAssertEqual(payload.upstreamReturn.sourceRangeID, "range-047")
         XCTAssertEqual(payload.upstreamReturn.currentAssetID, "asset-2")
-        XCTAssertEqual(payload.upstreamReturn.farthestAssetID, "asset-2")
+        XCTAssertEqual(payload.upstreamReturn.seenAssetIDs, ["asset-2"])
         XCTAssertEqual(
             payload.continuationSnapshot.pendingDeletionAssetIDs,
             machine.pendingDeletionAssetIDs

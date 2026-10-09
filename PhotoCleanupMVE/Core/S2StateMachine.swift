@@ -640,7 +640,6 @@ final class S2StateMachine: ObservableObject {
     @Published private(set) var sheetState: S2SheetState = .closed
     @Published private(set) var touchSequenceOwner: S2TouchSequenceOwner = .none
     @Published private(set) var currentIndex: Int
-    @Published private(set) var farthestIndex: Int
     @Published private(set) var pendingDeletionAssetIDs: Set<String>
     /// IC-182（④ 第 211 条）：下一次上滑标记成功后**停在刚标记的这张**、不自动翻页，只吃一次。
     /// 由视图按就地提示协调器的 `holdsPageOnNextMark`（第 2 句会在那一刻出现）置位，其余时候恒 false——
@@ -730,7 +729,6 @@ final class S2StateMachine: ObservableObject {
             of: entry.currentAssetID
         ) ?? 0
         currentIndex = initialCurrentIndex
-        farthestIndex = initialCurrentIndex
         pendingDeletionAssetIDs = entry.pendingDeletionAssetIDs
         favoriteAssetIDs = initialFavoriteAssetIDs
         recentAlbum = initialRecentAlbum
@@ -747,10 +745,6 @@ final class S2StateMachine: ObservableObject {
 
     var currentAssetID: String {
         orderedAssetIDs[currentIndex]
-    }
-
-    var farthestAssetID: String {
-        orderedAssetIDs[farthestIndex]
     }
 
     var currentIsMarked: Bool {
@@ -1303,7 +1297,6 @@ final class S2StateMachine: ObservableObject {
             return false
         }
         currentIndex = index
-        farthestIndex = max(farthestIndex, index)
         resetZoomAfterPhotoChange()
         return true
     }
@@ -1818,7 +1811,7 @@ final class S2StateMachine: ObservableObject {
                 sourceRangeID: entry.rangeDisplayInformation.rangeID,
                 pendingDeletionAssetIDs: pendingDeletionAssetIDs,
                 currentAssetID: currentAssetID,
-                farthestAssetID: farthestAssetID
+                seenAssetIDs: visitSeenAssetIDs
             ),
             continuationSnapshot: S2ContinuationSnapshot(
                 orderedAssetIDs: orderedAssetIDs,
@@ -1923,7 +1916,6 @@ final class S2StateMachine: ObservableObject {
         assetNavigationResult = result
         if case let .found(index, _) = result {
             currentIndex = index
-            farthestIndex = max(farthestIndex, index)
             resetZoomAfterPhotoChange()
         }
         return result
@@ -1946,7 +1938,6 @@ final class S2StateMachine: ObservableObject {
             return false
         }
         currentIndex = destination
-        farthestIndex = max(farthestIndex, destination)
         resetZoomAfterPhotoChange()
         // IC-187：上滑后自动进入的下一张、Nx 贴边翻页即刻停稳算看过；横栏拖动途中的逐格切换由汇集口挡掉。
         markCurrentSeen()

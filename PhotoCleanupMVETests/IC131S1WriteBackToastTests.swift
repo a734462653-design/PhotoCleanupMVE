@@ -80,9 +80,7 @@ final class IC131S1WriteBackToastTests: XCTestCase {
             XCTAssertEqual(
                 machine.sessionStore.continuationsByRangeID["范围-月"],
                 SessionStore.Continuation(
-                    currentAssetID: payload.upstreamReturn.currentAssetID,
-                    farthestAssetID: payload.upstreamReturn.farthestAssetID,
-                    recordedSortOrder: machine.sortOrder.sessionSortOrder
+                    currentAssetID: payload.upstreamReturn.currentAssetID
                 )
             )
             // 不误报。
@@ -190,7 +188,7 @@ final class IC131S1WriteBackToastTests: XCTestCase {
                 pendingDeletionAssetIDs:
                     good.upstreamReturn.pendingDeletionAssetIDs,
                 currentAssetID: good.upstreamReturn.currentAssetID,
-                farthestAssetID: good.upstreamReturn.farthestAssetID
+                seenAssetIDs: good.upstreamReturn.seenAssetIDs
             ),
             continuationSnapshot: good.continuationSnapshot
         )

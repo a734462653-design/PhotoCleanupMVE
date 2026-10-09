@@ -264,7 +264,7 @@ final class IC169MarkedStateFollowsBasketTests: XCTestCase {
             sourceRangeID: Self.monthID,
             pendingDeletionAssetIDs: pending,
             currentAssetID: current,
-            farthestAssetID: "z"
+            seenAssetIDs: ["z"]
         )
     }
 

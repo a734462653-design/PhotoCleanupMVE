@@ -7,10 +7,10 @@ struct SessionStore: Equatable, Sendable {
         case oldestFirst
     }
 
+    /// IC-190（SPEC-S1 v12 第二节 `K`）：`K` 缩为 `{c_范围}`——只供 S3 返回回到 S2 续接；v11 的 `p_范围`／`O_记录`
+    /// 退役，迁移所需的旧进度由会话档恢复时单独携带（`S1LegacyProgress`）。
     struct Continuation: Equatable, Sendable {
         let currentAssetID: AssetID
-        let farthestAssetID: AssetID
-        let recordedSortOrder: SortOrder
     }
 
     struct S2EntryContext: Equatable, Sendable {
@@ -24,7 +24,8 @@ struct SessionStore: Equatable, Sendable {
         let sourceRangeID: RangeID
         let pendingDeletionAssetIDs: Set<AssetID>
         let currentAssetID: AssetID
-        let farthestAssetID: AssetID
+        /// IC-190（SPEC-S2 v24 第七节第 3 部分）：本次看过的资产标识集合，取代最远到达；必须是该范围 `A` 的子集。
+        let seenAssetIDs: Set<AssetID>
     }
 
     struct S3Return: Equatable, Sendable {
@@ -136,8 +137,7 @@ struct SessionStore: Equatable, Sendable {
               }),
               continuationsByRangeID.allSatisfy({ rangeID, continuation in
                   !rangeID.isEmpty &&
-                      !continuation.currentAssetID.isEmpty &&
-                      !continuation.farthestAssetID.isEmpty
+                      !continuation.currentAssetID.isEmpty
               }) else {
             return nil
         }
@@ -173,7 +173,7 @@ struct SessionStore: Equatable, Sendable {
 
     /// IC-127 C（未定项 13）：按新的可用资产序列对账一个范围。
     /// `M[r]` 剔除已不存在的资产（经 `setMarked(false)` 同步维护 `F`）；
-    /// `K[r]` 的 `c_范围`／`p_范围` 若已不在序列中，钳到 `O_记录` 顺序下的序列末位。
+    /// IC-190（SPEC-S1 v12 `:74`）：`K[r]` 不再钳制——`c_范围` 不在序列中时由使用方按决策 44 回退。
     /// 幂等：对同一序列连调两次结果相同。返回是否有改动。
     @discardableResult
     mutating func reconcileRange(
@@ -189,40 +189,14 @@ struct SessionStore: Equatable, Sendable {
             }
         }
 
-        if let continuation = state.continuationsByRangeID[rangeID],
-           !availableAssetIDsNewestFirst.isEmpty {
-            let recordedOrder: [AssetID]
-            switch continuation.recordedSortOrder {
-            case .newestFirst:
-                recordedOrder = availableAssetIDsNewestFirst
-            case .oldestFirst:
-                recordedOrder = Array(availableAssetIDsNewestFirst.reversed())
-            }
-            let last = recordedOrder[recordedOrder.count - 1]
-            let current = available.contains(continuation.currentAssetID)
-                ? continuation.currentAssetID
-                : last
-            let farthest = available.contains(continuation.farthestAssetID)
-                ? continuation.farthestAssetID
-                : last
-            if current != continuation.currentAssetID ||
-                farthest != continuation.farthestAssetID {
-                state.continuationsByRangeID[rangeID] = Continuation(
-                    currentAssetID: current,
-                    farthestAssetID: farthest,
-                    recordedSortOrder: continuation.recordedSortOrder
-                )
-            }
-        }
-
         return state != before
     }
 
     /// IC-129（未定项 13 跨维度补全）：按资产存在性对账。覆盖 `M` 的**全部范围**、
     /// 与当前 `T` 无关：各范围剔除不在 `existingAssetIDs` 中的资产（经
     /// `setMarked(false)` 同步维护 `F`）。与 `reconcileRange` 的按范围收敛叠加
-    /// 使用，不替换它；`K` 的钳制仍只由按范围收敛负责（钳制需要序列，存在性
-    /// 给不出序列）。幂等：对同一存在集合连调两次结果相同。返回是否有改动。
+    /// 使用，不替换它；两者都不碰 `K`（IC-190 起 `K` 不钳制，`c_范围` 由使用方
+    /// 回退）。幂等：对同一存在集合连调两次结果相同。返回是否有改动。
     @discardableResult
     mutating func reconcileMarkedAssets(
         existingAssetIDs: Set<AssetID>
@@ -240,24 +214,6 @@ struct SessionStore: Equatable, Sendable {
         state.pendingDeletionAssetIDsByRangeID[rangeID]?.count ?? 0
     }
 
-    func processedAssetIDs(
-        for rangeID: RangeID,
-        orderedAssetIDs: [AssetID],
-        currentSortOrder: SortOrder
-    ) -> Set<AssetID> {
-        guard let continuation = state.continuationsByRangeID[rangeID],
-              let farthestIndex = orderedAssetIDs.firstIndex(
-                  of: continuation.farthestAssetID
-              ) else {
-            return []
-        }
-
-        if currentSortOrder == continuation.recordedSortOrder {
-            return Set(orderedAssetIDs[...farthestIndex])
-        }
-        return Set(orderedAssetIDs[farthestIndex...])
-    }
-
     @discardableResult
     mutating func applyS2Return(
         _ returned: S2Return,
@@ -270,7 +226,7 @@ struct SessionStore: Equatable, Sendable {
               assetIDSet.count == entryContext.orderedAssetIDs.count,
               returned.pendingDeletionAssetIDs.isSubset(of: assetIDSet),
               assetIDSet.contains(returned.currentAssetID),
-              assetIDSet.contains(returned.farthestAssetID) else {
+              returned.seenAssetIDs.isSubset(of: assetIDSet) else {
             return false
         }
 
@@ -299,9 +255,7 @@ struct SessionStore: Equatable, Sendable {
         }
 
         nextState.continuationsByRangeID[entryContext.rangeID] = Continuation(
-            currentAssetID: returned.currentAssetID,
-            farthestAssetID: returned.farthestAssetID,
-            recordedSortOrder: entryContext.sortOrder
+            currentAssetID: returned.currentAssetID
         )
         state = nextState
         return true

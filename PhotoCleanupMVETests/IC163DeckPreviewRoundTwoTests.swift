@@ -52,7 +52,7 @@ final class IC163DeckPreviewRoundTwoTests: XCTestCase {
                     sourceRangeID: "range-month",
                     pendingDeletionAssetIDs: ["b"],
                     currentAssetID: "b",
-                    farthestAssetID: "c"
+                    seenAssetIDs: ["c"]
                 ),
                 entryContext: entry
             )
@@ -73,7 +73,7 @@ final class IC163DeckPreviewRoundTwoTests: XCTestCase {
                     sourceRangeID: "range-month",
                     pendingDeletionAssetIDs: ["b"],
                     currentAssetID: "b",
-                    farthestAssetID: "c"
+                    seenAssetIDs: ["c"]
                 ),
                 entryContext: entry
             )
@@ -124,7 +124,7 @@ final class IC163DeckPreviewRoundTwoTests: XCTestCase {
                     sourceRangeID: "cat:bigVideo",
                     pendingDeletionAssetIDs: ["y"],
                     currentAssetID: "y",
-                    farthestAssetID: "y"
+                    seenAssetIDs: ["y"]
                 ),
                 entryContext: entry
             )
@@ -186,7 +186,7 @@ final class IC163DeckPreviewRoundTwoTests: XCTestCase {
                     sourceRangeID: "cat:bigVideo",
                     pendingDeletionAssetIDs: [],
                     currentAssetID: "z",
-                    farthestAssetID: "z"
+                    seenAssetIDs: ["z"]
                 ),
                 entryContext: entry
             )

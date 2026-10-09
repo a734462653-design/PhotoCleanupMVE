@@ -73,8 +73,6 @@ final class S1StateMachineTests: XCTestCase {
             )
             let originalStore = machine.sessionStore
             let originalSortOrder = machine.sortOrder
-            let originalRecordedSortOrder = machine.sessionStore
-                .continuationsByRangeID["range-month"]?.recordedSortOrder
 
             XCTAssertTrue(machine.switchGroupingDimension(to: .album))
             XCTAssertEqual(machine.state, .loading)
@@ -82,11 +80,6 @@ final class S1StateMachineTests: XCTestCase {
             XCTAssertEqual(machine.groupingDimension, .album)
             XCTAssertEqual(machine.sortOrder, originalSortOrder)
             XCTAssertEqual(machine.sessionStore, originalStore)
-            XCTAssertEqual(
-                machine.sessionStore.continuationsByRangeID["range-month"]?
-                    .recordedSortOrder,
-                originalRecordedSortOrder
-            )
             XCTAssertEqual(machine.sessionStore.sessionID, originalStore.sessionID)
         }
     }
@@ -108,11 +101,6 @@ final class S1StateMachineTests: XCTestCase {
             XCTAssertEqual(machine.groupingDimension, originalGroupingDimension)
             XCTAssertEqual(machine.sessionStore, originalStore)
             XCTAssertEqual(machine.currentReadRequest, originalRequest)
-            XCTAssertEqual(
-                machine.sessionStore.continuationsByRangeID["range-month"]?
-                    .recordedSortOrder,
-                .newestFirst
-            )
         }
     }
 
@@ -157,9 +145,9 @@ final class S1StateMachineTests: XCTestCase {
         }
     }
 
-    // IC046-010（IC-188 改，v12 决策 44；函数名留给 ②d 与 verify 脚本一起改）：已看集合 = 看过集合 `W` ∩ 本范围，
-    // 与 `K` 的最远位置无关——夹具里 `K` 记着最远到 asset-2，未注入 `W` 时一张也不算。
-    func testIC046_010ProcessedAssetsUsePrefixWhenOrdersMatch() {
+    // IC046-010（IC-188 改，v12 决策 44；IC-190 改名）：已看集合 = 看过集合 `W` ∩ 本范围，
+    // 与 `K` 无关——未注入 `W` 时一张也不算。
+    func testIC046_010ProcessedAssetsAreSeenSetIntersection() {
         let machine = makeMachine(
             state: .ready,
             store: makeStoreWithContinuation()
@@ -173,8 +161,8 @@ final class S1StateMachineTests: XCTestCase {
         )
     }
 
-    // IC046-011（IC-188 改；函数名留给 ②d）：已看集合与当前 O 无关——翻转排序前后相同。
-    func testIC046_011ProcessedAssetsUseSuffixWhenOrderFlips() {
+    // IC046-011（IC-188 改；IC-190 改名）：已看集合与当前 O 无关——翻转排序前后相同。
+    func testIC046_011ProcessedAssetsIgnoreSortOrder() {
         let machine = makeMachine(
             state: .ready,
             store: makeStoreWithContinuation()
@@ -252,7 +240,7 @@ final class S1StateMachineTests: XCTestCase {
             sourceRangeID: "range-month",
             pendingDeletionAssetIDs: [],
             currentAssetID: "asset-2",
-            farthestAssetID: "asset-2"
+            seenAssetIDs: ["asset-2"]
         )
         XCTAssertTrue(
             machine.applyS2Return(returned, entryContext: entryContext)
@@ -379,7 +367,7 @@ final class S1StateMachineTests: XCTestCase {
             sourceRangeID: "range-month",
             pendingDeletionAssetIDs: ["asset-1"],
             currentAssetID: "asset-2",
-            farthestAssetID: "asset-2"
+            seenAssetIDs: ["asset-2"]
         )
 
         XCTAssertTrue(machine.applyS2Return(returned, entryContext: context))
@@ -390,9 +378,7 @@ final class S1StateMachineTests: XCTestCase {
         XCTAssertEqual(
             machine.sessionStore.continuationsByRangeID["range-month"],
             SessionStore.Continuation(
-                currentAssetID: "asset-2",
-                farthestAssetID: "asset-2",
-                recordedSortOrder: .newestFirst
+                currentAssetID: "asset-2"
             )
         )
     }
@@ -620,7 +606,7 @@ final class S1StateMachineTests: XCTestCase {
             sourceRangeID: "range-month",
             pendingDeletionAssetIDs: ["asset-1"],
             currentAssetID: "asset-2",
-            farthestAssetID: "asset-2"
+            seenAssetIDs: ["asset-2"]
         )
         precondition(store.applyS2Return(returned, entryContext: context))
         return store
