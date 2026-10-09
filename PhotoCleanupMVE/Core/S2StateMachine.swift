@@ -273,6 +273,18 @@ struct S2EntryContext {
             }
         )
     }
+
+    /// IC-198（SPEC-S2 v24 决策 59）：只换顺序（与当前张）的副本——会话、范围信息、进入时的待删集合与合并计数读口原样。
+    func reordered(_ orderedAssetIDs: [String], currentAssetID: String) -> S2EntryContext {
+        S2EntryContext(
+            sessionID: sessionID,
+            rangeDisplayInformation: rangeDisplayInformation,
+            orderedAssetIDs: orderedAssetIDs,
+            currentAssetID: currentAssetID,
+            pendingDeletionAssetIDs: pendingDeletionAssetIDs,
+            sessionMergedPendingDeletionCountProvider: sessionMergedPendingDeletionCountProvider
+        )
+    }
 }
 
 struct S2InitialPresentation: Equatable {
@@ -634,7 +646,8 @@ enum S2Geometry {
 }
 
 final class S2StateMachine: ObservableObject {
-    let entry: S2EntryContext
+    /// IC-198：看图页里改会话级排序后由 `reorderAssets(_:)` 换成只改了顺序的副本；读口不变。
+    private(set) var entry: S2EntryContext
     @Published private(set) var parameters: S2ResolvedParameters
     /// IC-078：按资产登记的缩放几何；非发布属性，登记不触发视图刷新。
     private var assetZoomGeometries: [String: S2AssetZoomGeometry] = [:]
@@ -654,6 +667,9 @@ final class S2StateMachine: ObservableObject {
     @Published private(set) var sheetState: S2SheetState = .closed
     @Published private(set) var touchSequenceOwner: S2TouchSequenceOwner = .none
     @Published private(set) var currentIndex: Int
+    /// IC-198：列表顺序的版本号，每次 `reorderAssets(_:)` 成功 +1——同数量换顺序时给视图一个重同步分页器与横栏的信号
+    /// （张数不变，下标也可能不变）。
+    @Published private(set) var orderedListRevision = 0
     @Published private(set) var pendingDeletionAssetIDs: Set<String>
     /// IC-195：两个一次性信号，供引导 D 在视图的两个 `.onChange` 里读——不发布、不入档、不入标定；
     /// 进入后尚未变化时为 nil。各写入点在改值之前赋值（值没变也赋，视图只在值变了时才读）。
@@ -1823,6 +1839,25 @@ final class S2StateMachine: ObservableObject {
         let event = feedbackEvent
         feedbackEvent = nil
         return event
+    }
+
+    /// IC-198（SPEC-S2 v24 决策 59）：会话级排序 `O` 改了之后由协调器调——当前范围按新顺序重排，**当前照片不变**
+    /// （新下标 = 它在新顺序里的位置），复位到 1x（分页器随之重同步，留在 Nx 会与页对象失配，③），版本号 +1。
+    /// 只在可收输入的空闲态（与退出载荷同一门槛）；成员必须与现列表相同、顺序必须真的变了。不记「看过」、不改两个一次性信号。
+    @discardableResult
+    func reorderAssets(_ newOrderedAssetIDs: [String]) -> Bool {
+        guard controlsCanReceiveInput,
+              newOrderedAssetIDs != orderedAssetIDs,
+              newOrderedAssetIDs.count == orderedAssetIDs.count,
+              Set(newOrderedAssetIDs) == Set(orderedAssetIDs),
+              let newIndex = newOrderedAssetIDs.firstIndex(of: currentAssetID) else {
+            return false
+        }
+        entry = entry.reordered(newOrderedAssetIDs, currentAssetID: currentAssetID)
+        currentIndex = newIndex
+        resetZoomAfterPhotoChange()
+        orderedListRevision += 1
+        return true
     }
 
     func makeExitPayload() -> S2ExitPayload? {
