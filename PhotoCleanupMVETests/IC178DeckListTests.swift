@@ -5,75 +5,22 @@ import XCTest
 
 /// IC-178：「逐张整理」范围列表 (i) 年卡叠 → 年页（Decision_log 第 205 条第二节第 1 条；R2 画布 `i_s1`／`i_year_page`）。
 ///
-/// 断言 1 钉卡片叠展示口径（步长、卡高、叠高、已看百分比、看完、进年页判据），2 钉年页身份在状态机里的守卫与
-/// 生命周期（不入档、切维度清、对账后年消失清、S2 遮挡期间保留、不改状态与列表数据），3 钉五十个登记值与三个
-/// 符号名，4 钉源码落位（S1View 换成 `NavigationStack` + 两只新视图、旧列表层退役、IC177 计数、状态机加法、
-/// 新文件纪律与计数），5 钉目录七条 key。卡片叠的观感、推入动画、tab bar 隐藏与封面取图归 H96 真机。
+/// 断言 2 钉年页身份在状态机里的守卫与生命周期（不入档、切维度清、对账后年消失清、S2 遮挡期间保留、不改状态与
+/// 列表数据），4 钉源码落位（S1View 的 `NavigationStack` + 两只视图、旧列表层退役、IC177 计数、状态机加法、新文件纪律）。
+/// IC-193：断言 1（旧叠口径）、3（五十个旧登记值）、5（七条 key，其中一条退役）随 V1 卡片叠整删，仍成立的断言与两张
+/// 新文件计数表移入 `IC193V1DeckTests`（IC-184／IC-192 先例）。卡片叠的观感、推入动画与封面取图归真机。
 final class IC178DeckListTests: XCTestCase {
     private static let s1ViewPath = "PhotoCleanupMVE/Features/S1/S1View.swift"
     private static let cardsPath = "PhotoCleanupMVE/Features/S1/S1DeckCards.swift"
     private static let yearPagePath = "PhotoCleanupMVE/Features/S1/S1YearPageView.swift"
     private static let machinePath = "PhotoCleanupMVE/Core/S1StateMachine.swift"
-    private static let catalogPath = "PhotoCleanupMVE/Localizable.xcstrings"
     private static let newline = String(Character(UnicodeScalar(UInt8(10))))
-    /// 七条新 key 与取值（卡内暂登，SPEC-S1 v11 回填）。
-    private static let newKeyValues: [(String, String)] = [
-        ("s1.deck.year.subtitle", "{count} 张 · {months} 个月"),
-        ("s1.deck.pending", "待删 {count}"),
-        ("s1.deck.seen", "已看 {percent}%"),
-        ("s1.deck.done", "看完"),
-        ("s1.yearPage.summary", "{count} 张 · {months} 个月 · 已看 {percent}% · 待删 {pending}"),
-        ("s1.yearPage.organizeAll", "整理整年"),
-        ("s1.yearPage.back", "返回")
-    ]
     private static let dynamicNeedles = [
         "systemGroupedBackground", "secondarySystemGroupedBackground", "secondarySystemFill",
         "tertiaryLabel", "accentColor", "systemRed", "systemGreen", "systemOrange",
         "Color.primary", "Color.secondary", "uiColor: .separator", "Color(uiColor:", "systemBackground",
         "userInterfaceStyle", "dynamicColor(", "preferredColorScheme"
     ]
-
-    // MARK: - 断言 1：卡片叠展示口径
-
-    func testIC178A_StackAndCardPresentationRules() {
-        XCTAssertEqual(S1DeckCardPresentation.step(for: .years), 72)
-        XCTAssertEqual(S1DeckCardPresentation.step(for: .months), 80)
-        XCTAssertEqual(S1DeckCardPresentation.step(for: .albums), 84)
-        XCTAssertEqual(S1DeckCardPresentation.titleFontSize(for: .years), 26)
-        XCTAssertEqual(S1DeckCardPresentation.titleFontSize(for: .months), 24)
-        XCTAssertEqual(S1DeckCardPresentation.titleFontSize(for: .albums), 24)
-        XCTAssertTrue(S1DeckCardPresentation.showsMonthCount(for: .years))
-        XCTAssertFalse(S1DeckCardPresentation.showsMonthCount(for: .months))
-        XCTAssertFalse(S1DeckCardPresentation.showsMonthCount(for: .albums))
-        XCTAssertEqual(S1DeckCardPresentation.cardHeight(index: 0, count: 3), 170)
-        XCTAssertEqual(S1DeckCardPresentation.cardHeight(index: 1, count: 3), 170)
-        XCTAssertEqual(S1DeckCardPresentation.cardHeight(index: 2, count: 3), 190, "末卡整张露出")
-        XCTAssertEqual(S1DeckCardPresentation.cardHeight(index: 0, count: 1), 190)
-        XCTAssertEqual(S1DeckCardPresentation.stackHeight(count: 0, kind: .years), 0)
-        XCTAssertEqual(S1DeckCardPresentation.stackHeight(count: 1, kind: .years), 190)
-        XCTAssertEqual(S1DeckCardPresentation.stackHeight(count: 15, kind: .years), 1198, "R2 十五年：14 × 72 + 190")
-        XCTAssertEqual(S1DeckCardPresentation.stackHeight(count: 6, kind: .months), 590, "R2 年页六个月：5 × 80 + 190")
-        XCTAssertEqual(S1DeckCardPresentation.stackHeight(count: 5, kind: .albums), 526, "R2 相册页签五个相册：4 × 84 + 190")
-        XCTAssertEqual(S1DeckCardPresentation.seenPercent(processed: 0, total: 0), 0, "空范围")
-        XCTAssertEqual(S1DeckCardPresentation.seenPercent(processed: 0, total: 10), 0)
-        XCTAssertEqual(S1DeckCardPresentation.seenPercent(processed: 1, total: 3), 33, "向下取整")
-        XCTAssertEqual(S1DeckCardPresentation.seenPercent(processed: 29, total: 100), 29, "整数运算，不受浮点误差影响")
-        XCTAssertEqual(S1DeckCardPresentation.seenPercent(processed: 999, total: 1000), 99, "未看完不显示 100")
-        XCTAssertEqual(S1DeckCardPresentation.seenPercent(processed: 10, total: 10), 100)
-        XCTAssertEqual(S1DeckCardPresentation.seenPercent(processed: 12, total: 10), 100, "钳到 100")
-        XCTAssertEqual(S1DeckCardPresentation.seenPercent(processed: -1, total: 10), 0, "钳到 0")
-        XCTAssertFalse(S1DeckCardPresentation.isComplete(processed: 0, total: 0), "空范围不算看完")
-        XCTAssertFalse(S1DeckCardPresentation.isComplete(processed: 9, total: 10))
-        XCTAssertTrue(S1DeckCardPresentation.isComplete(processed: 10, total: 10))
-        XCTAssertTrue(S1DeckCardPresentation.isComplete(processed: 11, total: 10))
-        XCTAssertFalse(S1DeckCardPresentation.opensYearPage(childCount: 0), "相册、未分类、月：直接进 S2")
-        XCTAssertTrue(S1DeckCardPresentation.opensYearPage(childCount: 1), "有月的年：进年页")
-        XCTAssertFalse(S1DeckCardPresentation.showsPendingPill(count: 0))
-        XCTAssertTrue(S1DeckCardPresentation.showsPendingPill(count: 1))
-        // 进度条比例沿用 IC-128 B 的口径（同一只函数）。
-        XCTAssertEqual(S1ProgressLinePresentation.fillFraction(processed: 1, total: 4), 0.25, accuracy: 0.000_001)
-        XCTAssertEqual(S1ProgressLinePresentation.fillFraction(processed: 0, total: 0), 0, accuracy: 0.000_001)
-    }
 
     // MARK: - 断言 2：年页身份在状态机里
 
@@ -136,70 +83,6 @@ final class IC178DeckListTests: XCTestCase {
         XCTAssertNil(machine.presentedYearRangeID)
         machine.dismissYearPage()
         XCTAssertEqual(writes, writesAfterSwitch, "年页身份不入档")
-    }
-
-    // MARK: - 断言 3：登记值与符号
-
-    func testIC178C_MetricsAndSymbolsMatchCanvas() {
-        XCTAssertEqual(S1DeckMetrics.horizontalMargin, 16)
-        XCTAssertEqual(S1DeckMetrics.cardCornerRadius, 28)
-        XCTAssertEqual(S1DeckMetrics.cardHeight, 170)
-        XCTAssertEqual(S1DeckMetrics.lastCardHeight, 190)
-        XCTAssertEqual(S1DeckMetrics.yearStep, 72)
-        XCTAssertEqual(S1DeckMetrics.monthStep, 80)
-        XCTAssertEqual(S1DeckMetrics.albumStep, 84)
-        XCTAssertEqual(S1DeckMetrics.stackBottomPadding, 24)
-        XCTAssertEqual(S1DeckMetrics.cardShadowOpacity, 0.45, accuracy: 0.000_001)
-        XCTAssertEqual(S1DeckMetrics.cardShadowRadius, 24)
-        XCTAssertEqual(S1DeckMetrics.cardShadowYOffset, -10)
-        XCTAssertEqual(S1DeckMetrics.cardRingWidth, 0.5)
-        XCTAssertEqual(S1DeckMetrics.scrimTopOpacity, 0.78, accuracy: 0.000_001)
-        XCTAssertEqual(S1DeckMetrics.scrimMiddleOpacity, 0.18, accuracy: 0.000_001)
-        XCTAssertEqual(S1DeckMetrics.scrimMiddleLocation, 0.46, accuracy: 0.000_001)
-        XCTAssertEqual(S1DeckMetrics.scrimEndLocation, 0.70, accuracy: 0.000_001)
-        XCTAssertEqual(S1DeckMetrics.headLeadingInset, 20)
-        XCTAssertEqual(S1DeckMetrics.headTrailingInset, 16)
-        XCTAssertEqual(S1DeckMetrics.headTopInset, 16)
-        XCTAssertEqual(S1DeckMetrics.headSpacing, 10)
-        XCTAssertEqual(S1DeckMetrics.yearTitleFontSize, 26)
-        XCTAssertEqual(S1DeckMetrics.monthTitleFontSize, 24)
-        XCTAssertEqual(S1DeckMetrics.titleKerning, -0.4)
-        XCTAssertEqual(S1DeckMetrics.subtitleFontSize, 13.5)
-        XCTAssertEqual(S1DeckMetrics.pendingPillHeight, 24)
-        XCTAssertEqual(S1DeckMetrics.pendingPillHorizontalPadding, 9)
-        XCTAssertEqual(S1DeckMetrics.pendingPillFontSize, 13)
-        XCTAssertEqual(S1DeckMetrics.seenFontSize, 13)
-        XCTAssertEqual(S1DeckMetrics.doneSymbolPointSize, 15)
-        XCTAssertEqual(S1DeckMetrics.doneSpacing, 4)
-        XCTAssertEqual(S1DeckMetrics.barHorizontalInset, 20)
-        XCTAssertEqual(S1DeckMetrics.barTopInset, 54)
-        XCTAssertEqual(S1DeckMetrics.barHeight, 3)
-        XCTAssertEqual(S1DeckMetrics.barCornerRadius, 2)
-        XCTAssertEqual(S1DeckMetrics.barTrackOpacity, 0.18, accuracy: 0.000_001)
-        XCTAssertEqual(S1DeckMetrics.yearPageTitleFontSize, 40)
-        XCTAssertEqual(S1DeckMetrics.yearPageTitleKerning, -1.2)
-        XCTAssertEqual(S1DeckMetrics.yearPageTitleRowHeight, 44)
-        XCTAssertEqual(S1DeckMetrics.yearPageTitleRowTopSpacing, 8)
-        XCTAssertEqual(S1DeckMetrics.organizeButtonHeight, 40)
-        XCTAssertEqual(S1DeckMetrics.organizeButtonHorizontalPadding, 14)
-        XCTAssertEqual(S1DeckMetrics.organizeButtonFillOpacity, 0.10, accuracy: 0.000_001)
-        XCTAssertEqual(S1DeckMetrics.organizeButtonFontSize, 15)
-        XCTAssertEqual(S1DeckMetrics.organizeButtonSymbolPointSize, 18)
-        XCTAssertEqual(S1DeckMetrics.organizeButtonSpacing, 6)
-        XCTAssertEqual(S1DeckMetrics.summaryFontSize, 14)
-        XCTAssertEqual(S1DeckMetrics.summaryTopSpacing, 6)
-        XCTAssertEqual(S1DeckMetrics.yearBarTopSpacing, 13)
-        XCTAssertEqual(S1DeckMetrics.yearBarHeight, 4)
-        XCTAssertEqual(S1DeckMetrics.monthStackTopSpacing, 26)
-        // 与既有登记同值的两处（各自登记，不互引）。
-        XCTAssertEqual(S1DeckMetrics.cardCornerRadius, S0DeckMetrics.cardCornerRadius)
-        XCTAssertEqual(S1DeckMetrics.horizontalMargin, S1ChromeLayout.horizontalMargin)
-        XCTAssertEqual(S1DeckSymbol.back, "chevron.left")
-        XCTAssertEqual(S1DeckSymbol.organizeAll, "rectangle.stack")
-        XCTAssertEqual(S1DeckSymbol.done, "checkmark")
-        for name in [S1DeckSymbol.back, S1DeckSymbol.organizeAll, S1DeckSymbol.done] {
-            XCTAssertNotNil(UIImage(systemName: name), name)
-        }
     }
 
     // MARK: - 断言 4：源码落位
@@ -311,82 +194,8 @@ final class IC178DeckListTests: XCTestCase {
                 XCTAssertEqual(occurrences(of: needle, in: stripped), 0, label + " " + needle)
             }
         }
-        for (needle, expected) in [
-            ("S1ChromeForeground.", 9),
-            ("S0DeckMetrics.", 2),
-            ("S1NotificationBadgeStyle.", 1),
-            ("S1ProgressLinePresentation.fillFraction(", 1),
-            ("S0DeckCoverView(", 1),
-            (".id(coverAssetID)", 1),
-            (".clipShape(", 1),
-            (".contentShape(", 1),
-            (".zIndex(", 1),
-            (".offset(y:", 1),
-            (".accessibilityHidden(true)", 1),
-            (".accessibilityLabel(", 1),
-            (".layoutPriority(1)", 1),
-            (".fixedSize()", 2),
-            (".buttonStyle(.plain)", 1),
-            ("Button(action:", 1),
-            ("LinearGradient(", 1),
-            (".kerning(", 1),
-            (".shadow(", 1),
-            ("strokeBorder(", 1)
-        ] {
-            XCTAssertEqual(occurrences(of: needle, in: cards), expected, "cards " + needle)
-        }
-        let metrics = try XCTUnwrap(slice(cards, from: "enum S1DeckMetrics {", to: Self.newline + "}" + Self.newline))
-        XCTAssertEqual(occurrences(of: "static let ", in: metrics), 50, "登记值恰五十个")
-        let symbols = try XCTUnwrap(slice(cards, from: "enum S1DeckSymbol {", to: Self.newline + "}" + Self.newline))
-        XCTAssertEqual(occurrences(of: "static let ", in: symbols), 3)
-        // 借的两条既有 key（张数、待删读屏）也在这里——目录双向一致：旧红点角标删掉后 `pending_count` 仍有引用。
-        for key in ["s1.deck.year.subtitle", "s1.deck.pending", "s1.deck.seen", "s1.deck.done", "s1.range.total_count", "s1.range.pending_count"] {
-            XCTAssertEqual(occurrences(of: "\"" + key + "\"", in: cardsRaw), 1, key)
-        }
-        for (needle, expected) in [
-            ("S1ChromeForeground.", 6),
-            ("S0DeckMetrics.", 0),
-            ("S1ChromeLayout.", 6),
-            (".toolbar(.hidden, for: .tabBar)", 1),
-            (".toolbar(.hidden, for: .navigationBar)", 1),
-            ("S0BasketEntryView(style: .glass", 1),
-            ("s1ChromeCircleGlass()", 1),
-            (".accessibilityLabel(", 1),
-            (".buttonStyle(.plain)", 1),
-            ("Button(action:", 2),
-            ("S1DeckStack(", 1),
-            ("S1DeckProgressBar(", 1),
-            ("kind: .months", 1),
-            (".kerning(", 1)
-        ] {
-            XCTAssertEqual(occurrences(of: needle, in: yearPage), expected, "yearPage " + needle)
-        }
-        for key in ["s1.yearPage.summary", "s1.yearPage.organizeAll", "s1.yearPage.back"] {
-            XCTAssertEqual(occurrences(of: "\"" + key + "\"", in: yearPageRaw), 1, key)
-        }
+        // IC-193：两张新文件计数表与 key 检查随 V1 卡片叠移入 `IC193V1DeckTests.testIC193D_SourceWiring`。
         XCTAssertEqual(occurrences(of: "\"s1.trash.accessibility\"", in: yearPageRaw), 0, "读屏 key 由 S0BasketEntryView 自带")
-    }
-
-    // MARK: - 断言 5：目录
-
-    func testIC178E_CatalogGainsSevenKeys() throws {
-        let catalog = try XCTUnwrap(sourceText(Self.catalogPath))
-        for (key, value) in Self.newKeyValues {
-            XCTAssertEqual(occurrences(of: "\"" + key + "\" : {", in: catalog), 1, key)
-            let valueHits = occurrences(of: "\"value\" : \"" + value + "\"", in: catalog)
-            if key == "s1.yearPage.back" {
-                // 「返回」与 S0／S2／S3 各自的返回钮同一取值（各自 key），只要求存在。
-                XCTAssertGreaterThanOrEqual(valueHits, 1, key)
-            } else {
-                XCTAssertEqual(valueHits, 1, key)
-            }
-            XCTAssertEqual(L10n.text(key), value, key)
-        }
-        XCTAssertEqual(L10n.text("s1.range.total_count", replacing: ["count": "412"]), "412 张")
-        XCTAssertEqual(
-            L10n.text("s1.yearPage.summary", replacing: ["count": "2375", "months": "9", "percent": "44", "pending": "15"]),
-            "2375 张 · 9 个月 · 已看 44% · 待删 15"
-        )
     }
 
     // MARK: - 夹具
