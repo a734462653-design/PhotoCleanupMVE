@@ -115,9 +115,9 @@ final class IC172GlassAlwaysDarkTests: XCTestCase {
         )
     }
 
-    // MARK: - 子项 C：三种系统材质配方加覆盖后等于系统深色（对照 = 同一棵树不加覆盖）
+    // MARK: - 子项 C：两种系统材质配方加覆盖后等于系统深色（对照 = 同一棵树不加覆盖；菜单配方随 IC-192 退役）
 
-    /// IC-173 #352（①）：各配方加覆盖后逐像素等于系统深色——裸 ultraThin 99、regular 64、菜单配方 7。
+    /// IC-173 #352（①）：各配方加覆盖后逐像素等于系统深色——裸 ultraThin 99、regular 64（菜单配方 7 随自绘菜单退役，IC-192 删其探针）。
     func testIC172C_MaterialRecipesUnderOverrideAreSystemDark() {
         let toastReference = grayPair("toastReference") {
             Color.clear
@@ -144,35 +144,6 @@ final class IC172GlassAlwaysDarkTests: XCTestCase {
                 .environment(\.colorScheme, .dark)
         }
         assertOverride(hint, matchesDarkOf: hintReference, "hint")
-
-        let menuReference = grayPair("menuReference") {
-            Color.clear
-                .frame(width: Self.glassSize.width, height: Self.glassSize.height)
-                .background {
-                    RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
-                        .fill(
-                            Color(uiColor: .systemBackground)
-                                .opacity(S1MenuStyle.backgroundOpacity)
-                        )
-                }
-        }
-        let menu = grayPair("menuOverride") {
-            Color.clear
-                .frame(width: Self.glassSize.width, height: Self.glassSize.height)
-                .background {
-                    RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: S1MenuStyle.cornerRadius)
-                        .fill(
-                            Color(uiColor: .systemBackground)
-                                .opacity(S1MenuStyle.backgroundOpacity)
-                        )
-                }
-                .environment(\.colorScheme, .dark)
-        }
-        assertOverride(menu, matchesDarkOf: menuReference, "menu")
     }
 
     private func assertOverride(
@@ -205,12 +176,12 @@ final class IC172GlassAlwaysDarkTests: XCTestCase {
         )
     }
 
-    // MARK: - 源码：十三处覆盖逐处落位，整页不换肤
+    // MARK: - 源码：十一处覆盖逐处落位，整页不换肤（IC-192：S1 顶排容器与自绘菜单两处随 V1 页头退役）
 
     func testIC172ABC_SourceWiring() throws {
         let s1 = try XCTUnwrap(strippedSource(Self.s1Path))
         let s2 = try XCTUnwrap(strippedSource(Self.s2Path))
-        XCTAssertEqual(occurrences(of: Self.darkNeedle, in: s1), 7)
+        XCTAssertEqual(occurrences(of: Self.darkNeedle, in: s1), 5)
         XCTAssertEqual(occurrences(of: Self.darkNeedle, in: s2), 6)
         for source in [s1, s2] {
             XCTAssertEqual(occurrences(of: "preferredColorScheme", in: source), 0)
@@ -221,11 +192,9 @@ final class IC172GlassAlwaysDarkTests: XCTestCase {
         for start in [
             "func s1ChromeGlassBackground<S: InsettableShape>(",
             "func s1LegacyChromeGlassBackground<S: InsettableShape>(",
-            "private var chromeBar: some View {",
             "func s1GlassBadgeOverlay<Badge: View>(",
             "func s1GlassBadgeHost<Badge: View>(",
-            "private var feedbackToastOverlay: some View {",
-            "private func menuContainer<Content: View>("
+            "private var feedbackToastOverlay: some View {"
         ] {
             let body = try XCTUnwrap(slice(s1, from: start, to: close), start)
             XCTAssertEqual(occurrences(of: Self.darkNeedle, in: body), 1, start)

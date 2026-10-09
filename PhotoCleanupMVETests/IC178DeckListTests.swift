@@ -205,16 +205,16 @@ final class IC178DeckListTests: XCTestCase {
     // MARK: - 断言 4：源码落位
 
     func testIC178D_SourceWiringAndDiscipline() throws {
-        // S1View：页头、四态、菜单不动（IC177 计数只有列表层的六处消失），列表本体换成两只新视图。
+        // S1View：列表本体换成两只新视图；IC-192 起页头换 V1（`S1PageHeader.swift`）、两只自绘菜单退役，计数随之改。
         let s1 = try XCTUnwrap(strippedSource(Self.s1ViewPath))
         let s1Raw = try XCTUnwrap(sourceText(Self.s1ViewPath))
         for (needle, expected) in [
-            ("S1ChromeForeground.", 28),
+            ("S1ChromeForeground.", 17),
             ("S0DeckMetrics.", 7),
             ("ProgressView()", 1),
             ("ProgressView().tint(S1ChromeForeground.secondary)", 1),
-            ("colorScheme, .dark)", 7),
-            ("s1ChromeGlassBackground(", 4),
+            ("colorScheme, .dark)", 5),
+            ("s1ChromeGlassBackground(", 3),
             ("NavigationStack {", 1),
             (".navigationDestination(item: presentedYearRangeBinding)", 1),
             (".toolbar(.hidden, for: .navigationBar)", 1),
@@ -257,8 +257,12 @@ final class IC178DeckListTests: XCTestCase {
             XCTAssertEqual(occurrences(of: needle, in: body), expected, "body " + needle)
         }
         let root = try XCTUnwrap(slice(s1View, from: "private var rootPage: some View {", to: "private var presentedYearRangeBinding: Binding<String?> {"))
-        for needle in ["ZStack(alignment: .top) {", "stateContent", "chromeColumn", "menuScrim", "menuOverlay", "S1ChromeForeground.pageBackground"] {
+        for needle in ["ZStack(alignment: .top) {", "stateContent", "pageHeader", "limitedBannerRow", "pageContainer {", "S1ChromeForeground.pageBackground"] {
             XCTAssertEqual(occurrences(of: needle, in: root), 1, "rootPage " + needle)
+        }
+        // IC-192：旧顶排列、菜单暗层与菜单层随 V1 页头退役。
+        for needle in ["chromeColumn", "menuScrim", "menuOverlay"] {
+            XCTAssertEqual(occurrences(of: needle, in: root), 0, "rootPage " + needle)
         }
         let list = try XCTUnwrap(slice(s1View, from: "private var rangeList: some View {", to: "private func enterRange("))
         for (needle, expected) in [

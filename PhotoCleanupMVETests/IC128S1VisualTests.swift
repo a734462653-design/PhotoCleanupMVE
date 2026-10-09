@@ -65,34 +65,6 @@ final class IC128S1VisualTests: XCTestCase {
         XCTAssertEqual(model.badgeText, "2")
     }
 
-    // 中胶囊副行口径：总数 = 范围资产并集（重叠不重复计），范围数 = 范围项总数。
-    func testIC128A_CapsuleSubtitleCountsUnionAndRangeCount() {
-        let ranges = [
-            S1Range(
-                id: "year",
-                displayName: "2026",
-                assetIDsNewestFirst: ["a3", "a2", "a1"]
-            ),
-            S1Range(
-                id: "month",
-                displayName: "2026-08",
-                assetIDsNewestFirst: ["a3", "a2", "a1"],
-                parentRangeID: "year"
-            ),
-            S1Range(
-                id: "相册-1",
-                displayName: "名称-相册-1",
-                assetIDsNewestFirst: ["a1", "b1"]
-            )
-        ]
-        let counts = S1ChromeSubtitle.counts(for: ranges)
-        XCTAssertEqual(counts.assetCount, 4)
-        XCTAssertEqual(counts.rangeCount, 3)
-        let emptyCounts = S1ChromeSubtitle.counts(for: [])
-        XCTAssertEqual(emptyCounts.assetCount, 0)
-        XCTAssertEqual(emptyCounts.rangeCount, 0)
-    }
-
     // 取值表转录钉住：v18 §11.2 的 chrome 取值与推导量恒等式。
     func testIC128A_ChromeMetricsMatchSpecSection11Part2() {
         XCTAssertEqual(S1ChromeLayout.rowHeight, 44)
@@ -113,29 +85,8 @@ final class IC128S1VisualTests: XCTestCase {
         XCTAssertEqual(S1NotificationBadgeStyle.horizontalPadding, 5)
         XCTAssertEqual(S1NotificationBadgeStyle.ringWidth, 1.5)
 
-        // 画布「距屏顶」值的推导量恒等式（安全区顶 59 基准）：
-        // 114 = 59 + 3 + 44 + 8；122 = 59 + 3 + 44 + 16；174 = 59 + 55 + 44 + 16。
-        XCTAssertEqual(
-            S1ChromeLayout.overlayTopOffset,
-            S1ChromeLayout.topRowTopInset
-                + S1ChromeLayout.rowHeight
-                + S1ChromeLayout.chromeToOverlaySpacing
-        )
-        XCTAssertEqual(
-            S1ChromeLayout.listTopOffset,
-            S1ChromeLayout.topRowTopInset
-                + S1ChromeLayout.rowHeight
-                + S1ChromeLayout.chromeToListSpacing
-        )
-        XCTAssertEqual(
-            S1ChromeLayout.limitedListTopOffset,
-            S1ChromeLayout.overlayTopOffset
-                + S1ChromeLayout.rowHeight
-                + S1ChromeLayout.bannerToListSpacing
-        )
-        XCTAssertEqual(S1ChromeLayout.overlayTopOffset + 59, 114)
-        XCTAssertEqual(S1ChromeLayout.listTopOffset + 59, 122)
-        XCTAssertEqual(S1ChromeLayout.limitedListTopOffset + 59, 174)
+        // IC-192：列表起始与菜单的三个推导偏移（`overlayTopOffset`／`listTopOffset`／`limitedListTopOffset`）
+        // 与 `bannerToListSpacing` 随 V1 页头退役，恒等式随之删除；`chromeToOverlaySpacing`／`chromeToListSpacing` 仍被首页借用。
     }
 
     // MARK: - B：范围项
@@ -229,66 +180,10 @@ final class IC128S1VisualTests: XCTestCase {
         )
     }
 
-    // MARK: - C：菜单与受限提示条
+    // MARK: - C：受限提示条（两只自绘菜单随 V1 页头退役，IC-192 删其两条测试）
 
-    // 两菜单互斥：同一时刻只能开一个；开一个即关另一个；再点已开的关闭。
-    func testIC128C_MenusAreMutuallyExclusive() {
-        XCTAssertEqual(S1ActiveMenu.none.toggling(.sort), .sort)
-        XCTAssertEqual(S1ActiveMenu.none.toggling(.dimension), .dimension)
-        XCTAssertEqual(S1ActiveMenu.sort.toggling(.dimension), .dimension)
-        XCTAssertEqual(S1ActiveMenu.dimension.toggling(.sort), .sort)
-        XCTAssertEqual(S1ActiveMenu.sort.toggling(.sort), .none)
-        XCTAssertEqual(S1ActiveMenu.dimension.toggling(.dimension), .none)
-    }
-
-    // 维度菜单提示口径：按日期固定结构提示；相册 N 个、未分类 N 张；读不到即
-    // 不显示提示。
-    func testIC128C_DimensionMenuHintsFollowReadState() {
-        XCTAssertEqual(
-            S1DimensionMenuHintModel.make(
-                for: .date,
-                albumRangeCount: nil,
-                unclassifiedAssetCount: nil
-            ),
-            .dateStructure
-        )
-        XCTAssertEqual(
-            S1DimensionMenuHintModel.make(
-                for: .album,
-                albumRangeCount: 3,
-                unclassifiedAssetCount: nil
-            ),
-            .albumCount(3)
-        )
-        XCTAssertEqual(
-            S1DimensionMenuHintModel.make(
-                for: .album,
-                albumRangeCount: nil,
-                unclassifiedAssetCount: 42
-            ),
-            .unavailable
-        )
-        XCTAssertEqual(
-            S1DimensionMenuHintModel.make(
-                for: .unclassified,
-                albumRangeCount: nil,
-                unclassifiedAssetCount: 42
-            ),
-            .unclassifiedCount(42)
-        )
-        XCTAssertEqual(
-            S1DimensionMenuHintModel.make(
-                for: .unclassified,
-                albumRangeCount: 3,
-                unclassifiedAssetCount: nil
-            ),
-            .unavailable
-        )
-    }
-
-    // 受限提示条显隐与列表起始：受限 + 列表在场（就绪／空态）才挂条；
-    // 列表起始 63 → 115（画布 122 → 174）。
-    func testIC128C_LimitedBannerVisibilityAndListTopOffset() {
+    // 受限提示条显隐：受限 + 列表在场（就绪／空态）才挂条。IC-192：列表起始偏移随 V1 页头退役，函数随之改名。
+    func testIC128C_LimitedBannerVisibility() {
         XCTAssertTrue(
             S1LimitedBannerPresentation.isVisible(
                 isLimitedAuthorization: true,
@@ -318,14 +213,6 @@ final class IC128S1VisualTests: XCTestCase {
                 isLimitedAuthorization: false,
                 state: .ready
             )
-        )
-        XCTAssertEqual(
-            S1LimitedBannerPresentation.listTopOffset(bannerVisible: false),
-            S1ChromeLayout.listTopOffset
-        )
-        XCTAssertEqual(
-            S1LimitedBannerPresentation.listTopOffset(bannerVisible: true),
-            S1ChromeLayout.limitedListTopOffset
         )
     }
 

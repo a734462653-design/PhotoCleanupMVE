@@ -30,9 +30,9 @@ final class IC183RetireRenderChainTests: XCTestCase {
         }
         // IC-184：`S1RangeCardMetrics` 整族退役（余三值的两个读者 `targetPixelSize`／`leadingInset` 同批退役）。
         XCTAssertEqual(occurrences(of: "S1RangeCardMetrics", in: s1), 0)
-        // 页头、四态、菜单、玻璃 helper 一字不动（IC-184 起 `cardRing` 退役，前景表引用 29 → 28）。
-        XCTAssertEqual(occurrences(of: "S1ChromeForeground.", in: s1), 28)
-        XCTAssertEqual(occurrences(of: "s1ChromeGlassBackground(", in: s1), 4)
+        // 四态、玻璃 helper 一字不动（IC-184 起 `cardRing` 退役，29 → 28；IC-192 页头换 V1、自绘菜单退役，28 → 17、玻璃 4 → 3）。
+        XCTAssertEqual(occurrences(of: "S1ChromeForeground.", in: s1), 17)
+        XCTAssertEqual(occurrences(of: "s1ChromeGlassBackground(", in: s1), 3)
         XCTAssertEqual(occurrences(of: "S1RangeCoverPolicy.coverAssetID(", in: s1), 1)
         XCTAssertEqual(occurrences(of: "S1DeckListView(", in: s1), 1)
         XCTAssertEqual(occurrences(of: "S1YearPageView(", in: s1), 1)

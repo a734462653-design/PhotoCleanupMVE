@@ -431,8 +431,8 @@ struct S1DeckStack: View {
     }
 }
 
-/// 「逐张整理」范围列表本体：一叠一级范围卡，可滚动；左右边距与底部留白按登记值。页头、四态与菜单仍在
-/// `S1View`，本视图只收行、种类、封面取法与点击回调。
+/// 「逐张整理」范围列表本体：一叠一级范围卡；左右边距与底部留白按登记值。IC-192：滚动交给页面那只
+/// `ScrollView`（页头随页滚），本视图按叠高占位；页头、四态在 `S1View`，本视图只收行、种类、封面取法与点击回调。
 struct S1DeckListView: View {
     let rows: [S1RangeRow]
     let kind: S1DeckCardKind
@@ -441,17 +441,16 @@ struct S1DeckListView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
-                S1DeckStack(
-                    rows: rows,
-                    kind: kind,
-                    width: max(0, geometry.size.width - S1DeckMetrics.horizontalMargin * 2),
-                    coverAssetID: coverAssetID,
-                    onTap: onTap
-                )
-                .padding(.horizontal, S1DeckMetrics.horizontalMargin)
-                .padding(.bottom, S1DeckMetrics.stackBottomPadding)
-            }
+            S1DeckStack(
+                rows: rows,
+                kind: kind,
+                width: max(0, geometry.size.width - S1DeckMetrics.horizontalMargin * 2),
+                coverAssetID: coverAssetID,
+                onTap: onTap
+            )
+            .padding(.horizontal, S1DeckMetrics.horizontalMargin)
         }
+        .frame(height: S1DeckCardPresentation.stackHeight(count: rows.count, kind: kind))
+        .padding(.bottom, S1DeckMetrics.stackBottomPadding)
     }
 }

@@ -45,9 +45,9 @@ final class IC184RetireCaliberEnumsTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "static var ", in: badge), 1)
         XCTAssertEqual(occurrences(of: "static var chromeRing:", in: badge), 1)
         XCTAssertEqual(occurrences(of: "static let ", in: badge), 6)
-        // 页头、四态、菜单、玻璃 helper 一字不动（`cardRing` 那一处前景表引用消失：29 → 28）。
-        XCTAssertEqual(occurrences(of: "S1ChromeForeground.", in: s1), 28)
-        XCTAssertEqual(occurrences(of: "s1ChromeGlassBackground(", in: s1), 4)
+        // 四态、玻璃 helper 一字不动（`cardRing` 那一处前景表引用消失：29 → 28；IC-192 页头换 V1、自绘菜单退役：28 → 17、玻璃 4 → 3）。
+        XCTAssertEqual(occurrences(of: "S1ChromeForeground.", in: s1), 17)
+        XCTAssertEqual(occurrences(of: "s1ChromeGlassBackground(", in: s1), 3)
         XCTAssertEqual(occurrences(of: "S1RangeCoverPolicy.coverAssetID(", in: s1), 1)
         XCTAssertEqual(occurrences(of: "S1DeckListView(", in: s1), 1)
         XCTAssertEqual(occurrences(of: "S1YearPageView(", in: s1), 1)
