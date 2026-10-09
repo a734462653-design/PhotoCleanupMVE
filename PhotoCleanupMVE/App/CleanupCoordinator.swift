@@ -978,6 +978,12 @@ final class CleanupCoordinator: ObservableObject {
                 photoLibrary.existingAssetIdentifiers(among: identifiers)
             }
         }
+        // IC-188：看过集合接到状态机——看过档在协调器、不随会话清；只在主线程被同步调用。
+        machine.seenAssetIDsProvider = { [weak self] in
+            MainActor.assumeIsolated {
+                self?.currentSeenArchive().seenAssetIDs ?? []
+            }
+        }
         s1Machine = machine
         s2Machine = nil
         s2EntryContext = nil

@@ -307,6 +307,10 @@ final class S1StateMachine: ObservableObject {
     /// 仅按范围收敛，即 IC-129 之前的行为。
     var assetExistenceProbe: ((Set<String>) -> Set<String>)?
 
+    /// IC-188（SPEC-S1 v12 决策 44）：看过集合 `W` 的读口——由协调器在安装状态机时注入（看过档在协调器、
+    /// 不随会话清）；未注入的夹具按空集。已看进度与从 S1 进入的位置都从这里读。
+    var seenAssetIDsProvider: (() -> Set<String>)?
+
     private var readGeneration = 0
     private var knownRangeNamesByID: [String: String] = [:]
     /// IC-157 A：在途的虚拟范围（S0 类别页长按进 S2 时登记，写回成功即移除）。逐张镜像与
@@ -469,15 +473,12 @@ final class S1StateMachine: ObservableObject {
         }
     }
 
+    /// IC-188（v12 `已看(r) = W ∩ A(r)`）：按张记的看过集合与本范围的交集；与排序、与 `K` 的最远位置无关。
     func processedAssetIDs(for rangeID: String) -> Set<String> {
         guard let range = ranges.first(where: { $0.id == rangeID }) else {
             return []
         }
-        return sessionStore.processedAssetIDs(
-            for: range.id,
-            orderedAssetIDs: range.orderedAssetIDs(for: sortOrder),
-            currentSortOrder: sortOrder.sessionSortOrder
-        )
+        return (seenAssetIDsProvider?() ?? []).intersection(range.assetIDsNewestFirst)
     }
 
     @discardableResult
