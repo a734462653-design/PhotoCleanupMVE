@@ -936,14 +936,19 @@ struct S1View: View {
 
     // MARK: - IC-178 C：年卡叠 → 年页（Decision_log 第 205 条第二节第 1 条；两级树的展开区退役）
 
-    /// 一级范围一叠卡：`T=按日期` 是年卡，其余维度是相册／未分类卡（月卡样式）。有子节点的卡进年页，
-    /// 其余直接进 S2；月卡数据从 `rangeRows` 里按 `parentRangeID` 过滤（同页展开／收起随 IC-184 退役，全部月都在）。
+    /// IC-193：一级范围一叠 V1 卡（`T=按日期` 是年卡，其余维度是相册／未分类卡），展开态由卡叠自己观察。点收起的卡展开它；
+    /// 点展开卡：有子节点的进年页、其余直接进 S2。月卡数据从 `rangeRows` 里按 `parentRangeID` 过滤（全部月都在）。
     private var rangeList: some View {
         S1DeckListView(
             rows: machine.rangeRows.filter { $0.parentRangeID == nil },
             kind: machine.groupingDimension == .date ? .years : .albums,
+            openCards: machine.openCards,
+            slot: .list,
             coverAssetID: coverAssetID(for:),
-            onTap: { row in
+            onOpen: { row in
+                _ = machine.openListCard(row.id)
+            },
+            onEnter: { row in
                 if S1DeckCardPresentation.opensYearPage(childCount: row.childCount) {
                     _ = machine.presentYearPage(row.id)
                 } else {
@@ -953,7 +958,7 @@ struct S1View: View {
         )
     }
 
-    /// 年页：返回 + 待删篮入口、年标题 +「整理整年」、汇总行、年进度条、月卡叠。年在对账后消失时状态机
+    /// 年页：返回 + 待删篮入口、V1 标题区（年份、体积行、「整理整年」、汇总行、年进度条）、月卡叠。年在对账后消失时状态机
     /// 会把身份清掉、页面随之弹回；这里只对找不到行的一瞬做兜底，不画内容。
     @ViewBuilder
     private func yearPage(_ rangeID: String) -> some View {
@@ -963,12 +968,16 @@ struct S1View: View {
                 yearRow: yearRow,
                 monthRows: rows.filter { $0.parentRangeID == rangeID },
                 basketCount: machine.badgeCount,
+                openCards: machine.openCards,
                 coverAssetID: coverAssetID(for:),
                 onBack: {
                     machine.dismissYearPage()
                 },
                 onOrganizeYear: {
                     enterRange(rangeID)
+                },
+                onOpenMonth: { row in
+                    _ = machine.openYearPageCard(row.id)
                 },
                 onEnterMonth: { row in
                     enterRange(row.id)

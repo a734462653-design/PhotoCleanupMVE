@@ -903,6 +903,17 @@
         }
       }
     },
+    "s1.deck.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "占 {percent}%"
+          }
+        }
+      }
+    },
     "s1.deck.year.subtitle" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -910,6 +921,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "{count} 张 · {months} 个月"
+          }
+        }
+      }
+    },
+    "s1.deck.new" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增 {count}"
+          }
+        }
+      }
+    },
+    "s1.deck.new.open" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增 {count} 张"
           }
         }
       }
@@ -936,6 +969,28 @@
         }
       }
     },
+    "s1.deck.action.organize" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "去整理"
+          }
+        }
+      }
+    },
+    "s1.deck.action.yearPage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "去清理"
+          }
+        }
+      }
+    },
     "s1.deck.done" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -943,17 +998,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "看完"
-          }
-        }
-      }
-    },
-    "s1.yearPage.summary" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "{count} 张 · {months} 个月 · 已看 {percent}% · 待删 {pending}"
           }
         }
       }
@@ -987,6 +1031,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "返回"
+          }
+        }
+      }
+    },
+    "s1.yearPage.share" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "占全部 {percent}%"
           }
         }
       }

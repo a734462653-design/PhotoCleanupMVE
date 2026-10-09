@@ -245,8 +245,9 @@ final class IC192PageHeaderTests: XCTestCase {
         let cards = try XCTUnwrap(strippedSource(Self.cardsPath))
         let list = try XCTUnwrap(slice(cards, from: "struct S1DeckListView: View {", to: Self.newline + "}" + Self.newline))
         XCTAssertEqual(occurrences(of: "ScrollView", in: list), 0)
-        XCTAssertEqual(occurrences(of: ".frame(height: S1DeckCardPresentation.stackHeight(count: rows.count, kind: kind))", in: list), 1)
-        XCTAssertEqual(occurrences(of: ".padding(.bottom, S1DeckMetrics.stackBottomPadding)", in: list), 1)
+        // IC-193：叠高随展开态（V1）、底部留白退役（末卡延伸即留白）。
+        XCTAssertEqual(occurrences(of: ".frame(height: S1DeckCardPresentation.stackHeight(count: rows.count, openIndex: openIndex))", in: list), 1)
+        XCTAssertEqual(occurrences(of: "stackBottomPadding", in: list), 0)
 
         // 全产品：退役的四个类型名 0（新类型不复用）。
         let product = try productSources()
