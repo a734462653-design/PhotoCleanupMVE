@@ -90,8 +90,8 @@ final class IC184RetireCaliberEnumsTests: XCTestCase {
         let row = try XCTUnwrap(
             slice(machine, from: "struct S1RangeRow: Identifiable, Equatable, Sendable {", to: Self.newline + "}" + Self.newline)
         )
-        // IC-189：加 `newAssetCount`（「新增 N 张」）。
-        XCTAssertEqual(occurrences(of: "let ", in: row), 8)
+        // IC-189：加 `newAssetCount`（「新增 N 张」）；IC-191：加 `byteCount`／`sharePercent`（体积与占比）。
+        XCTAssertEqual(occurrences(of: "let ", in: row), 10)
         // 年页身份与既有钉子不动（IC178D／IC157／IC169 的计数）。
         for (needle, expected) in [
             ("presentedYearRangeID", 5),

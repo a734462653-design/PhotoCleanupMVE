@@ -232,6 +232,10 @@ struct S1RangeRow: Identifiable, Equatable, Sendable {
     let processedAssetCount: Int
     /// IC-189（v12 `新增(r)`）：有月的年为各月之和；为零即不显示（界面接线归 V1 视图卡）。
     let newAssetCount: Int
+    /// IC-191（v12 `体积(r)`）：nil = 未知（没有字节表、或范围里有表外的资产），GB 位「统计中」。
+    let byteCount: Int64?
+    /// IC-191（v12 `占比(r)`）：`体积(r) ÷ 总占用` 的整数百分比；体积未知（含没有表）为 nil，占比位不显示。
+    let sharePercent: Int?
     let parentRangeID: String?
     let childCount: Int
 }
@@ -344,6 +348,10 @@ final class S1StateMachine: ObservableObject {
     /// IC-189（v12 `t_离开[r]`）：范围上次离开 S2 且写回成功的时刻的读口——由协调器从看过档注入；
     /// 未注入的夹具按「从未离开」（无基线、新增为 0）。
     var leaveTimeProvider: ((String) -> Date?)?
+
+    /// IC-191（v12 `体积(r)`／`总占用`）：库内资产字节表的读口——由 App 从扫描服务注入（S1 不自行扫描）；
+    /// 当前一遍扫描未完成或失败时为 nil（GB 位「统计中」）；未注入的夹具按 nil。
+    var byteCountTableProvider: (() -> S1AssetByteCountTable?)?
 
     private var readGeneration = 0
     private var knownRangeNamesByID: [String: String] = [:]
@@ -496,8 +504,11 @@ final class S1StateMachine: ObservableObject {
     /// 与该范围 S2 里显示为已标记的张数一致；不读 `M[r]`（`SessionStore.pendingDeletionCount(for:)` 不动）。
     var rangeRows: [S1RangeRow] {
         let basket = sessionStore.allPendingDeletionAssetIDs
+        // IC-191：字节表每次求值只取一次（扫描服务按修订号记忆化）。
+        let table = byteCountTableProvider?()
         return visibleRanges.map { range in
             let childCount = childRanges(of: range.id).count
+            let byteCount = table?.volume(of: range)
             return S1RangeRow(
                 id: range.id,
                 displayName: range.displayName,
@@ -507,6 +518,8 @@ final class S1StateMachine: ObservableObject {
                     .count,
                 processedAssetCount: processedAssetIDs(for: range.id).count,
                 newAssetCount: newAssetCount(for: range.id),
+                byteCount: byteCount,
+                sharePercent: byteCount.flatMap { volume in table?.sharePercent(ofVolume: volume) },
                 parentRangeID: range.parentRangeID,
                 childCount: childCount
             )
@@ -555,6 +568,23 @@ final class S1StateMachine: ObservableObject {
             return 0
         }
         return range.newAssetCount(after: baseline, excluding: seenAssetIDs)
+    }
+
+    /// IC-191（v12 页头）：大数字区与副行前段的数据，见 `S1HeaderSummary.make`。
+    var headerSummary: S1HeaderSummary {
+        S1HeaderSummary.make(
+            topLevelRanges: topLevelRanges,
+            groupingDimension: groupingDimension,
+            isReady: loadingState == .ready,
+            seenAssetIDs: seenAssetIDsProvider?() ?? [],
+            table: byteCountTableProvider?()
+        )
+    }
+
+    /// IC-191：扫描快照变了（新一遍完成、或回到扫描中），字节表可能换了——只让观察者重读；
+    /// 不写会话快照、不改任何状态。由 App 在扫描服务的快照回调里调用。
+    func noteByteCountTableChanged() {
+        objectWillChange.send()
     }
 
     @discardableResult

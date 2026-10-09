@@ -17,6 +17,7 @@
 		200000000000000000000007 /* SessionPersistence.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000007 /* SessionPersistence.swift */; };
 		200000000000000000000086 /* S1SeenArchive.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000089 /* S1SeenArchive.swift */; };
 		200000000000000000000089 /* S1LegacyProgressMigration.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000008C /* S1LegacyProgressMigration.swift */; };
+		20000000000000000000008D /* S1HeaderSummary.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000090 /* S1HeaderSummary.swift */; };
 		200000000000000000000008 /* PhotoLibraryService.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* PhotoLibraryService.swift */; };
 		200000000000000000000009 /* AssetSizeScanner.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* AssetSizeScanner.swift */; };
 		20000000000000000000000A /* PhotoDeletionService.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000A /* PhotoDeletionService.swift */; };
@@ -163,6 +164,7 @@
 		100000000000000000000007 /* SessionPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPersistence.swift; sourceTree = "<group>"; };
 		100000000000000000000089 /* S1SeenArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1SeenArchive.swift; sourceTree = "<group>"; };
 		10000000000000000000008C /* S1LegacyProgressMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1LegacyProgressMigration.swift; sourceTree = "<group>"; };
+		100000000000000000000090 /* S1HeaderSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1HeaderSummary.swift; sourceTree = "<group>"; };
 		100000000000000000000008 /* PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryService.swift; sourceTree = "<group>"; };
 		100000000000000000000009 /* AssetSizeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetSizeScanner.swift; sourceTree = "<group>"; };
 		10000000000000000000000A /* PhotoDeletionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDeletionService.swift; sourceTree = "<group>"; };
@@ -357,6 +359,7 @@
 				100000000000000000000007 /* SessionPersistence.swift */,
 				100000000000000000000089 /* S1SeenArchive.swift */,
 				10000000000000000000008C /* S1LegacyProgressMigration.swift */,
+				100000000000000000000090 /* S1HeaderSummary.swift */,
 				100000000000000000000019 /* L10n.swift */,
 			);
 			path = Core;
@@ -703,6 +706,7 @@
 				200000000000000000000007 /* SessionPersistence.swift（源码） */,
 				200000000000000000000086 /* S1SeenArchive.swift（源码） */,
 				200000000000000000000089 /* S1LegacyProgressMigration.swift（源码） */,
+				20000000000000000000008D /* S1HeaderSummary.swift（源码） */,
 				200000000000000000000008 /* PhotoLibraryService.swift（源码） */,
 				200000000000000000000009 /* AssetSizeScanner.swift（源码） */,
 				20000000000000000000000A /* PhotoDeletionService.swift（源码） */,

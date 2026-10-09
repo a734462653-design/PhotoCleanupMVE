@@ -179,8 +179,8 @@ final class IC188SeenSwitchTests: XCTestCase {
         let machine = try XCTUnwrap(strippedSource(Self.machinePath))
         XCTAssertEqual(occurrences(of: "var seenAssetIDsProvider: (() -> Set<String>)?", in: machine), 1)
         XCTAssertEqual(occurrences(of: "var legacyProgressMigration: ((_ ranges: [S1Range], _ groupingDimension: S1GroupingDimension, _ legacyProgress: [String: S1LegacyProgress]) -> Void)?", in: machine), 1)
-        // IC-189：「新增 N 张」的派生量也读看过集合（`newAssetCount(for:)`），2 → 3。
-        XCTAssertEqual(occurrences(of: "seenAssetIDsProvider?() ?? []", in: machine), 3)
+        // IC-189：「新增 N 张」的派生量也读看过集合（`newAssetCount(for:)`），2 → 3；IC-191：页头已看也读，3 → 4。
+        XCTAssertEqual(occurrences(of: "seenAssetIDsProvider?() ?? []", in: machine), 4)
         XCTAssertEqual(occurrences(of: "legacyProgressMigration?(newRanges, groupingDimension, legacyProgressByRangeID)", in: machine), 1)
         let adopt = try XCTUnwrap(slice(machine, from: "private func adoptRanges(", to: "publishSnapshotIfChanged()"))
         let migrate = try XCTUnwrap(adopt.range(of: "legacyProgressMigration?(newRanges, groupingDimension, legacyProgressByRangeID)"))

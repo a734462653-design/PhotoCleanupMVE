@@ -185,7 +185,8 @@ final class IC189NewCountTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "func newAssetCount(after baseline: Date, excluding seenAssetIDs: Set<String>) -> Int {", in: machine), 1)
         XCTAssertEqual(occurrences(of: "var leaveTimeProvider: ((String) -> Date?)?", in: machine), 1)
         XCTAssertEqual(occurrences(of: "leaveTimeProvider?(", in: machine), 2)
-        XCTAssertEqual(occurrences(of: "seenAssetIDsProvider?() ?? []", in: machine), 3)
+        // IC-191：页头已看（`headerSummary`）也读看过集合，3 → 4。
+        XCTAssertEqual(occurrences(of: "seenAssetIDsProvider?() ?? []", in: machine), 4)
         XCTAssertEqual(occurrences(of: "newAssetCount: newAssetCount(for: range.id)", in: machine), 1)
         let row = try XCTUnwrap(slice(machine, from: "struct S1RangeRow: Identifiable, Equatable, Sendable {", to: "let childCount: Int"))
         XCTAssertEqual(occurrences(of: "let newAssetCount: Int", in: row), 1)
