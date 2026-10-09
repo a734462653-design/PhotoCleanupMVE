@@ -311,10 +311,14 @@ final class IC198S2SortOrderLogicTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "guard !isObscured, newValue != sortOrder else {", in: s1Machine), 1)
 
         // 不接视图：产品里只有协调器提到 `changeS2SortOrder(`、只有状态机提到 `orderedListRevision`、
-        // 只有状态机与协调器提到 `reorderAssets(`。
+        // 只有状态机与协调器提到 `reorderAssets(`。IC-199 接视图：横栏读 `orderedListRevision`（`S2View.swift`），
+        // 菜单的选择经协调器 `makeS2SortMenu()` 转给 `changeS2SortOrder(`——仍只有协调器提到它。
         let sources = try productSources()
         XCTAssertEqual(Set(sources.filter { $0.value.contains("changeS2SortOrder(") }.keys), Set(["CleanupCoordinator.swift"]))
-        XCTAssertEqual(Set(sources.filter { $0.value.contains("orderedListRevision") }.keys), Set(["S2StateMachine.swift"]))
+        XCTAssertEqual(
+            Set(sources.filter { $0.value.contains("orderedListRevision") }.keys),
+            Set(["S2StateMachine.swift", "S2View.swift"])
+        )
         XCTAssertEqual(
             Set(sources.filter { $0.value.contains("reorderAssets(") }.keys),
             Set(["S2StateMachine.swift", "CleanupCoordinator.swift"])
