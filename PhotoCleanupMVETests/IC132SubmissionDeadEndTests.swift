@@ -73,9 +73,7 @@ final class IC132SubmissionDeadEndTests: XCTestCase {
             XCTAssertEqual(
                 machine.sessionStore.continuationsByRangeID["相册-9"],
                 SessionStore.Continuation(
-                    currentAssetID: payload.upstreamReturn.currentAssetID,
-                    farthestAssetID: payload.upstreamReturn.farthestAssetID,
-                    recordedSortOrder: machine.sortOrder.sessionSortOrder
+                    currentAssetID: payload.upstreamReturn.currentAssetID
                 )
             )
             // 档里那张未知名字的标记也还在——它正是提交形成不了的原因。

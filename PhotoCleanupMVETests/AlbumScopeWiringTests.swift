@@ -575,8 +575,9 @@ final class S1ReconciliationTests: XCTestCase {
         XCTAssertEqual(machine.rangeRows.first?.pendingDeletionCount, 1)
     }
 
-    // K 越界（c／p 所指资产已不存在）被钳到新序列在 O_记录 下的末位。
-    func testIC127C_ContinuationIsClampedToLastAvailableAsset() {
+    // IC-190（SPEC-S1 v12 `:74`）：按范围收敛只剩 `M`——`K` 的 `c_范围` 已不在序列里也不钳，
+    // 使用方（S3 返回落点）按决策 44 回退；`M` 没有变化时对账不算改动。
+    func testIC127C_ContinuationIsNotClampedByReconciliation() {
         var store = SessionStore(sessionID: "session-clamp")
         XCTAssertTrue(
             store.applyS2Return(
@@ -595,47 +596,26 @@ final class S1ReconciliationTests: XCTestCase {
             )
         )
 
-        var newestClamped = store
-        XCTAssertTrue(
-            newestClamped.reconcileRange("r", availableAssetIDsNewestFirst: ["a3", "a2"])
+        var reconciled = store
+        XCTAssertFalse(
+            reconciled.reconcileRange("r", availableAssetIDsNewestFirst: ["a3", "a2"])
         )
         XCTAssertEqual(
-            newestClamped.continuationsByRangeID["r"],
-            SessionStore.Continuation(
-                currentAssetID: "a2",
-                farthestAssetID: "a2",
-                recordedSortOrder: .newestFirst
-            )
+            reconciled.continuationsByRangeID["r"],
+            SessionStore.Continuation(currentAssetID: "a1")
         )
+        XCTAssertEqual(reconciled, store)
 
-        // O_记录 = 旧到新时，末位是新到旧序列的首元素。
-        var oldestStore = SessionStore(sessionID: "session-clamp-oldest")
+        // 待删里已不存在的资产照旧剔除（算改动），`K` 仍不动。
+        var marked = store
+        marked.setMarked(true, assetID: "a1", rangeID: "r")
         XCTAssertTrue(
-            oldestStore.applyS2Return(
-                SessionStore.S2Return(
-                    sourceSessionID: "session-clamp-oldest",
-                    sourceRangeID: "r",
-                    pendingDeletionAssetIDs: [],
-                    currentAssetID: "a3",
-                    farthestAssetID: "a3"
-                ),
-                entryContext: SessionStore.S2EntryContext(
-                    rangeID: "r",
-                    orderedAssetIDs: ["a1", "a2", "a3"],
-                    sortOrder: .oldestFirst
-                )
-            )
+            marked.reconcileRange("r", availableAssetIDsNewestFirst: ["a3", "a2"])
         )
-        XCTAssertTrue(
-            oldestStore.reconcileRange("r", availableAssetIDsNewestFirst: ["a2", "a1"])
-        )
+        XCTAssertTrue(marked.allPendingDeletionAssetIDs.isEmpty)
         XCTAssertEqual(
-            oldestStore.continuationsByRangeID["r"],
-            SessionStore.Continuation(
-                currentAssetID: "a2",
-                farthestAssetID: "a2",
-                recordedSortOrder: .oldestFirst
-            )
+            marked.continuationsByRangeID["r"],
+            SessionStore.Continuation(currentAssetID: "a1")
         )
 
         // 仍在序列中的续接不动。
@@ -718,10 +698,9 @@ final class S1ReconciliationTests: XCTestCase {
         XCTAssertTrue(machine.sessionStore.allPendingDeletionAssetIDs.isEmpty)
         XCTAssertEqual(
             machine.sessionStore.continuationsByRangeID["r"],
+            // IC-190：`K` 不钳制——`c_范围` 仍是写回时的 a2。
             SessionStore.Continuation(
-                currentAssetID: "a3",
-                farthestAssetID: "a3",
-                recordedSortOrder: .newestFirst
+                currentAssetID: "a2"
             )
         )
     }

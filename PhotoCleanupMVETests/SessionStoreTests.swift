@@ -87,34 +87,6 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(store.pendingDeletionCount(for: "范围-相册"), 1)
     }
 
-    // IC043-006：决策 2，当前 O 与 O_记录一致时取 p 及其之前。
-    func testIC043_006ProcessedAssetsUsePrefixWhenSortOrderMatchesRecord() {
-        let store = makeStoreWithContinuation()
-
-        XCTAssertEqual(
-            store.processedAssetIDs(
-                for: "范围-月",
-                orderedAssetIDs: ["资产-A", "资产-B", "资产-C", "资产-D"],
-                currentSortOrder: .newestFirst
-            ),
-            ["资产-A", "资产-B"]
-        )
-    }
-
-    // IC043-007：决策 2，当前 O 与 O_记录不一致时取 p 及其之后。
-    func testIC043_007ProcessedAssetsUseSuffixWhenSortOrderFlips() {
-        let store = makeStoreWithContinuation()
-
-        XCTAssertEqual(
-            store.processedAssetIDs(
-                for: "范围-月",
-                orderedAssetIDs: ["资产-D", "资产-C", "资产-B", "资产-A"],
-                currentSortOrder: .oldestFirst
-            ),
-            ["资产-B", "资产-A"]
-        )
-    }
-
     // IC043-008：第七节第 4 部分，返回空集时所有 M 为空、F 清空、D_全部为空。
     func testIC043_008EmptyS3ReturnClearsEveryPendingSetAndOwnershipKey() {
         var store = makeStore()
@@ -164,13 +136,6 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertNil(store.pendingDeletionAssetIDsByRangeID["范围-未进入"])
         XCTAssertNil(store.continuationsByRangeID["范围-未进入"])
         XCTAssertEqual(store.pendingDeletionCount(for: "范围-未进入"), 0)
-        XCTAssertTrue(
-            store.processedAssetIDs(
-                for: "范围-未进入",
-                orderedAssetIDs: ["资产-A"],
-                currentSortOrder: .newestFirst
-            ).isEmpty
-        )
     }
 
     // IC043-011：第七节第 2 部分，五字段任一校验失败时 M、K、F 均不写回。
@@ -261,9 +226,7 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(
             store.continuationsByRangeID["范围-月"],
             SessionStore.Continuation(
-                currentAssetID: "资产-B",
-                farthestAssetID: "资产-C",
-                recordedSortOrder: .oldestFirst
+                currentAssetID: "资产-B"
             )
         )
         XCTAssertNil(store.firstMarkedRangeIDByAssetID["资产-B"])

@@ -546,7 +546,7 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
         XCTAssertNil(machine.sessionStore.firstMarkedRangeIDByAssetID["b"])
         XCTAssertEqual(published.count, 2)
 
-        // 整体写回：`M` 按返回值替换、`K` 记 `O_记录`，在途登记移除。
+        // 整体写回：`M` 按返回值替换、`K` 记 `c_范围`（IC-190 起只此一项），在途登记移除。
         XCTAssertTrue(
             machine.applyS2Return(
                 SessionStore.S2Return(
@@ -563,9 +563,7 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
         XCTAssertEqual(
             machine.sessionStore.continuationsByRangeID["cat:bigVideo"],
             SessionStore.Continuation(
-                currentAssetID: "c",
-                farthestAssetID: "c",
-                recordedSortOrder: .newestFirst
+                currentAssetID: "c"
             )
         )
         XCTAssertTrue(machine.activeVirtualRangeIDs.isEmpty)

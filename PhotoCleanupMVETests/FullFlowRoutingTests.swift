@@ -171,9 +171,7 @@ final class FullFlowRoutingTests: XCTestCase {
                 coordinator.s1Machine?.sessionStore
                     .continuationsByRangeID["范围-月"],
                 SessionStore.Continuation(
-                    currentAssetID: "资产-B",
-                    farthestAssetID: "资产-A",
-                    recordedSortOrder: .newestFirst
+                    currentAssetID: "资产-B"
                 )
             )
         }

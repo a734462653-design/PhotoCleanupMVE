@@ -984,12 +984,12 @@ final class CleanupCoordinator: ObservableObject {
                 self?.currentSeenArchive().seenAssetIDs ?? []
             }
         }
-        machine.legacyProgressMigration = { [weak self] ranges, groupingDimension, store in
+        machine.legacyProgressMigration = { [weak self] ranges, groupingDimension, legacyProgress in
             MainActor.assumeIsolated {
                 guard let self else {
                     return
                 }
-                self.migrateLegacyProgressIfNeeded(adopting: ranges, groupedBy: groupingDimension, from: store)
+                self.migrateLegacyProgressIfNeeded(adopting: ranges, groupedBy: groupingDimension, from: legacyProgress)
             }
         }
         // IC-189：范围离开时刻接到状态机——「新增 N 张」的基线；与看过集合同在看过档。
@@ -1086,14 +1086,14 @@ final class CleanupCoordinator: ObservableObject {
         }
     }
 
-    /// IC-188（SPEC-S1 v12 第二节 `看过档`·迁移）：旧会话档 `K` 里每个真实范围的 `p_范围` 前缀一次性并入 `W`。
-    /// 状态机每次采用新读到的范围时、`K` 钳制之前连同本次采用的维度调来；看过档已带迁移标记即返回。`K` 里属于
+    /// IC-188（SPEC-S1 v12 第二节 `看过档`·迁移）：旧会话档里每个真实范围的 `p_范围` 前缀一次性并入 `W`。
+    /// 状态机第一次采用新读到的范围时连同本次采用的维度与旧进度调来（IC-190）；看过档已带迁移标记即返回。旧进度里属于
     /// 本次维度之外的真实范围，按所属维度把那一维度同步读一遍（只在迁移这一次；本次维度里已消失的范围不触发重读）；
     /// 读不到的跳过。没有可迁的内容只置标记、不写盘；并入了内容立即写盘（一次性的额外读取不因进程被杀而重做）。
     private func migrateLegacyProgressIfNeeded(
         adopting ranges: [S1Range],
         groupedBy groupingDimension: S1GroupingDimension,
-        from store: SessionStore
+        from legacyProgress: [String: S1LegacyProgress]
     ) {
         var archive = currentSeenArchive()
         guard !archive.hasMigratedLegacyProgress else {
@@ -1104,7 +1104,7 @@ final class CleanupCoordinator: ObservableObject {
             sequences[range.id] = range.assetIDsNewestFirst
         }
         let extraDimensions = S1LegacyProgressMigration.dimensionsToRead(
-            for: store,
+            for: legacyProgress,
             adoptedDimension: groupingDimension
         )
         for dimension in extraDimensions {
@@ -1115,7 +1115,7 @@ final class CleanupCoordinator: ObservableObject {
             }
         }
         let migrated = S1LegacyProgressMigration.migratedAssetIDs(
-            from: store,
+            from: legacyProgress,
             sequencesNewestFirst: sequences
         )
         archive.hasMigratedLegacyProgress = true

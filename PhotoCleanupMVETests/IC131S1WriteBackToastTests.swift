@@ -80,9 +80,7 @@ final class IC131S1WriteBackToastTests: XCTestCase {
             XCTAssertEqual(
                 machine.sessionStore.continuationsByRangeID["范围-月"],
                 SessionStore.Continuation(
-                    currentAssetID: payload.upstreamReturn.currentAssetID,
-                    farthestAssetID: payload.upstreamReturn.farthestAssetID,
-                    recordedSortOrder: machine.sortOrder.sessionSortOrder
+                    currentAssetID: payload.upstreamReturn.currentAssetID
                 )
             )
             // 不误报。

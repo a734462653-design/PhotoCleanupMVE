@@ -123,11 +123,14 @@ final class IC132S1RangeNamePersistenceTests: XCTestCase {
             snapshot.continuationsByRangeID,
             [
                 "相册-1": SessionStore.Continuation(
-                    currentAssetID: "资产-B",
-                    farthestAssetID: "资产-A",
-                    recordedSortOrder: .oldestFirst
+                    currentAssetID: "资产-B"
                 )
             ]
+        )
+        // IC-190：旧档的 `p_范围`／`O_记录` 不进 `K`，单独作为待迁移的旧进度带出。
+        XCTAssertEqual(
+            snapshot.legacyProgressByRangeID,
+            ["相册-1": S1LegacyProgress(farthestAssetID: "资产-A", recordedSortOrder: .oldestFirst)]
         )
         XCTAssertEqual(
             snapshot.firstMarkedRangeIDByAssetID,

@@ -90,18 +90,18 @@ final class IC188SeenSwitchTests: XCTestCase {
         XCTAssertEqual(S1LegacyProgressMigration.dimension(ofRangeID: "album-x"), .album)
         XCTAssertNil(S1LegacyProgressMigration.dimension(ofRangeID: "cat:video"))
 
-        let store = try XCTUnwrap(legacyStore(sessionID: "会话-188C"))
+        let legacy = legacyProgress()
         // 本次采用日期维度：只另读相册——`K` 里同维度已消失的 3 月不触发重读；采用相册时另读日期；未分类时两个都读。
         XCTAssertEqual(
-            S1LegacyProgressMigration.dimensionsToRead(for: store, adoptedDimension: .date),
+            S1LegacyProgressMigration.dimensionsToRead(for: legacy, adoptedDimension: .date),
             [.album]
         )
         XCTAssertEqual(
-            S1LegacyProgressMigration.dimensionsToRead(for: store, adoptedDimension: .album),
+            S1LegacyProgressMigration.dimensionsToRead(for: legacy, adoptedDimension: .album),
             [.date]
         )
         XCTAssertEqual(
-            S1LegacyProgressMigration.dimensionsToRead(for: store, adoptedDimension: .unclassified),
+            S1LegacyProgressMigration.dimensionsToRead(for: legacy, adoptedDimension: .unclassified),
             [.date, .album]
         )
         // 最新在前记的 a3 → {a4, a3}；最旧在前记的 b2 → {b1, b2}；`p` 已失效的 7 月、虚拟范围、给不出序列的相册都不算。
@@ -111,11 +111,11 @@ final class IC188SeenSwitchTests: XCTestCase {
             month7.id: month7.assetIDsNewestFirst
         ]
         XCTAssertEqual(
-            S1LegacyProgressMigration.migratedAssetIDs(from: store, sequencesNewestFirst: sequences),
+            S1LegacyProgressMigration.migratedAssetIDs(from: legacy, sequencesNewestFirst: sequences),
             ["a4", "a3", "b1", "b2"]
         )
         XCTAssertEqual(
-            S1LegacyProgressMigration.migratedAssetIDs(from: store, sequencesNewestFirst: [:]),
+            S1LegacyProgressMigration.migratedAssetIDs(from: legacy, sequencesNewestFirst: [:]),
             []
         )
     }
@@ -125,14 +125,15 @@ final class IC188SeenSwitchTests: XCTestCase {
     @MainActor
     func testIC188D_CoordinatorMigratesOnceBeforeClamp() throws {
         let persistence = TestPersistenceIsolation.makePersistence()
-        let store = try XCTUnwrap(legacyStore(sessionID: "会话-188D"))
+        let legacy = legacyProgress()
         let snapshot = S1SessionSnapshot(
             sessionID: "会话-188D",
             groupingDimension: .date,
             sortOrder: .newestFirst,
             pendingDeletionAssetIDsByRangeID: [:],
-            continuationsByRangeID: store.continuationsByRangeID,
-            firstMarkedRangeIDByAssetID: [:]
+            continuationsByRangeID: legacy.mapValues { SessionStore.Continuation(currentAssetID: $0.farthestAssetID) },
+            firstMarkedRangeIDByAssetID: [:],
+            legacyProgressByRangeID: legacy
         )
         let coordinator = CleanupCoordinator(persistence: persistence)
         XCTAssertTrue(coordinator.enterS1(restoring: snapshot))
@@ -177,12 +178,12 @@ final class IC188SeenSwitchTests: XCTestCase {
     func testIC188F_SourceWiring() throws {
         let machine = try XCTUnwrap(strippedSource(Self.machinePath))
         XCTAssertEqual(occurrences(of: "var seenAssetIDsProvider: (() -> Set<String>)?", in: machine), 1)
-        XCTAssertEqual(occurrences(of: "var legacyProgressMigration: ((_ ranges: [S1Range], _ groupingDimension: S1GroupingDimension, _ store: SessionStore) -> Void)?", in: machine), 1)
+        XCTAssertEqual(occurrences(of: "var legacyProgressMigration: ((_ ranges: [S1Range], _ groupingDimension: S1GroupingDimension, _ legacyProgress: [String: S1LegacyProgress]) -> Void)?", in: machine), 1)
         // IC-189：「新增 N 张」的派生量也读看过集合（`newAssetCount(for:)`），2 → 3。
         XCTAssertEqual(occurrences(of: "seenAssetIDsProvider?() ?? []", in: machine), 3)
-        XCTAssertEqual(occurrences(of: "legacyProgressMigration?(newRanges, groupingDimension, sessionStore)", in: machine), 1)
+        XCTAssertEqual(occurrences(of: "legacyProgressMigration?(newRanges, groupingDimension, legacyProgressByRangeID)", in: machine), 1)
         let adopt = try XCTUnwrap(slice(machine, from: "private func adoptRanges(", to: "publishSnapshotIfChanged()"))
-        let migrate = try XCTUnwrap(adopt.range(of: "legacyProgressMigration?(newRanges, groupingDimension, sessionStore)"))
+        let migrate = try XCTUnwrap(adopt.range(of: "legacyProgressMigration?(newRanges, groupingDimension, legacyProgressByRangeID)"))
         let clamp = try XCTUnwrap(adopt.range(of: "Self.reconciledStore(sessionStore, against: newRanges)"))
         XCTAssertLessThan(migrate.lowerBound, clamp.lowerBound)
         let handoff = try XCTUnwrap(slice(machine, from: "func makeS2Handoff(for rangeID: String) -> S1ToS2Handoff? {", to: "sessionMergedPendingDeletionCountProvider"))
@@ -221,22 +222,17 @@ final class IC188SeenSwitchTests: XCTestCase {
 
     // MARK: - 夹具
 
-    /// 旧会话档的 `K`：9 月最新在前记到 a3、8 月最旧在前记到 b2、7 月记的资产已不在、3 月整月已不在（给不出序列）、
-    /// 一本相册、一个虚拟范围。
-    private func legacyStore(sessionID: String) -> SessionStore? {
-        SessionStore(
-            sessionID: sessionID,
-            pendingDeletionAssetIDsByRangeID: [:],
-            continuationsByRangeID: [
-                month9.id: SessionStore.Continuation(currentAssetID: "a3", farthestAssetID: "a3", recordedSortOrder: .newestFirst),
-                month8.id: SessionStore.Continuation(currentAssetID: "b2", farthestAssetID: "b2", recordedSortOrder: .oldestFirst),
-                month7.id: SessionStore.Continuation(currentAssetID: "gone", farthestAssetID: "gone", recordedSortOrder: .newestFirst),
-                "month:1:2026:3": SessionStore.Continuation(currentAssetID: "m1", farthestAssetID: "m1", recordedSortOrder: .newestFirst),
-                "album-x": SessionStore.Continuation(currentAssetID: "x1", farthestAssetID: "x1", recordedSortOrder: .newestFirst),
-                "cat:video": SessionStore.Continuation(currentAssetID: "v1", farthestAssetID: "v1", recordedSortOrder: .newestFirst)
-            ],
-            firstMarkedRangeIDByAssetID: [:]
-        )
+    /// 旧会话档带来的 v11 旧进度（IC-190 起不在 `K` 里）：9 月最新在前记到 a3、8 月最旧在前记到 b2、7 月记的资产已不在、
+    /// 3 月整月已不在（给不出序列）、一本相册、一个虚拟范围。
+    private func legacyProgress() -> [String: S1LegacyProgress] {
+        [
+            month9.id: S1LegacyProgress(farthestAssetID: "a3", recordedSortOrder: .newestFirst),
+            month8.id: S1LegacyProgress(farthestAssetID: "b2", recordedSortOrder: .oldestFirst),
+            month7.id: S1LegacyProgress(farthestAssetID: "gone", recordedSortOrder: .newestFirst),
+            "month:1:2026:3": S1LegacyProgress(farthestAssetID: "m1", recordedSortOrder: .newestFirst),
+            "album-x": S1LegacyProgress(farthestAssetID: "x1", recordedSortOrder: .newestFirst),
+            "cat:video": S1LegacyProgress(farthestAssetID: "v1", recordedSortOrder: .newestFirst)
+        ]
     }
 
     private func makeReadyMachine(

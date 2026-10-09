@@ -73,8 +73,6 @@ final class S1StateMachineTests: XCTestCase {
             )
             let originalStore = machine.sessionStore
             let originalSortOrder = machine.sortOrder
-            let originalRecordedSortOrder = machine.sessionStore
-                .continuationsByRangeID["range-month"]?.recordedSortOrder
 
             XCTAssertTrue(machine.switchGroupingDimension(to: .album))
             XCTAssertEqual(machine.state, .loading)
@@ -82,11 +80,6 @@ final class S1StateMachineTests: XCTestCase {
             XCTAssertEqual(machine.groupingDimension, .album)
             XCTAssertEqual(machine.sortOrder, originalSortOrder)
             XCTAssertEqual(machine.sessionStore, originalStore)
-            XCTAssertEqual(
-                machine.sessionStore.continuationsByRangeID["range-month"]?
-                    .recordedSortOrder,
-                originalRecordedSortOrder
-            )
             XCTAssertEqual(machine.sessionStore.sessionID, originalStore.sessionID)
         }
     }
@@ -108,11 +101,6 @@ final class S1StateMachineTests: XCTestCase {
             XCTAssertEqual(machine.groupingDimension, originalGroupingDimension)
             XCTAssertEqual(machine.sessionStore, originalStore)
             XCTAssertEqual(machine.currentReadRequest, originalRequest)
-            XCTAssertEqual(
-                machine.sessionStore.continuationsByRangeID["range-month"]?
-                    .recordedSortOrder,
-                .newestFirst
-            )
         }
     }
 
@@ -390,9 +378,7 @@ final class S1StateMachineTests: XCTestCase {
         XCTAssertEqual(
             machine.sessionStore.continuationsByRangeID["range-month"],
             SessionStore.Continuation(
-                currentAssetID: "asset-2",
-                farthestAssetID: "asset-2",
-                recordedSortOrder: .newestFirst
+                currentAssetID: "asset-2"
             )
         )
     }
