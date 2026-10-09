@@ -171,7 +171,7 @@ final class IC187SeenArchiveTests: XCTestCase {
                 sourceRangeID: secondPayload.upstreamReturn.sourceRangeID,
                 pendingDeletionAssetIDs: secondPayload.upstreamReturn.pendingDeletionAssetIDs,
                 currentAssetID: secondPayload.upstreamReturn.currentAssetID,
-                farthestAssetID: secondPayload.upstreamReturn.farthestAssetID
+                seenAssetIDs: secondPayload.upstreamReturn.seenAssetIDs
             ),
             continuationSnapshot: secondPayload.continuationSnapshot
         )

@@ -406,7 +406,7 @@ final class IC132SubmissionDeadEndTests: XCTestCase {
                 pendingDeletionAssetIDs:
                     payload.upstreamReturn.pendingDeletionAssetIDs,
                 currentAssetID: payload.upstreamReturn.currentAssetID,
-                farthestAssetID: payload.upstreamReturn.farthestAssetID
+                seenAssetIDs: payload.upstreamReturn.seenAssetIDs
             ),
             continuationSnapshot: payload.continuationSnapshot
         )

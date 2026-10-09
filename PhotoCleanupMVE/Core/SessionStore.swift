@@ -24,7 +24,8 @@ struct SessionStore: Equatable, Sendable {
         let sourceRangeID: RangeID
         let pendingDeletionAssetIDs: Set<AssetID>
         let currentAssetID: AssetID
-        let farthestAssetID: AssetID
+        /// IC-190（SPEC-S2 v24 第七节第 3 部分）：本次看过的资产标识集合，取代最远到达；必须是该范围 `A` 的子集。
+        let seenAssetIDs: Set<AssetID>
     }
 
     struct S3Return: Equatable, Sendable {
@@ -225,7 +226,7 @@ struct SessionStore: Equatable, Sendable {
               assetIDSet.count == entryContext.orderedAssetIDs.count,
               returned.pendingDeletionAssetIDs.isSubset(of: assetIDSet),
               assetIDSet.contains(returned.currentAssetID),
-              assetIDSet.contains(returned.farthestAssetID) else {
+              returned.seenAssetIDs.isSubset(of: assetIDSet) else {
             return false
         }
 

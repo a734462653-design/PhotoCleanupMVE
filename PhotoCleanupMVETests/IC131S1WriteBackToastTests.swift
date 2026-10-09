@@ -188,7 +188,7 @@ final class IC131S1WriteBackToastTests: XCTestCase {
                 pendingDeletionAssetIDs:
                     good.upstreamReturn.pendingDeletionAssetIDs,
                 currentAssetID: good.upstreamReturn.currentAssetID,
-                farthestAssetID: good.upstreamReturn.farthestAssetID
+                seenAssetIDs: good.upstreamReturn.seenAssetIDs
             ),
             continuationSnapshot: good.continuationSnapshot
         )

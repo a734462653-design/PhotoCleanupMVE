@@ -240,7 +240,7 @@ final class S1StateMachineTests: XCTestCase {
             sourceRangeID: "range-month",
             pendingDeletionAssetIDs: [],
             currentAssetID: "asset-2",
-            farthestAssetID: "asset-2"
+            seenAssetIDs: ["asset-2"]
         )
         XCTAssertTrue(
             machine.applyS2Return(returned, entryContext: entryContext)
@@ -367,7 +367,7 @@ final class S1StateMachineTests: XCTestCase {
             sourceRangeID: "range-month",
             pendingDeletionAssetIDs: ["asset-1"],
             currentAssetID: "asset-2",
-            farthestAssetID: "asset-2"
+            seenAssetIDs: ["asset-2"]
         )
 
         XCTAssertTrue(machine.applyS2Return(returned, entryContext: context))
@@ -606,7 +606,7 @@ final class S1StateMachineTests: XCTestCase {
             sourceRangeID: "range-month",
             pendingDeletionAssetIDs: ["asset-1"],
             currentAssetID: "asset-2",
-            farthestAssetID: "asset-2"
+            seenAssetIDs: ["asset-2"]
         )
         precondition(store.applyS2Return(returned, entryContext: context))
         return store

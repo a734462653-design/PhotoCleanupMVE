@@ -554,7 +554,7 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
                     sourceRangeID: "cat:bigVideo",
                     pendingDeletionAssetIDs: ["a"],
                     currentAssetID: "c",
-                    farthestAssetID: "c"
+                    seenAssetIDs: ["c"]
                 ),
                 entryContext: entry
             )
@@ -586,7 +586,7 @@ final class IC157LongPressIntoS2Tests: XCTestCase {
                     sourceRangeID: "range-month",
                     pendingDeletionAssetIDs: ["asset-3"],
                     currentAssetID: "asset-3",
-                    farthestAssetID: "asset-3"
+                    seenAssetIDs: ["asset-3"]
                 ),
                 entryContext: realEntry
             )

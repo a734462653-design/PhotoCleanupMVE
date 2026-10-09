@@ -153,42 +153,42 @@ final class SessionStoreTests: XCTestCase {
                 sourceRangeID: "范围-月",
                 pendingDeletionAssetIDs: ["资产-A"],
                 currentAssetID: "资产-A",
-                farthestAssetID: "资产-B"
+                seenAssetIDs: ["资产-B"]
             ),
             SessionStore.S2Return(
                 sourceSessionID: store.sessionID,
                 sourceRangeID: "其他范围",
                 pendingDeletionAssetIDs: ["资产-A"],
                 currentAssetID: "资产-A",
-                farthestAssetID: "资产-B"
+                seenAssetIDs: ["资产-B"]
             ),
             SessionStore.S2Return(
                 sourceSessionID: store.sessionID,
                 sourceRangeID: "范围-月",
                 pendingDeletionAssetIDs: ["资产-范围外"],
                 currentAssetID: "资产-A",
-                farthestAssetID: "资产-B"
+                seenAssetIDs: ["资产-B"]
             ),
             SessionStore.S2Return(
                 sourceSessionID: store.sessionID,
                 sourceRangeID: "范围-月",
                 pendingDeletionAssetIDs: ["资产-A"],
                 currentAssetID: "资产-范围外",
-                farthestAssetID: "资产-B"
+                seenAssetIDs: ["资产-B"]
             ),
             SessionStore.S2Return(
                 sourceSessionID: store.sessionID,
                 sourceRangeID: "范围-月",
                 pendingDeletionAssetIDs: ["资产-A"],
                 currentAssetID: "资产-A",
-                farthestAssetID: "资产-范围外"
+                seenAssetIDs: ["资产-范围外"]
             ),
             SessionStore.S2Return(
                 sourceSessionID: store.sessionID,
                 sourceRangeID: "范围-月",
                 pendingDeletionAssetIDs: ["资产-A", "资产-B"],
                 currentAssetID: "资产-A",
-                farthestAssetID: "资产-B"
+                seenAssetIDs: ["资产-B"]
             )
         ]
 
@@ -215,7 +215,7 @@ final class SessionStoreTests: XCTestCase {
             sourceRangeID: "范围-月",
             pendingDeletionAssetIDs: ["资产-A"],
             currentAssetID: "资产-B",
-            farthestAssetID: "资产-C"
+            seenAssetIDs: ["资产-C"]
         )
 
         XCTAssertTrue(store.applyS2Return(returned, entryContext: context))
@@ -298,7 +298,7 @@ final class SessionStoreTests: XCTestCase {
             sourceRangeID: "范围-月",
             pendingDeletionAssetIDs: ["资产-A"],
             currentAssetID: "资产-A",
-            farthestAssetID: "资产-B"
+            seenAssetIDs: ["资产-B"]
         )
 
         precondition(store.applyS2Return(returned, entryContext: context))

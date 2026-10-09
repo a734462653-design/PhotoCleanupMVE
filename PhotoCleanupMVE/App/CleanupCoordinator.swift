@@ -1043,8 +1043,9 @@ final class CleanupCoordinator: ObservableObject {
             return false
         }
         sessionStore = s1Machine.sessionStore
-        // IC-187：写回成功才记本范围的离开时刻 `t_离开`（虚拟范围也记），并把本次看过集合作最后一次同步。
-        recordSeenAssets(s2Machine?.visitSeenAssetIDs ?? [])
+        // IC-187：写回成功才记本范围的离开时刻 `t_离开`（虚拟范围也记），并把本次看过集合作最后一次同步——
+        // IC-190 起取自返回契约（`S2Return.seenAssetIDs`），不再直接读 S2 状态机。
+        recordSeenAssets(payload.upstreamReturn.seenAssetIDs)
         recordS2Leave(rangeID: entryContext.rangeID, at: Date())
         return true
     }

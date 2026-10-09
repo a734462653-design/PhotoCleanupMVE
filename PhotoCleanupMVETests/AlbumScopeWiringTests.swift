@@ -586,7 +586,7 @@ final class S1ReconciliationTests: XCTestCase {
                     sourceRangeID: "r",
                     pendingDeletionAssetIDs: [],
                     currentAssetID: "a1",
-                    farthestAssetID: "a1"
+                    seenAssetIDs: ["a1"]
                 ),
                 entryContext: SessionStore.S2EntryContext(
                     rangeID: "r",
@@ -679,7 +679,7 @@ final class S1ReconciliationTests: XCTestCase {
                     sourceRangeID: "r",
                     pendingDeletionAssetIDs: ["a2"],
                     currentAssetID: "a2",
-                    farthestAssetID: "a1"
+                    seenAssetIDs: ["a1"]
                 ),
                 entryContext: entryContext(["a3", "a2", "a1"])
             )

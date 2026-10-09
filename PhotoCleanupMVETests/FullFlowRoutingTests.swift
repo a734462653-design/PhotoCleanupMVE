@@ -158,7 +158,7 @@ final class FullFlowRoutingTests: XCTestCase {
                 ["资产-A", "资产-C"]
             )
             XCTAssertEqual(payload.upstreamReturn.currentAssetID, "资产-B")
-            XCTAssertEqual(payload.upstreamReturn.farthestAssetID, "资产-A")
+            XCTAssertEqual(payload.upstreamReturn.seenAssetIDs, ["资产-A", "资产-B", "资产-C"])
 
             XCTAssertTrue(coordinator.leaveS2(with: payload))
             XCTAssertEqual(coordinator.route, .s1)
@@ -202,7 +202,7 @@ final class FullFlowRoutingTests: XCTestCase {
                 ["资产-B", "资产-S"]
             )
             XCTAssertEqual(payload.upstreamReturn.currentAssetID, "资产-B")
-            XCTAssertEqual(payload.upstreamReturn.farthestAssetID, "资产-B")
+            XCTAssertEqual(payload.upstreamReturn.seenAssetIDs, ["资产-B"])
             XCTAssertTrue(fromS2.enterConfirmationFromS2(with: payload))
             assertS3Contract(
                 coordinator: fromS2,
@@ -566,7 +566,7 @@ final class S1SessionPersistenceTests: XCTestCase {
                     sourceRangeID: "范围-年",
                     pendingDeletionAssetIDs: ["资产-B"],
                     currentAssetID: "资产-B",
-                    farthestAssetID: "资产-C"
+                    seenAssetIDs: ["资产-C"]
                 ),
                 entryContext: SessionStore.S2EntryContext(
                     rangeID: "范围-年",

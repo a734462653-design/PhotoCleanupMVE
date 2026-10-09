@@ -50,7 +50,7 @@ final class IC188SeenSwitchTests: XCTestCase {
             sourceRangeID: month9.id,
             pendingDeletionAssetIDs: [],
             currentAssetID: "a3",
-            farthestAssetID: "a3"
+            seenAssetIDs: ["a3"]
         )
         XCTAssertTrue(
             store.applyS2Return(
