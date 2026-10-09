@@ -257,6 +257,25 @@ final class CleanupCoordinator: ObservableObject {
         return true
     }
 
+    /// IC-199（SPEC-S2 v24 决策 59）：看图页顶部排序菜单——真实范围才给（`cat:` 类别范围的列表由类别页给、与 `O` 无关，
+    /// 返回 nil、不出菜单，③）。取值现读 S1 的 `O`，选择走 `changeS2SortOrder(to:)`；App 在构造看图页时取。
+    func makeS2SortMenu() -> S2SortMenu? {
+        guard route == .s2,
+              let s1Machine,
+              let entryContext = s2EntryContext,
+              !s1Machine.activeVirtualRangeIDs.contains(entryContext.rangeID) else {
+            return nil
+        }
+        return S2SortMenu(
+            currentOrder: { [weak self] in
+                self?.s1Machine?.sortOrder ?? .newestFirst
+            },
+            changeOrder: { [weak self] newValue in
+                self?.changeS2SortOrder(to: newValue) ?? false
+            }
+        )
+    }
+
     /// IC-198（SPEC-S2 v24 决策 59）：看图页顶部排序菜单改会话级排序 `O`。只对真实范围——`cat:` 范围的列表由类别页给、
     /// 与 `O` 无关（菜单不出，③）。先按新 `O` 取本范围的 `A(r, O)` 并核与看图页现列表同数同成员（看图期间范围被对账改过即拒），
     /// 再改 S1 的 `O`（随即写会话快照）、让看图页重排（当前照片不变；失败则把 `O` 改回），最后换在途交接副本——

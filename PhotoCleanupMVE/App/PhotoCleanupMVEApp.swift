@@ -333,7 +333,9 @@ struct PhotoCleanupMVEApp: App {
             // IC-185 B：末尾接 tab 落点时间线（`S0TabRouteDiagnostics`）。
             exitDiagnosticsText: coordinator.s2ExitDiagnosticsText.withTabDiagnostics(tabDiagnostics.text),
             // IC-175：相似识别诊断文本（扫描服务持有，进 S2 那一刻取一次）。
-            similarDiagnosticsText: s0DataProvider.similarDiagnosticsReport()
+            similarDiagnosticsText: s0DataProvider.similarDiagnosticsReport(),
+            // IC-199：顶部中胶囊的排序菜单（真实范围才有；类别范围为 nil、不出菜单）。
+            sortMenu: coordinator.makeS2SortMenu()
         )
     }
 
