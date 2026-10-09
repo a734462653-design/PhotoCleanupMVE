@@ -828,11 +828,11 @@ struct S2View: View {
     @StateObject private var tutorial = S2TutorialCoordinator(
         store: S2UserDefaultsTutorialCompletionStore()
     )
-    /// IC-179：三句就地提示的协调器。三个「已会」各自持久化走 `UserDefaults`，
+    /// IC-197：教学引导 D 的协调器（`S2GuideD.swift`）。六个标志持久化走 `UserDefaults`（第 1、2、4 步与 v23 三句同键），
     /// 不入标定出厂值、`schemaVersion` 不动；由本视图内部构造，`init` 无对应形参（与教程同款）。
-    @StateObject private var hints = S2InlineHintCoordinator(
-        store: S2UserDefaultsInlineHintStore()
-    )
+    @StateObject private var guide = S2GuideCoordinator()
+    /// IC-197：每次进入只开一次引导——再调 `start` 会清掉本次的跳过与收起记录（D1 复核 W4）。
+    @State private var guideStarted = false
     @StateObject private var feedbackToast: S2FeedbackToastPresenter
 
     init(
@@ -934,6 +934,12 @@ struct S2View: View {
                     viewportSize: viewportMetrics.viewportSize
                 )
 
+                // IC-197（K4）：进门压暗——分页器之上、chrome 之下，只随第 1 步出现；不吃点击。
+                guideIntroScrimOverlay(
+                    metrics: viewportMetrics,
+                    viewportSize: geometry.size
+                )
+
                 interfaceOverlay(
                     bottomStripHeight: viewportMetrics.bottomStripHeight,
                     safeAreaInsets: safeAreaInsets
@@ -948,6 +954,12 @@ struct S2View: View {
                 videoBarOverlay(
                     bottomStripHeight: viewportMetrics.bottomStripHeight,
                     safeAreaInsets: safeAreaInsets
+                )
+
+                // IC-197（K3）：中央手势示范——压在中央状态指示之下（「已标记 · 撤销」不被深色圆盖住，未定项 38）。
+                guideGestureOverlay(
+                    metrics: viewportMetrics,
+                    viewportSize: geometry.size
                 )
 
                 // IC-112 B：旧右上角角标移除，改为主图几何中心的状态指示。
@@ -974,12 +986,9 @@ struct S2View: View {
                     viewportSize: geometry.size
                 )
 
-                // IC-179：三句就地提示，与教程浮层同一层级（教程已停用，那层实际为空）。
-                // 整层随 chrome 显隐；只有 × 钮吃点击，手势原样落到主图。
-                inlineHintOverlay(
-                    metrics: viewportMetrics,
-                    viewportSize: geometry.size
-                )
+                // IC-197：教学引导 D 的教练卡／完成卡，与教程浮层同一层级（教程已停用，那层实际为空）。
+                // 整层随 chrome 显隐；只有「跳过教程」吃点击，手势原样落到主图。
+                guideCardOverlay(viewportSize: geometry.size)
 
                 S2SafeAreaInsetsReader(insets: $safeAreaInsets)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -997,13 +1006,15 @@ struct S2View: View {
                     machine.sessionMergedPendingDeletionCount
                 // IC-112 B：进场即按当前页状态落一次指示，不带动画。
                 refreshCenterIndicator(animated: false)
-                // IC-179：进门就出第 1 句（不等动手）；已会的不再出。六步教程不再从这里启动。
-                hints.startIfNeeded(
-                    mergedCount: machine.sessionMergedPendingDeletionCount
-                )
-                // IC-182（④ 第 211 条）：第 2 句会在下一次标记时出现 → 那一下停在刚标记的这张、不翻页，
+                // IC-197（J2）：进门按规则出第 1 步与进门压暗／第 4 步／完成提示；每次进入只开一次。六步教程不再从这里启动。
+                if !guideStarted {
+                    guideStarted = true
+                    guide.isInterfaceVisible = machine.interfaceVisibility == .visible
+                    guide.start(mergedCount: machine.sessionMergedPendingDeletionCount)
+                }
+                // IC-182／IC-197（决策 65 L1）：第 2 步会在下一次标记时出现 → 那一下停在刚标记的这张、不翻页，
                 // 让「下滑放回来」落在正确的照片上；其余情况恒 false，自动翻页照旧。
-                machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark
+                machine.holdsPageAfterNextMark = guide.holdsPageOnNextMark
                 // IC-140 D（规格第 3 条）：记住入口资产——入口那张不自动播
                 // 短动效，直到发生过至少一次页变更。
                 let (entryAssetID, _) = liveCurrentAssetAndNeighbours()
@@ -1017,17 +1028,17 @@ struct S2View: View {
             .onDisappear {
                 // IC-110 D：中途离开 S2 视为跳过，不拦截。
                 tutorial.leaveScreen()
-                // IC-179：离开只收起当前提示，不记「已会」。
-                hints.leaveScreen()
+                // IC-197（J11）：离开收起在显的一项与进门压暗、清空本次记录，不记「已会」。
+                guide.leaveScreen()
                 // IC-140 D：离开即停播、取消在飞请求、卸资源。
                 livePlayback.leave()
                 // IC-141 D：视频侧同款收口。
                 videoPlayback.leave()
             }
-            .onChange(of: hints.activeHint) { _, _ in
-                // IC-182：句子一变（出第 2 句、× 收起、限时、被第 3 句顶掉、学会、重看教程）就重算
+            .onChange(of: guide.display) { _, _ in
+                // IC-182／IC-197：在显的一项一变（出第 2 步、换步、收起、跳过、学会、重看教程）就重算
                 // 「下一次标记要不要停」；判据在协调器里，这里只同步给状态机。
-                machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark
+                machine.holdsPageAfterNextMark = guide.holdsPageOnNextMark
             }
             .onChange(of: calibration.configuration) { _, configuration in
                 _ = machine.applyCalibration(configuration)
@@ -1056,6 +1067,8 @@ struct S2View: View {
         }
         .onChange(of: machine.interfaceVisibility) { _, visibility in
             applyStatusBarAppearance(for: visibility)
+            // IC-197（J10）：「当场出完成提示」只在 `V=显示` 时；协调器随 `V` 同步。
+            guide.isInterfaceVisible = visibility == .visible
             // IC-112 B：中央指示随 chrome 同显隐（V=隐藏 时不显示）。
             refreshCenterIndicator(animated: true)
         }
@@ -1087,16 +1100,21 @@ struct S2View: View {
             for assetID in removed {
                 tutorial.assetDidBecomeUnmarked(assetID: assetID)
             }
-            // IC-179：同一份已发布状态喂就地提示——新增＝真实标记（第 1 句已会、出第 2 句），
-            // 移除＝真实撤标（第 2 句已会）。追加在既有回调体内，不另开同表达式的 `.onChange`。
+            // IC-197：同一份已发布状态喂引导 D——新增＝真实标记（J3：停在刚标记那张才出第 2 步），
+            // 移除＝真实撤标（J5：来源取状态机的一次性信号，在此体内同步读）。追加在既有回调体内，不另开同表达式的 `.onChange`。
+            guide.isInterfaceVisible = machine.interfaceVisibility == .visible
             if !inserted.isEmpty {
-                hints.assetDidBecomeMarked()
+                guide.assetDidBecomeMarked(
+                    stayedOnMarkedAsset: inserted.contains(machine.currentAssetID)
+                )
             }
             if !removed.isEmpty {
-                hints.assetDidBecomeUnmarked()
+                guide.assetDidBecomeUnmarked(
+                    source: machine.lastPendingDeletionChangeSource ?? .undo
+                )
             }
-            // IC-182：撤标记「已会」不一定改 `activeHint`，这里再同步一次开关。
-            machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark
+            // IC-182／IC-197：撤标记「已会」不一定改在显的一项，这里再同步一次开关。
+            machine.holdsPageAfterNextMark = guide.holdsPageOnNextMark
             // IC-112 B：标记/撤回都算一次「最近动作」，据此裁决两态并存时显示哪种。
             // IC-118 D：按张登记——只记到被操作那几张头上。
             if !inserted.isEmpty || !removed.isEmpty {
@@ -1139,6 +1157,12 @@ struct S2View: View {
         .onChange(of: machine.currentAssetID) { _, assetID in
             // IC-110 D 第 3 步：等用户真实翻回刚标记那张。
             tutorial.currentAssetDidChange(to: assetID)
+            // IC-197（J4／J6）：当前张变了——原因取状态机的一次性信号（标记后自动进下一张／翻看），在此体内同步读。
+            guide.isInterfaceVisible = machine.interfaceVisibility == .visible
+            guide.currentAssetDidChange(
+                cause: machine.lastCurrentAssetChangeCause ?? .browse
+            )
+            machine.holdsPageAfterNextMark = guide.holdsPageOnNextMark
             // IC-112 B：翻页即随新页状态刷新，且**不带动画**（卡内 ④）。
             // IC-118 D：最近动作按张记忆，翻页**不再清**——新页用它自己的
             // 记录重算（本会话加过相簿的照片翻回即显示已加入 + 撤回钮）。
@@ -1157,8 +1181,9 @@ struct S2View: View {
         // IC-111 B：模型值变化时——有残影在途就压住，等落点再跟上（卡内「同帧」）；
         // 没有在途残影（取消标记、确认页回来等）就立即跟上，不留滞后。
         .onChange(of: machine.sessionMergedPendingDeletionCount) { _, count in
-            // IC-179：攒到阈值出第 3 句。放在残影守卫之前——守卫早返回不该吞掉它。
-            hints.mergedCountDidChange(count)
+            // IC-197（J7）：攒到阈值出第 4 步。放在残影守卫之前——守卫早返回不该吞掉它。
+            guide.isInterfaceVisible = machine.interfaceVisibility == .visible
+            guide.mergedCountDidChange(count)
             guard markAfterimages.inFlightCount == 0 else {
                 return
             }
@@ -1825,57 +1850,97 @@ struct S2View: View {
         }
     }
 
-    /// IC-179（Decision_log 第 207 条第五节）：三句就地提示。
+    /// IC-197（SPEC-S2 v24 第二节第 6 部分 K1～K8）：教学引导 D 的三层——压暗、手势示范、教练卡／完成卡。
+    /// 视图与几何在 `S2GuideDViews.swift`（IC-196），这里只挂载、喂值、接回调。抽成独立 builder 的理由同
+    /// `tutorialOverlay`（#214 的类型检查预算）。
     ///
-    /// IC-182：三句气泡都挂在顶排右上垃圾桶下方（只有第 3 句带小三角）；第 1／2 句另有循环手势示意
-    /// 压在主图中心上方（`oneXDisplayCenterY` 之上）。整层随 chrome 显隐（V=隐藏 时随 chrome 隐去）；
-    /// 除 × 钮外不吃点击。抽成独立 builder 的理由同 `tutorialOverlay`（#214 的类型检查预算）。
-    private func inlineHintOverlay(
+    /// 进门压暗：只随第 1 步出现（`showsIntroDim`）、放大时随 chrome 隐去，全程不吃点击。
+    private func guideIntroScrimOverlay(
         metrics: S2ViewportMetrics,
         viewportSize: CGSize
     ) -> some View {
         ZStack {
-            if let hint = hints.activeHint {
-                S2InlineHintLayer(
-                    hint: hint,
-                    // 张数读角标的显示值（残影落点才同步），与右上角标一起滚。
-                    mergedCount: displayedPendingCount,
-                    viewportSize: viewportSize,
-                    photoCenterY: metrics.oneXDisplayCenterY,
-                    topInset: safeAreaInsets.top + S2OverlayLayout.topBarHeight,
-                    onDismiss: { hints.dismiss() }
+            if guide.showsIntroDim {
+                S2GuideIntroScrim(
+                    scrimFrame: S2GuideDLayout.introScrimFrame(
+                        viewportSize: viewportSize,
+                        safeAreaTop: safeAreaInsets.top,
+                        safeAreaBottom: safeAreaInsets.bottom,
+                        bottomStripHeight: metrics.bottomStripHeight
+                    )
                 )
                 .transition(.opacity)
-                .task(id: hint) {
-                    // 第 2 句限时（裁定 三）：到点不记已会地收起；换句或离开即取消，
-                    // 取消后不得再收起新的一句。
-                    guard hint == .markedOnce else {
-                        return
-                    }
-                    try? await Task.sleep(
-                        nanoseconds: UInt64(
-                            S2InlineHintCoordinator.markedOnceAutoDismissSeconds *
-                                1_000_000_000
-                        )
-                    )
-                    guard !Task.isCancelled else {
-                        return
-                    }
-                    hints.hintDidTimeOut(.markedOnce)
-                }
             }
         }
-        // IC-182（H94 第 3／4 条根因）：内层 ZStack 没有框时，句子消失的一瞬它塌成零尺寸落到视口中心，
-        // 淡出中的气泡随之整体向右下平移半屏——右下角「闪一下的对话框」就是它。全屏框 + 左上对齐让
-        // 空容器的原点钉在 (0, 0)，与有句子时同一原点（默认居中对齐会把空容器仍摆到中心，修不掉）。
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .animation(
-            .easeOut(duration: S2InlineHintMetrics.transitionSeconds),
-            value: hints.activeHint
+            .easeOut(duration: S2GuideDMetrics.guideTransitionSeconds),
+            value: guide.showsIntroDim
         )
         .s2ChromeVisibilityTransition(
             isVisible: machine.interfaceVisibility == .visible
         )
+        .allowsHitTesting(false)
+    }
+
+    /// 中央手势示范：第 1～3 步，横向居中、竖向在主图中心（压到教练卡才下移）；随 chrome 显隐，不吃点击。
+    private func guideGestureOverlay(
+        metrics: S2ViewportMetrics,
+        viewportSize: CGSize
+    ) -> some View {
+        S2GuideDGestureLayer(
+            display: guide.display,
+            viewportSize: viewportSize,
+            safeAreaTop: safeAreaInsets.top,
+            photoCenterY: metrics.oneXDisplayCenterY
+        )
+        .s2ChromeVisibilityTransition(
+            isVisible: machine.interfaceVisibility == .visible
+        )
+        .allowsHitTesting(false)
+    }
+
+    /// 教练卡（第 4 步另有小三角、虚线与确认入口高亮）或完成提示；随 chrome 显隐，只有「跳过教程」吃点击。
+    /// 完成提示 2 秒计时挂在外层容器上：显隐只改不透明度、视图不出层级，计时不因 `V` 隐藏而暂停（J10）。
+    private func guideCardOverlay(viewportSize: CGSize) -> some View {
+        ZStack {
+            S2GuideDCardLayer(
+                display: guide.display,
+                // 张数读角标的显示值（残影落点才同步），与右上角标一起滚。
+                mergedCount: displayedPendingCount,
+                learnedSteps: guideLearnedSteps,
+                viewportSize: viewportSize,
+                safeAreaTop: safeAreaInsets.top,
+                onSkip: {
+                    guide.skip()
+                    machine.holdsPageAfterNextMark = guide.holdsPageOnNextMark
+                }
+            )
+            .s2ChromeVisibilityTransition(
+                isVisible: machine.interfaceVisibility == .visible
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task(id: guide.display) {
+            guard guide.display == .completion else {
+                return
+            }
+            try? await Task.sleep(
+                nanoseconds: UInt64(
+                    S2GuideCoordinator.completionAutoDismissSeconds *
+                        1_000_000_000
+                )
+            )
+            guard !Task.isCancelled else {
+                return
+            }
+            guide.completionDidTimeOut()
+        }
+    }
+
+    /// 四点指示的「已会」：每次 `body` 求值现读存储（四次 `UserDefaults` 读，成本可忽略）。
+    private var guideLearnedSteps: Set<S2GuideStep> {
+        Set(S2GuideStep.allCases.filter { guide.isLearned($0) })
     }
 
     /// IC-112 B：中央状态指示浮层。位置 = **主图几何中心**
@@ -2115,8 +2180,8 @@ struct S2View: View {
                 guard let payload = machine.makeExitPayload() else {
                     return
                 }
-                // IC-179：真进确认页即第 3 句「已会」（放在 guard 之后：取不到载荷不算）。
-                hints.confirmEntryTapped()
+                // IC-197（J8）：真进确认页即第 4 步「已会」（放在 guard 之后：取不到载荷不算）。
+                guide.confirmEntryTapped()
                 performCalibratedAnimation {
                     onConfirmation(payload)
                 }
@@ -2897,11 +2962,11 @@ struct S2View: View {
                     calibration.restoreFactoryPlaceholder()
                 }
                 .s2MinimumTouchTarget()
-                // IC-179：「重看教程」改为清掉三句就地提示的「已会」并当场重出第 1 句；六步教程不再重放。
+                // IC-197（J12）：「重看教程」清零引导 D 的六个标志并当场重出第 1 步与进门压暗；六步教程不再重放。
                 Button(L10n.text("s2.tutorial.replay")) {
-                    hints.reset()
-                    // IC-182：第 1 句本就在显时 `reset()` 不改 `activeHint`，这里再同步一次开关。
-                    machine.holdsPageAfterNextMark = hints.holdsPageOnNextMark
+                    guide.reset()
+                    // IC-182／IC-197：第 1 步本就在显时 `reset()` 不改 `display`，这里再同步一次开关。
+                    machine.holdsPageAfterNextMark = guide.holdsPageOnNextMark
                 }
                 .s2MinimumTouchTarget()
                 if calibration.persistenceFailed {
