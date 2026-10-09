@@ -905,6 +905,27 @@ final class S1StateMachine: ObservableObject {
         activeVirtualRangeIDs.remove(virtualRangeID)
     }
 
+    /// IC-194 A（裁定 4，SPEC-S1 v12 第七节第 4 部分第 2 项）：S3 返回回到 S2 的真实范围交接。与 `makeS2Handoff(for:)`
+    /// 同一份 `A(r, O)`、`D = D_全部 ∩ A` 与全部守卫，只把起点换成 `K[r].c_范围`（离开那次 S2 时的那张）；`c` 不在
+    /// `A` 中（已被删或范围已变）时保留前者的起点（第一张没看过的）。
+    func makeS2ReentryHandoff(for rangeID: String) -> S1ToS2Handoff? {
+        guard let handoff = makeS2Handoff(for: rangeID) else {
+            return nil
+        }
+        guard let resumedAssetID = sessionStore.continuationsByRangeID[rangeID]?.currentAssetID,
+              handoff.orderedAssetIDs.contains(resumedAssetID) else {
+            return handoff
+        }
+        return S1ToS2Handoff(
+            sessionID: handoff.sessionID,
+            rangeDisplayInformation: handoff.rangeDisplayInformation,
+            orderedAssetIDs: handoff.orderedAssetIDs,
+            currentAssetID: resumedAssetID,
+            pendingDeletionAssetIDs: handoff.pendingDeletionAssetIDs,
+            sessionMergedPendingDeletionCountProvider: { self.badgeCount }
+        )
+    }
+
     func makeS3Submission() -> SessionStore.S3Submission? {
         guard !isObscured, state != .loading else {
             return nil
