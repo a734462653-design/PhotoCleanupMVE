@@ -649,6 +649,7 @@ final class S1StateMachine: ObservableObject {
 
     /// IC-169（决策 42／63）：`D` 初值 = 合并待删集合 ∩ 本范围列表——篮里属于本范围的照片在 S2 里
     /// 都显示为已标记，不论在哪个范围标的。
+    /// IC-188（决策 44）：从当前 `O` 下第一张没看过的开始，全部看过从第一张开始；不读 `K`（`K` 只供 S3 返回回到 S2）。
     func makeS2Handoff(for rangeID: String) -> S1ToS2Handoff? {
         guard !isObscured,
               state == .ready,
@@ -660,8 +661,9 @@ final class S1StateMachine: ObservableObject {
         let assetIDSet = Set(orderedAssetIDs)
         let pendingDeletionAssetIDs =
             sessionStore.allPendingDeletionAssetIDs.intersection(assetIDSet)
-        let currentAssetID = sessionStore.continuationsByRangeID[range.id]?
-            .currentAssetID ?? orderedAssetIDs.first
+        let seenAssetIDs = seenAssetIDsProvider?() ?? []
+        let currentAssetID = orderedAssetIDs.first { !seenAssetIDs.contains($0) }
+            ?? orderedAssetIDs.first
 
         guard !orderedAssetIDs.isEmpty,
               assetIDSet.count == orderedAssetIDs.count,

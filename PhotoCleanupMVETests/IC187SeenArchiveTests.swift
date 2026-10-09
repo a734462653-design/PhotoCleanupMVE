@@ -208,7 +208,8 @@ final class IC187SeenArchiveTests: XCTestCase {
         let virtualPayload = try XCTUnwrap(virtualMachine.makeExitPayload())
         XCTAssertTrue(coordinator.leaveS2(with: virtualPayload))
         let finalArchive = try XCTUnwrap(persistence.loadS1SeenArchive())
-        XCTAssertEqual(finalArchive.seenAssetIDs, ["a1", "a3", "a5", "a6", "v2"])
+        // IC-188：第二、三次进入从第一张没看过的开始（a2、a4），进入时的第一张即看过。
+        XCTAssertEqual(finalArchive.seenAssetIDs, ["a1", "a2", "a3", "a4", "a5", "a6", "v2"])
         XCTAssertNotNil(finalArchive.leaveTimeByRangeID["cat:video"])
         XCTAssertEqual(Set(finalArchive.leaveTimeByRangeID.keys), ["范围-月", "cat:video"])
 

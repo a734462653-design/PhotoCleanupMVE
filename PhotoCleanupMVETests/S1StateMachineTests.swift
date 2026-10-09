@@ -231,7 +231,8 @@ final class S1StateMachineTests: XCTestCase {
             ["asset-1", "asset-2", "asset-3"]
         )
         XCTAssertEqual(Set(handoff.orderedAssetIDs).count, 3)
-        XCTAssertEqual(handoff.currentAssetID, "asset-2")
+        // IC-188：起点 = 当前 O（最旧在前）下第一张没看过的；未注入 `W`，即第一张——不再读 `K` 记的 asset-2。
+        XCTAssertEqual(handoff.currentAssetID, "asset-1")
         XCTAssertTrue(handoff.orderedAssetIDs.contains(handoff.currentAssetID))
         XCTAssertEqual(handoff.pendingDeletionAssetIDs, ["asset-1"])
         XCTAssertTrue(
