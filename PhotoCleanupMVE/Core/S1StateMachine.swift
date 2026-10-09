@@ -230,6 +230,8 @@ struct S1RangeRow: Identifiable, Equatable, Sendable {
     let totalAssetCount: Int
     let pendingDeletionCount: Int
     let processedAssetCount: Int
+    /// IC-189（v12 `新增(r)`）：有月的年为各月之和；为零即不显示（界面接线归 V1 视图卡）。
+    let newAssetCount: Int
     let parentRangeID: String?
     let childCount: Int
 }
@@ -332,6 +334,10 @@ final class S1StateMachine: ObservableObject {
     /// IC-188（SPEC-S1 v12 第二节 `看过档`·迁移）：旧会话档 `p_范围` 前缀的一次性迁移入口——每次采用新读到的范围时、
     /// **在按范围收敛（`K` 钳制）之前**连同本次采用的维度交给协调器；协调器按看过档的迁移标记只做一次。未注入的夹具不迁移。
     var legacyProgressMigration: ((_ ranges: [S1Range], _ groupingDimension: S1GroupingDimension, _ store: SessionStore) -> Void)?
+
+    /// IC-189（v12 `t_离开[r]`）：范围上次离开 S2 且写回成功的时刻的读口——由协调器从看过档注入；
+    /// 未注入的夹具按「从未离开」（无基线、新增为 0）。
+    var leaveTimeProvider: ((String) -> Date?)?
 
     private var readGeneration = 0
     private var knownRangeNamesByID: [String: String] = [:]
@@ -489,6 +495,7 @@ final class S1StateMachine: ObservableObject {
                     .intersection(range.assetIDsNewestFirst)
                     .count,
                 processedAssetCount: processedAssetIDs(for: range.id).count,
+                newAssetCount: newAssetCount(for: range.id),
                 parentRangeID: range.parentRangeID,
                 childCount: childCount
             )
@@ -501,6 +508,42 @@ final class S1StateMachine: ObservableObject {
             return []
         }
         return (seenAssetIDsProvider?() ?? []).intersection(range.assetIDsNewestFirst)
+    }
+
+    /// IC-189（v12 决策 45、`新增(r)`）：拍摄时间晚于本范围基线、且还没看过的张数。有月的年取各月之和
+    /// （各月互不相交，即各月新增之并）；其余范围按自己的基线算。不存在的范围为 0。
+    func newAssetCount(for rangeID: String) -> Int {
+        guard let range = ranges.first(where: { $0.id == rangeID }) else {
+            return 0
+        }
+        let seenAssetIDs = seenAssetIDsProvider?() ?? []
+        let months = childRanges(of: range.id)
+        guard !months.isEmpty else {
+            return newAssetCount(of: range, seenAssetIDs: seenAssetIDs)
+        }
+        return months.reduce(0) { total, month in
+            total + newAssetCount(of: month, seenAssetIDs: seenAssetIDs)
+        }
+    }
+
+    /// IC-189（v12 `基线(r)`）：月范围取自己与所属年两者离开时刻中较晚的；其余范围取自己的；都没有为 nil。
+    func newAssetBaseline(for range: S1Range) -> Date? {
+        let own = leaveTimeProvider?(range.id)
+        guard let parentRangeID = range.parentRangeID,
+              let parent = leaveTimeProvider?(parentRangeID) else {
+            return own
+        }
+        guard let own else {
+            return parent
+        }
+        return max(own, parent)
+    }
+
+    private func newAssetCount(of range: S1Range, seenAssetIDs: Set<String>) -> Int {
+        guard let baseline = newAssetBaseline(for: range) else {
+            return 0
+        }
+        return range.newAssetCount(after: baseline, excluding: seenAssetIDs)
     }
 
     @discardableResult
