@@ -715,6 +715,11 @@ final class CleanupCoordinator: ObservableObject {
 
     @discardableResult
     func handleS3Return(_ returned: S3UpstreamReturn) -> Bool {
+        // IC-194 B（裁定 6，SPEC-S1 v12 第七节第 4 部分第 6 项）：冷启动恢复 S4／S5 档、经「返回确认页」重进的 S3
+        // 没有会话——来源会话不可得，不写交集、不重进 S2；有 S1 会话档就恢复、无档开新，落「逐张整理」。
+        if route == .confirmation, sessionStore == nil, s1Machine == nil {
+            return enterS1ResumingPersistedSessionOrStartNew()
+        }
         let sessionReturn = SessionStore.S3Return(
             sourceSessionID: returned.sourceSessionID,
             currentPendingDeletionAssetIDs:
