@@ -1189,6 +1189,127 @@
         }
       }
     },
+    "s2.guide.completed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "都学会了"
+          }
+        }
+      }
+    },
+    "s2.guide.confirm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "攒了 {count} 张"
+          }
+        }
+      }
+    },
+    "s2.guide.confirm.sub" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点右上角垃圾桶，一起过目再删除。"
+          }
+        }
+      }
+    },
+    "s2.guide.marked" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已放进待删篮"
+          }
+        }
+      }
+    },
+    "s2.guide.marked.sub" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标错了？下滑放回来。"
+          }
+        }
+      }
+    },
+    "s2.guide.progress" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 {current} 步，共 {total} 步"
+          }
+        }
+      }
+    },
+    "s2.guide.skip" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳过教程"
+          }
+        }
+      }
+    },
+    "s2.guide.swipe_up" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上滑，放进待删篮"
+          }
+        }
+      }
+    },
+    "s2.guide.swipe_up.sub" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不会删除照片。攒好了再一起确认。"
+          }
+        }
+      }
+    },
+    "s2.guide.undone" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已撤回，照片回来了"
+          }
+        }
+      }
+    },
+    "s2.guide.undone.sub" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左右滑翻看，开始整理吧。"
+          }
+        }
+      }
+    },
     "s2.hint.confirm" : {
       "extractionState" : "manual",
       "localizations" : {

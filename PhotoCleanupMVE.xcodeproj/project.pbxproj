@@ -98,6 +98,7 @@
 		200000000000000000000076 /* IC177UnifiedBackgroundTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000079 /* IC177UnifiedBackgroundTests.swift */; };
 		200000000000000000000077 /* S2InlineHints.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007A /* S2InlineHints.swift */; };
 		200000000000000000000094 /* S2GuideD.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000097 /* S2GuideD.swift */; };
+		200000000000000000000096 /* S2GuideDViews.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000099 /* S2GuideDViews.swift */; };
 		200000000000000000000078 /* IC179InlineHintsTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007B /* IC179InlineHintsTests.swift */; };
 		200000000000000000000079 /* S5GuideStepsView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007C /* S5GuideStepsView.swift */; };
 		200000000000000000000081 /* NavigationEdgeSwipeBack.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000084 /* NavigationEdgeSwipeBack.swift */; };
@@ -256,6 +257,7 @@
 		100000000000000000000079 /* IC177UnifiedBackgroundTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC177UnifiedBackgroundTests.swift; sourceTree = "<group>"; };
 		10000000000000000000007A /* S2InlineHints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2InlineHints.swift; sourceTree = "<group>"; };
 		100000000000000000000097 /* S2GuideD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2GuideD.swift; sourceTree = "<group>"; };
+		100000000000000000000099 /* S2GuideDViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2GuideDViews.swift; sourceTree = "<group>"; };
 		10000000000000000000007B /* IC179InlineHintsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC179InlineHintsTests.swift; sourceTree = "<group>"; };
 		10000000000000000000007C /* S5GuideStepsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S5GuideStepsView.swift; sourceTree = "<group>"; };
 		100000000000000000000084 /* NavigationEdgeSwipeBack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationEdgeSwipeBack.swift; sourceTree = "<group>"; };
@@ -460,6 +462,7 @@
 				100000000000000000000033 /* S2TopBarInfoPresentation.swift */,
 				10000000000000000000007A /* S2InlineHints.swift */,
 				100000000000000000000097 /* S2GuideD.swift */,
+				100000000000000000000099 /* S2GuideDViews.swift */,
 			);
 			path = S2;
 			sourceTree = "<group>";
@@ -753,6 +756,7 @@
 				200000000000000000000030 /* S2TopBarInfoPresentation.swift（源码） */,
 				200000000000000000000077 /* S2InlineHints.swift（源码） */,
 				200000000000000000000094 /* S2GuideD.swift（源码） */,
+				200000000000000000000096 /* S2GuideDViews.swift（源码） */,
 				20000000000000000000000B /* S3View.swift（源码） */,
 				20000000000000000000000C /* S4View.swift（源码） */,
 				20000000000000000000000D /* S5View.swift（源码） */,
