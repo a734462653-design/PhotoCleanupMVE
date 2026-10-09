@@ -232,7 +232,8 @@ final class IC168FallbackDiagnosticsTests: XCTestCase {
             // 定义 + 调用六处（E1 两路、E2、E3、两处成功）。
             ("recordS2ExitDiagnostics(", 7),
             ("private func returnToS1AfterFailedWriteBack() -> Bool", 1),
-            ("cancelS2Handoff(virtualRangeID:", 1),
+            // IC-194：写回失败回落一处 + S3 返回重进 S2 失败撤销一处。
+            ("cancelS2Handoff(virtualRangeID:", 2),
             // 分组派生内含 `precondition`，诊断不得读它。
             ("pendingDeletionGroupsByRangeID", 0)
         ] {
