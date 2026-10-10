@@ -16,6 +16,12 @@ final class S0CleanupFlowModel: ObservableObject {
     /// 被长按的那一格的资产标识（页头未收起时记 nil，回来从顶部开始）。**不发布**，理由同上；
     /// 进类别与返回首页时由容器清空。
     var preservedScrollAnchor: String? = nil
+
+    /// IC-200（取定 `Tasks/PLAN-NAVR-scroll-restore-rulings-20261009.md`）：首页与类别页的滚动偏移、首页展开的那张卡——
+    /// 路由往返（进 S2／S3 再回来）重建后按它恢复。**不发布**，理由同上；类别页偏移在进类别与返回首页时由容器归 0。
+    let homeScroll = ScrollOffsetMemory()
+    let categoryScroll = ScrollOffsetMemory()
+    var preservedOpenCardID: String? = nil
 }
 
 /// 类别页「移入待删篮」写入会话层时的虚拟范围标识前缀：范围标识为前缀加类别标识。

@@ -101,7 +101,12 @@ struct S0CleanupFlowView: View {
             },
             onEnterConfirmation: onEnterConfirmation,
             onSwitchToOrganizeTab: onSwitchToOrganizeTab,
-            transitionNamespace: deckNamespace
+            transitionNamespace: deckNamespace,
+            initialOpenedCardID: flowModel.preservedOpenCardID,
+            onOpenedCardChange: { identifier in
+                flowModel.preservedOpenCardID = identifier
+            },
+            scrollMemory: flowModel.homeScroll
         )
     }
 
@@ -110,6 +115,7 @@ struct S0CleanupFlowView: View {
     private func enterCategory(_ identifier: S0CategoryIdentifier) {
         flowModel.preservedSelection = []
         flowModel.preservedScrollAnchor = nil
+        flowModel.categoryScroll.offset = 0
         flowModel.presentedCategory = identifier
     }
 
@@ -117,6 +123,7 @@ struct S0CleanupFlowView: View {
     private func leaveCategory() {
         flowModel.preservedSelection = []
         flowModel.preservedScrollAnchor = nil
+        flowModel.categoryScroll.offset = 0
         flowModel.presentedCategory = nil
     }
 
@@ -145,7 +152,11 @@ struct S0CleanupFlowView: View {
                 },
                 toastDurationMilliseconds: toastDurationMilliseconds,
                 transitionNamespace: deckNamespace,
-                onEnterConfirmation: onEnterConfirmation
+                onEnterConfirmation: {
+                    // IC-200：经顶排待删篮进 S3——回来按记下的偏移回到原位，不按上一次长按的那一格。
+                    flowModel.preservedScrollAnchor = nil
+                    onEnterConfirmation()
+                }
             )
         }
     }

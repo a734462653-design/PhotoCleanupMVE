@@ -228,7 +228,9 @@ final class IC192PageHeaderTests: XCTestCase {
             ("onBasket: openBasket", 1),
             ("onSelectDimension: selectDimension", 1),
             ("private func pageContainer<Content: View>(", 1),
-            ("ScrollView {", 1),
+            // IC-200：就绪时的滚动容器换成路由往返后能回到原位的 `OffsetRestoringScrollView`。
+            ("OffsetRestoringScrollView(memory: machine.openCards.listScroll) {", 1),
+            ("ScrollView {", 0),
             ("if machine.state == .ready {", 1),
             (".padding(.top, S1PageHeaderMetrics.deckTopSpacing)", 1),
             (".padding(.top, S1PageHeaderMetrics.bannerTopSpacing)", 1),

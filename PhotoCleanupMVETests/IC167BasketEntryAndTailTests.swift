@@ -171,7 +171,8 @@ final class IC167BasketEntryAndTailTests: XCTestCase {
             occurrences(of: "onEnterConfirmation: @escaping () -> Void = {}", in: flow),
             1
         )
-        XCTAssertEqual(occurrences(of: "onEnterConfirmation: onEnterConfirmation", in: flow), 2)
+        // IC-200：类别页那一处改成闭包（经顶排待删篮进 S3 时先清长按锚点），原样转交只剩首页一处。
+        XCTAssertEqual(occurrences(of: "onEnterConfirmation: onEnterConfirmation", in: flow), 1)
 
         let app = try XCTUnwrap(strippedSource(Self.appPath))
         XCTAssertEqual(occurrences(of: "onEnterConfirmation: {", in: app), 1)

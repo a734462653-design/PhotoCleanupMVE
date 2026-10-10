@@ -150,9 +150,10 @@ final class IC171CategoryPageTrioTests: XCTestCase {
         )
 
         let flow = try XCTUnwrap(strippedSource(Self.flowPath))
+        // IC-200：经顶排待删篮进 S3 时也清一次（回来按偏移恢复，不按上一次长按的那一格）：2 → 3。
         XCTAssertEqual(
             occurrences(of: "flowModel.preservedScrollAnchor = nil", in: flow),
-            2
+            3
         )
         let enterSlice = try XCTUnwrap(
             slice(flow, from: "private func enterCategory(", to: Self.close)
@@ -168,8 +169,8 @@ final class IC171CategoryPageTrioTests: XCTestCase {
             occurrences(of: "flowModel.preservedScrollAnchor = nil", in: leaveSlice),
             1
         )
-        // 长按进 S2 的接线不碰锚点：总数恰等于 enter/leave 各一次之和。
-        XCTAssertEqual(occurrences(of: "preservedScrollAnchor", in: flow), 2)
+        // 长按进 S2 的接线不碰锚点：总数恰等于 enter/leave 各一次与经待删篮进 S3 一次之和（IC-200：2 → 3）。
+        XCTAssertEqual(occurrences(of: "preservedScrollAnchor", in: flow), 3)
     }
 
     // MARK: - 断言 4：页面恢复被长按的那一格，只做一次（裁定 三）
@@ -189,7 +190,8 @@ final class IC171CategoryPageTrioTests: XCTestCase {
             ),
             1
         )
-        XCTAssertEqual(occurrences(of: "flowModel.preservedScrollAnchor", in: page), 2)
+        // IC-200：滚动容器在有长按锚点时这次不按偏移恢复（`restores: flowModel.preservedScrollAnchor == nil`）：2 → 3。
+        XCTAssertEqual(occurrences(of: "flowModel.preservedScrollAnchor", in: page), 3)
         XCTAssertEqual(occurrences(of: "scrollPosition", in: page), 0)
 
         let restoreSlice = try XCTUnwrap(
