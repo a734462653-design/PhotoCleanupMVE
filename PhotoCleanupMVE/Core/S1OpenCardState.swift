@@ -11,6 +11,9 @@ final class S1OpenCardState: ObservableObject {
     @Published private(set) var listRangeID: String?
     /// 年页展开的那张月卡；年页不在前为 nil。
     @Published private(set) var yearPageRangeID: String?
+    /// IC-200：列表页与年页的滚动偏移（路由往返重建后按它恢复；不发布、不入档）。
+    let listScroll = ScrollOffsetMemory()
+    let yearPageScroll = ScrollOffsetMemory()
 
     func setListRangeID(_ rangeID: String?) {
         guard listRangeID != rangeID else {
@@ -24,6 +27,10 @@ final class S1OpenCardState: ObservableObject {
             return
         }
         yearPageRangeID = rangeID
+        // IC-200：离开年页（展开态清成 nil）即归 0——再推入任何年都从顶部开始；点月卡换展开不归 0。
+        if rangeID == nil {
+            yearPageScroll.offset = 0
+        }
     }
 
     /// `OPEN` 规则（SPEC-S0 v6 第三节第 2 部分）：所指的卡仍在即不变，否则回落到当前次序的第一张；没有卡为 nil。

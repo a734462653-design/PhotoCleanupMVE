@@ -19,6 +19,7 @@
 		200000000000000000000089 /* S1LegacyProgressMigration.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000008C /* S1LegacyProgressMigration.swift */; };
 		20000000000000000000008D /* S1HeaderSummary.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000090 /* S1HeaderSummary.swift */; };
 		20000000000000000000008E /* S1OpenCardState.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000091 /* S1OpenCardState.swift */; };
+		20000000000000000000009B /* ScrollOffsetMemory.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000009E /* ScrollOffsetMemory.swift */; };
 		200000000000000000000008 /* PhotoLibraryService.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* PhotoLibraryService.swift */; };
 		200000000000000000000009 /* AssetSizeScanner.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* AssetSizeScanner.swift */; };
 		20000000000000000000000A /* PhotoDeletionService.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000A /* PhotoDeletionService.swift */; };
@@ -100,6 +101,7 @@
 		200000000000000000000096 /* S2GuideDViews.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000099 /* S2GuideDViews.swift */; };
 		200000000000000000000079 /* S5GuideStepsView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007C /* S5GuideStepsView.swift */; };
 		200000000000000000000081 /* NavigationEdgeSwipeBack.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000084 /* NavigationEdgeSwipeBack.swift */; };
+		20000000000000000000009C /* OffsetRestoringScrollView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000009F /* OffsetRestoringScrollView.swift */; };
 		20000000000000000000007A /* IC180GuideStepsTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007D /* IC180GuideStepsTests.swift */; };
 		20000000000000000000007B /* S1DeckCards.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007E /* S1DeckCards.swift */; };
 		20000000000000000000007C /* S1YearPageView.swift（源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000007F /* S1YearPageView.swift */; };
@@ -177,6 +179,7 @@
 		10000000000000000000008C /* S1LegacyProgressMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1LegacyProgressMigration.swift; sourceTree = "<group>"; };
 		100000000000000000000090 /* S1HeaderSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1HeaderSummary.swift; sourceTree = "<group>"; };
 		100000000000000000000091 /* S1OpenCardState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1OpenCardState.swift; sourceTree = "<group>"; };
+		10000000000000000000009E /* ScrollOffsetMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollOffsetMemory.swift; sourceTree = "<group>"; };
 		100000000000000000000008 /* PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryService.swift; sourceTree = "<group>"; };
 		100000000000000000000009 /* AssetSizeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetSizeScanner.swift; sourceTree = "<group>"; };
 		10000000000000000000000A /* PhotoDeletionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDeletionService.swift; sourceTree = "<group>"; };
@@ -261,6 +264,7 @@
 		100000000000000000000099 /* S2GuideDViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S2GuideDViews.swift; sourceTree = "<group>"; };
 		10000000000000000000007C /* S5GuideStepsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S5GuideStepsView.swift; sourceTree = "<group>"; };
 		100000000000000000000084 /* NavigationEdgeSwipeBack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationEdgeSwipeBack.swift; sourceTree = "<group>"; };
+		10000000000000000000009F /* OffsetRestoringScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OffsetRestoringScrollView.swift; sourceTree = "<group>"; };
 		10000000000000000000007D /* IC180GuideStepsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC180GuideStepsTests.swift; sourceTree = "<group>"; };
 		10000000000000000000007E /* S1DeckCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1DeckCards.swift; sourceTree = "<group>"; };
 		10000000000000000000007F /* S1YearPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1YearPageView.swift; sourceTree = "<group>"; };
@@ -383,6 +387,7 @@
 				10000000000000000000008C /* S1LegacyProgressMigration.swift */,
 				100000000000000000000090 /* S1HeaderSummary.swift */,
 				100000000000000000000091 /* S1OpenCardState.swift */,
+				10000000000000000000009E /* ScrollOffsetMemory.swift */,
 				100000000000000000000019 /* L10n.swift */,
 			);
 			path = Core;
@@ -502,6 +507,7 @@
 				100000000000000000000069 /* S0DeckAssetDates.swift */,
 				10000000000000000000007C /* S5GuideStepsView.swift */,
 				100000000000000000000084 /* NavigationEdgeSwipeBack.swift */,
+				10000000000000000000009F /* OffsetRestoringScrollView.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -725,6 +731,7 @@
 				200000000000000000000066 /* S0DeckAssetDates.swift（源码） */,
 				200000000000000000000079 /* S5GuideStepsView.swift（源码） */,
 				200000000000000000000081 /* NavigationEdgeSwipeBack.swift（源码） */,
+				20000000000000000000009C /* OffsetRestoringScrollView.swift（源码） */,
 				200000000000000000000047 /* S0CleanupDataStub.swift（源码） */,
 				200000000000000000000052 /* S0ScanRules.swift（源码） */,
 				200000000000000000000074 /* S0SimilarPhotosRecognizer.swift（源码） */,
@@ -741,6 +748,7 @@
 				200000000000000000000089 /* S1LegacyProgressMigration.swift（源码） */,
 				20000000000000000000008D /* S1HeaderSummary.swift（源码） */,
 				20000000000000000000008E /* S1OpenCardState.swift（源码） */,
+				20000000000000000000009B /* ScrollOffsetMemory.swift（源码） */,
 				200000000000000000000008 /* PhotoLibraryService.swift（源码） */,
 				200000000000000000000009 /* AssetSizeScanner.swift（源码） */,
 				20000000000000000000000A /* PhotoDeletionService.swift（源码） */,
