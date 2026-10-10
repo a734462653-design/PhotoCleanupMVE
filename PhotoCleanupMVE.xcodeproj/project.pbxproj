@@ -126,6 +126,7 @@
 		200000000000000000000098 /* IC197GuideDWiringTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000009B /* IC197GuideDWiringTests.swift */; };
 		200000000000000000000099 /* IC198S2SortOrderLogicTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000009C /* IC198S2SortOrderLogicTests.swift */; };
 		20000000000000000000009A /* IC199S2SortMenuWiringTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 10000000000000000000009D /* IC199S2SortMenuWiringTests.swift */; };
+		20000000000000000000009D /* IC200ScrollRestoreTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 1000000000000000000000A0 /* IC200ScrollRestoreTests.swift */; };
 		20000000000000000000001F /* S1StateMachine.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* S1StateMachine.swift */; };
 		200000000000000000000020 /* S1View.swift（源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* S1View.swift */; };
 		200000000000000000000021 /* S1StateMachineTests.swift（测试源码） */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* S1StateMachineTests.swift */; };
@@ -289,6 +290,7 @@
 		10000000000000000000009B /* IC197GuideDWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC197GuideDWiringTests.swift; sourceTree = "<group>"; };
 		10000000000000000000009C /* IC198S2SortOrderLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC198S2SortOrderLogicTests.swift; sourceTree = "<group>"; };
 		10000000000000000000009D /* IC199S2SortMenuWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC199S2SortMenuWiringTests.swift; sourceTree = "<group>"; };
+		1000000000000000000000A0 /* IC200ScrollRestoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IC200ScrollRestoreTests.swift; sourceTree = "<group>"; };
 		100000000000000000000022 /* S1StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachine.swift; sourceTree = "<group>"; };
 		100000000000000000000023 /* S1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1View.swift; sourceTree = "<group>"; };
 		100000000000000000000024 /* S1StateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S1StateMachineTests.swift; sourceTree = "<group>"; };
@@ -584,6 +586,7 @@
 				10000000000000000000009B /* IC197GuideDWiringTests.swift */,
 				10000000000000000000009C /* IC198S2SortOrderLogicTests.swift */,
 				10000000000000000000009D /* IC199S2SortMenuWiringTests.swift */,
+				1000000000000000000000A0 /* IC200ScrollRestoreTests.swift */,
 				100000000000000000000014 /* SnapshotInvariantTests.swift */,
 				100000000000000000000015 /* VolumeFormattingTests.swift */,
 				100000000000000000000016 /* S4StateMachineTests.swift */,
@@ -851,6 +854,7 @@
 				200000000000000000000098 /* IC197GuideDWiringTests.swift（测试源码） */,
 				200000000000000000000099 /* IC198S2SortOrderLogicTests.swift（测试源码） */,
 				20000000000000000000009A /* IC199S2SortMenuWiringTests.swift（测试源码） */,
+				20000000000000000000009D /* IC200ScrollRestoreTests.swift（测试源码） */,
 				200000000000000000000011 /* SnapshotInvariantTests.swift（测试源码） */,
 				200000000000000000000012 /* VolumeFormattingTests.swift（测试源码） */,
 				200000000000000000000013 /* S4StateMachineTests.swift（测试源码） */,
