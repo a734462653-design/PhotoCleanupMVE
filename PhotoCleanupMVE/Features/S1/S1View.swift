@@ -583,7 +583,8 @@ struct S1View: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         if machine.state == .ready {
-            ScrollView {
+            // IC-200：路由往返重建后回到原来的滚动位置（卡片叠靠 `.offset` 摆位、定位不到卡，按记下的偏移恢复）。
+            OffsetRestoringScrollView(memory: machine.openCards.listScroll) {
                 content()
             }
         } else {
@@ -712,6 +713,8 @@ struct S1View: View {
         guard machine.switchGroupingDimension(to: dimension) else {
             return
         }
+        // IC-200：换维度是一张新列表——容器随加载态重建，不把旧偏移搬过来，从顶部开始。
+        machine.openCards.listScroll.offset = 0
         readCurrentRequestIfPossible()
     }
 

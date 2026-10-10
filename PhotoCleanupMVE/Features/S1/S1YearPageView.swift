@@ -27,7 +27,8 @@ struct S1YearPageView: View {
         ZStack(alignment: .top) {
             S1ChromeForeground.pageBackground
                 .ignoresSafeArea()
-            ScrollView {
+            // IC-200：路由往返重建后回到原来的滚动位置；离开年页即归 0（`S1OpenCardState`）。
+            OffsetRestoringScrollView(memory: openCards.yearPageScroll) {
                 VStack(alignment: .leading, spacing: 0) {
                     headerBlock
                     S1DeckListView(

@@ -33,6 +33,9 @@ struct S0DeckHomeView: View {
     /// IC-162 B：进类别页的 zoom 过渡命名空间。宿主是流程容器（`Namespace.ID` 没有
     /// 缺省值，故排在带缺省值的八个之后，由调用方显式给出）。
     private let transitionNamespace: Namespace.ID
+    /// IC-200：首页展开卡跨路由往返——点卡时回报给流程模型、重建时由它播种；滚动偏移记忆同在流程模型。
+    private let onOpenedCardChange: (String?) -> Void
+    private let scrollMemory: ScrollOffsetMemory
 
     init(
         machine: S0StateMachine,
@@ -43,7 +46,10 @@ struct S0DeckHomeView: View {
         onSwitchToOrganizeTab: @escaping () -> Void = {},
         onOpenSystemSettings: @escaping () -> Void = {},
         onRetry: @escaping () -> Void = {},
-        transitionNamespace: Namespace.ID
+        transitionNamespace: Namespace.ID,
+        initialOpenedCardID: String? = nil,
+        onOpenedCardChange: @escaping (String?) -> Void = { _ in },
+        scrollMemory: ScrollOffsetMemory = ScrollOffsetMemory()
     ) {
         self.machine = machine
         self.dataProvider = dataProvider
@@ -54,6 +60,9 @@ struct S0DeckHomeView: View {
         self.onOpenSystemSettings = onOpenSystemSettings
         self.onRetry = onRetry
         self.transitionNamespace = transitionNamespace
+        self.onOpenedCardChange = onOpenedCardChange
+        self.scrollMemory = scrollMemory
+        _openedCardID = State(initialValue: initialOpenedCardID)
     }
 
     var body: some View {
@@ -102,7 +111,8 @@ struct S0DeckHomeView: View {
     // MARK: - 就绪／扫描中的整套版式
 
     private var deckScreen: some View {
-        ScrollView {
+        // IC-200：路由往返重建后回到原来的滚动位置（与展开卡一起由流程模型保留）。
+        OffsetRestoringScrollView(memory: scrollMemory) {
             VStack(alignment: .leading, spacing: 0) {
                 topRow
                 limitedBanner
@@ -992,6 +1002,7 @@ struct S0DeckHomeView: View {
         ) {
             openedCardID = identifier
         }
+        onOpenedCardChange(identifier)
     }
 
     // MARK: - 取数（照 `S0View.bootstrapIfNeeded` 逐字）

@@ -126,7 +126,12 @@ struct S0DeckCategoryPageView: View {
     // MARK: - 滚动内容
 
     private func scrollContent(width: CGFloat) -> some View {
-        ScrollView {
+        // IC-200：经顶排待删篮进 S3 再回来按记下的偏移回到原位；长按进 S2 的那条路（`preservedScrollAnchor`）
+        // 仍由外层 `ScrollViewReader` 滚到那一格，本容器这次不按偏移恢复，两条不竞争。
+        OffsetRestoringScrollView(
+            memory: flowModel.categoryScroll,
+            restores: flowModel.preservedScrollAnchor == nil
+        ) {
             VStack(alignment: .leading, spacing: 0) {
                 scrollOffsetReader
                 header(width: width)
@@ -611,6 +616,10 @@ struct S0DeckCategoryPageView: View {
             LongPressGesture().onEnded { _ in
                 // IC-171 C：记下被长按的这一格，往返后回到这里（页头未收起时不记）。
                 flowModel.preservedScrollAnchor = isHeaderCollapsed ? item.id : nil
+                // IC-200：页头未收起时回来从顶部开始（SPEC-S0 v6 `:362`）——偏移记忆归 0，滚动容器也就不按偏移恢复。
+                if !isHeaderCollapsed {
+                    flowModel.categoryScroll.offset = 0
+                }
                 // IC-168 E（裁定 三）：进 S2 失败（交接构造或协调器入口拒绝）时本页出一条短提示。
                 if !onLongPress(displayedItems.map(\.id), item.id) {
                     toast.present(
