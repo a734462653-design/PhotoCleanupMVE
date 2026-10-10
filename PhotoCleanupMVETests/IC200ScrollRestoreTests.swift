@@ -212,37 +212,75 @@ final class IC200ScrollRestoreTests: XCTestCase {
 
     // MARK: - D 机制探针（只打印、不断言）
 
+    /// IC-201：IC-200 第一版探针（`UIWindow(frame:)` + `isHidden = false`）两行读数都停在静止位置，分不清是宿主不驱动
+    /// `scrollTo` 还是机制不工作。宿主改照 `S2CalibrationHarnessTests` 的写法（取已连接的窗口场景、`makeKeyAndVisible()`），
+    /// 并加两个正对照（普通 `ScrollViewReader` + `ScrollView`）。读法：正对照动了而被测不动 → 机制问题；正对照也不动 → 宿主问题。
+    /// 每行 `before`／`after` 是 `contentOffset.y`／顶部内距／内容高；第 30 格顶部在内容里的 y = 1500。
     @MainActor
     func testIC200D_ProbeRestoreAndNestedReaderInWindow() {
-        let memory = ScrollOffsetMemory()
-        memory.offset = 600
-        let box = IC200ProxyBox()
-        let host = UIHostingController(rootView: IC200ProbeView(memory: memory, box: box))
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let controlTask = IC200ProxyBox()
+        runProbe("control-task", IC200ControlView(scrollsOnAppear: true, box: controlTask), box: nil, memory: nil)
+        let controlOuter = IC200ProxyBox()
+        runProbe("control-outer", IC200ControlView(scrollsOnAppear: false, box: controlOuter), box: controlOuter, memory: nil)
+        let restoreMemory = ScrollOffsetMemory()
+        restoreMemory.offset = 600
+        runProbe("restore-600", IC200RestoreProbeView(memory: restoreMemory), box: nil, memory: restoreMemory)
+        let nestedMemory = ScrollOffsetMemory()
+        let nested = IC200ProxyBox()
+        runProbe("nested-reader", IC200ProbeView(memory: nestedMemory, box: nested), box: nested, memory: nestedMemory)
+    }
+
+    /// 宿主：已连接的窗口场景（没有才退回无场景窗口，并在行里标出），393 × 852；出现后等 1 秒读一次，
+    /// 有 `box` 时再经它存下的 proxy 滚到第 30 格、等 0.5 秒读第二次。
+    @MainActor
+    private func runProbe<Root: View>(_ name: String, _ root: Root, box: IC200ProxyBox?, memory: ScrollOffsetMemory?) {
+        let host = UIHostingController(rootView: root)
+        let bounds = CGRect(x: 0, y: 0, width: 393, height: 852)
+        let window: UIWindow
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first {
+            window = UIWindow(windowScene: windowScene)
+            window.frame = bounds
+        } else {
+            window = UIWindow(frame: bounds)
+        }
         window.rootViewController = host
-        window.isHidden = false
+        window.makeKeyAndVisible()
         defer { window.isHidden = true }
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
-        let restored = scrollOffsetY(in: host.view)
-        print("IC200_PROBE restore target=600 contentOffsetY=" + (restored.map { String(Double($0)) } ?? "none")
-              + " memory=" + String(Double(memory.offset)))
-        box.proxy?.scrollTo("probe-cell-30", anchor: .top)
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
-        let nested = scrollOffsetY(in: host.view)
-        print("IC200_PROBE nested-reader cell30Top=1500 contentOffsetY=" + (nested.map { String(Double($0)) } ?? "none")
-              + " memory=" + String(Double(memory.offset)) + " proxy=" + String(box.proxy != nil))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.0))
+        var line = "IC200_PROBE " + name
+            + " scene=" + String(window.windowScene != nil)
+            + " key=" + String(window.isKeyWindow)
+            + " before=" + describe(scrollView(in: host.view))
+        if let box = box {
+            box.proxy?.scrollTo("probe-cell-30", anchor: .top)
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+            line += " after=" + describe(scrollView(in: host.view)) + " proxy=" + String(box.proxy != nil)
+        }
+        if let memory = memory {
+            line += " memory=" + String(Double(memory.offset))
+        }
+        print(line)
     }
 
     @MainActor
-    private func scrollOffsetY(in view: UIView) -> CGFloat? {
+    private func describe(_ scroll: UIScrollView?) -> String {
+        guard let scroll = scroll else {
+            return "none"
+        }
+        return String(Double(scroll.contentOffset.y)) + "/" + String(Double(scroll.adjustedContentInset.top))
+            + "/" + String(Double(scroll.contentSize.height))
+    }
+
+    @MainActor
+    private func scrollView(in view: UIView) -> UIScrollView? {
         if let scroll = view as? UIScrollView {
-            return scroll.contentOffset.y
+            return scroll
         }
         for subview in view.subviews {
-            if let offset = scrollOffsetY(in: subview) {
-                return offset
+            if let scroll = scrollView(in: subview) {
+                return scroll
             }
         }
         return nil
@@ -352,7 +390,51 @@ final class IC200ScrollRestoreTests: XCTestCase {
     }
 }
 
-/// D 的宿主视图：外层一只 `ScrollViewReader`（照类别页长按那条路）包住本卡的容器，容器里 60 格 × 50 pt。
+/// D 的格子：60 格 × 50 pt，每格带 `probe-cell-<序号>` 身份。
+private struct IC200ProbeCells: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<60, id: \.self) { index in
+                Color.clear
+                    .frame(height: 50)
+                    .id("probe-cell-" + String(index))
+            }
+        }
+    }
+}
+
+/// D 的正对照：普通 `ScrollViewReader` + `ScrollView`（不经本卡容器）。`scrollsOnAppear` 为真时在 `.task` 里滚到第 30 格。
+private struct IC200ControlView: View {
+    let scrollsOnAppear: Bool
+    let box: IC200ProxyBox
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                IC200ProbeCells()
+            }
+            .task {
+                box.proxy = proxy
+                if scrollsOnAppear {
+                    proxy.scrollTo("probe-cell-30", anchor: .top)
+                }
+            }
+        }
+    }
+}
+
+/// D 的被测一：本卡容器单独（恢复目标 = 记忆里的偏移）。
+private struct IC200RestoreProbeView: View {
+    let memory: ScrollOffsetMemory
+
+    var body: some View {
+        OffsetRestoringScrollView(memory: memory) {
+            IC200ProbeCells()
+        }
+    }
+}
+
+/// D 的被测二：外层一只 `ScrollViewReader`（照类别页长按那条路）包住本卡的容器，经存下的 proxy 滚到第 30 格。
 private struct IC200ProbeView: View {
     let memory: ScrollOffsetMemory
     let box: IC200ProxyBox
@@ -360,13 +442,7 @@ private struct IC200ProbeView: View {
     var body: some View {
         ScrollViewReader { proxy in
             OffsetRestoringScrollView(memory: memory) {
-                VStack(spacing: 0) {
-                    ForEach(0..<60, id: \.self) { index in
-                        Color.clear
-                            .frame(height: 50)
-                            .id("probe-cell-" + String(index))
-                    }
-                }
+                IC200ProbeCells()
             }
             .onAppear {
                 box.proxy = proxy
